@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
+#include <vector>
 
 // ggml_compute_forward_dup
 
@@ -8760,6 +8761,261 @@ static void ggml_flash_attn_ext_reduce_partials(
         }
         // iq1=0, iq3=0 for decode
         memcpy((char *) dst->data + (0*ne2*ne1 + q_head + 0*ne1)*nb1, VKQ_final, nb1);
+    }
+}
+
+// ggml_compute_forward_fuse_kq_rope (TierKV)
+//
+// Single-threaded reference implementation. Higher threads return immediately.
+// Math (per query (h_q, i_q)):
+//   1. score Tier-0 keys directly (k_exact already RoPE/normed)
+//   2. for each Tier-1 latent ZSK[:, j_t1]:
+//        K_recon  = sum_r ZSK[r, j_t1] * W_uk[h_kv*d_head + d, r]
+//        K_normed = RMSNorm(K_recon, k_norm_w)              (eps from op_params)
+//        K_rope   = RoPE(K_normed, pos_t1[j_t1], rope_freqs)
+//        score    = Q · K_rope * attn_scale + mask + softcap
+//   3. softmax over [n_t0 + n_t1] scores
+//   4. accumulate V from Tier-0 (v_exact, already normed) and Tier-1 (V_recon → unweighted RMSNorm)
+static void ggml_compute_forward_fuse_kq_rope_f32(
+        const ggml_compute_params * params,
+        ggml_tensor * dst) {
+
+    if (params->ith != 0) {
+        return;
+    }
+
+    const ggml_tensor * q          = dst->src[0];
+    const ggml_tensor * k_exact    = dst->src[1];
+    const ggml_tensor * v_exact    = dst->src[2];
+    const ggml_tensor * zsk        = dst->src[3];
+    const ggml_tensor * w_uk       = dst->src[4];
+    const ggml_tensor * w_uv       = dst->src[5];
+    const ggml_tensor * k_norm_w   = dst->src[6];
+    const ggml_tensor * rope_freqs = dst->src[7];
+    const ggml_tensor * mask       = dst->src[8];
+
+    GGML_ASSERT(q->type == GGML_TYPE_F32);
+    if (k_exact)  { GGML_ASSERT(k_exact->type  == GGML_TYPE_F16); }
+    if (v_exact)  { GGML_ASSERT(v_exact->type  == GGML_TYPE_F16); }
+    if (zsk)      { GGML_ASSERT(zsk->type      == GGML_TYPE_F16); }
+    if (w_uk)     { GGML_ASSERT(w_uk->type     == GGML_TYPE_F16); }
+    if (w_uv)     { GGML_ASSERT(w_uv->type     == GGML_TYPE_F16); }
+    if (mask)     { GGML_ASSERT(mask->type     == GGML_TYPE_F16); }
+    if (k_norm_w) { GGML_ASSERT(k_norm_w->type == GGML_TYPE_F32); }
+
+    const int32_t n_rot         = ((const int32_t *) dst->op_params)[0];
+    const int32_t rope_mode     = ((const int32_t *) dst->op_params)[1];
+    const int32_t n_ctx_orig    = ((const int32_t *) dst->op_params)[2];
+    const int32_t pos_t1_offset = ((const int32_t *) dst->op_params)[3];
+    float rope_freq_base, rope_freq_scale, rope_ext_factor, rope_attn_factor, rope_beta_fast, rope_beta_slow;
+    float scale, logit_softcap, rms_norm_eps;
+    memcpy(&rope_freq_base,   (const char *) dst->op_params + 16, sizeof(float));
+    memcpy(&rope_freq_scale,  (const char *) dst->op_params + 20, sizeof(float));
+    memcpy(&rope_ext_factor,  (const char *) dst->op_params + 24, sizeof(float));
+    memcpy(&rope_attn_factor, (const char *) dst->op_params + 28, sizeof(float));
+    memcpy(&rope_beta_fast,   (const char *) dst->op_params + 32, sizeof(float));
+    memcpy(&rope_beta_slow,   (const char *) dst->op_params + 36, sizeof(float));
+    memcpy(&scale,            (const char *) dst->op_params + 40, sizeof(float));
+    memcpy(&logit_softcap,    (const char *) dst->op_params + 44, sizeof(float));
+    memcpy(&rms_norm_eps,     (const char *) dst->op_params + 48, sizeof(float));
+
+    const int64_t d_head     = q->ne[0];
+    const int64_t n_q        = q->ne[1];
+    const int64_t n_q_heads  = q->ne[2];
+    const int64_t n_kv_heads = k_exact ? k_exact->ne[2] : (w_uk->ne[0] / d_head);
+    const int64_t n_t0       = k_exact ? k_exact->ne[1] : 0;
+    const int64_t n_t1       = zsk     ? zsk->ne[1]     : 0;
+    const int64_t rank       = zsk     ? zsk->ne[0]     : 0;
+    const int64_t n_keys     = n_t0 + n_t1;
+    const int64_t group      = n_q_heads / n_kv_heads;
+
+    GGML_ASSERT(n_keys > 0);
+    GGML_ASSERT(d_head > 0);
+
+    float corr_dims[2] = {0.0f, 0.0f};
+    if (zsk) {
+        ggml_rope_yarn_corr_dims(n_rot, n_ctx_orig, rope_freq_base, rope_beta_fast, rope_beta_slow, corr_dims);
+    }
+    const float    theta_scale  = zsk ? powf(rope_freq_base, -2.0f / (float) n_rot) : 0.0f;
+    const float *  rope_factors = (zsk && rope_freqs) ? (const float *)  rope_freqs->data : NULL;
+
+    std::vector<float> rope_cache(zsk ? (size_t) n_rot : 0);
+    std::vector<float> scores((size_t) n_keys);
+    std::vector<float> K_recon(zsk ? (size_t) d_head : 0);
+    std::vector<float> V_recon(zsk ? (size_t) d_head : 0);
+    std::vector<float> out((size_t) d_head);
+
+    for (int64_t i3 = 0; i3 < q->ne[3]; ++i3) {
+        for (int64_t i_q = 0; i_q < n_q; ++i_q) {
+            const ggml_fp16_t * mask_row = mask
+                ? (const ggml_fp16_t *) ((const char *) mask->data + i_q * mask->nb[1])
+                : NULL;
+
+            for (int64_t h_q = 0; h_q < n_q_heads; ++h_q) {
+                const int64_t h_kv = h_q / group;
+                const float * q_vec = (const float *) ((const char *) q->data
+                                       + i3 * q->nb[3] + h_q * q->nb[2] + i_q * q->nb[1]);
+
+                // ---- Tier-0 scores ----
+                for (int64_t j = 0; j < n_t0; ++j) {
+                    const ggml_fp16_t * k_vec = (const ggml_fp16_t *) ((const char *) k_exact->data
+                                                + h_kv * k_exact->nb[2] + j * k_exact->nb[1]);
+                    float s = 0.0f;
+                    for (int64_t d = 0; d < d_head; ++d) {
+                        s += q_vec[d] * GGML_FP16_TO_FP32(k_vec[d]);
+                    }
+                    s *= scale;
+                    if (logit_softcap > 0.0f) {
+                        s = logit_softcap * tanhf(s / logit_softcap);
+                    }
+                    if (mask_row) {
+                        s += GGML_FP16_TO_FP32(mask_row[j]);
+                    }
+                    scores[j] = s;
+                }
+
+                // ---- Tier-1 scores: reconstruct K → norm → RoPE → dot ----
+                if (zsk) {
+                    for (int64_t j_t1 = 0; j_t1 < n_t1; ++j_t1) {
+                        std::fill(K_recon.begin(), K_recon.end(), 0.0f);
+                        const ggml_fp16_t * zsk_col = (const ggml_fp16_t *) ((const char *) zsk->data
+                                                       + j_t1 * zsk->nb[1]);
+                        for (int64_t r = 0; r < rank; ++r) {
+                            const float z = GGML_FP16_TO_FP32(zsk_col[r]);
+                            const ggml_fp16_t * uk_col = (const ggml_fp16_t *) ((const char *) w_uk->data
+                                                          + r * w_uk->nb[1]
+                                                          + h_kv * d_head * w_uk->nb[0]);
+                            for (int64_t d = 0; d < d_head; ++d) {
+                                K_recon[d] += z * GGML_FP16_TO_FP32(uk_col[d]);
+                            }
+                        }
+
+                        // RMSNorm with k_norm_w (or unweighted if NULL)
+                        float sum_sq = 0.0f;
+                        for (int64_t d = 0; d < d_head; ++d) {
+                            sum_sq += K_recon[d] * K_recon[d];
+                        }
+                        const float inv_rms = 1.0f / sqrtf(sum_sq / (float) d_head + rms_norm_eps);
+                        if (k_norm_w) {
+                            const float * w = (const float *) k_norm_w->data;
+                            for (int64_t d = 0; d < d_head; ++d) {
+                                K_recon[d] = K_recon[d] * inv_rms * w[d];
+                            }
+                        } else {
+                            for (int64_t d = 0; d < d_head; ++d) {
+                                K_recon[d] *= inv_rms;
+                            }
+                        }
+
+                        // RoPE in-place on first n_rot dims; dims [n_rot..d_head] unchanged.
+                        // Position derived linearly from offset (Phase 4 simplifying assumption).
+                        const int32_t pos = pos_t1_offset + (int32_t) j_t1;
+                        const float sin_sign = 1.0f;
+                        ggml_rope_cache_init(
+                            (float) pos, rope_freq_scale, rope_factors, corr_dims, n_rot,
+                            rope_ext_factor, rope_attn_factor,
+                            rope_cache.data(), sin_sign, theta_scale);
+
+                        if (rope_mode == GGML_ROPE_TYPE_NORMAL) {
+                            rotate_pairs<float>(n_rot, 1, rope_cache.data(),
+                                K_recon.data(), K_recon.data(), 1);
+                        } else if (rope_mode == GGML_ROPE_TYPE_NEOX) {
+                            rotate_pairs<float>(n_rot, n_rot/2, rope_cache.data(),
+                                K_recon.data(), K_recon.data());
+                        } else {
+                            GGML_ABORT("ggml_fuse_kq_rope: only NORMAL and NEOX rope modes supported");
+                        }
+
+                        float s = 0.0f;
+                        for (int64_t d = 0; d < d_head; ++d) {
+                            s += q_vec[d] * K_recon[d];
+                        }
+                        s *= scale;
+                        if (logit_softcap > 0.0f) {
+                            s = logit_softcap * tanhf(s / logit_softcap);
+                        }
+                        if (mask_row) {
+                            s += GGML_FP16_TO_FP32(mask_row[n_t0 + j_t1]);
+                        }
+                        scores[n_t0 + j_t1] = s;
+                    }
+                }
+
+                // ---- Softmax (numerically stable) ----
+                float max_s = -INFINITY;
+                for (int64_t j = 0; j < n_keys; ++j) {
+                    if (scores[j] > max_s) max_s = scores[j];
+                }
+                float sum_exp = 0.0f;
+                for (int64_t j = 0; j < n_keys; ++j) {
+                    scores[j] = expf(scores[j] - max_s);
+                    sum_exp += scores[j];
+                }
+                const float inv_sum = (sum_exp > 0.0f) ? 1.0f / sum_exp : 0.0f;
+                for (int64_t j = 0; j < n_keys; ++j) {
+                    scores[j] *= inv_sum;
+                }
+
+                // ---- Accumulate V ----
+                std::fill(out.begin(), out.end(), 0.0f);
+
+                for (int64_t j = 0; j < n_t0; ++j) {
+                    const ggml_fp16_t * v_vec = (const ggml_fp16_t *) ((const char *) v_exact->data
+                                                + h_kv * v_exact->nb[2] + j * v_exact->nb[1]);
+                    const float a = scores[j];
+                    for (int64_t d = 0; d < d_head; ++d) {
+                        out[d] += a * GGML_FP16_TO_FP32(v_vec[d]);
+                    }
+                }
+
+                if (zsk) {
+                    for (int64_t j_t1 = 0; j_t1 < n_t1; ++j_t1) {
+                        std::fill(V_recon.begin(), V_recon.end(), 0.0f);
+                        const ggml_fp16_t * zsk_col = (const ggml_fp16_t *) ((const char *) zsk->data
+                                                       + j_t1 * zsk->nb[1]);
+                        for (int64_t r = 0; r < rank; ++r) {
+                            const float z = GGML_FP16_TO_FP32(zsk_col[r]);
+                            const ggml_fp16_t * uv_col = (const ggml_fp16_t *) ((const char *) w_uv->data
+                                                          + r * w_uv->nb[1]
+                                                          + h_kv * d_head * w_uv->nb[0]);
+                            for (int64_t d = 0; d < d_head; ++d) {
+                                V_recon[d] += z * GGML_FP16_TO_FP32(uv_col[d]);
+                            }
+                        }
+
+                        // Unweighted RMSNorm (Gemma 4 V-norm)
+                        float sum_sq = 0.0f;
+                        for (int64_t d = 0; d < d_head; ++d) {
+                            sum_sq += V_recon[d] * V_recon[d];
+                        }
+                        const float inv_rms = 1.0f / sqrtf(sum_sq / (float) d_head + rms_norm_eps);
+                        const float a = scores[n_t0 + j_t1];
+                        for (int64_t d = 0; d < d_head; ++d) {
+                            out[d] += a * V_recon[d] * inv_rms;
+                        }
+                    }
+                }
+
+                // ---- Write output: shape [d_head, n_q_heads, n_q, ne3] ----
+                float * out_ptr = (float *) ((char *) dst->data
+                                  + i3 * dst->nb[3] + i_q * dst->nb[2] + h_q * dst->nb[1]);
+                for (int64_t d = 0; d < d_head; ++d) {
+                    out_ptr[d] = out[d];
+                }
+            }
+        }
+    }
+}
+
+void ggml_compute_forward_fuse_kq_rope(
+        const ggml_compute_params * params,
+        ggml_tensor * dst) {
+    switch (dst->src[0]->type) {
+        case GGML_TYPE_F32:
+            ggml_compute_forward_fuse_kq_rope_f32(params, dst);
+            break;
+        default:
+            GGML_ABORT("ggml_fuse_kq_rope: unsupported Q type");
     }
 }
 

@@ -550,6 +550,7 @@ extern "C" {
 
         GGML_OP_FLASH_ATTN_EXT,
         GGML_OP_FLASH_ATTN_BACK,
+        GGML_OP_FUSE_KQ_ROPE,
         GGML_OP_SSM_CONV,
         GGML_OP_SSM_SCAN,
         GGML_OP_WIN_PART,
@@ -2404,6 +2405,66 @@ extern "C" {
     GGML_API void ggml_flash_attn_ext_add_sinks(
             struct ggml_tensor * a,
             struct ggml_tensor * sinks);
+
+    // TierKV fused split-path attention.
+    // Combines a "Tier-0" exact KV path with a "Tier-1" SVD-compressed KV path
+    // into a single attention computation (joint softmax across both ranges).
+    //
+    // Caller responsibilities (kept in caller for symmetry with ggml_flash_attn_ext):
+    //   - q       : already RMSNorm'd and RoPE'd
+    //   - k_exact : already RMSNorm'd and RoPE'd (Tier-0 cache contents)
+    //   - v_exact : already RMSNorm'd          (Tier-0 cache contents)
+    //   - mask    : pre-concatenated for [n_t0 + n_t1] keys (n_t0 first)
+    //
+    // Op responsibilities (executed inside the kernel for the Tier-1 portion):
+    //   1. K_recon = ZSK · W_uk^T           (reconstruct full-rank K from latent)
+    //   2. K_normed = RMSNorm(K_recon, k_norm_w)
+    //   3. K_rope  = RoPE(K_normed, pos_t1, rope_freqs, ...)
+    //   4. V_recon = ZSK · W_uv^T
+    //   5. V_normed = RMSNorm(V_recon, NULL)  (unweighted, for Gemma-style V-norm)
+    //   6. attn over concat(k_exact, K_rope) and concat(v_exact, V_normed)
+    //
+    // To run Tier-0-only: pass zsk = w_uk = w_uv = NULL.
+    // To run Tier-1-only: pass k_exact = v_exact = NULL.
+    //
+    // Tensor shapes (matching ggml conventions, ne[0] is contiguous):
+    //   q        : [d_head, n_q,   n_q_heads]              F32
+    //   k_exact  : [d_head, n_t0,  n_kv_heads]             F16, NULL OK
+    //   v_exact  : [d_head, n_t0,  n_kv_heads]             F16, NULL OK
+    //   zsk      : [rank,   n_t1]                          F16, NULL OK
+    //   w_uk     : [d_head * n_kv_heads, rank]             F16, NULL OK
+    //   w_uv     : [d_head * n_kv_heads, rank]             F16, NULL OK
+    //   k_norm_w : [d_head]                                F32, NULL OK (skip K-norm if NULL)
+    //   rope_freqs: [n_dims/2]                             F32, NULL OK (partial RoPE freq_factors)
+    //   mask     : [n_t0 + n_t1, n_q]                      F16, NULL OK
+    // Position of Tier-1 K token j_t1 is computed as `pos_t1_offset + j_t1` (assumes the
+    // Tier-1 region of the KV cache is filled in monotonically increasing position order,
+    // which is the typical case for a single-sequence inference).
+    // Output  : [d_head, n_q, n_q_heads]                   F32  (same as ggml_flash_attn_ext)
+    GGML_API struct ggml_tensor * ggml_fuse_kq_rope(
+            struct ggml_context * ctx,
+            struct ggml_tensor  * q,
+            struct ggml_tensor  * k_exact,
+            struct ggml_tensor  * v_exact,
+            struct ggml_tensor  * zsk,
+            struct ggml_tensor  * w_uk,
+            struct ggml_tensor  * w_uv,
+            struct ggml_tensor  * k_norm_w,
+            struct ggml_tensor  * rope_freqs,
+            struct ggml_tensor  * mask,
+            int                   n_rot,
+            int                   rope_mode,
+            int                   n_ctx_orig,
+            int                   pos_t1_offset,
+            float                 rope_freq_base,
+            float                 rope_freq_scale,
+            float                 rope_ext_factor,
+            float                 rope_attn_factor,
+            float                 rope_beta_fast,
+            float                 rope_beta_slow,
+            float                 scale,
+            float                 logit_softcap,
+            float                 rms_norm_eps);
 
     // TODO: needs to be adapted to ggml_flash_attn_ext
     GGML_API struct ggml_tensor * ggml_flash_attn_back(

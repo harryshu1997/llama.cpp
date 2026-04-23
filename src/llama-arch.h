@@ -245,6 +245,7 @@ enum llm_kv {
     LLM_KV_ATTENTION_INDEXER_KEY_LENGTH,
     LLM_KV_ATTENTION_INDEXER_TOP_K,
     LLM_KV_ATTENTION_SHARED_KV_LAYERS,
+    LLM_KV_ATTENTION_SVD_RANKS, // TierKV: per-layer SVD rank (0 = no SVD for that layer)
 
     LLM_KV_ROPE_DIMENSION_COUNT,
     LLM_KV_ROPE_DIMENSION_COUNT_SWA,
@@ -359,6 +360,9 @@ enum llm_tensor {
     LLM_TENSOR_ATTN_Q,
     LLM_TENSOR_ATTN_K,
     LLM_TENSOR_ATTN_V,
+    LLM_TENSOR_ATTN_UK, // TierKV: K reconstruction basis
+    LLM_TENSOR_ATTN_UV, // TierKV: V reconstruction basis
+    LLM_TENSOR_ATTN_VS, // TierKV: latent projector Σ·V^T
     LLM_TENSOR_ATTN_QKV,
     LLM_TENSOR_ATTN_OUT,
     LLM_TENSOR_ATTN_NORM,

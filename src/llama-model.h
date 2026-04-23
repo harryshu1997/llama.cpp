@@ -238,6 +238,13 @@ struct llama_layer {
     struct ggml_tensor * wv        = nullptr;
     struct ggml_tensor * wo        = nullptr;
     struct ggml_tensor * wqkv      = nullptr;
+
+    // TierKV: optional joint-SVD projection bases. Present only when GGUF was emitted
+    // with --svd-rank-* (see convert_hf_to_gguf.py Gemma4Model). For shared-KV layers
+    // and non-Gemma4 archs these stay nullptr.
+    struct ggml_tensor * wuk       = nullptr;  // [n_embd_k_gqa, rank]
+    struct ggml_tensor * wuv       = nullptr;  // [n_embd_v_gqa, rank]
+    struct ggml_tensor * wvs       = nullptr;  // [d_in,         rank]
     struct ggml_tensor * wq_a      = nullptr;
     struct ggml_tensor * wq_b      = nullptr;
     struct ggml_tensor * wkv_a_mqa = nullptr;

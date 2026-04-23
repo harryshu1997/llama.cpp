@@ -95,6 +95,30 @@ llama_kv_cache::llama_kv_cache(
 
     GGML_ASSERT(kv_size % n_pad == 0);
 
+    // ---- TierKV: parse tier-boundary env vars (KV_SVD_SIZE, KV_OFFLOAD_SIZE).
+    // Both default to kv_size when unset → Tier-1 capacity = 0, ZSK never allocated → baseline behavior.
+    {
+        const char * env_svd     = getenv("KV_SVD_SIZE");
+        const char * env_offload = getenv("KV_OFFLOAD_SIZE");
+        kv_svd_size     = env_svd     ? (uint32_t) std::max(0, atoi(env_svd))     : kv_size;
+        kv_offload_size = env_offload ? (uint32_t) std::max(0, atoi(env_offload)) : kv_size;
+        // Clamp to [0, kv_size] and align down to n_pad.
+        if (kv_svd_size     > kv_size) kv_svd_size     = kv_size;
+        if (kv_offload_size > kv_size) kv_offload_size = kv_size;
+        if (kv_offload_size < kv_svd_size) {
+            LLAMA_LOG_WARN("%s: KV_OFFLOAD_SIZE (%u) < KV_SVD_SIZE (%u); clamping KV_OFFLOAD_SIZE to KV_SVD_SIZE\n",
+                __func__, kv_offload_size, kv_svd_size);
+            kv_offload_size = kv_svd_size;
+        }
+        kv_svd_size     = (kv_svd_size     / n_pad) * n_pad;
+        kv_offload_size = (kv_offload_size / n_pad) * n_pad;
+        if (env_svd || env_offload) {
+            LLAMA_LOG_INFO("%s: TierKV cfg: kv_svd_size=%u, kv_offload_size=%u, tier1_capacity=%u (n_pad=%u, kv_size=%u)\n",
+                __func__, kv_svd_size, kv_offload_size, kv_offload_size - kv_svd_size, n_pad, kv_size);
+        }
+    }
+    const uint32_t tier1_capacity = kv_offload_size - kv_svd_size;
+
     const uint32_t n_layer_kv = hparams.n_layer_kv();
 
     // define a comparator for the buft -> ctx map to ensure that the order is well-defined:
@@ -110,7 +134,7 @@ llama_kv_cache::llama_kv_cache(
         auto it = ctx_map.find(buft);
         if (it == ctx_map.end()) {
             ggml_init_params params = {
-                /*.mem_size   =*/ size_t(2u*(1 + n_stream)*n_layer_kv*ggml_tensor_overhead()),
+                /*.mem_size   =*/ size_t(3u*(1 + n_stream)*n_layer_kv*ggml_tensor_overhead()),  // K + V + TierKV ZSK
                 /*.mem_buffer =*/ NULL,
                 /*.no_alloc   =*/ true,
             };
@@ -220,9 +244,26 @@ llama_kv_cache::llama_kv_cache(
             v_stream.push_back(has_v ? ggml_view_2d(ctx, v, n_embd_v_gqa, kv_size, v->nb[1], s*v->nb[2]) : nullptr);
         }
 
+        // ---- TierKV: allocate per-layer ZSK if this layer carries an SVD basis and Tier-1 has capacity.
+        // Sized to kv_offload_size so the SAME slot indices used for K/V apply to ZSK (slots
+        // [kv_svd_size, kv_offload_size) hold the live Tier-1 codes; slots [0, kv_svd_size) are
+        // overwritten harmlessly and never read). Cost: rank * kv_svd_size * 2B per layer (small).
+        ggml_tensor * zsk = nullptr;
+        std::vector<ggml_tensor *> zsk_stream;
+        const uint32_t rank_l = il < hparams.svd_ranks.size() ? hparams.svd_ranks[il] : 0;
+        if (rank_l > 0 && tier1_capacity > 0) {
+            zsk = ggml_new_tensor_3d(ctx, GGML_TYPE_F16, rank_l, kv_offload_size, n_stream);
+            ggml_format_name(zsk, "cache_zsk_l%d", il);
+            for (uint32_t s = 0; s < n_stream; ++s) {
+                zsk_stream.push_back(ggml_view_2d(ctx, zsk, rank_l, kv_offload_size, zsk->nb[1], s*zsk->nb[2]));
+            }
+        } else {
+            for (uint32_t s = 0; s < n_stream; ++s) zsk_stream.push_back(nullptr);
+        }
+
         map_layer_ids[il] = layers.size();
 
-        layers.push_back({ il, k, v, k_stream, v_stream, });
+        layers.push_back({ il, k, v, k_stream, v_stream, zsk, zsk_stream, });
     }
 
     if (reuse) {
@@ -1191,6 +1232,53 @@ ggml_tensor * llama_kv_cache::get_v(ggml_context * ctx, int32_t il, uint32_t n_k
             ggml_row_size(v->type, kv_size),                        // v->nb[2]
             ggml_row_size(v->type, kv_size*n_embd_v_gqa),           // v->nb[3]
             ggml_row_size(v->type, kv_size*n_embd_v_gqa)*sinfo.s0);
+}
+
+// TierKV accessors. Mirror get_k / cpy_k but operate on the per-layer ZSK buffer.
+// Returns NULL when this layer has no Tier-1 storage so callers can branch cheaply.
+//
+// get_zsk returns a view covering Tier-1 slots [kv_svd_size, kv_svd_size + n_t1).
+// (ZSK is allocated at kv_offload_size; slots [0, kv_svd_size) are write-but-never-read
+// shadow region so write idxs can be reused with K/V; only Tier-1 slots are read here.)
+ggml_tensor * llama_kv_cache::get_zsk(ggml_context * ctx, int32_t il, uint32_t n_t1, const slot_info & sinfo) const {
+    auto it = map_layer_ids.find(il);
+    if (it == map_layer_ids.end()) return nullptr;
+    const int32_t ikv = it->second;
+    auto * zsk = layers[ikv].zsk;
+    if (!zsk) return nullptr;
+
+    const uint64_t rank          = zsk->ne[0];
+    const uint64_t zsk_size      = zsk->ne[1]; // == kv_offload_size at allocation time
+    const uint32_t ns            = sinfo.s1 - sinfo.s0 + 1;
+    GGML_ASSERT(kv_svd_size + n_t1 <= zsk_size);
+
+    return ggml_view_3d(ctx, zsk,
+            rank, n_t1, ns,
+            ggml_row_size(zsk->type, rank),
+            ggml_row_size(zsk->type, rank*zsk_size),
+            ggml_row_size(zsk->type, rank*zsk_size)*sinfo.s0
+              + ggml_row_size(zsk->type, rank*kv_svd_size));
+}
+
+ggml_tensor * llama_kv_cache::cpy_zsk(ggml_context * ctx, ggml_tensor * zsk_cur, ggml_tensor * zsk_idxs, int32_t il, const slot_info & sinfo) const {
+    GGML_UNUSED(sinfo);
+    auto it = map_layer_ids.find(il);
+    GGML_ASSERT(it != map_layer_ids.end());
+    auto * zsk = layers[it->second].zsk;
+    GGML_ASSERT(zsk && "cpy_zsk called on a layer without Tier-1 storage");
+
+    const int64_t rank        = zsk_cur->ne[0];
+    const int64_t n_tokens    = zsk_cur->ne[1];
+    GGML_ASSERT(rank == zsk->ne[0] && "ZSK rank mismatch");
+
+    zsk_cur = ggml_view_2d(ctx, zsk_cur, rank, n_tokens, zsk_cur->nb[1], 0);
+
+    const int64_t n_stream_local = zsk->ne[2];
+    if (n_stream_local > 1) {
+        const int64_t tier1_capacity = zsk->ne[1];
+        zsk = ggml_reshape_2d(ctx, zsk, rank, tier1_capacity*n_stream_local);
+    }
+    return ggml_set_rows(ctx, zsk, zsk_cur, zsk_idxs);
 }
 
 ggml_tensor * llama_kv_cache::cpy_k(ggml_context * ctx, ggml_tensor * k_cur, ggml_tensor * k_idxs, int32_t il, const slot_info & sinfo) const {
@@ -2457,6 +2545,30 @@ ggml_tensor * llama_kv_cache_context::cpy_k(ggml_context * ctx, ggml_tensor * k_
 
 ggml_tensor * llama_kv_cache_context::cpy_v(ggml_context * ctx, ggml_tensor * v_cur, ggml_tensor * v_idxs, int32_t il) const {
     return kv->cpy_v(ctx, v_cur, v_idxs, il, sinfos[i_cur]);
+}
+
+uint32_t llama_kv_cache_context::get_kv_svd_size() const {
+    return kv->get_kv_svd_size();
+}
+
+ggml_tensor * llama_kv_cache_context::get_k_n(ggml_context * ctx, int32_t il, uint32_t n_t0) const {
+    return kv->get_k(ctx, il, n_t0, sinfos[i_cur]);
+}
+
+ggml_tensor * llama_kv_cache_context::get_v_n(ggml_context * ctx, int32_t il, uint32_t n_t0) const {
+    return kv->get_v(ctx, il, n_t0, sinfos[i_cur]);
+}
+
+uint32_t llama_kv_cache_context::get_kv_offload_size() const {
+    return kv->get_kv_offload_size();
+}
+
+ggml_tensor * llama_kv_cache_context::get_zsk(ggml_context * ctx, int32_t il, uint32_t n_t1) const {
+    return kv->get_zsk(ctx, il, n_t1, sinfos[i_cur]);
+}
+
+ggml_tensor * llama_kv_cache_context::cpy_zsk(ggml_context * ctx, ggml_tensor * zsk_cur, ggml_tensor * zsk_idxs, int32_t il) const {
+    return kv->cpy_zsk(ctx, zsk_cur, zsk_idxs, il, sinfos[i_cur]);
 }
 
 ggml_tensor * llama_kv_cache_context::build_input_k_idxs(ggml_context * ctx, const llama_ubatch & ubatch) const {

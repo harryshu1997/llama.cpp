@@ -290,6 +290,11 @@ class TensorNameMap:
             "backbone.layers.{bid}.mixer.v_proj",                        # nemotron-h
         ),
 
+        # TierKV: SVD reconstruction tensors (no HF source — synthesized at convert time)
+        MODEL_TENSOR.ATTN_UK: (),
+        MODEL_TENSOR.ATTN_UV: (),
+        MODEL_TENSOR.ATTN_VS: (),
+
         # Attention output
         MODEL_TENSOR.ATTN_OUT: (
             "gpt_neox.layers.{bid}.attention.dense",                        # gptneox

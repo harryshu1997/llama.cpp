@@ -44,6 +44,8 @@ struct llama_hparams {
     uint32_t n_embd;
     uint32_t n_layer;
     int32_t n_layer_kv_from_start = -1; // if non-negative, the first n_layer_kv_from_start layers have KV cache
+    // TierKV: per-layer SVD rank (0 = layer not SVD'd). All zeros if GGUF was not converted with --svd-rank-*.
+    std::array<uint32_t, LLAMA_MAX_LAYERS> svd_ranks = {};
     uint32_t n_expert = 0;
     uint32_t n_expert_used = 0;
     uint32_t n_rel_attn_bkts = 0;

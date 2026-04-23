@@ -169,6 +169,14 @@ public:
     ggml_tensor * cpy_k(ggml_context * ctx, ggml_tensor * k_cur, ggml_tensor * k_idxs, int32_t il, const slot_info & sinfo) const;
     ggml_tensor * cpy_v(ggml_context * ctx, ggml_tensor * v_cur, ggml_tensor * v_idxs, int32_t il, const slot_info & sinfo) const;
 
+    // TierKV API
+    uint32_t get_kv_svd_size()     const { return kv_svd_size;     }
+    uint32_t get_kv_offload_size() const { return kv_offload_size; }
+    // Returns NULL when layer il has no Tier-1 ZSK buffer (e.g. shared-KV layers, no SVD tensors,
+    // or env vars disable the SVD tier). Caller must check before use.
+    ggml_tensor * get_zsk(ggml_context * ctx, int32_t il, uint32_t n_t1, const slot_info & sinfo) const;
+    ggml_tensor * cpy_zsk(ggml_context * ctx, ggml_tensor * zsk_cur, ggml_tensor * zsk_idxs, int32_t il, const slot_info & sinfo) const;
+
     //
     // preparation API
     //
@@ -222,6 +230,13 @@ private:
 
         std::vector<ggml_tensor *> k_stream;
         std::vector<ggml_tensor *> v_stream;
+
+        // TierKV: latent code cache for Tier-1 (SVD-compressed). Allocated only when:
+        //   (a) env vars KV_SVD_SIZE / KV_OFFLOAD_SIZE define a non-empty Tier-1 region, AND
+        //   (b) the model has SVD basis tensors for this layer (hparams.svd_ranks[il] > 0).
+        // Shape: [rank_l, kv_offload_size - kv_svd_size, n_stream] in fp16.
+        ggml_tensor * zsk = nullptr;
+        std::vector<ggml_tensor *> zsk_stream;
     };
 
     bool v_trans = true;  // the value tensor is transposed
@@ -249,6 +264,11 @@ private:
 
     // env: LLAMA_KV_CACHE_DEBUG
     int debug = 0;
+
+    // TierKV tier boundaries (env: KV_SVD_SIZE, KV_OFFLOAD_SIZE).
+    // Defaults set in constructor; both equal kv_size when env vars are unset → Tier-1/2 disabled.
+    uint32_t kv_svd_size     = 0;
+    uint32_t kv_offload_size = 0;
 
     // this is the SWA type of the cache - not to be confused with the model SWA type
     const llama_swa_type swa_type = LLAMA_SWA_TYPE_NONE;
@@ -365,6 +385,15 @@ public:
     //   - v_idxs [n_tokens] or [n_tokens*n_embd_v_gqa] depending if V cache is transposed
     ggml_tensor * cpy_k(ggml_context * ctx, ggml_tensor * k_cur, ggml_tensor * k_idxs, int32_t il) const;
     ggml_tensor * cpy_v(ggml_context * ctx, ggml_tensor * v_cur, ggml_tensor * v_idxs, int32_t il) const;
+
+    // TierKV pass-through accessors (forward to underlying llama_kv_cache).
+    uint32_t get_kv_svd_size()     const;
+    uint32_t get_kv_offload_size() const;
+    // Get K/V views over the first n_t0 slots only (Tier-0 portion of the cache).
+    ggml_tensor * get_k_n(ggml_context * ctx, int32_t il, uint32_t n_t0) const;
+    ggml_tensor * get_v_n(ggml_context * ctx, int32_t il, uint32_t n_t0) const;
+    ggml_tensor * get_zsk(ggml_context * ctx, int32_t il, uint32_t n_t1) const;
+    ggml_tensor * cpy_zsk(ggml_context * ctx, ggml_tensor * zsk_cur, ggml_tensor * zsk_idxs, int32_t il) const;
 
     // create destination indices for each head of the current batch for where it would be written in the KV cache
     // the indices address the global KV cache (not per stream) - this is not relevant for the user of this API, but

@@ -7667,6 +7667,79 @@ class Gemma3NModel(Gemma3Model):
 class Gemma4Model(Gemma3Model):
     model_arch = gguf.MODEL_ARCH.GEMMA4
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # TierKV state. These are set by main() from CLI args after construction.
+        self.tierkv_rank      = 0
+        self.tierkv_rank_full = 0
+        self.tierkv_rank_swa  = 0
+        self._tierkv_cache_k: dict[int, Tensor]   = {}
+        self._tierkv_cache_v: dict[int, Tensor]   = {}
+        self._tierkv_emitted_ranks: dict[int, int] = {}
+
+    @property
+    def _tierkv_enabled(self) -> bool:
+        return self.tierkv_rank > 0 or self.tierkv_rank_full > 0 or self.tierkv_rank_swa > 0
+
+    def _tierkv_rank_for_layer(self, bid: int) -> int:
+        if not self._tierkv_enabled:
+            return 0
+        # Layers in [n_layer - num_kv_shared_layers, n_layer) reuse earlier layers' KV
+        # (see src/models/gemma4-iswa.cpp `hparams.has_kv(il)`). Their W_k/W_v in the
+        # HF checkpoint are present but not consulted at inference time, so we skip them.
+        first_shared = self.block_count - self.hparams["num_kv_shared_layers"]
+        if bid >= first_shared:
+            return 0
+        if self.tierkv_rank > 0:
+            return self.tierkv_rank
+        layer_type = self.hparams["layer_types"][bid]
+        return self.tierkv_rank_full if layer_type == "full_attention" else self.tierkv_rank_swa
+
+    def _tierkv_emit_svd(self, bid: int) -> Iterable[tuple[str, Tensor]]:
+        rank = self._tierkv_rank_for_layer(bid)
+        # Materialize lazy tensors before SVD; SVD does not run on LazyTorchTensor.
+        W_k = LazyTorchTensor.to_eager(self._tierkv_cache_k.pop(bid)).float().contiguous()
+        W_v = LazyTorchTensor.to_eager(self._tierkv_cache_v.pop(bid)).float().contiguous()
+        n_k, d_in = W_k.shape
+        n_v       = W_v.shape[0]
+        assert W_v.shape[1] == d_in, f"K/V d_in mismatch at layer {bid}: {W_k.shape} vs {W_v.shape}"
+        max_rank = min(n_k + n_v, d_in)
+        if rank > max_rank:
+            logger.warning(f"TierKV layer {bid}: requested rank {rank} > max {max_rank}, clamping")
+            rank = max_rank
+
+        # Joint SVD on stacked [W_k; W_v] (shape [n_k+n_v, d_in])
+        W_stack = torch.cat([W_k, W_v], dim=0)
+        U, S, Vt = torch.linalg.svd(W_stack, full_matrices=False)
+        U_r  = U[:, :rank]
+        S_r  = S[:rank]
+        Vt_r = Vt[:rank, :]
+        # Split U into U_k and U_v.
+        # GGUF stores PyTorch tensor [A, B] with ne=[B, A] (inner dim = PyTorch last dim).
+        # ggml_fuse_kq_rope expects W_uk/W_uv with ne[0]=n_k (= d_head*n_kv_heads) for
+        # contiguous per-rank-column access, so emit PyTorch shape [rank, n_k] (transposed).
+        U_k = U_r[:n_k, :].t().contiguous()             # PyTorch [rank, n_k] → GGUF ne=[n_k, rank]
+        U_v = U_r[n_k:, :].t().contiguous()             # PyTorch [rank, n_v] → GGUF ne=[n_v, rank]
+        # VS = diag(S) @ V^T  ; PyTorch [rank, d_in] → GGUF ne=[d_in, rank]; per-rank-row access
+        # over d_in is the natural fast path for ZSK = X · VS^T, so this layout is already correct.
+        VS  = (S_r.unsqueeze(1) * Vt_r).contiguous()    # PyTorch [rank, d_in] → GGUF ne=[d_in, rank]
+
+        # Reconstruction-error sanity check (for log only).
+        # After transpose: U_k shape is [rank, n_k]; W_k_recon = U_k.T @ VS = [n_k, d_in].
+        recon_k = U_k.t() @ VS
+        recon_v = U_v.t() @ VS
+        err_k = (recon_k - W_k).norm() / W_k.norm()
+        err_v = (recon_v - W_v).norm() / W_v.norm()
+        layer_type = self.hparams["layer_types"][bid]
+        logger.info(f"TierKV layer {bid:2d} ({layer_type[:4]}): rank={rank:4d} "
+                    f"U_k={list(U_k.shape)} U_v={list(U_v.shape)} VS={list(VS.shape)} "
+                    f"K rel_L2={err_k:.4f}, V rel_L2={err_v:.4f}")
+
+        self._tierkv_emitted_ranks[bid] = rank
+        yield (self.format_tensor_name(gguf.MODEL_TENSOR.ATTN_UK, bid), U_k)
+        yield (self.format_tensor_name(gguf.MODEL_TENSOR.ATTN_UV, bid), U_v)
+        yield (self.format_tensor_name(gguf.MODEL_TENSOR.ATTN_VS, bid), VS)
+
     def norm_shift(self, name: str) -> float:
         del name # unused
         return 0.0
@@ -7703,6 +7776,13 @@ class Gemma4Model(Gemma3Model):
 
     def set_gguf_parameters(self):
         super().set_gguf_parameters()
+
+        # TierKV: emit per-layer SVD ranks (0 if no SVD for that layer).
+        # Runs after prepare_tensors(), so _tierkv_emitted_ranks is populated.
+        if self._tierkv_enabled:
+            ranks = [self._tierkv_emitted_ranks.get(il, 0) for il in range(self.block_count)]
+            self.gguf_writer.add_svd_ranks(ranks)
+            logger.info(f"TierKV: per-layer SVD ranks = {ranks}")
 
         num_kv_shared_layers = self.hparams["num_kv_shared_layers"]
         self.gguf_writer.add_shared_kv_layers(num_kv_shared_layers)
@@ -7785,7 +7865,20 @@ class Gemma4Model(Gemma3Model):
         if ".experts." in name and not name.endswith(".weight"):
             name += ".weight"
 
+        # TierKV: cache K/V projections so we can do joint SVD once both arrive.
+        # Only layers with their own KV (bid < first_kv_shared_layer_idx) carry these tensors.
+        if self._tierkv_enabled and bid is not None and self._tierkv_rank_for_layer(bid) > 0:
+            if name.endswith(".self_attn.k_proj.weight"):
+                self._tierkv_cache_k[bid] = data_torch
+            elif name.endswith(".self_attn.v_proj.weight"):
+                self._tierkv_cache_v[bid] = data_torch
+
         yield from super().modify_tensors(data_torch, name, bid)
+
+        # If both K and V for this layer are now cached, emit SVD tensors.
+        if self._tierkv_enabled and bid is not None \
+                and bid in self._tierkv_cache_k and bid in self._tierkv_cache_v:
+            yield from self._tierkv_emit_svd(bid)
 
 
 @ModelBase.register("Gemma4ForConditionalGeneration")
@@ -13258,6 +13351,21 @@ def parse_args() -> argparse.Namespace:
         help="Fuse gate_exps and up_exps tensors into a single gate_up_exps tensor for MoE models.",
     )
 
+    # ---- TierKV (Gemma 4 only for now) ----
+    parser.add_argument(
+        "--svd-rank", type=int, default=0,
+        help="(TierKV) Joint SVD rank for K and V projections, applied to ALL layer types. "
+             "0 = disabled (no SVD tensors emitted). If set, overrides --svd-rank-full and --svd-rank-swa.",
+    )
+    parser.add_argument(
+        "--svd-rank-full", type=int, default=0,
+        help="(TierKV) SVD rank for full-attention layers only. 0 = use --svd-rank or skip.",
+    )
+    parser.add_argument(
+        "--svd-rank-swa", type=int, default=0,
+        help="(TierKV) SVD rank for sliding-attention layers only. 0 = use --svd-rank or skip.",
+    )
+
     args = parser.parse_args()
     if not args.print_supported_models and args.model is None:
         parser.error("the following arguments are required: model")
@@ -13404,6 +13512,13 @@ def main() -> None:
                                      sentence_transformers_dense_modules=args.sentence_transformers_dense_modules,
                                      fuse_gate_up_exps=args.fuse_gate_up_exps
                                      )
+
+        # TierKV opt-in: forward SVD rank settings to the model instance.
+        # The base ModelBase ignores these; only Gemma4Model (and future models)
+        # consult them in modify_tensors / set_gguf_parameters.
+        model_instance.tierkv_rank        = args.svd_rank
+        model_instance.tierkv_rank_full   = args.svd_rank_full
+        model_instance.tierkv_rank_swa    = args.svd_rank_swa
 
         if args.vocab_only:
             logger.info("Exporting model vocab...")

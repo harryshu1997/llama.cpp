@@ -1,5 +1,8 @@
 #include "models.h"
 
+#include "llama-kv-cache.h"
+#include "llama-kv-cache-iswa.h"
+
 // get 2D slice view from a 3D tensor, the idx corresponds to the 3rd dim
 static ggml_tensor * ggml_view_2d_slice(ggml_context * ctx0, ggml_tensor * x, int idx) {
     GGML_ASSERT(idx < (int) x->ne[2]);
@@ -99,9 +102,86 @@ llm_build_gemma4_iswa::llm_build_gemma4_iswa(const llama_model & model, const ll
 
             cb(Kcur, "Kcur_pos", il);
 
-            cur = build_attn(inp_attn, model.layers[il].wo,
-                    nullptr, Qcur, Kcur, Vcur, nullptr, nullptr, nullptr,
-                    hparams.f_attention_scale, il);
+            // ----- TierKV (Path B) -----
+            // Use the SVD-compressed Tier-1 path when (a) this layer carries SVD bases,
+            // (b) the user enabled it via env vars, and (c) the cache already holds at least
+            // kv_svd_size tokens so a non-empty Tier-1 region exists. Otherwise fall through to
+            // the stock Path A below.
+            //
+            // Note: K/V projections are always computed (even for ubatches whose tokens land
+            // entirely in Tier-1) because skipping them and not referencing v_idxs would leave
+            // graph inputs un-allocated and crash llm_graph_input_attn_kv_iswa::set_input.
+            // Skipping the K/V projection requires deeper graph-input refactoring (Phase 4 v3).
+            const auto * mctx_iswa = inp_attn->mctx;
+            const auto * mctx_cur  = hparams.is_swa(il) ? mctx_iswa->get_swa() : mctx_iswa->get_base();
+            const uint32_t kv_svd_size = mctx_cur->get_kv_svd_size();
+            const uint32_t n_kv_cur    = mctx_cur->get_n_kv();
+            const bool tierkv_active   =
+                model.layers[il].wuk != nullptr &&
+                model.layers[il].wvs != nullptr &&
+                kv_svd_size > 0 &&
+                kv_svd_size < n_kv_cur;
+
+            if (tierkv_active) {
+                // 1) Compute ZSK for the current ubatch from the post-attn-norm input `cur`.
+                //    cur shape:  [d_in, n_tokens]
+                //    wvs shape:  [d_in, rank]   (col-major in ggml: ne[0]=d_in, ne[1]=rank)
+                //    ZSK_cur:    [rank, n_tokens]
+                ggml_tensor * ZSK_cur = ggml_mul_mat(ctx0, model.layers[il].wvs, cur);
+                cb(ZSK_cur, "ZSK_cur", il);
+
+                // 2) Make K/V/ZSK part of the graph and write them to caches.
+                ggml_build_forward_expand(gf, Qcur);
+                ggml_build_forward_expand(gf, Kcur);
+                ggml_build_forward_expand(gf, Vcur);
+                ggml_build_forward_expand(gf, ZSK_cur);
+
+                const auto & k_idxs = hparams.is_swa(il) ? inp_attn->get_k_idxs_swa() : inp_attn->get_k_idxs();
+                const auto & v_idxs = hparams.is_swa(il) ? inp_attn->get_v_idxs_swa() : inp_attn->get_v_idxs();
+
+                ggml_build_forward_expand(gf, mctx_cur->cpy_k(ctx0, Kcur,    k_idxs, il));
+                ggml_build_forward_expand(gf, mctx_cur->cpy_v(ctx0, Vcur,    v_idxs, il));
+                // ZSK uses K's idxs; Tier-0 region of the ZSK buffer is overwritten harmlessly.
+                ggml_build_forward_expand(gf, mctx_cur->cpy_zsk(ctx0, ZSK_cur, k_idxs, il));
+
+                // 3) Read attention sources.
+                const uint32_t n_t0 = std::min<uint32_t>(n_kv_cur, kv_svd_size);
+                const uint32_t n_t1 = n_kv_cur - n_t0;
+                ggml_tensor * K_exact = mctx_cur->get_k_n(ctx0, il, n_t0);   // [d_head, n_head_kv, n_t0, ns]
+                ggml_tensor * V_exact = mctx_cur->get_v_n(ctx0, il, n_t0);   // [d_head, n_head_kv, n_t0, ns] (or transposed)
+                ggml_tensor * ZSK_in  = mctx_cur->get_zsk(ctx0, il, n_t1);   // [rank, n_t1, ns]
+                ggml_tensor * mask    = hparams.is_swa(il) ? inp_attn->get_kq_mask_swa() : inp_attn->get_kq_mask();
+
+                // 4) Permute Q / K_exact / V_exact to flash-attn layout: [d_head, n_seq, n_head, ns].
+                const int64_t n_stream_q = K_exact->ne[3]; // matches K cache stream count
+                ggml_tensor * Qp = ggml_view_4d(ctx0, Qcur, Qcur->ne[0], Qcur->ne[1], Qcur->ne[2]/n_stream_q, n_stream_q,
+                                                Qcur->nb[1], Qcur->nb[2], Qcur->nb[3]/n_stream_q, 0);
+                Qp = ggml_permute(ctx0, Qp, 0, 2, 1, 3);
+                ggml_tensor * Kp = ggml_permute(ctx0, K_exact, 0, 2, 1, 3);
+                ggml_tensor * Vp = ggml_permute(ctx0, V_exact, 0, 2, 1, 3);
+
+                // 5) Build the fused split-path attention.
+                // pos_t1_offset = kv_svd_size assumes Tier-1 tokens are filled in monotonic order
+                // starting from absolute position kv_svd_size (single-sequence linear-fill case).
+                ggml_tensor * attn_out = ggml_fuse_kq_rope(
+                    ctx0, Qp, Kp, Vp, ZSK_in,
+                    model.layers[il].wuk, model.layers[il].wuv,
+                    model.layers[il].attn_k_norm, freq_factors, mask,
+                    n_rot_l, rope_type, n_ctx_orig, (int) kv_svd_size,
+                    freq_base_l, freq_scale_l,
+                    ext_factor, attn_factor, beta_fast, beta_slow,
+                    hparams.f_attention_scale, /*logit_softcap=*/ 0.0f, hparams.f_norm_rms_eps);
+                cb(attn_out, "kqv_out_tierkv", il);
+
+                // 6) Reshape [d_head, n_q_heads, n_q, ns] -> [n_embd, n_tokens] and project.
+                attn_out = ggml_reshape_2d(ctx0, attn_out,
+                    attn_out->ne[0]*attn_out->ne[1], attn_out->ne[2]*attn_out->ne[3]);
+                cur = build_lora_mm(model.layers[il].wo, attn_out);
+            } else {
+                cur = build_attn(inp_attn, model.layers[il].wo,
+                        nullptr, Qcur, Kcur, Vcur, nullptr, nullptr, nullptr,
+                        hparams.f_attention_scale, il);
+            }
         } else {
             // reuse KV cache of earlier layers
             cur = build_attn(inp_attn,

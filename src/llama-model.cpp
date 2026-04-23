@@ -1625,6 +1625,10 @@ void llama_model::load_hparams(llama_model_loader & ml) {
                 ml.get_key(LLM_KV_ATTENTION_VALUE_LENGTH_SWA,  hparams.n_embd_head_v_swa);
                 ml.get_key(LLM_KV_FINAL_LOGIT_SOFTCAPPING,     hparams.f_final_logit_softcapping, false);
 
+                // TierKV: per-layer SVD rank metadata. Absent in stock GGUFs → all zero.
+                hparams.svd_ranks.fill(0);
+                ml.get_key_or_arr(LLM_KV_ATTENTION_SVD_RANKS, hparams.svd_ranks, hparams.n_layer, false);
+
                 switch (hparams.n_layer) {
                     case 35: type = LLM_TYPE_E2B; break;
                     case 42: type = LLM_TYPE_E4B; break; // to confirm: E4B or E5B?
@@ -4649,6 +4653,17 @@ bool llama_model::load_tensors(llama_model_loader & ml) {
                         layer.attn_q_norm    = create_tensor(tn(LLM_TENSOR_ATTN_Q_NORM,    "weight", i), {n_embd_head}, 0);
                         layer.attn_k_norm    = create_tensor(tn(LLM_TENSOR_ATTN_K_NORM,    "weight", i), {n_embd_head}, kv_flags);
                         layer.attn_post_norm = create_tensor(tn(LLM_TENSOR_ATTN_POST_NORM, "weight", i), {n_embd}, 0);
+
+                        // TierKV (optional): joint-SVD K/V projection bases. Only present for
+                        // layers whose hparams.svd_ranks[i] > 0 (set by the converter when
+                        // --svd-rank-* was used). Layers without their own KV (kv_flags set)
+                        // never have these. Loading is best-effort: pass TENSOR_NOT_REQUIRED.
+                        if (kv_flags == 0 && i < (int) hparams.svd_ranks.size() && hparams.svd_ranks[i] > 0) {
+                            const int64_t rank = hparams.svd_ranks[i];
+                            layer.wuk = create_tensor(tn(LLM_TENSOR_ATTN_UK, "weight", i), {n_embd_k, rank}, TENSOR_NOT_REQUIRED);
+                            layer.wuv = create_tensor(tn(LLM_TENSOR_ATTN_UV, "weight", i), {n_embd_v, rank}, TENSOR_NOT_REQUIRED);
+                            layer.wvs = create_tensor(tn(LLM_TENSOR_ATTN_VS, "weight", i), {n_embd,   rank}, TENSOR_NOT_REQUIRED);
+                        }
 
                         layer.out_scale = create_tensor(tn(LLM_TENSOR_LAYER_OUT_SCALE, "weight", i), {1u}, TENSOR_NOT_REQUIRED);
 

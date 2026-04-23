@@ -183,6 +183,8 @@ class Keys:
         SHARED_KV_LAYERS             = "{arch}.attention.shared_kv_layers"
         SLIDING_WINDOW_PATTERN       = "{arch}.attention.sliding_window_pattern"
         TEMPERATURE_SCALE            = "{arch}.attention.temperature_scale"
+        # TierKV: per-layer SVD ranks. Element l is the rank for layer l (0 = layer not SVD'd).
+        SVD_RANKS                    = "{arch}.attention.svd_ranks"
 
         class Indexer:
             HEAD_COUNT = "{arch}.attention.indexer.head_count"
@@ -525,6 +527,9 @@ class MODEL_TENSOR(IntEnum):
     ATTN_Q               = auto()
     ATTN_K               = auto()
     ATTN_V               = auto()
+    ATTN_UK              = auto() # TierKV: K reconstruction basis (joint SVD U_k)
+    ATTN_UV              = auto() # TierKV: V reconstruction basis (joint SVD U_v)
+    ATTN_VS              = auto() # TierKV: latent projector Σ·V^T (shared for K and V)
     ATTN_QKV             = auto()
     ATTN_OUT             = auto()
     ATTN_NORM            = auto()
@@ -1012,6 +1017,9 @@ TENSOR_NAMES: dict[MODEL_TENSOR, str] = {
     MODEL_TENSOR.ATTN_Q:                    "blk.{bid}.attn_q",
     MODEL_TENSOR.ATTN_K:                    "blk.{bid}.attn_k",
     MODEL_TENSOR.ATTN_V:                    "blk.{bid}.attn_v",
+    MODEL_TENSOR.ATTN_UK:                   "blk.{bid}.attn_uk",
+    MODEL_TENSOR.ATTN_UV:                   "blk.{bid}.attn_uv",
+    MODEL_TENSOR.ATTN_VS:                   "blk.{bid}.attn_vs",
     MODEL_TENSOR.ATTN_OUT:                  "blk.{bid}.attn_output",
     MODEL_TENSOR.ATTN_ROT_EMBD:             "blk.{bid}.attn_rot_embd",
     MODEL_TENSOR.ATTN_SINKS:                "blk.{bid}.attn_sinks",
@@ -2344,6 +2352,9 @@ MODEL_TENSORS: dict[MODEL_ARCH, list[MODEL_TENSOR]] = {
         MODEL_TENSOR.ATTN_K,
         MODEL_TENSOR.ATTN_K_NORM,
         MODEL_TENSOR.ATTN_V,
+        MODEL_TENSOR.ATTN_UK,
+        MODEL_TENSOR.ATTN_UV,
+        MODEL_TENSOR.ATTN_VS,
         MODEL_TENSOR.ATTN_OUT,
         MODEL_TENSOR.FFN_GATE,
         MODEL_TENSOR.FFN_DOWN,

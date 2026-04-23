@@ -1037,6 +1037,7 @@ static const char * GGML_OP_NAME[GGML_OP_COUNT] = {
 
     "FLASH_ATTN_EXT",
     "FLASH_ATTN_BACK",
+    "FUSE_KQ_ROPE",
     "SSM_CONV",
     "SSM_SCAN",
     "WIN_PART",
@@ -1065,7 +1066,7 @@ static const char * GGML_OP_NAME[GGML_OP_COUNT] = {
     "GLU",
 };
 
-static_assert(GGML_OP_COUNT == 96, "GGML_OP_COUNT != 96");
+static_assert(GGML_OP_COUNT == 97, "GGML_OP_COUNT != 97");
 
 static const char * GGML_OP_SYMBOL[GGML_OP_COUNT] = {
     "none",
@@ -1147,6 +1148,7 @@ static const char * GGML_OP_SYMBOL[GGML_OP_COUNT] = {
 
     "flash_attn_ext(x)",
     "flash_attn_back(x)",
+    "fuse_kq_rope(q,k,v,zsk,uk,uv)",
     "ssm_conv(x)",
     "ssm_scan(x)",
     "win_part(x)",
@@ -1175,7 +1177,7 @@ static const char * GGML_OP_SYMBOL[GGML_OP_COUNT] = {
     "glu(x)",
 };
 
-static_assert(GGML_OP_COUNT == 96, "GGML_OP_COUNT != 96");
+static_assert(GGML_OP_COUNT == 97, "GGML_OP_COUNT != 97");
 
 static_assert(GGML_OP_POOL_COUNT == 2, "GGML_OP_POOL_COUNT != 2");
 
@@ -5378,6 +5380,109 @@ void ggml_flash_attn_ext_add_sinks(
     GGML_ASSERT(sinks->type == GGML_TYPE_F32);
 
     a->src[4] = sinks;
+}
+
+// ggml_fuse_kq_rope (TierKV)
+
+struct ggml_tensor * ggml_fuse_kq_rope(
+        struct ggml_context * ctx,
+        struct ggml_tensor  * q,
+        struct ggml_tensor  * k_exact,
+        struct ggml_tensor  * v_exact,
+        struct ggml_tensor  * zsk,
+        struct ggml_tensor  * w_uk,
+        struct ggml_tensor  * w_uv,
+        struct ggml_tensor  * k_norm_w,
+        struct ggml_tensor  * rope_freqs,
+        struct ggml_tensor  * mask,
+        int                   n_rot,
+        int                   rope_mode,
+        int                   n_ctx_orig,
+        int                   pos_t1_offset,
+        float                 rope_freq_base,
+        float                 rope_freq_scale,
+        float                 rope_ext_factor,
+        float                 rope_attn_factor,
+        float                 rope_beta_fast,
+        float                 rope_beta_slow,
+        float                 scale,
+        float                 logit_softcap,
+        float                 rms_norm_eps) {
+    // Need at least one path active.
+    GGML_ASSERT(k_exact || zsk);
+    // Tier-0 K and V must come together; Tier-1 latent and both bases must come together.
+    GGML_ASSERT((k_exact == NULL) == (v_exact == NULL));
+    GGML_ASSERT((zsk     == NULL) == (w_uk    == NULL));
+    GGML_ASSERT((zsk     == NULL) == (w_uv    == NULL));
+
+    const int64_t d_head     = q->ne[0];
+    const int64_t n_q        = q->ne[1];
+    const int64_t n_q_heads  = q->ne[2];
+
+    int64_t n_kv_heads = 0;
+    if (k_exact) {
+        n_kv_heads = k_exact->ne[2];
+        GGML_ASSERT(k_exact->ne[0] == d_head);
+        GGML_ASSERT(v_exact->ne[0] == d_head);
+        GGML_ASSERT(v_exact->ne[1] == k_exact->ne[1]);
+        GGML_ASSERT(v_exact->ne[2] == n_kv_heads);
+    } else {
+        // Tier-1-only: derive n_kv_heads from w_uk shape [d_head * n_kv_heads, rank].
+        GGML_ASSERT(w_uk->ne[0] % d_head == 0);
+        n_kv_heads = w_uk->ne[0] / d_head;
+    }
+    GGML_ASSERT(n_q_heads % n_kv_heads == 0);
+
+    if (zsk) {
+        GGML_ASSERT(zsk->ne[0] == w_uk->ne[1]);
+        GGML_ASSERT(zsk->ne[0] == w_uv->ne[1]);
+        GGML_ASSERT(w_uv->ne[0] == d_head * n_kv_heads);
+        if (k_norm_w) {
+            GGML_ASSERT(k_norm_w->ne[0] == d_head);
+            GGML_ASSERT(k_norm_w->type == GGML_TYPE_F32);
+        }
+        if (rope_freqs) {
+            GGML_ASSERT(rope_freqs->type == GGML_TYPE_F32);
+        }
+    }
+
+    if (mask) {
+        GGML_ASSERT(mask->type == GGML_TYPE_F16);
+        GGML_ASSERT(ggml_is_contiguous(mask));
+        const int64_t n_t0 = k_exact ? k_exact->ne[1] : 0;
+        const int64_t n_t1 = zsk     ? zsk->ne[1]     : 0;
+        GGML_ASSERT(mask->ne[0] >= n_t0 + n_t1);
+        GGML_ASSERT(mask->ne[1] >= n_q);
+    }
+
+    // Output: same permuted layout as ggml_flash_attn_ext: [d_head, n_q_heads, n_q, ne3]
+    int64_t ne[4] = { d_head, n_q_heads, n_q, q->ne[3] };
+    struct ggml_tensor * result = ggml_new_tensor(ctx, GGML_TYPE_F32, 4, ne);
+
+    // op_params layout: 4 int32 followed by 9 float32 (52 bytes; fits in GGML_MAX_OP_PARAMS = 64).
+    int32_t params_i32[4] = { n_rot, rope_mode, n_ctx_orig, pos_t1_offset };
+    float   params_f32[9] = {
+        rope_freq_base, rope_freq_scale,
+        rope_ext_factor, rope_attn_factor,
+        rope_beta_fast, rope_beta_slow,
+        scale, logit_softcap, rms_norm_eps,
+    };
+    static_assert(sizeof(int32_t)*4 + sizeof(float)*9 <= GGML_MAX_OP_PARAMS, "op_params too large");
+    memcpy((char *) result->op_params,                     params_i32, sizeof(params_i32));
+    memcpy((char *) result->op_params + sizeof(params_i32), params_f32, sizeof(params_f32));
+
+    result->op     = GGML_OP_FUSE_KQ_ROPE;
+    result->src[0] = q;
+    result->src[1] = k_exact;
+    result->src[2] = v_exact;
+    result->src[3] = zsk;
+    result->src[4] = w_uk;
+    result->src[5] = w_uv;
+    result->src[6] = k_norm_w;
+    result->src[7] = rope_freqs;
+    result->src[8] = mask;
+
+    return result;
 }
 
 // ggml_flash_attn_back
