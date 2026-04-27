@@ -151,6 +151,12 @@ llm_build_gemma4_iswa::llm_build_gemma4_iswa(const llama_model & model, const ll
                 ggml_tensor * V_exact = mctx_cur->get_v_n(ctx0, il, n_t0);   // [d_head, n_head_kv, n_t0, ns] (or transposed)
                 ggml_tensor * ZSK_in  = mctx_cur->get_zsk(ctx0, il, n_t1);   // [rank, n_t1, ns]
                 ggml_tensor * mask    = hparams.is_swa(il) ? inp_attn->get_kq_mask_swa() : inp_attn->get_kq_mask();
+                // ggml_fuse_kq_rope assumes F16 mask (matches flash_attn convention). The
+                // standard kq_mask is F32 unless cparams.flash_attn is true; cast unconditionally
+                // here so Path B works regardless of flash-attn state.
+                if (mask && mask->type != GGML_TYPE_F16) {
+                    mask = ggml_cast(ctx0, mask, GGML_TYPE_F16);
+                }
 
                 // 4) Permute Q / K_exact / V_exact to flash-attn layout: [d_head, n_seq, n_head, ns].
                 const int64_t n_stream_q = K_exact->ne[3]; // matches K cache stream count

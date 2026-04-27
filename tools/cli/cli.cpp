@@ -6,6 +6,7 @@
 
 #include "server-context.h"
 #include "server-task.h"
+#include "../moe-count.hpp"
 
 #include <array>
 #include <atomic>
@@ -359,6 +360,8 @@ int main(int argc, char ** argv) {
         console::error("please use llama-completion instead\n");
     }
 
+    moe_count_maybe_enable(params);
+
     // struct that contains llama context and inference
     cli_context ctx_cli(params);
 
@@ -647,6 +650,8 @@ int main(int argc, char ** argv) {
     // bump the log level to display timings
     common_log_set_verbosity_thold(LOG_LEVEL_INFO);
     llama_memory_breakdown_print(ctx_cli.ctx_server.get_llama_context());
+
+    moe_count_report();
 
     return 0;
 }

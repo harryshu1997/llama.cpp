@@ -13,6 +13,8 @@
 // as the production CPU kernel (Q in F32; K/V/ZSK/W_uk/W_uv/mask in F16).
 
 #include "ggml.h"
+#include "ggml-alloc.h"
+#include "ggml-backend.h"
 #include "ggml-cpu.h"
 
 #include <cmath>
@@ -391,6 +393,114 @@ bool run_one_case(const char * label, const dims & D, std::mt19937 & gen,
     return rel_l2 <= tol;
 }
 
+// ---------------------------------------------------------------------------
+// OpenCL parity path: build the same op via ggml-backend, run on `backend`,
+// pull the result back. Returns empty vector on alloc/compute failure.
+// ---------------------------------------------------------------------------
+std::vector<float> run_fused_via_backend(const ref_inputs & X, ggml_backend_t backend) {
+    const dims & D = X.D;
+
+    ggml_init_params p = { /*mem_size=*/ 64*1024*1024, /*mem_buffer=*/ NULL, /*no_alloc=*/ true };
+    ggml_context * ctx = ggml_init(p);
+
+    ggml_tensor * Q = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, D.d_head, D.n_q, D.n_q_heads);
+    ggml_tensor * K_exact = NULL;
+    ggml_tensor * V_exact = NULL;
+    if (X.enable_t0) {
+        K_exact = ggml_new_tensor_3d(ctx, GGML_TYPE_F16, D.d_head, D.n_t0, D.n_kv_heads);
+        V_exact = ggml_new_tensor_3d(ctx, GGML_TYPE_F16, D.d_head, D.n_t0, D.n_kv_heads);
+    }
+    ggml_tensor * ZSK = NULL, *W_uk = NULL, *W_uv = NULL, *K_norm_w = NULL;
+    if (X.enable_t1) {
+        ZSK  = ggml_new_tensor_2d(ctx, GGML_TYPE_F16, D.rank, D.n_t1);
+        W_uk = ggml_new_tensor_2d(ctx, GGML_TYPE_F16, D.d_head * D.n_kv_heads, D.rank);
+        W_uv = ggml_new_tensor_2d(ctx, GGML_TYPE_F16, D.d_head * D.n_kv_heads, D.rank);
+        if (X.enable_k_norm_w) {
+            K_norm_w = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, D.d_head);
+        }
+    }
+    ggml_tensor * mask = X.enable_mask
+        ? ggml_new_tensor_2d(ctx, GGML_TYPE_F16, D.n_t0 + D.n_t1, D.n_q) : NULL;
+
+    ggml_tensor * out = ggml_fuse_kq_rope(ctx, Q, K_exact, V_exact, ZSK, W_uk, W_uv,
+        K_norm_w, /*rope_freqs=*/ NULL, mask,
+        X.n_rot, X.rope_mode, X.n_ctx_orig, X.pos_t1_offset,
+        X.freq_base, X.freq_scale, X.ext_factor, X.attn_factor, X.beta_fast, X.beta_slow,
+        X.scale, X.logit_softcap, X.rms_norm_eps);
+
+    ggml_cgraph * gf = ggml_new_graph(ctx);
+    ggml_build_forward_expand(gf, out);
+
+    ggml_backend_buffer_t buf = ggml_backend_alloc_ctx_tensors(ctx, backend);
+    if (!buf) {
+        fprintf(stderr, "  [backend] failed to allocate tensors\n");
+        ggml_free(ctx);
+        return {};
+    }
+
+    // Upload inputs.
+    ggml_backend_tensor_set(Q, X.Q.data(), 0, X.Q.size() * sizeof(float));
+    if (X.enable_t0) {
+        ggml_backend_tensor_set(K_exact, X.K_exact.data(), 0, X.K_exact.size() * sizeof(ggml_fp16_t));
+        ggml_backend_tensor_set(V_exact, X.V_exact.data(), 0, X.V_exact.size() * sizeof(ggml_fp16_t));
+    }
+    if (X.enable_t1) {
+        ggml_backend_tensor_set(ZSK,  X.ZSK.data(),  0, X.ZSK.size()  * sizeof(ggml_fp16_t));
+        ggml_backend_tensor_set(W_uk, X.W_uk.data(), 0, X.W_uk.size() * sizeof(ggml_fp16_t));
+        ggml_backend_tensor_set(W_uv, X.W_uv.data(), 0, X.W_uv.size() * sizeof(ggml_fp16_t));
+        if (K_norm_w) {
+            ggml_backend_tensor_set(K_norm_w, X.K_norm_w.data(), 0, X.K_norm_w.size() * sizeof(float));
+        }
+    }
+    if (mask) {
+        ggml_backend_tensor_set(mask, X.mask.data(), 0, X.mask.size() * sizeof(ggml_fp16_t));
+    }
+
+    ggml_status status = ggml_backend_graph_compute(backend, gf);
+    if (status != GGML_STATUS_SUCCESS) {
+        fprintf(stderr, "  [backend] graph_compute failed: %s\n", ggml_status_to_string(status));
+        ggml_backend_buffer_free(buf);
+        ggml_free(ctx);
+        return {};
+    }
+
+    std::vector<float> result(D.d_head * D.n_q_heads * D.n_q);
+    ggml_backend_tensor_get(out, result.data(), 0, result.size() * sizeof(float));
+
+    ggml_backend_buffer_free(buf);
+    ggml_free(ctx);
+    return result;
+}
+
+bool run_one_case_backend(const char * label, const dims & D, std::mt19937 & gen,
+                          int rope_mode, bool t0, bool t1, bool kw, bool mask,
+                          float tol, ggml_backend_t backend, const char * backend_label) {
+    ref_inputs X = make_inputs(D, gen, rope_mode, t0, t1, kw, mask);
+    std::vector<float> exp = ref_compute(X);
+    std::vector<float> got = run_fused_via_backend(X, backend);
+    if (got.empty()) {
+        printf("[%s/%s] dims=(d=%lld nq=%lld nqH=%lld nkvH=%lld nT0=%lld nT1=%lld r=%lld) "
+               "rope=%s t0=%d t1=%d knorm=%d mask=%d -> SKIPPED (backend op failed)\n",
+               label, backend_label,
+               (long long)D.d_head, (long long)D.n_q, (long long)D.n_q_heads, (long long)D.n_kv_heads,
+               (long long)D.n_t0, (long long)D.n_t1, (long long)D.rank,
+               rope_mode == GGML_ROPE_TYPE_NORMAL ? "NORMAL" : "NEOX",
+               t0, t1, kw, mask);
+        return false;
+    }
+    float max_abs, rel_l2;
+    compute_errors(exp, got, max_abs, rel_l2);
+    printf("[%s/%s] dims=(d=%lld nq=%lld nqH=%lld nkvH=%lld nT0=%lld nT1=%lld r=%lld) "
+           "rope=%s t0=%d t1=%d knorm=%d mask=%d -> max_abs=%.3e rel_L2=%.3e (tol=%.3e) %s\n",
+           label, backend_label,
+           (long long)D.d_head, (long long)D.n_q, (long long)D.n_q_heads, (long long)D.n_kv_heads,
+           (long long)D.n_t0, (long long)D.n_t1, (long long)D.rank,
+           rope_mode == GGML_ROPE_TYPE_NORMAL ? "NORMAL" : "NEOX",
+           t0, t1, kw, mask, max_abs, rel_l2, tol,
+           rel_l2 <= tol ? "OK" : "FAIL");
+    return rel_l2 <= tol;
+}
+
 } // namespace
 
 int main(int /*argc*/, char ** /*argv*/) {
@@ -419,6 +529,29 @@ int main(int /*argc*/, char ** /*argv*/) {
     ok &= run_one_case("Combined NORMAL", D_small, gen, GGML_ROPE_TYPE_NORMAL, true, true, true, true, TOL);
     ok &= run_one_case("Combined NEOX",   D_small, gen, GGML_ROPE_TYPE_NEOX,   true, true, true, true, TOL);
     ok &= run_one_case("Combined Gemma-ish", D_mid, gen, GGML_ROPE_TYPE_NEOX,  true, true, true, true, TOL);
+
+    // ----- (d) Backend parity: same cases, but driven through ggml-backend so any registered
+    // accelerator backend (e.g. OpenCL / Adreno on phone) computes the op. Loose tol accounts
+    // for FP16 reductions in the OpenCL kernel vs FP32 in the C++ reference.
+    const float TOL_BACKEND = 5e-3f;
+    for (size_t i = 0; i < ggml_backend_dev_count(); ++i) {
+        ggml_backend_dev_t dev = ggml_backend_dev_get(i);
+        if (ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_CPU) continue;
+
+        const char * dev_name = ggml_backend_dev_name(dev);
+        ggml_backend_t backend = ggml_backend_dev_init(dev, NULL);
+        if (!backend) {
+            printf("[backend %s] init failed, skipping\n", dev_name);
+            continue;
+        }
+        printf("\n=== Parity vs backend: %s ===\n", dev_name);
+        ok &= run_one_case_backend("Tier-0 NORMAL",   D_small, gen, GGML_ROPE_TYPE_NORMAL, true, false, false, false, TOL_BACKEND, backend, dev_name);
+        ok &= run_one_case_backend("Tier-0 +mask",    D_small, gen, GGML_ROPE_TYPE_NORMAL, true, false, false, true,  TOL_BACKEND, backend, dev_name);
+        ok &= run_one_case_backend("Combined NORMAL", D_small, gen, GGML_ROPE_TYPE_NORMAL, true, true,  true,  true,  TOL_BACKEND, backend, dev_name);
+        ok &= run_one_case_backend("Combined NEOX",   D_small, gen, GGML_ROPE_TYPE_NEOX,   true, true,  true,  true,  TOL_BACKEND, backend, dev_name);
+        ok &= run_one_case_backend("Combined Gemma-ish", D_mid, gen, GGML_ROPE_TYPE_NEOX,  true, true,  true,  true,  TOL_BACKEND, backend, dev_name);
+        ggml_backend_free(backend);
+    }
 
     printf("\n%s\n", ok ? "ALL TESTS PASSED" : "SOME TESTS FAILED");
     return ok ? 0 : 1;

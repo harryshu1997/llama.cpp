@@ -1366,6 +1366,19 @@ common_init_result_ptr common_init_from_params(common_params & params) {
         }
         if (llama_model_has_decoder(model)) {
             llama_decode(lctx, llama_batch_get_one(tmp.data(), std::min(tmp.size(), (size_t) params.n_batch)));
+
+            // Additionally warm up the prompt-processing kernels by decoding a
+            // micro-batch-sized chunk. This pre-JITs backends like OpenCL+CLBlast
+            // that compile per-(M,N,K) shape on first use, so the user's first
+            // real prompt doesn't pay JIT compilation cost. Cheap (one extra
+            // forward pass at micro-batch size); skipped if --no-warmup is set
+            // since the whole block is already gated on params.warmup.
+            const uint32_t n_ubatch = llama_n_ubatch(lctx);
+            if (n_ubatch > tmp.size()) {
+                std::vector<llama_token> pp_tmp(n_ubatch, tmp.empty() ? 0 : tmp.back());
+                llama_memory_clear(llama_get_memory(lctx), true);
+                llama_decode(lctx, llama_batch_get_one(pp_tmp.data(), pp_tmp.size()));
+            }
         }
         llama_memory_clear(llama_get_memory(lctx), true);
         llama_synchronize(lctx);

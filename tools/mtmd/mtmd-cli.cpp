@@ -9,6 +9,7 @@
 #include "chat.h"
 #include "mtmd.h"
 #include "mtmd-helper.h"
+#include "../moe-count.hpp"
 
 #include <vector>
 #include <limits.h>
@@ -295,6 +296,8 @@ int main(int argc, char ** argv) {
         return 1;
     }
 
+    moe_count_maybe_enable(params);
+
     mtmd_cli_context ctx(params);
     LOG_INF("%s: loading model: %s\n", __func__, params.model.path.c_str());
 
@@ -437,5 +440,6 @@ int main(int argc, char ** argv) {
     if (g_is_interrupted) LOG("\nInterrupted by user\n");
     LOG("\n\n");
     llama_perf_context_print(ctx.lctx);
+    moe_count_report();
     return g_is_interrupted ? 130 : 0;
 }

@@ -17,6 +17,31 @@ endif ()
 add_compile_definitions(GGML_OPENCL_SOA_Q)
 add_compile_definitions(GGML_OPENCL_TARGET_VERSION=${GGML_OPENCL_TARGET_VERSION})
 
+if (GGML_OPENCL_USE_CLBLAST)
+    message(STATUS "OpenCL will use clBLAST for matmul kernels")
+    add_compile_definitions(GGML_OPENCL_USE_CLBLAST)
+
+    # Set up environment variables, e.g.,
+    # export CLBLAST_PATH=/path/to/CLBlast
+    # export CLBLAST_INC_PATH=/path/to/CLBlast/include
+    # export CLBLAST_LIB_PATH=/path/to/CLBlast/build/release_android
+    find_path(CLBLAST_INCLUDE_DIR NAMES clblast.h HINTS $ENV{CLBLAST_INC_PATH} $ENV{CLBLAST_INC_PATH}/include DOC "Path to CLBlast header" NO_CMAKE_FIND_ROOT_PATH)
+    find_library(CLBLAST_LIBRARY NAMES clblast HINTS $ENV{CLBLAST_LIB_PATH} $ENV{CLBLAST_LIB_PATH}/lib DOC "Path to CLBlast library" NO_CMAKE_FIND_ROOT_PATH)
+
+    if (CLBLAST_INCLUDE_DIR AND CLBLAST_LIBRARY)
+        message(STATUS "Found CLBlast: ${CLBLAST_LIBRARY}")
+        if (TARGET clblast)
+            target_link_libraries(${TARGET_NAME} PRIVATE clblast)
+        else()
+            target_include_directories(${TARGET_NAME} PRIVATE ${CLBLAST_INCLUDE_DIR})
+            target_link_libraries(${TARGET_NAME} PRIVATE ${CLBLAST_LIBRARY})
+        endif()
+    else()
+        message(STATUS "${CLBLAST_INCLUDE_DIR}: $ENV{CLBLAST_INC_PATH}, ${CLBLAST_LIBRARY}: $ENV{CLBLAST_LIB_PATH}")
+        message(FATAL_ERROR "CLBlast not found. Please set CLBLAST_INC_PATH and CLBLAST_LIB_PATH environment variables to your CLBlast directory.")
+    endif()
+endif ()
+
 if (GGML_OPENCL_USE_ADRENO_KERNELS)
     message(STATUS "OpenCL will use matmul kernels optimized for Adreno")
     add_compile_definitions(GGML_OPENCL_USE_ADRENO_KERNELS)
@@ -159,6 +184,7 @@ set(GGML_OPENCL_KERNELS
     flash_attn_f32_f16
     flash_attn_f16
     flash_attn_f32
+    fuse_kq_rope
 )
 
 foreach (K ${GGML_OPENCL_KERNELS})
