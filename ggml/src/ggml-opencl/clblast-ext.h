@@ -41,44 +41,165 @@ inline bool ggml_clblast_dispatch_enabled() {
     return v != 0;
 }
 
+// CLBlast OverrideParameters can only safely be set ONCE at startup (its
+// ProgramCache key doesn't include params, so per-call switching reuses the old
+// compiled program with new args → garbage output). Instead, we apply ONE global
+// tune that's optimal for ONE shape, and use selective dispatch to send only
+// matching shapes to CLBlast — everything else falls through to Adreno-native.
+inline bool ggml_clblast_shape_matches_tune(int M, int N, int K) {
+    (void) N;
+    // Apply CLBlast (with our ffn_gate_swa tune) only to FFN-gate/up shapes:
+    //   M ∈ {6144, 12288}, K=1536. Excludes Q proj (M=4096) since it had
+    //   its own tune that wasn't applied; bundled-DB native handles it better.
+    if (M >= 6144 && M % 64 == 0 && K == 1536) return true;
+    return false;
+}
+// Runtime toggle for the selective dispatch. Default ON (it's safe — CLBlast falls
+// through to native on any rejection). Set GGML_OPENCL_CLBLAST_NO_GATING=1 to
+// dispatch CLBlast for all shapes (legacy behavior).
+inline bool ggml_clblast_shape_gating_enabled() {
+    static int v = -1;
+    if (v < 0) {
+        const char *e = getenv("GGML_OPENCL_CLBLAST_NO_GATING");
+        v = (e && atoi(e) != 0) ? 0 : 1;
+    }
+    return v != 0;
+}
+// (Reference) Per-shape bucket lookup mirroring research_dev/clblast_tuning/op15.yml.
+// NOT used at runtime — kept for documentation & future CLBlast fork that might
+// support per-shape OverrideParameters with proper program-cache invalidation.
+inline const char * ggml_clblast_pick_bucket_op15(int M, int N, int K) {
+    (void) N;
+    // Order: most specific first.
+    if (M == 12288 && K == 1536) return "ffn_gate_full";   // 20 full-attn layers
+    if (M ==  6144 && K == 1536) return "ffn_gate_swa";    // 15 SWA layers
+    if (M ==  4096 && K == 1536) return "q_proj";           // 35 calls/ubatch
+    if (M ==   512 && K == 1536) return "kv_proj";          // 70 calls/ubatch
+    if (M ==  1536 && K == 4096) return "o_proj";           // 35 calls/ubatch
+    if (M ==  1536 && K >= 6144) return "ffn_down";         // covers full+swa FFN-down
+    return "default";
+}
+// Per-bucket Xgemm params for Adreno 840 (kMixedHalfSingle, F16×F32→F32).
+// Synced from research_dev/clblast_tuning/op15.yml; rerun the tuner there.
+inline const std::unordered_map<std::string, size_t> & ggml_clblast_op15_params(const char * bucket) {
+    static const std::unordered_map<std::string, size_t> ffn_gate_full = {
+        // tuned at M=12288 N=512 K=1536 → 16.66 ms/call, 1160 GFLOPS
+        {"GEMMK", 0}, {"KREG", 1}, {"KWG", 32}, {"KWI", 2},
+        {"MDIMA", 8}, {"MDIMC", 8}, {"MWG", 64},
+        {"NDIMB", 8}, {"NDIMC", 8}, {"NWG", 64},
+        {"SA", 0}, {"SB", 0}, {"STRM", 0}, {"STRN", 0},
+        {"VWM", 1}, {"VWN", 4},
+    };
+    static const std::unordered_map<std::string, size_t> ffn_gate_swa = {
+        // tuned at M=6144 N=512 K=1536 → 7.00 ms/call, 1380 GFLOPS (best)
+        {"GEMMK", 0}, {"KREG", 1}, {"KWG", 32}, {"KWI", 2},
+        {"MDIMA", 8}, {"MDIMC", 8}, {"MWG", 64},
+        {"NDIMB", 8}, {"NDIMC", 8}, {"NWG", 64},
+        {"SA", 0}, {"SB", 0}, {"STRM", 0}, {"STRN", 0},
+        {"VWM", 4}, {"VWN", 4},
+    };
+    static const std::unordered_map<std::string, size_t> q_proj = {
+        // tuned at M=4096 N=512 K=1536 → 5.84 ms/call, 1103 GFLOPS
+        {"GEMMK", 0}, {"KREG", 1}, {"KWG", 32}, {"KWI", 2},
+        {"MDIMA", 8}, {"MDIMC", 8}, {"MWG", 64},
+        {"NDIMB", 8}, {"NDIMC", 8}, {"NWG", 64},
+        {"SA", 0}, {"SB", 0}, {"STRM", 0}, {"STRN", 0},
+        {"VWM", 2}, {"VWN", 2},
+    };
+    static const std::unordered_map<std::string, size_t> kv_proj = {
+        // tuned at M=512 N=512 K=1536 → 1.01 ms/call, 796 GFLOPS
+        {"GEMMK", 0}, {"KREG", 1}, {"KWG", 32}, {"KWI", 2},
+        {"MDIMA", 16}, {"MDIMC", 16}, {"MWG", 64},
+        {"NDIMB", 8}, {"NDIMC", 8}, {"NWG", 32},
+        {"SA", 0}, {"SB", 0}, {"STRM", 0}, {"STRN", 0},
+        {"VWM", 2}, {"VWN", 2},
+    };
+    static const std::unordered_map<std::string, size_t> o_proj = {
+        // tuned at M=1536 N=512 K=4096 → 5.82 ms/call, 1107 GFLOPS
+        {"GEMMK", 0}, {"KREG", 1}, {"KWG", 32}, {"KWI", 2},
+        {"MDIMA", 8}, {"MDIMC", 8}, {"MWG", 64},
+        {"NDIMB", 8}, {"NDIMC", 8}, {"NWG", 64},
+        {"SA", 0}, {"SB", 0}, {"STRM", 0}, {"STRN", 0},
+        {"VWM", 2}, {"VWN", 2},
+    };
+    static const std::unordered_map<std::string, size_t> ffn_down = {
+        // tuned at M=1536 N=512 K=12288 → 17.61 ms/call, 1098 GFLOPS
+        {"GEMMK", 0}, {"KREG", 1}, {"KWG", 32}, {"KWI", 2},
+        {"MDIMA", 8}, {"MDIMC", 8}, {"MWG", 64},
+        {"NDIMB", 8}, {"NDIMC", 8}, {"NWG", 32},
+        {"SA", 0}, {"SB", 0}, {"STRM", 0}, {"STRN", 0},
+        {"VWM", 2}, {"VWN", 4},
+    };
+    // CLBlast's bundled Adreno 750 DB entry — applied explicitly so we can switch
+    // BACK to it after running a per-shape override (CLBlast has no "clear override").
+    static const std::unordered_map<std::string, size_t> default_db = {
+        {"GEMMK", 0}, {"KREG", 1}, {"KWG", 32}, {"KWI", 2},
+        {"MDIMA", 8}, {"MDIMC", 8}, {"MWG", 64},
+        {"NDIMB", 32}, {"NDIMC", 16}, {"NWG", 128},
+        {"SA", 1}, {"SB", 0}, {"STRM", 1}, {"STRN", 1},
+        {"VWM", 4}, {"VWN", 4},
+    };
+    const std::string b = bucket;
+    if (b == "ffn_gate_full") return ffn_gate_full;
+    if (b == "ffn_gate_swa")  return ffn_gate_swa;
+    if (b == "q_proj")        return q_proj;
+    if (b == "kv_proj")       return kv_proj;
+    if (b == "o_proj")        return o_proj;
+    if (b == "ffn_down")      return ffn_down;
+    return default_db;
+}
+// (No per-call override — see comment above ggml_clblast_shape_matches_tune.)
+inline void ggml_clblast_maybe_override_for_shape(cl_command_queue, clblast::Precision, int, int, int) {}
+
 #ifdef GGML_OPENCL_PROFILING
-#define CLBLAST_GEMM(kernel, M, N, K, ...) \
+// PROFILING + CLBlast: append a ProfilingInfo with cl-kernel handle=nullptr (CLBlast
+// doesn't expose its internal cl_kernel) and kernel_name pre-populated from the
+// stringified routine. write_profiling_info() skips clGetKernelInfo when the handle
+// is nullptr. NOTE: macro parameter is `clblast_fn` (not `kernel`) so the assignment
+// `cl_info.kernel = nullptr` doesn't get macro-expanded into `cl_info.clblast_fn`.
+#define CLBLAST_GEMM(clblast_fn, M, N, K, ...) \
     do { \
-        cl_event evt; \
-        int ret = kernel(&backend_ctx->queue, &evt, M, N, K, __VA_ARGS__); \
+        cl_event evt = NULL; \
+        int ret = clblast_fn(&backend_ctx->queue, &evt, M, N, K, __VA_ARGS__); \
         if (ret == 0) { \
             ggml_clblast_get_stats().hits.fetch_add(1, std::memory_order_relaxed); \
             if (ggml_clblast_debug_enabled()) { \
-                fprintf(stderr, "[clblast HIT] %s M=%d N=%d K=%d\n", #kernel, (int)(M), (int)(N), (int)(K)); \
+                fprintf(stderr, "[clblast HIT] %s M=%d N=%d K=%d\n", #clblast_fn, (int)(M), (int)(N), (int)(K)); \
             } \
-            std::string kernel_name = #kernel; \
-            size_t global_size[3] = {0, 0, 0}; \
-            size_t local_size[3] = {0, 0, 0}; \
             backend_ctx->profiling_info.emplace_back(); \
-            populateProfilingInfo(backend_ctx->profiling_info.back(), evt, kernel_name, 3, global_size, local_size, dst); \
+            ProfilingInfo & cl_info = backend_ctx->profiling_info.back(); \
+            cl_info.op_name     = dst->name; \
+            cl_info.kernel_name = #clblast_fn; \
+            cl_info.kernel      = nullptr; /* signals: skip clGetKernelInfo */ \
+            cl_info.evt         = evt; \
+            cl_info.global_size[0] = (size_t)(M); cl_info.global_size[1] = (size_t)(N); cl_info.global_size[2] = (size_t)(K); \
+            cl_info.local_size[0]  = 0; cl_info.local_size[1]  = 0; cl_info.local_size[2]  = 0; \
+            cl_info.output_size[0] = (size_t) dst->ne[0]; cl_info.output_size[1] = (size_t) dst->ne[1]; \
+            cl_info.output_size[2] = (size_t) dst->ne[2]; cl_info.output_size[3] = (size_t) dst->ne[3]; \
             return; \
         } else { \
             ggml_clblast_get_stats().fallthrough.fetch_add(1, std::memory_order_relaxed); \
             if (ggml_clblast_debug_enabled()) { \
-                fprintf(stderr, "[clblast FALL] %s M=%d N=%d K=%d ret=%d\n", #kernel, (int)(M), (int)(N), (int)(K), ret); \
+                fprintf(stderr, "[clblast FALL] %s M=%d N=%d K=%d ret=%d\n", #clblast_fn, (int)(M), (int)(N), (int)(K), ret); \
             } \
+            if (evt) clReleaseEvent(evt); \
         } \
     } while(0)
 #else
-#define CLBLAST_GEMM(kernel, M, N, K, ...) \
+#define CLBLAST_GEMM(clblast_fn, M, N, K, ...) \
     do { \
         cl_event evt = NULL; \
-        int ret = kernel(&backend_ctx->queue, &evt, M, N, K, __VA_ARGS__); \
+        int ret = clblast_fn(&backend_ctx->queue, &evt, M, N, K, __VA_ARGS__); \
         if (ret == 0) { \
             ggml_clblast_get_stats().hits.fetch_add(1, std::memory_order_relaxed); \
             if (ggml_clblast_debug_enabled()) { \
-                fprintf(stderr, "[clblast HIT] %s M=%d N=%d K=%d\n", #kernel, (int)(M), (int)(N), (int)(K)); \
+                fprintf(stderr, "[clblast HIT] %s M=%d N=%d K=%d\n", #clblast_fn, (int)(M), (int)(N), (int)(K)); \
             } \
             return; \
         } else { \
             ggml_clblast_get_stats().fallthrough.fetch_add(1, std::memory_order_relaxed); \
             if (ggml_clblast_debug_enabled()) { \
-                fprintf(stderr, "[clblast FALL] %s M=%d N=%d K=%d ret=%d\n", #kernel, (int)(M), (int)(N), (int)(K), ret); \
+                fprintf(stderr, "[clblast FALL] %s M=%d N=%d K=%d ret=%d\n", #clblast_fn, (int)(M), (int)(N), (int)(K), ret); \
             } \
         } \
     } while(0)
@@ -309,6 +430,8 @@ inline int clblast_gemm_f16_f32_f32(cl_command_queue * queue,
                                     const int          offset_c,        // in bytes
                                     const int          ld_c,            // in elements
                                     const int          batch_stride_c) {         // in elements
+    // Per-shape Xgemm param override (Adreno 840 / OP15) — opt-in via env.
+    ggml_clblast_maybe_override_for_shape(*queue, clblast::Precision::kMixedHalfSingle, M, N, K);
     return clblast_gemm_wrapper<cl_half, cl_float, cl_float, cl_float>(
         queue, evt, M, N, K, batch_dim1, batch_dim2, repeat_a_dim1, repeat_a_dim2, buf_a, offset_a, ld_a,
         batch_stride_a, buf_b, offset_b, ld_b, batch_stride_b, buf_c, offset_c, ld_c, batch_stride_c);

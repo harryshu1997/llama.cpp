@@ -629,10 +629,14 @@ struct ggml_backend_opencl_context {
                 info.evt, CL_PROFILING_COMMAND_COMPLETE, sizeof(cl_ulong), &cmd_complete, NULL));
             CL_CHECK(clReleaseEvent(info.evt));
 
-            char kernel_name[512];
-            CL_CHECK(clGetKernelInfo(info.kernel, CL_KERNEL_FUNCTION_NAME,
-                sizeof(kernel_name), kernel_name, NULL));
-            info.kernel_name = kernel_name;
+            // CLBlast entries pre-populate kernel_name (CLBlast does not expose its
+            // internal cl_kernel handle), so only query when a real cl_kernel is set.
+            if (info.kernel != nullptr) {
+                char kernel_name[512];
+                CL_CHECK(clGetKernelInfo(info.kernel, CL_KERNEL_FUNCTION_NAME,
+                    sizeof(kernel_name), kernel_name, NULL));
+                info.kernel_name = kernel_name;
+            }
 
             info.cmd_queued = cmd_queued;
             info.cmd_submit = cmd_submit;
@@ -744,6 +748,16 @@ struct ggml_backend_opencl_context {
 #ifdef GGML_OPENCL_PROFILING
             write_profiling_info();
             profiling_info.clear();
+#endif
+#ifdef GGML_OPENCL_USE_CLBLAST
+            // Always dump CLBlast hit/fall stats at backend tear-down so we can
+            // verify whether CLBlast dispatch actually fired or every call fell
+            // through to the native kernels.
+            const auto & st = ggml_clblast_get_stats();
+            const uint64_t h = st.hits.load(std::memory_order_relaxed);
+            const uint64_t f = st.fallthrough.load(std::memory_order_relaxed);
+            GGML_LOG_INFO("ggml_opencl: CLBlast dispatch stats: hits=%" PRIu64 ", fallthrough=%" PRIu64
+                          ", enabled=%d\n", h, f, ggml_clblast_dispatch_enabled() ? 1 : 0);
 #endif
         }
     }
@@ -1868,6 +1882,13 @@ static void load_cl_kernels(ggml_backend_opencl_context *backend_ctx, ggml_cl_ve
                 { 40,  40, 32, 32}, { 64,  64, 64, 64}, { 80,  80, 64, 32}, { 96,  96, 64, 32},
                 {112, 112, 32, 32}, {128, 128, 32, 32}, {192, 128, 16, 16},
                 {192, 192, 16, 16}, {256, 256, 16, 16},
+                // Note: d_head=512 (Gemma 4 / 3 full-attn) is left out. Verified on both
+                // Adreno 750 (Snapdragon 8 Gen 3) and Adreno 840 (8 Elite Gen 5):
+                //   FA off: 54 t/s (OP12) / 101 t/s (OP15) prompt
+                //   FA on (BM=32, BN=8): 34 t/s (OP12) / 51 t/s (OP15) prompt
+                // FA's q_priv[DK_VEC=128] = 2KB/thread private mem + forced small BM/BN crashes
+                // WG count and occupancy. Issue is model-specific (Gemma's 8-head × d_head=512
+                // GQA design), not device-specific. Models with d_head ≤ 192 work fine.
             };
 
             for (size_t i = 0; i < sizeof(fa_dims)/sizeof(fa_dims[0]); ++i) {
@@ -3270,29 +3291,62 @@ static ggml_backend_opencl_context * ggml_cl2_init(ggml_backend_dev_t dev) {
     // CLBlast JIT will fire on the first real prompt instead.
 
 #ifdef GGML_OPENCL_USE_CLBLAST
-    // Override CLBlast's built-in tuning parameters for the Xgemm kernel with values
-    // specifically tuned for TierKV's small-N GEMM workload (M~256-512, N~32-128, K~256)
-    // on Adreno 750. The default DB entry is tuned for 1024^3 GEMM and uses NWG=128 which
-    // wastes most of the workgroup on our N<=64 shapes. Tuned params come from running
-    // clblast_tuner_xgemm_mixed -mixed_mode 2 -m 256 -n 128 -k 256 on device.
-    // Only applied when GGML_OPENCL_CLBLAST_ENABLE=1 (CLBlast dispatch is opt-in).
-    // Set GGML_OPENCL_CLBLAST_NO_OVERRIDE=1 to skip the override and use built-in DB params.
+    // Override CLBlast's built-in Xgemm tuning parameters with device-specific values from
+    // running clblast_tuner_xgemm_mixed on each Adreno chip we care about. CLBlast's bundled
+    // database has Adreno 750 entries tuned for 1024³ GEMM; for our actual prefill shapes
+    // (FFN gate/up/down at M=6144-12288, N=512, K=1536-12288) those defaults are suboptimal.
+    //
+    // Only applied when GGML_OPENCL_CLBLAST_ENABLE=1. Set GGML_OPENCL_CLBLAST_NO_OVERRIDE=1
+    // to skip and force CLBlast's built-in DB.
     if (ggml_clblast_dispatch_enabled()) {
         const char *no_override = getenv("GGML_OPENCL_CLBLAST_NO_OVERRIDE");
         if (!no_override || atoi(no_override) == 0) {
-            std::unordered_map<std::string, size_t> tuned_xgemm_mixed = {
-                {"GEMMK", 0}, {"KREG", 1}, {"KWG", 32},  {"KWI", 2},
-                {"MDIMA", 8}, {"MDIMC", 8}, {"MWG", 32},
-                {"NDIMB", 8}, {"NDIMC", 8}, {"NWG", 32},
-                {"SA", 1}, {"SB", 1}, {"STRM", 0}, {"STRN", 0},
-                {"VWM", 2}, {"VWN", 2},
-            };
-            clblast::StatusCode os = clblast::OverrideParameters(
-                device, "Xgemm", clblast::Precision::kMixedHalfSingle, tuned_xgemm_mixed);
-            if (os == clblast::StatusCode::kSuccess) {
-                GGML_LOG_INFO("ggml_opencl: applied tuned CLBlast Xgemm params (mixed precision) for Adreno 750\n");
+            // Detect Adreno chip from device name to pick the right tune.
+            char dev_name[256] = {0};
+            clGetDeviceInfo(device, CL_DEVICE_NAME, sizeof(dev_name), dev_name, NULL);
+            const std::string dn = dev_name;
+
+            std::unordered_map<std::string, size_t> tuned_xgemm_mixed;
+            const char *tag = "default (no override applied)";
+
+            if (dn.find("Adreno(TM) 840") != std::string::npos) {
+                // OnePlus 15 / Snapdragon 8 Elite Gen 5.
+                // Strategy: apply ffn_gate_swa tune (1380 GFLOPS at M=6144, K=1536) globally,
+                // but the dispatch site only routes FFN-gate-like shapes to CLBlast (see
+                // ggml_clblast_shape_matches_tune). Other prefill shapes (Q/KV/O/FFN-down)
+                // skip CLBlast and run on Adreno-native mul_mm_f16_f32_l4_lm directly.
+                tuned_xgemm_mixed = {
+                    {"GEMMK", 0}, {"KREG", 1}, {"KWG", 32}, {"KWI", 2},
+                    {"MDIMA", 8}, {"MDIMC", 8}, {"MWG", 64},
+                    {"NDIMB", 8}, {"NDIMC", 8}, {"NWG", 64},
+                    {"SA", 0}, {"SB", 0}, {"STRM", 0}, {"STRN", 0},
+                    {"VWM", 4}, {"VWN", 4},
+                };
+                tag = "Adreno 840 / ffn_gate_swa params (selective dispatch, FFN-gate shapes only)";
+            } else if (dn.find("Adreno(TM) 750") != std::string::npos) {
+                // OnePlus 12 / Snapdragon 8 Gen 3. Tuned at TierKV's small SVD shape
+                // (M=256, N=128, K=256). Bias toward small-N tiles (NWG=32, MWG=32).
+                tuned_xgemm_mixed = {
+                    {"GEMMK", 0}, {"KREG", 1}, {"KWG", 32}, {"KWI", 2},
+                    {"MDIMA", 8}, {"MDIMC", 8}, {"MWG", 32},
+                    {"NDIMB", 8}, {"NDIMC", 8}, {"NWG", 32},
+                    {"SA", 1}, {"SB", 1}, {"STRM", 0}, {"STRN", 0},
+                    {"VWM", 2}, {"VWN", 2},
+                };
+                tag = "Adreno 750 / SVD-shape tuned";
+            }
+            // Other Adreno chips (730/735/740/etc.) fall through to CLBlast's built-in DB.
+
+            if (!tuned_xgemm_mixed.empty()) {
+                clblast::StatusCode os = clblast::OverrideParameters(
+                    device, "Xgemm", clblast::Precision::kMixedHalfSingle, tuned_xgemm_mixed);
+                if (os == clblast::StatusCode::kSuccess) {
+                    GGML_LOG_INFO("ggml_opencl: applied tuned CLBlast Xgemm params [%s]\n", tag);
+                } else {
+                    GGML_LOG_WARN("ggml_opencl: clblast::OverrideParameters returned status %d (%s)\n", (int) os, tag);
+                }
             } else {
-                GGML_LOG_WARN("ggml_opencl: clblast::OverrideParameters returned status %d\n", (int) os);
+                GGML_LOG_INFO("ggml_opencl: no tuned CLBlast params for '%s', using CLBlast's built-in DB\n", dev_name);
             }
         }
     }
@@ -11283,7 +11337,14 @@ static void ggml_cl_mul_mat(ggml_backend_t backend, const ggml_tensor * src0, co
                 int batch_stride_d = ne0*ne1;
 
 #ifdef GGML_OPENCL_USE_CLBLAST
-                if (ggml_is_contiguous(src0) && ggml_is_contiguous(src1) && ggml_clblast_dispatch_enabled()) {
+                // Selective CLBlast dispatch: only call CLBlast for shapes where our
+                // global Xgemm OverrideParameters tune is known to beat the Adreno-native
+                // mul_mm_f16_f32_l4_lm kernel. Other shapes fall through to native.
+                const bool clblast_shape_ok = ggml_clblast_shape_gating_enabled()
+                    ? ggml_clblast_shape_matches_tune(ne01, ne11, ne10)
+                    : true;
+                if (ggml_is_contiguous(src0) && ggml_is_contiguous(src1)
+                    && ggml_clblast_dispatch_enabled() && clblast_shape_ok) {
                     CLBLAST_GEMM(clblast_gemm_f16_f32_f32, ne01, ne11, ne10, ne12, ne13, r2, r3,
                                  extra0->data_device, offset0, ne00, batch_stride_a,
                                  extra1->data_device, offset1, ne10, batch_stride_b,
@@ -11324,8 +11385,81 @@ static void ggml_cl_mul_mat(ggml_backend_t backend, const ggml_tensor * src0, co
                     offset1_cont = 0;
                 }
 
-                CL_CHECK(clSetKernelArg(kernel,  0, sizeof(cl_mem),   &mem_src0));
-                CL_CHECK(clSetKernelArg(kernel,  1, sizeof(cl_ulong), &offset0_cont));
+                // Try to wrap the fp16 weight buffer as a CL_RGBA / CL_HALF_FLOAT
+                // image1d_buffer so the inner-loop weight loads hit the Adreno texture
+                // cache. Two cases need to be handled:
+                //   1. extra->data_device may point at a multi-tensor buffer pool that
+                //      exceeds CL_DEVICE_IMAGE_MAX_BUFFER_SIZE (1 GB on Adreno 840 for
+                //      half4 texels). In that case we create a sub-buffer covering just
+                //      this tensor's bytes and wrap that.
+                //   2. The whole buffer is already < the image cap → wrap directly.
+                // If neither path produces a valid image, fall back to the original
+                // buffer-load kernel.
+                cl_int   img_err_a       = CL_SUCCESS;
+                cl_mem   src0_image      = NULL;
+                cl_mem   src0_subbuf     = NULL;
+                cl_ulong src0_kernel_off = offset0_cont;  // bytes; converted to texels in kernel
+                {
+                    const size_t bytes_per_texel = 4 * sizeof(cl_half);
+                    const size_t img_max_texels  = backend_ctx->image_max_buffer_size;
+                    const size_t tensor_bytes    = (size_t)ggml_nbytes(src0);
+
+                    size_t src0_buf_bytes = 0;
+                    CL_CHECK(clGetMemObjectInfo(mem_src0, CL_MEM_SIZE, sizeof(size_t),
+                                                &src0_buf_bytes, NULL));
+                    const size_t buf_texels = src0_buf_bytes / bytes_per_texel;
+
+                    cl_image_format src0_img_fmt = { CL_RGBA, CL_HALF_FLOAT };
+                    cl_image_desc   src0_img_desc;
+                    memset(&src0_img_desc, 0, sizeof(src0_img_desc));
+                    src0_img_desc.image_type = CL_MEM_OBJECT_IMAGE1D_BUFFER;
+
+                    if (buf_texels <= img_max_texels) {
+                        src0_img_desc.image_width = buf_texels;
+                        src0_img_desc.buffer      = mem_src0;
+                    } else {
+                        // Pool buffer exceeds the image cap; carve out just this tensor's
+                        // region. clCreateSubBuffer requires CL_DEVICE_MEM_BASE_ADDR_ALIGN-
+                        // aligned origin (Adreno 840 = 128 bytes); ggml tensor offsets meet
+                        // this in practice, but fall back if not.
+                        if ((offset0_cont % backend_ctx->alignment) != 0) {
+                            // Misaligned; fall back to buffer load.
+                            src0_img_desc.image_width = 0;
+                        } else {
+                            cl_buffer_region region;
+                            region.origin = (size_t)offset0_cont;
+                            region.size   = tensor_bytes;
+                            src0_subbuf = clCreateSubBuffer(mem_src0, CL_MEM_READ_ONLY,
+                                CL_BUFFER_CREATE_TYPE_REGION, &region, &img_err_a);
+                            if (img_err_a == CL_SUCCESS) {
+                                src0_img_desc.image_width = tensor_bytes / bytes_per_texel;
+                                src0_img_desc.buffer      = src0_subbuf;
+                                // After sub-buffering, the kernel sees offset 0.
+                                src0_kernel_off = 0;
+                            } else {
+                                src0_img_desc.image_width = 0;
+                            }
+                        }
+                    }
+
+                    if (src0_img_desc.image_width > 0) {
+                        src0_image = clCreateImage(backend_ctx->context, CL_MEM_READ_ONLY,
+                            &src0_img_fmt, &src0_img_desc, NULL, &img_err_a);
+                        if (img_err_a != CL_SUCCESS) {
+                            src0_image = NULL;
+                            if (src0_subbuf) { clReleaseMemObject(src0_subbuf); src0_subbuf = NULL; }
+                        }
+                    }
+                }
+
+                if (src0_image == NULL) {
+                    GGML_ABORT("mul_mm_f16_f32_l4_lm: failed to wrap src0 as image1d_buffer "
+                               "(tensor=%zu bytes, offset=%llu). Add a buffer-load fallback "
+                               "kernel before shipping.\n",
+                               (size_t)ggml_nbytes(src0), (unsigned long long)offset0_cont);
+                }
+                CL_CHECK(clSetKernelArg(kernel,  0, sizeof(cl_mem),   &src0_image));
+                CL_CHECK(clSetKernelArg(kernel,  1, sizeof(cl_ulong), &src0_kernel_off));
                 CL_CHECK(clSetKernelArg(kernel,  2, sizeof(cl_mem),   &mem_src1));
                 CL_CHECK(clSetKernelArg(kernel,  3, sizeof(cl_ulong), &offset1_cont));
                 CL_CHECK(clSetKernelArg(kernel,  4, sizeof(cl_mem),   &extrad->data_device));
@@ -11349,6 +11483,12 @@ static void ggml_cl_mul_mat(ggml_backend_t backend, const ggml_tensor * src0, co
                 size_t local_work_size[] = {(size_t)nth0, 1, 1};
 
                 backend_ctx->enqueue_ndrange_kernel(kernel, 3, global_work_size, local_work_size, dst);
+                // image1d_buffer wrapper (and any sub-buffer) is metadata over mem_src0;
+                // the runtime retains both for in-flight work when we release here.
+                CL_CHECK(clReleaseMemObject(src0_image));
+                if (src0_subbuf) {
+                    CL_CHECK(clReleaseMemObject(src0_subbuf));
+                }
                 return;
             }
             case GGML_TYPE_Q4_0: {
