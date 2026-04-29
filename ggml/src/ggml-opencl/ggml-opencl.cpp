@@ -3034,7 +3034,47 @@ static std::vector<ggml_backend_device> ggml_opencl_probe_devices(ggml_backend_r
 
     cl_int                err;
     cl_context            shared_context;
-    cl_context_properties properties[] = { (intptr_t) CL_CONTEXT_PLATFORM, (intptr_t) default_device->platform->id, 0 };
+
+    // Qualcomm cl_qcom_perf_hint extension constants. Not in standard CL headers;
+    // defined here so we can request a high-performance context on Adreno GPUs
+    // (keeps the GPU clock pinned high during prefill, reducing thermal-induced
+    // benchmark variance and giving a small but consistent speedup).
+    // Disable with GGML_OPENCL_NO_PERF_HINT=1.
+    #ifndef CL_CONTEXT_PERF_HINT_QCOM
+    #define CL_CONTEXT_PERF_HINT_QCOM 0x40C2
+    #endif
+    #ifndef CL_PERF_HINT_HIGH_QCOM
+    #define CL_PERF_HINT_HIGH_QCOM    0x40C3
+    #endif
+
+    bool perf_hint_high = false;
+    {
+        const char *no_perf_hint = getenv("GGML_OPENCL_NO_PERF_HINT");
+        if (!no_perf_hint || atoi(no_perf_hint) == 0) {
+            // Probe the platform's extensions (we already filtered candidate_devices
+            // to one platform's GPU devices, so checking the platform once is enough).
+            size_t pext_sz = 0;
+            clGetPlatformInfo(default_device->platform->id, CL_PLATFORM_EXTENSIONS, 0, NULL, &pext_sz);
+            std::string pext(pext_sz, '\0');
+            if (pext_sz > 0) {
+                clGetPlatformInfo(default_device->platform->id, CL_PLATFORM_EXTENSIONS, pext_sz, pext.data(), NULL);
+                perf_hint_high = pext.find("cl_qcom_perf_hint") != std::string::npos;
+            }
+        }
+    }
+
+    cl_context_properties properties_default[] = {
+        (intptr_t) CL_CONTEXT_PLATFORM, (intptr_t) default_device->platform->id, 0
+    };
+    cl_context_properties properties_perf[] = {
+        (intptr_t) CL_CONTEXT_PLATFORM,         (intptr_t) default_device->platform->id,
+        (intptr_t) CL_CONTEXT_PERF_HINT_QCOM,   (intptr_t) CL_PERF_HINT_HIGH_QCOM,
+        0
+    };
+    cl_context_properties *properties = perf_hint_high ? properties_perf : properties_default;
+    if (perf_hint_high) {
+        GGML_LOG_INFO("ggml_opencl: requesting CL_PERF_HINT_HIGH_QCOM (cl_qcom_perf_hint)\n");
+    }
 
     CL_CHECK(
         (shared_context = clCreateContext(properties, device_ids.size(), device_ids.data(), NULL, NULL, &err), err));

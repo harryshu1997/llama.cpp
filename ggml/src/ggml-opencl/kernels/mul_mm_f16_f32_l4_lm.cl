@@ -46,8 +46,18 @@ kernel void kernel_mul_mm_f16_f32_l4_lm(
     // the byte offset once up-front.
     const int src0_off_t = (int)(offset0 / (sizeof(half) * LOAD_VEC_A));
 
-    local half  buf_a[BM * BK];
-    local float buf_b[BN * BK];
+    // Double-buffered LDS for software-pipelining the outer K loop:
+    //   while compute consumes tile N from buf[cur], the next iter's load is
+    //   already streaming tile N+1 into buf[1-cur]. Each barrier waits for
+    //   both to complete, so the per-iter wall time becomes max(load, compute)
+    //   rather than (load + compute).
+    // LDS use doubles to 8 KB total — still well within Adreno's 32 KB per-WG
+    // budget. Compared with single-buffer + larger BK (which we tried and lost
+    // ~16% to occupancy), this keeps BK=16 so the inner-K register usage is
+    // unchanged.
+    // buf_b casts B from fp32 to fp16 on the way to LDS to enable pkmad.f16.
+    local half buf_a[2][BM * BK];
+    local half buf_b[2][BN * BK];
 
     const int batch_idx = get_global_id(2);
 
@@ -79,105 +89,119 @@ kernel void kernel_mul_mm_f16_f32_l4_lm(
 
     // sums laid out as TN rows of TM columns, matching the original cc*TM + cr indexing.
     float sums[TM * TN];
+    #pragma unroll
     for (int i = 0; i < TM * TN; i++) {
         sums[i] = 0.0f;
     }
 
-    for (int block = 0; block < ne00; block += BK) {
-        for (int l = 0; l < BM; l += loadstride_a) {
-            if (ir*BM + loadc_a + l < ne01) {
-                const int idx = pos_a + (loadc_a + l) * stride_a / LOAD_VEC_A + loadr_a;
-                const half4 t = read_imageh(src0_img, src0_off_t + idx);
-                buf_a[(loadr_a * LOAD_VEC_A + 0) * BM + loadc_a + l] = t.s0;
-                buf_a[(loadr_a * LOAD_VEC_A + 1) * BM + loadc_a + l] = t.s1;
-                buf_a[(loadr_a * LOAD_VEC_A + 2) * BM + loadc_a + l] = t.s2;
-                buf_a[(loadr_a * LOAD_VEC_A + 3) * BM + loadc_a + l] = t.s3;
-            } else {
-                buf_a[(loadr_a * LOAD_VEC_A + 0) * BM + loadc_a + l] = 0.0h;
-                buf_a[(loadr_a * LOAD_VEC_A + 1) * BM + loadc_a + l] = 0.0h;
-                buf_a[(loadr_a * LOAD_VEC_A + 2) * BM + loadc_a + l] = 0.0h;
-                buf_a[(loadr_a * LOAD_VEC_A + 3) * BM + loadc_a + l] = 0.0h;
-            }
+    // ---- Macros to keep the prologue / main / epilogue blocks DRY. ----
+    // LOAD_A_TILE / LOAD_B_TILE store into buf_a[BUF] / buf_b[BUF] using the
+    // current pos_a / pos_b. INNER_K reads from the same BUF and accumulates
+    // into the per-thread `sums[]`. All macros assume the surrounding kernel
+    // scope (loadr_a, loadc_a, ir, ic, ne01, ne11, etc.).
+    #define LOAD_A_TILE(BUF) \
+        for (int l = 0; l < BM; l += loadstride_a) { \
+            if (ir*BM + loadc_a + l < ne01) { \
+                const int idx = pos_a + (loadc_a + l) * stride_a / LOAD_VEC_A + loadr_a; \
+                const half4 t = read_imageh(src0_img, src0_off_t + idx); \
+                buf_a[BUF][(loadr_a * LOAD_VEC_A + 0) * BM + loadc_a + l] = t.s0; \
+                buf_a[BUF][(loadr_a * LOAD_VEC_A + 1) * BM + loadc_a + l] = t.s1; \
+                buf_a[BUF][(loadr_a * LOAD_VEC_A + 2) * BM + loadc_a + l] = t.s2; \
+                buf_a[BUF][(loadr_a * LOAD_VEC_A + 3) * BM + loadc_a + l] = t.s3; \
+            } else { \
+                buf_a[BUF][(loadr_a * LOAD_VEC_A + 0) * BM + loadc_a + l] = 0.0h; \
+                buf_a[BUF][(loadr_a * LOAD_VEC_A + 1) * BM + loadc_a + l] = 0.0h; \
+                buf_a[BUF][(loadr_a * LOAD_VEC_A + 2) * BM + loadc_a + l] = 0.0h; \
+                buf_a[BUF][(loadr_a * LOAD_VEC_A + 3) * BM + loadc_a + l] = 0.0h; \
+            } \
         }
 
-        for (int l = 0; l < BN; l += loadstride_b) {
-            if (ic*BN + loadc_b + l < ne11) {
-                const int idx = pos_b + (loadc_b + l) * stride_b / LOAD_VEC_B + loadr_b;
-                buf_b[(loadr_b * LOAD_VEC_B + 0) * BN + loadc_b + l] = src1[idx].s0;
-                buf_b[(loadr_b * LOAD_VEC_B + 1) * BN + loadc_b + l] = src1[idx].s1;
-                buf_b[(loadr_b * LOAD_VEC_B + 2) * BN + loadc_b + l] = src1[idx].s2;
-                buf_b[(loadr_b * LOAD_VEC_B + 3) * BN + loadc_b + l] = src1[idx].s3;
-            } else {
-                buf_b[(loadr_b * LOAD_VEC_B + 0) * BN + loadc_b + l] = 0.0h;
-                buf_b[(loadr_b * LOAD_VEC_B + 1) * BN + loadc_b + l] = 0.0h;
-                buf_b[(loadr_b * LOAD_VEC_B + 2) * BN + loadc_b + l] = 0.0h;
-                buf_b[(loadr_b * LOAD_VEC_B + 3) * BN + loadc_b + l] = 0.0h;
-            }
+    #define LOAD_B_TILE(BUF) \
+        for (int l = 0; l < BN; l += loadstride_b) { \
+            if (ic*BN + loadc_b + l < ne11) { \
+                const int idx = pos_b + (loadc_b + l) * stride_b / LOAD_VEC_B + loadr_b; \
+                buf_b[BUF][(loadr_b * LOAD_VEC_B + 0) * BN + loadc_b + l] = (half)src1[idx].s0; \
+                buf_b[BUF][(loadr_b * LOAD_VEC_B + 1) * BN + loadc_b + l] = (half)src1[idx].s1; \
+                buf_b[BUF][(loadr_b * LOAD_VEC_B + 2) * BN + loadc_b + l] = (half)src1[idx].s2; \
+                buf_b[BUF][(loadr_b * LOAD_VEC_B + 3) * BN + loadc_b + l] = (half)src1[idx].s3; \
+            } else { \
+                buf_b[BUF][(loadr_b * LOAD_VEC_B + 0) * BN + loadc_b + l] = 0.0h; \
+                buf_b[BUF][(loadr_b * LOAD_VEC_B + 1) * BN + loadc_b + l] = 0.0h; \
+                buf_b[BUF][(loadr_b * LOAD_VEC_B + 2) * BN + loadc_b + l] = 0.0h; \
+                buf_b[BUF][(loadr_b * LOAD_VEC_B + 3) * BN + loadc_b + l] = 0.0h; \
+            } \
         }
 
+    #define INNER_K(BUF) \
+        for (int i = 0; i < BK; i++) { \
+            const int row_a_off = i * BM + th_r * TM; \
+            const int row_b_off = i * BN + th_c * TN; \
+            const half4 ca  = vload4(0, &buf_a[BUF][row_a_off]); \
+            const half4 cb0 = vload4(0, &buf_b[BUF][row_b_off]); \
+            const half4 cb1 = vload4(0, &buf_b[BUF][row_b_off + 4]); \
+            sums[0*TM + 0] = mad((float)ca.s0, (float)cb0.s0, sums[0*TM + 0]); \
+            sums[0*TM + 1] = mad((float)ca.s1, (float)cb0.s0, sums[0*TM + 1]); \
+            sums[0*TM + 2] = mad((float)ca.s2, (float)cb0.s0, sums[0*TM + 2]); \
+            sums[0*TM + 3] = mad((float)ca.s3, (float)cb0.s0, sums[0*TM + 3]); \
+            sums[1*TM + 0] = mad((float)ca.s0, (float)cb0.s1, sums[1*TM + 0]); \
+            sums[1*TM + 1] = mad((float)ca.s1, (float)cb0.s1, sums[1*TM + 1]); \
+            sums[1*TM + 2] = mad((float)ca.s2, (float)cb0.s1, sums[1*TM + 2]); \
+            sums[1*TM + 3] = mad((float)ca.s3, (float)cb0.s1, sums[1*TM + 3]); \
+            sums[2*TM + 0] = mad((float)ca.s0, (float)cb0.s2, sums[2*TM + 0]); \
+            sums[2*TM + 1] = mad((float)ca.s1, (float)cb0.s2, sums[2*TM + 1]); \
+            sums[2*TM + 2] = mad((float)ca.s2, (float)cb0.s2, sums[2*TM + 2]); \
+            sums[2*TM + 3] = mad((float)ca.s3, (float)cb0.s2, sums[2*TM + 3]); \
+            sums[3*TM + 0] = mad((float)ca.s0, (float)cb0.s3, sums[3*TM + 0]); \
+            sums[3*TM + 1] = mad((float)ca.s1, (float)cb0.s3, sums[3*TM + 1]); \
+            sums[3*TM + 2] = mad((float)ca.s2, (float)cb0.s3, sums[3*TM + 2]); \
+            sums[3*TM + 3] = mad((float)ca.s3, (float)cb0.s3, sums[3*TM + 3]); \
+            sums[4*TM + 0] = mad((float)ca.s0, (float)cb1.s0, sums[4*TM + 0]); \
+            sums[4*TM + 1] = mad((float)ca.s1, (float)cb1.s0, sums[4*TM + 1]); \
+            sums[4*TM + 2] = mad((float)ca.s2, (float)cb1.s0, sums[4*TM + 2]); \
+            sums[4*TM + 3] = mad((float)ca.s3, (float)cb1.s0, sums[4*TM + 3]); \
+            sums[5*TM + 0] = mad((float)ca.s0, (float)cb1.s1, sums[5*TM + 0]); \
+            sums[5*TM + 1] = mad((float)ca.s1, (float)cb1.s1, sums[5*TM + 1]); \
+            sums[5*TM + 2] = mad((float)ca.s2, (float)cb1.s1, sums[5*TM + 2]); \
+            sums[5*TM + 3] = mad((float)ca.s3, (float)cb1.s1, sums[5*TM + 3]); \
+            sums[6*TM + 0] = mad((float)ca.s0, (float)cb1.s2, sums[6*TM + 0]); \
+            sums[6*TM + 1] = mad((float)ca.s1, (float)cb1.s2, sums[6*TM + 1]); \
+            sums[6*TM + 2] = mad((float)ca.s2, (float)cb1.s2, sums[6*TM + 2]); \
+            sums[6*TM + 3] = mad((float)ca.s3, (float)cb1.s2, sums[6*TM + 3]); \
+            sums[7*TM + 0] = mad((float)ca.s0, (float)cb1.s3, sums[7*TM + 0]); \
+            sums[7*TM + 1] = mad((float)ca.s1, (float)cb1.s3, sums[7*TM + 1]); \
+            sums[7*TM + 2] = mad((float)ca.s2, (float)cb1.s3, sums[7*TM + 2]); \
+            sums[7*TM + 3] = mad((float)ca.s3, (float)cb1.s3, sums[7*TM + 3]); \
+        }
+
+    // ---- Software pipelined outer K loop ----
+    // Prologue: fetch tile 0 into buf[0].
+    LOAD_A_TILE(0);
+    LOAD_B_TILE(0);
+    barrier(CLK_LOCAL_MEM_FENCE);
+    pos_a += BK / LOAD_VEC_A;
+    pos_b += BK / LOAD_VEC_B;
+    int cur = 0;
+
+    // Main loop: while inner-K consumes tile `cur`, the next tile streams into
+    // buf[1-cur]. The barrier at the bottom waits for whichever finishes last,
+    // so a single-iteration cost is max(load, compute) instead of (load+compute).
+    for (int block = BK; block < ne00; block += BK) {
+        const int nxt = 1 - cur;
+        LOAD_A_TILE(nxt);
+        LOAD_B_TILE(nxt);
+        INNER_K(cur);
         barrier(CLK_LOCAL_MEM_FENCE);
-
         pos_a += BK / LOAD_VEC_A;
         pos_b += BK / LOAD_VEC_B;
-
-        // Inner-K loop. With TM=4 we fetch a half4 in one LDS load per K step, and
-        // with TN=8 we fetch two float4s. convert_float is hoisted out of the mad so
-        // the 4 fp16->fp32 conversions are amortised across the 32 mads.
-        for (int i = 0; i < BK; i++) {
-            const int row_a_off = i * BM + th_r * TM;
-            const int row_b_off = i * BN + th_c * TN;
-
-            // 1× half4 LDS load -> 4 fp32 values for A
-            const half4  ca_h = vload4(0, &buf_a[row_a_off]);
-            const float4 ca   = convert_float4(ca_h);
-            // 2× float4 LDS loads for B (TN=8)
-            const float4 cb0 = vload4(0, &buf_b[row_b_off]);
-            const float4 cb1 = vload4(0, &buf_b[row_b_off + 4]);
-
-            // Manually unrolled 4×8 outer product: each of the 8 B values multiplies
-            // the same float4 of A and accumulates into 4 contiguous sums entries.
-            sums[0*TM + 0] = mad(ca.s0, cb0.s0, sums[0*TM + 0]);
-            sums[0*TM + 1] = mad(ca.s1, cb0.s0, sums[0*TM + 1]);
-            sums[0*TM + 2] = mad(ca.s2, cb0.s0, sums[0*TM + 2]);
-            sums[0*TM + 3] = mad(ca.s3, cb0.s0, sums[0*TM + 3]);
-
-            sums[1*TM + 0] = mad(ca.s0, cb0.s1, sums[1*TM + 0]);
-            sums[1*TM + 1] = mad(ca.s1, cb0.s1, sums[1*TM + 1]);
-            sums[1*TM + 2] = mad(ca.s2, cb0.s1, sums[1*TM + 2]);
-            sums[1*TM + 3] = mad(ca.s3, cb0.s1, sums[1*TM + 3]);
-
-            sums[2*TM + 0] = mad(ca.s0, cb0.s2, sums[2*TM + 0]);
-            sums[2*TM + 1] = mad(ca.s1, cb0.s2, sums[2*TM + 1]);
-            sums[2*TM + 2] = mad(ca.s2, cb0.s2, sums[2*TM + 2]);
-            sums[2*TM + 3] = mad(ca.s3, cb0.s2, sums[2*TM + 3]);
-
-            sums[3*TM + 0] = mad(ca.s0, cb0.s3, sums[3*TM + 0]);
-            sums[3*TM + 1] = mad(ca.s1, cb0.s3, sums[3*TM + 1]);
-            sums[3*TM + 2] = mad(ca.s2, cb0.s3, sums[3*TM + 2]);
-            sums[3*TM + 3] = mad(ca.s3, cb0.s3, sums[3*TM + 3]);
-
-            sums[4*TM + 0] = mad(ca.s0, cb1.s0, sums[4*TM + 0]);
-            sums[4*TM + 1] = mad(ca.s1, cb1.s0, sums[4*TM + 1]);
-            sums[4*TM + 2] = mad(ca.s2, cb1.s0, sums[4*TM + 2]);
-            sums[4*TM + 3] = mad(ca.s3, cb1.s0, sums[4*TM + 3]);
-
-            sums[5*TM + 0] = mad(ca.s0, cb1.s1, sums[5*TM + 0]);
-            sums[5*TM + 1] = mad(ca.s1, cb1.s1, sums[5*TM + 1]);
-            sums[5*TM + 2] = mad(ca.s2, cb1.s1, sums[5*TM + 2]);
-            sums[5*TM + 3] = mad(ca.s3, cb1.s1, sums[5*TM + 3]);
-
-            sums[6*TM + 0] = mad(ca.s0, cb1.s2, sums[6*TM + 0]);
-            sums[6*TM + 1] = mad(ca.s1, cb1.s2, sums[6*TM + 1]);
-            sums[6*TM + 2] = mad(ca.s2, cb1.s2, sums[6*TM + 2]);
-            sums[6*TM + 3] = mad(ca.s3, cb1.s2, sums[6*TM + 3]);
-
-            sums[7*TM + 0] = mad(ca.s0, cb1.s3, sums[7*TM + 0]);
-            sums[7*TM + 1] = mad(ca.s1, cb1.s3, sums[7*TM + 1]);
-            sums[7*TM + 2] = mad(ca.s2, cb1.s3, sums[7*TM + 2]);
-            sums[7*TM + 3] = mad(ca.s3, cb1.s3, sums[7*TM + 3]);
-        }
-        barrier(CLK_LOCAL_MEM_FENCE);
+        cur = nxt;
     }
+
+    // Epilogue: consume the last loaded tile.
+    INNER_K(cur);
+
+    #undef LOAD_A_TILE
+    #undef LOAD_B_TILE
+    #undef INNER_K
 
     const int dr = ir * BM + th_r * TM;
     const int dc = ic * BN + th_c * TN;
