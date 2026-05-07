@@ -7,6 +7,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <deque>
 #include <mutex>
 #include <thread>
 #include <cstddef>
@@ -134,6 +135,19 @@ struct ggml_hexagon_session {
     std::atomic<int>      op_pending;
     ggml_hexagon_opbatch *op_batch;
     ggml_hexagon_opshm   *op_shm;
+
+    // Per-batch in-flight metadata (FIFO; one entry per submitted opbatch
+    // we haven't read the response for yet). Used to map per-op DSP profile
+    // data — written in-place into the response shared buffer — back to
+    // human-readable op names + shapes when GGML_HEXAGON_PROFILE is set.
+    struct in_flight_batch {
+        uint32_t n_bufs;
+        uint32_t n_tens;
+        uint32_t n_ops;
+        std::vector<const ggml_tensor*> op_src;
+        uint64_t submit_usec;
+    };
+    std::deque<in_flight_batch> in_flight;
 
     ggml_backend_buffer_type buffer_type        = {};
     ggml_backend_buffer_type repack_buffer_type = {};
@@ -1581,6 +1595,12 @@ struct ggml_hexagon_opbatch {
     std::vector<htp_tensor>   tensors;
     std::vector<htp_op_desc>  ops;
 
+    // Parallel to ops[]. Holds the original ggml_tensor for each op so we
+    // can map per-op profile data (filled in-place by the DSP) back to a
+    // human-readable op name + shape on response. Only used when
+    // GGML_HEXAGON_PROFILE is set; the bookkeeping is cheap regardless.
+    std::vector<const ggml_tensor*> op_src;
+
     std::unordered_map<int, int>                b_map; // buffer fd   to index
     std::unordered_map<const ggml_tensor*, int> t_map; // tensor ptr  to index
     std::unordered_multimap<void*, int>         d_map; // tensor data to index
@@ -1604,6 +1624,7 @@ struct ggml_hexagon_opbatch {
         b_map.clear();
         t_map.clear();
         d_map.clear();
+        op_src.clear();
     }
 
     ggml_hexagon_opbatch(ggml_hexagon_session *sess, size_t max_batch) {
@@ -1622,6 +1643,7 @@ struct ggml_hexagon_opbatch {
         b_map.reserve(n_bufs_max);
         t_map.reserve(n_tens_max);
         d_map.reserve(n_tens_max);
+        op_src.reserve(n_ops_max);
 
         reset();
     }
@@ -1740,6 +1762,8 @@ struct ggml_hexagon_opbatch {
         htp_op_desc &o = ops[n_ops++];
         GGML_ASSERT(n_ops <= n_ops_max);
 
+        op_src.push_back(t);
+
         memcpy(&o.params, &t->op_params, sizeof(t->op_params));
         o.opcode = opcode;
         o.flags  = 0;
@@ -1824,17 +1848,36 @@ void ggml_hexagon_session::flush_pending(bool all) {
             GGML_ABORT("ggml-hex: %s dspcall : bad response : size %u dspbufs %u\n", this->c_name(), rsp_size, n_dbufs);
         }
 
+        // Read per-op profile data the DSP wrote in-place into the response
+        // shared buffer, before releasing it. The op_desc array sits after
+        // the buffer-desc and tensor-desc arrays — same layout as flush().
+        // (See htp/main.c:733-735 for the DSP-side fill.)
+        if (!in_flight.empty()) {
+            const auto & ifb = in_flight.front();
+            if (opt_profile && rsp.status == HTP_STATUS_OK) {
+                const uint64_t call_usec = (uint64_t) ggml_time_us() - ifb.submit_usec;
+                const size_t b_size = sizeof(htp_buf_desc) * ifb.n_bufs;
+                const size_t t_size = sizeof(htp_tensor)   * ifb.n_tens;
+                const htp_op_desc * dsp_ops = (const htp_op_desc *)
+                    ((const uint8_t *) dbuf.ptr + b_size + t_size);
+
+                for (uint32_t i = 0; i < ifb.n_ops; ++i) {
+                    ggml_hexagon_dump_op_prof(this->name, ifb.op_src[i],
+                        dsp_ops[i].prof_usecs,
+                        dsp_ops[i].prof_cycles,
+                        dsp_ops[i].prof_pkts,
+                        call_usec);
+                }
+            }
+            in_flight.pop_front();
+        }
+
         op_shm->release((uint8_t*) dbuf.ptr);
 
         if (rsp.status != HTP_STATUS_OK) {
             GGML_LOG_ERROR("ggml-hex: %s dspcall : dsp-rsp: %s\n", this->c_name(), status_to_str(rsp.status));
             // TODO: handle errors
         }
-
-        // FIXME: profile will be per opreq
-        // this->prof_usecs  = rsp.prof_usecs;
-        // this->prof_cycles = rsp.prof_cycles;
-        // this->prof_pkts   = rsp.prof_pkts;
 
         this->op_pending--;  // atomic dec
 
@@ -1860,6 +1903,17 @@ void ggml_hexagon_session::flush_batch() {
     }
 
     dbuf.offset = (uint8_t*) dbuf.ptr - (uint8_t*) op_shm->base();
+
+    // Snapshot batch metadata for per-op profile reporting on response.
+    // op_batch->flush() resets the opbatch state, so capture before the call.
+    in_flight_batch ifb;
+    ifb.n_bufs      = op_batch->n_bufs;
+    ifb.n_tens      = op_batch->n_tens;
+    ifb.n_ops       = op_batch->n_ops;
+    ifb.op_src      = op_batch->op_src;
+    ifb.submit_usec = (uint64_t) ggml_time_us();
+    in_flight.push_back(std::move(ifb));
+
     dbuf.size   = op_batch->flush((uint8_t*) dbuf.ptr, op_shm->block_size);
 
     // Bump pending flag (cleared in the session::flush once we get the response)
@@ -2141,10 +2195,15 @@ static bool ggml_hexagon_supported_flash_attn_ext(const struct ggml_hexagon_sess
         return false;
     }
 
-    if (dst->ne[2] != 1 || dst->ne[3] != 1) {
-        // FA during prompt still needs work
-        return false;
-    }
+    // Allow multi-token Q (prefill / batched decode). The DSP kernel's
+    // outer loop already flattens (batch, head, n_tokens) into a single
+    // index range and iterates the whole thing — there's no actual
+    // n_tokens=1 assumption in the compute path. The previous gate was
+    // conservative ("FA during prompt still needs work") and forced
+    // every prompt-eval attention block onto CPU, which dominates
+    // prompt-eval latency on op15.
+    //
+    // See flash-attn-ops.c:352-355 for the iq1/iq2/iq3 decomposition.
 
     return true;
 }
