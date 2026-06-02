@@ -242,6 +242,21 @@ int32_t mtmd_helper_decode_image_chunk(
         llama_seq_id seq_id,
         int32_t n_batch,
         llama_pos * new_n_past) {
+    return mtmd_helper_decode_image_chunk_ex(
+        ctx, lctx, chunk, encoded_embd, n_past, seq_id, n_batch,
+        /*external_causal_attn_mgmt=*/false, new_n_past);
+}
+
+int32_t mtmd_helper_decode_image_chunk_ex(
+        mtmd_context * ctx,
+        struct llama_context * lctx,
+        const mtmd_input_chunk * chunk,
+        float * encoded_embd,
+        llama_pos n_past,
+        llama_seq_id seq_id,
+        int32_t n_batch,
+        bool external_causal_attn_mgmt,
+        llama_pos * new_n_past) {
     GGML_ASSERT(n_batch > 0);
     auto chunk_type = mtmd_input_chunk_get_type(chunk);
     const char * name = chunk_type == MTMD_INPUT_CHUNK_TYPE_IMAGE ? "image" : "audio";
@@ -279,8 +294,14 @@ int32_t mtmd_helper_decode_image_chunk(
         batch_embd.set_position_normal(n_past, seq_id);
     }
 
+    // Toggling cparams.causal_attn fires sched_need_reserve=true at
+    // llama-context.cpp:1043-1052, which forces sched_reserve() to rebuild the
+    // worst-case graph 3x per llama_decode call (~30-100ms on Adreno per measurement).
+    // When the caller is amortizing the flip across a run of consecutive image chunks
+    // (external_causal_attn_mgmt=true), skip the in-helper flip entirely.
     const bool use_non_causal = mtmd_decode_use_non_causal(ctx, chunk);
-    if (use_non_causal) {
+    const bool helper_manages_flip = use_non_causal && !external_causal_attn_mgmt;
+    if (helper_manages_flip) {
         llama_set_causal_attn(lctx, false);
         // TODO @ngxson : need to make sure only one image is processed at a time, and n_ubatch must be enough to hold the image
     }
@@ -296,7 +317,9 @@ int32_t mtmd_helper_decode_image_chunk(
         int32_t ret = llama_decode(lctx, batch_embd_view);
         if (ret != 0) {
             LOG_ERR("failed to decode %s\n", name);
-            llama_set_causal_attn(lctx, true); // restore causal attn
+            if (helper_manages_flip) {
+                llama_set_causal_attn(lctx, true); // restore causal attn
+            }
             return ret;
         }
 
@@ -308,19 +331,24 @@ int32_t mtmd_helper_decode_image_chunk(
     n_past += mtmd_input_chunk_get_n_pos(chunk);
     *new_n_past = n_past;
 
-    if (use_non_causal) {
+    if (helper_manages_flip) {
         llama_set_causal_attn(lctx, true);
     }
     return 0;
 }
 
-int32_t mtmd_helper_eval_chunk_single(mtmd_context * ctx,
+// Internal worker for mtmd_helper_eval_chunk_single() and mtmd_helper_eval_chunks().
+// When external_causal_attn_mgmt=true and the chunk needs non-causal attention, the
+// caller is expected to have already set llama_set_causal_attn(lctx,false); this
+// function will not touch causal_attn in that case.
+static int32_t mtmd_helper_eval_chunk_single_impl(mtmd_context * ctx,
         struct llama_context * lctx,
         const mtmd_input_chunk * chunk,
         llama_pos n_past,
         llama_seq_id seq_id,
         int32_t n_batch,
         bool logits_last,
+        bool external_causal_attn_mgmt,
         llama_pos * new_n_past) {
     GGML_ASSERT(n_batch > 0);
     int32_t ret;
@@ -373,7 +401,9 @@ int32_t mtmd_helper_eval_chunk_single(mtmd_context * ctx,
         LOG_INF("%s slice encoded in %" PRId64 " ms\n", name, ggml_time_ms() - t0);
 
         float * embd = mtmd_get_output_embd(ctx);
-        ret = mtmd_helper_decode_image_chunk(ctx, lctx, chunk, embd, n_past, seq_id, n_batch, new_n_past);
+        ret = mtmd_helper_decode_image_chunk_ex(
+            ctx, lctx, chunk, embd, n_past, seq_id, n_batch,
+            external_causal_attn_mgmt, new_n_past);
         if (ret != 0) {
             LOG_ERR("failed to decode %s\n", name);
             llama_batch_free(text_batch);
@@ -385,6 +415,19 @@ int32_t mtmd_helper_eval_chunk_single(mtmd_context * ctx,
 
     llama_batch_free(text_batch);
     return 0;
+}
+
+int32_t mtmd_helper_eval_chunk_single(mtmd_context * ctx,
+        struct llama_context * lctx,
+        const mtmd_input_chunk * chunk,
+        llama_pos n_past,
+        llama_seq_id seq_id,
+        int32_t n_batch,
+        bool logits_last,
+        llama_pos * new_n_past) {
+    return mtmd_helper_eval_chunk_single_impl(
+        ctx, lctx, chunk, n_past, seq_id, n_batch, logits_last,
+        /*external_causal_attn_mgmt=*/false, new_n_past);
 }
 
 int32_t mtmd_helper_eval_chunks(mtmd_context * ctx,
@@ -401,16 +444,48 @@ int32_t mtmd_helper_eval_chunks(mtmd_context * ctx,
         return 0;
     }
 
+    // Amortize the non-causal-attention flip across consecutive image/audio chunks
+    // that need it. Each set_causal_attn() toggle fires sched_need_reserve=true at
+    // src/llama-context.cpp:1043-1052, which forces a worst-case sched_reserve() in
+    // the next llama_decode (~30-100 ms on Adreno per op15 measurement). Holding the
+    // window open across a run of image chunks eliminates the per-chunk reserve.
+    bool in_non_causal_window = false;
+
+    auto chunk_needs_non_causal = [&](size_t idx) -> bool {
+        auto c = mtmd_input_chunks_get(chunks, idx);
+        auto t = mtmd_input_chunk_get_type(c);
+        if (t == MTMD_INPUT_CHUNK_TYPE_TEXT) return false;
+        return mtmd_decode_use_non_causal(ctx, c);
+    };
+
     for (size_t i = 0; i < n_chunks; i++) {
         bool chunk_logits_last = (i == n_chunks - 1) && logits_last;
         auto chunk = mtmd_input_chunks_get(chunks, i);
+        bool needs_non_causal = chunk_needs_non_causal(i);
 
-        int32_t res = mtmd_helper_eval_chunk_single(ctx, lctx, chunk, n_past, seq_id, n_batch, chunk_logits_last, &n_past);
+        if (needs_non_causal && !in_non_causal_window) {
+            llama_set_causal_attn(lctx, false);
+            in_non_causal_window = true;
+        } else if (!needs_non_causal && in_non_causal_window) {
+            llama_set_causal_attn(lctx, true);
+            in_non_causal_window = false;
+        }
+
+        int32_t res = mtmd_helper_eval_chunk_single_impl(
+            ctx, lctx, chunk, n_past, seq_id, n_batch, chunk_logits_last,
+            /*external_causal_attn_mgmt=*/in_non_causal_window, &n_past);
         if (res != 0) {
             LOG_ERR("failed to eval chunk %zu\n", i);
+            if (in_non_causal_window) {
+                llama_set_causal_attn(lctx, true); // restore on error
+            }
             return res;
         }
         *new_n_past = n_past;
+    }
+
+    if (in_non_causal_window) {
+        llama_set_causal_attn(lctx, true);
     }
 
     return 0;

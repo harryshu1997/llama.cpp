@@ -89,6 +89,29 @@ MTMD_API int32_t mtmd_helper_decode_image_chunk(mtmd_context * ctx,
                                                 int32_t n_batch,
                                                 llama_pos * new_n_past);
 
+// like mtmd_helper_decode_image_chunk(), but lets the caller manage the non-causal
+// attention window externally across a run of consecutive image/audio chunks.
+//
+// when external_causal_attn_mgmt = false: identical to mtmd_helper_decode_image_chunk()
+//   (this helper sets causal_attn=false before, =true after, if the chunk needs it)
+// when external_causal_attn_mgmt = true: the caller MUST have already set
+//   causal_attn=false (via llama_set_causal_attn) before the first call, and MUST
+//   restore causal_attn=true after the last call in the drain. this helper will NOT
+//   touch causal_attn. amortizes the per-chunk sched_reserve thrash caused by the
+//   flip (one reserve per decode call regardless of K).
+//
+// for the streaming/drain pattern in LazyVLM, callers receive ~73 ms/image savings
+// on Adreno (op15, K=16; see research_dev/Conversations.md M0 measurement).
+MTMD_API int32_t mtmd_helper_decode_image_chunk_ex(mtmd_context * ctx,
+                                                   struct llama_context * lctx,
+                                                   const mtmd_input_chunk * chunk,
+                                                   float * encoded_embd,
+                                                   llama_pos n_past,
+                                                   llama_seq_id seq_id,
+                                                   int32_t n_batch,
+                                                   bool external_causal_attn_mgmt,
+                                                   llama_pos * new_n_past);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif
