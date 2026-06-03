@@ -52,6 +52,7 @@ static int    opt_arch    = 0; // autodetect
 static size_t opt_ndev    = 1;
 static size_t opt_nhvx    = 0; // use all
 static int    opt_use_hmx = 1; // when set, enable HMX; when 0, use HVX only
+static int    opt_ext_q4x4x2 = 0; // LazyVLM V4: when set, set_tensor adopts an externally-prebuilt q4x4x2 Q4_0 weight (memcpy) instead of repacking — for Adreno-emitted single-LPDDR-copy handoff. Default 0 = native repack.
 static size_t opt_vmem    = HTP_OP_MAX_VMEM_DEFAULT;  // max available va space for buffer mappings
 static size_t opt_mbuf    = 1ul * 1024 * 1024 * 1024; // max buffer size
 static int    opt_etm     = 0;
@@ -1597,7 +1598,15 @@ static void ggml_backend_hexagon_buffer_set_tensor(ggml_backend_buffer_t buffer,
         case GGML_TYPE_Q4_0:
             GGML_ASSERT(offset == 0);
             GGML_ASSERT(offset + size <= ggml_nbytes(tensor));
-            repack_q4_0_q4x4x2(tensor, data, size);
+            // LazyVLM V4: adopt an externally-prebuilt q4x4x2 weight verbatim (the
+            // Adreno fused-repack emit already produced the exact q4x4x2 bytes) —
+            // single-LPDDR-copy handoff, no re-repack. q4x4x2 row size == Q4_0 row
+            // size (both 9K/16, no inter-row padding), so this is a plain memcpy.
+            if (opt_ext_q4x4x2) {
+                memcpy((char *) tensor->data + offset, data, size);
+            } else {
+                repack_q4_0_q4x4x2(tensor, data, size);
+            }
             break;
 
         case GGML_TYPE_Q4_1:
@@ -3905,6 +3914,7 @@ static void ggml_hexagon_init(ggml_backend_reg * reg) {
     const char * str_etm      = getenv("GGML_HEXAGON_ETM");
     const char * str_nhvx     = getenv("GGML_HEXAGON_NHVX");
     const char * str_use_hmx  = getenv("GGML_HEXAGON_USE_HMX");
+    const char * str_ext_q4x4x2 = getenv("GGML_HEXAGON_EXT_Q4X4X2"); // LazyVLM V4
     const char * str_ndev     = getenv("GGML_HEXAGON_NDEV");
     const char * str_arch     = getenv("GGML_HEXAGON_ARCH");
     const char * str_vmem     = getenv("GGML_HEXAGON_VMEM");
@@ -3942,6 +3952,7 @@ static void ggml_hexagon_init(ggml_backend_reg * reg) {
     opt_etm       = str_etm      ? atoi(str_etm)                          : 0;
     opt_nhvx      = str_nhvx     ? strtoul(str_nhvx, NULL, 0)             : opt_nhvx;
     opt_use_hmx   = str_use_hmx  ? atoi(str_use_hmx)                      : opt_use_hmx;
+    opt_ext_q4x4x2 = str_ext_q4x4x2 ? atoi(str_ext_q4x4x2)               : opt_ext_q4x4x2; // LazyVLM V4
     opt_ndev      = str_ndev     ? strtoul(str_ndev, NULL, 0)             : opt_ndev;
     opt_hostbuf   = str_hostbuf  ? atoi(str_hostbuf)                      : opt_hostbuf;
     opt_mbuf      = str_mbuf     ? strtoul(str_mbuf, NULL, 0) * MiB       : opt_mbuf;
