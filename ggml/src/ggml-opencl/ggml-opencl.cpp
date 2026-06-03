@@ -422,6 +422,11 @@ struct ggml_backend_opencl_context {
     // companion buffer (single-LPDDR-copy cross-backend handoff). Default OFF ->
     // the Adreno noshuffle path is completely unaffected.
     bool fused_repack = false;
+    // δ-simple selector (env GGML_OPENCL_FUSED_REPACK_L4LM): when ALSO set, force the
+    // canonical-SoA + l4_lm path (correctness reference, 3.5x slower prefill). Default
+    // (fused_repack only) = δ-fast: keep the Adreno noshuffle GEMM and emit q4x4x2 from
+    // its transposed-16b SoA after the GEMM, preserving the fast prefill base.
+    bool fused_repack_l4lm = false;
 
     bool adreno_has_large_buffer;
     bool adreno_use_large_buffer;
@@ -673,7 +678,8 @@ struct ggml_backend_opencl_context {
     cl_kernel kernel_mul_mm_f32_f32_l4_lm;
     cl_kernel kernel_mul_mm_f16_f32_l4_lm;
     cl_kernel kernel_mul_mm_q4_0_f32_l4_lm;
-    cl_kernel kernel_conv_q4_0_to_q4x4x2; // LazyVLM V3: emit Hexagon q4x4x2 from canonical Q4_0 SoA
+    cl_kernel kernel_conv_q4_0_to_q4x4x2;           // LazyVLM V3 δ-simple: emit q4x4x2 from canonical Q4_0 SoA
+    cl_kernel kernel_conv_q4_0_noshuffle_to_q4x4x2; // LazyVLM V3.1 δ-fast: emit q4x4x2 from noshuffle+transposed SoA
     cl_kernel kernel_mul_mm_q4_1_f32_l4_lm;
     cl_kernel kernel_mul_mm_q5_0_f32_l4_lm;
     cl_kernel kernel_mul_mm_q5_1_f32_l4_lm;
@@ -1919,6 +1925,22 @@ static void load_cl_kernels(ggml_backend_opencl_context *backend_ctx) {
             build_program_from_source(backend_ctx->context, backend_ctx->device, kernel_src.c_str(), compile_opts);
 
         CL_CHECK((backend_ctx->kernel_conv_q4_0_to_q4x4x2 = clCreateKernel(prog, "kernel_conv_q4_0_to_q4x4x2", &err), err));
+        GGML_LOG_CONT(".");
+    }
+
+    // conv_q4_0_noshuffle_to_q4x4x2 (LazyVLM V3.1 δ-fast: emit q4x4x2 from the Adreno noshuffle+transposed SoA)
+    {
+#ifdef GGML_OPENCL_EMBED_KERNELS
+        const std::string kernel_src {
+            #include "conv_q4_0_noshuffle_to_q4x4x2.cl.h"
+        };
+#else
+        const std::string kernel_src = read_file("conv_q4_0_noshuffle_to_q4x4x2.cl");
+#endif
+        cl_program prog =
+            build_program_from_source(backend_ctx->context, backend_ctx->device, kernel_src.c_str(), compile_opts);
+
+        CL_CHECK((backend_ctx->kernel_conv_q4_0_noshuffle_to_q4x4x2 = clCreateKernel(prog, "kernel_conv_q4_0_noshuffle_to_q4x4x2", &err), err));
         GGML_LOG_CONT(".");
     }
 
@@ -4173,8 +4195,11 @@ static ggml_backend_opencl_context * ggml_cl_init(ggml_backend_dev_t dev) {
     // and emit Hexagon q4x4x2 after each prefill MUL_MAT. Adreno-only; default OFF.
     backend_ctx->fused_repack = getenv("GGML_OPENCL_FUSED_REPACK") != nullptr &&
                                 backend_ctx->gpu_family == GPU_FAMILY::ADRENO;
+    backend_ctx->fused_repack_l4lm = getenv("GGML_OPENCL_FUSED_REPACK_L4LM") != nullptr;
     if (backend_ctx->fused_repack) {
-        fprintf(stderr, "ggml_opencl: GGML_OPENCL_FUSED_REPACK=1 -> Q4_0 routed to canonical l4_lm GEMM + q4x4x2 emit (experimental, LazyVLM design-delta)\n");
+        fprintf(stderr, "ggml_opencl: GGML_OPENCL_FUSED_REPACK=1 (%s) -> Q4_0 prefill emits Hexagon q4x4x2 (experimental, LazyVLM design-delta)\n",
+                backend_ctx->fused_repack_l4lm ? "δ-simple: force canonical l4_lm + emit (correctness ref)"
+                                               : "δ-fast: noshuffle GEMM + emit from transposed SoA");
     }
 
     dev_ctx->backend_ctx = backend_ctx.release();
@@ -4969,7 +4994,7 @@ inline bool use_adreno_kernels(const ggml_backend_opencl_context *backend_ctx, c
     // l4_lm path (this single predicate gates the convert kernel, the weight
     // transpose, and the GEMM dispatch, so returning false here keeps all three
     // coherent). Only Q4_0 is diverted; other quant types keep the Adreno path.
-    if (backend_ctx->fused_repack && tensor->type == GGML_TYPE_Q4_0) {
+    if (backend_ctx->fused_repack && backend_ctx->fused_repack_l4lm && tensor->type == GGML_TYPE_Q4_0) {
         return false;
     }
     int64_t threshold_ne0 = 512;
@@ -11806,6 +11831,106 @@ static void ggml_cl_mul_mat_kq_kqv_adreno(ggml_backend_t backend, const ggml_ten
     CL_CHECK(clReleaseMemObject(D_sub_buffer));
 }
 
+// LazyVLM V3 (shared): one-shot dump of the first emitted q4x4x2 buffer, for the
+// gold cross-check (δ-simple dump vs δ-fast dump of the same weight must be equal,
+// since δ-simple is already validated byte-identical to ggml-hexagon repack_row_q4x4x2).
+static void lazyvlm_dump_first_qrepack(ggml_backend_opencl_context * backend_ctx, cl_mem buf, size_t need, int K, int M, const char * tag) {
+    const char * path = getenv("GGML_OPENCL_FUSED_REPACK_DUMP");
+    if (!path) { return; }
+    // Dump the first M>=512 weight so the δ-simple (l4_lm/canonical) and δ-fast
+    // (noshuffle) runs dump the SAME weight (first large Q4_0 in graph order, which
+    // takes the noshuffle path under δ-fast) -> cmp must be byte-identical.
+    if (M < 512) { return; }
+    GGML_UNUSED(K);
+    static int done = 0;
+    if (done) { return; }
+    done = 1;
+    std::vector<uint8_t> h(need);
+    CL_CHECK(clFinish(backend_ctx->queue));
+    CL_CHECK(clEnqueueReadBuffer(backend_ctx->queue, buf, CL_TRUE, 0, need, h.data(), 0, NULL, NULL));
+    FILE * f = fopen(path, "wb");
+    if (f) {
+        fwrite(h.data(), 1, need, f);
+        fclose(f);
+        fprintf(stderr, "ggml_opencl: [FUSED_REPACK DUMP %s] wrote %zu bytes to %s\n", tag, need, path);
+    }
+}
+
+// LazyVLM V3.1 host mirror of the noshuffle nibble accessor (VERIFY only).
+static inline uint8_t lazyvlm_nib_ns(const uint16_t * q, int M, int m, int kk) {
+    uint16_t u = q[(size_t)(kk >> 2) * M + m];
+    return (uint8_t)((u >> (4 * (kk & 3))) & 0x0F);
+}
+
+// LazyVLM V3.1 (δ-fast): emit q4x4x2 from the Adreno noshuffle+transposed Q4_0 SoA
+// (extra->q/->d exactly as bound to kernel_gemm_noshuffle_q4_0_f32) into
+// extra->q_repack, right after the GEMM — keeps the fast vendor GEMM as the base.
+static void ggml_cl_emit_q4x4x2_noshuffle(ggml_backend_opencl_context * backend_ctx,
+                                          ggml_tensor_extra_cl_q4_0 * extra, int K, int M) {
+    const int    nsb        = K / 256;
+    const size_t row_stride = (size_t)(K / 2) + (size_t)nsb * 16;
+    const size_t need       = row_stride * (size_t)M;
+
+    cl_int err = CL_SUCCESS;
+    if (extra->q_repack == nullptr || extra->size_q_repack < need) {
+        if (extra->q_repack != nullptr) { CL_CHECK(clReleaseMemObject(extra->q_repack)); extra->q_repack = nullptr; }
+        extra->q_repack = clCreateBuffer(backend_ctx->context, CL_MEM_READ_WRITE, need, NULL, &err);
+        CL_CHECK(err);
+        extra->size_q_repack = need;
+    }
+
+    cl_kernel k = backend_ctx->kernel_conv_q4_0_noshuffle_to_q4x4x2;
+    CL_CHECK(clSetKernelArg(k, 0, sizeof(cl_mem), &extra->q));
+    CL_CHECK(clSetKernelArg(k, 1, sizeof(cl_mem), &extra->d));
+    CL_CHECK(clSetKernelArg(k, 2, sizeof(cl_mem), &extra->q_repack));
+    CL_CHECK(clSetKernelArg(k, 3, sizeof(int),    &K));
+    CL_CHECK(clSetKernelArg(k, 4, sizeof(int),    &M));
+    size_t gws[1] = { (size_t)M };
+    CL_CHECK(clEnqueueNDRangeKernel(backend_ctx->queue, k, 1, NULL, gws, NULL, 0, NULL, NULL));
+
+    static int verify = (getenv("GGML_OPENCL_FUSED_REPACK_VERIFY") != nullptr) ? 1 : 0;
+    if (verify == 1) {
+        verify = 2; // one-shot
+        const size_t qush   = (size_t)M * (K / 4);        // transposed quants, in ushorts
+        const size_t dbytes = (size_t)M * (K / 32) * 2;   // transposed fp16 scales
+        std::vector<uint16_t> hq(qush);
+        std::vector<uint8_t>  hd(dbytes), hr(need);
+        CL_CHECK(clFinish(backend_ctx->queue));
+        CL_CHECK(clEnqueueReadBuffer(backend_ctx->queue, extra->q,        CL_TRUE, 0, qush * 2, hq.data(), 0, NULL, NULL));
+        CL_CHECK(clEnqueueReadBuffer(backend_ctx->queue, extra->d,        CL_TRUE, 0, dbytes,   hd.data(), 0, NULL, NULL));
+        CL_CHECK(clEnqueueReadBuffer(backend_ctx->queue, extra->q_repack, CL_TRUE, 0, need,     hr.data(), 0, NULL, NULL));
+        int rows[3] = { 0, M / 2, M - 1 };
+        long mism = 0, checked = 0, nonzero = 0;
+        for (int ri = 0; ri < 3; ri++) {
+            int m = rows[ri];
+            const uint8_t * yr = hr.data() + (size_t)m * row_stride;
+            for (int sb = 0; sb < nsb; sb++) {
+                int kbase = sb * 256;
+                for (int j = 0; j < 128; j++) {
+                    uint8_t n0 = lazyvlm_nib_ns(hq.data(), M, m, kbase + j);
+                    uint8_t n1 = lazyvlm_nib_ns(hq.data(), M, m, kbase + j + 128);
+                    uint8_t ref = (uint8_t)((n1 << 4) | n0);
+                    uint8_t got = yr[sb * 128 + j];
+                    if (got) { nonzero++; }
+                    if (ref != got) { mism++; }
+                    checked++;
+                }
+                const uint8_t * yd = yr + (K / 2) + (size_t)sb * 16;
+                for (int bi = 0; bi < 8; bi++) {
+                    int blk = sb * 8 + bi;
+                    const uint8_t * sd = hd.data() + ((size_t)blk * M + m) * 2;
+                    if (sd[0] != yd[bi * 2 + 0]) { mism++; } if (yd[bi * 2 + 0]) { nonzero++; } checked++;
+                    if (sd[1] != yd[bi * 2 + 1]) { mism++; } if (yd[bi * 2 + 1]) { nonzero++; } checked++;
+                }
+            }
+        }
+        fprintf(stderr, "ggml_opencl: [FUSED_REPACK VERIFY δ-fast] K=%d M=%d row_stride=%zu q_repack=%zuB rows{0,%d,%d} checked=%ld nonzero=%ld mismatches=%ld -> %s\n",
+                K, M, row_stride, need, M/2, M-1, checked, nonzero, mism, (mism == 0) ? "BYTE-IDENTICAL PASS" : "FAIL");
+    }
+
+    lazyvlm_dump_first_qrepack(backend_ctx, extra->q_repack, need, K, M, "δ-fast");
+}
+
 static void ggml_cl_mul_mat_q4_0_f32_adreno(ggml_backend_t backend, const ggml_tensor * src0, const ggml_tensor * src1, ggml_tensor * dst) {
 #ifdef GGML_OPENCL_USE_ADRENO_KERNELS
     GGML_ASSERT(src0);
@@ -12020,6 +12145,13 @@ static void ggml_cl_mul_mat_q4_0_f32_adreno(ggml_backend_t backend, const ggml_t
         }
 
         backend_ctx->enqueue_ndrange_kernel(kernel, 3, global_work_size, local_work_size, dst);
+
+        // LazyVLM design-delta V3.1 (δ-fast): emit the weight into Hexagon q4x4x2 from
+        // the noshuffle+transposed SoA, fused after this fast vendor GEMM (keeps the
+        // 498 t/s base). Skipped under δ-simple (that path runs l4_lm, not this branch).
+        if (backend_ctx->fused_repack && !backend_ctx->fused_repack_l4lm && (K % 256) == 0) {
+            ggml_cl_emit_q4x4x2_noshuffle(backend_ctx, extra0_q4_0, K, M);
+        }
 
         CL_CHECK(clReleaseMemObject(b_sub_buf));
         CL_CHECK(clReleaseMemObject(b_sub_buf_trans));
@@ -13226,6 +13358,8 @@ static void ggml_cl_emit_q4x4x2(ggml_backend_opencl_context * backend_ctx,
         fprintf(stderr, "ggml_opencl: [FUSED_REPACK VERIFY] K=%d M=%d row_stride=%zu q_repack=%zuB rows{0,%d,%d} checked=%ld nonzero=%ld mismatches=%ld -> %s\n",
                       K, M, row_stride, need, M/2, M-1, checked, nonzero, mism, (mism == 0) ? "BYTE-IDENTICAL PASS" : "FAIL");
     }
+
+    lazyvlm_dump_first_qrepack(backend_ctx, extra->q_repack, need, K, M, "δ-simple");
 }
 
 static void ggml_cl_mul_mat(ggml_backend_t backend, const ggml_tensor * src0, const ggml_tensor * src1, ggml_tensor * dst) {
