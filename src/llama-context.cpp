@@ -1121,7 +1121,12 @@ void llama_context::set_causal_attn(bool value) {
 
     cparams.causal_attn = value;
 
-    sched_need_reserve = true;
+    // Flipping causal_attn is a KQ-mask-only change: host-resident, graph-topology
+    // invariant. The per-decode graph is rebuilt with the correct mask anyway (reuse is
+    // declined on a causal_attn mismatch), so no sched_reserve is needed here. The encoder
+    // path already writes cparams.causal_attn directly without a reserve. Forcing one cost
+    // ~30-70 ms/flip and, on the mtmd image drain, ~2 reserves/image.
+    // (was: sched_need_reserve = true;)
 }
 
 void llama_context::set_warmup(bool value) {
