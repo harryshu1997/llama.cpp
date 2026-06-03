@@ -427,6 +427,10 @@ struct ggml_backend_opencl_context {
     // (fused_repack only) = δ-fast: keep the Adreno noshuffle GEMM and emit q4x4x2 from
     // its transposed-16b SoA after the GEMM, preserving the fast prefill base.
     bool fused_repack_l4lm = false;
+    // V3.2 selector (env GGML_OPENCL_FUSED_REPACK_INGEMM): in δ-fast mode, emit q4x4x2
+    // from INSIDE the noshuffle GEMM (weight read once, no separate-pass re-read) via
+    // kernel_gemm_noshuffle_q4_0_f32_emit. Default (δ-fast only) = V3.1 post-GEMM emit.
+    bool fused_repack_ingemm = false;
 
     bool adreno_has_large_buffer;
     bool adreno_use_large_buffer;
@@ -827,6 +831,7 @@ struct ggml_backend_opencl_context {
 
     // Gemm and Gemv related programs, kernels, etc
     cl_kernel kernel_gemm_noshuffle_q4_0_f32;
+    cl_kernel kernel_gemm_noshuffle_q4_0_f32_emit; // LazyVLM V3.2: GEMM + in-register q4x4x2 emit
     cl_kernel kernel_gemv_noshuffle_q4_0_f32;
     cl_kernel kernel_gemv_noshuffle_q4_0_f32_4096_1_11008;
     cl_kernel kernel_gemv_noshuffle_q4_0_f32_4096_1_4096;
@@ -3069,6 +3074,21 @@ static void load_cl_kernels(ggml_backend_opencl_context *backend_ctx) {
         GGML_LOG_CONT(".");
     }
 
+    // gemm_noshuffle_q4_0_f32_emit (LazyVLM V3.2: GEMM with fused in-register q4x4x2 emit)
+    {
+#ifdef GGML_OPENCL_EMBED_KERNELS
+        const std::string kernel_src_emit {
+            #include "gemm_noshuffle_q4_0_f32_emit.cl.h"
+        };
+#else
+        const std::string kernel_src_emit = read_file("gemm_noshuffle_q4_0_f32_emit.cl");
+#endif
+        cl_program prog = build_program_from_source(backend_ctx->context, backend_ctx->device, kernel_src_emit.c_str(), compile_opts);
+        CL_CHECK((backend_ctx->kernel_gemm_noshuffle_q4_0_f32_emit = clCreateKernel(prog, "kernel_gemm_noshuffle_q4_0_f32_emit", &err), err));
+        CL_CHECK(clReleaseProgram(prog));
+        GGML_LOG_CONT(".");
+    }
+
     // gemm_noshuffle_q4_1_f32
     {
 #ifdef GGML_OPENCL_EMBED_KERNELS
@@ -4196,6 +4216,7 @@ static ggml_backend_opencl_context * ggml_cl_init(ggml_backend_dev_t dev) {
     backend_ctx->fused_repack = getenv("GGML_OPENCL_FUSED_REPACK") != nullptr &&
                                 backend_ctx->gpu_family == GPU_FAMILY::ADRENO;
     backend_ctx->fused_repack_l4lm = getenv("GGML_OPENCL_FUSED_REPACK_L4LM") != nullptr;
+    backend_ctx->fused_repack_ingemm = getenv("GGML_OPENCL_FUSED_REPACK_INGEMM") != nullptr;
     if (backend_ctx->fused_repack) {
         fprintf(stderr, "ggml_opencl: GGML_OPENCL_FUSED_REPACK=1 (%s) -> Q4_0 prefill emits Hexagon q4x4x2 (experimental, LazyVLM design-delta)\n",
                 backend_ctx->fused_repack_l4lm ? "δ-simple: force canonical l4_lm + emit (correctness ref)"
@@ -12116,8 +12137,26 @@ static void ggml_cl_mul_mat_q4_0_f32_adreno(ggml_backend_t backend, const ggml_t
         backend_ctx->enqueue_ndrange_kernel(kernel, 2, global_work_size_t, local_work_size_t, dst);
 
         // gemm
-        kernel = backend_ctx->kernel_gemm_noshuffle_q4_0_f32;
         int padded_N = N + padding;
+
+        // LazyVLM V3.2: in-GEMM q4x4x2 emit (weight read once, no separate-pass re-read)
+        // when GGML_OPENCL_FUSED_REPACK_INGEMM. Uses the _emit GEMM variant with two extra args.
+        const bool ingemm_emit = backend_ctx->fused_repack && !backend_ctx->fused_repack_l4lm &&
+                                 backend_ctx->fused_repack_ingemm && (K % 256) == 0;
+        int repack_row_stride = (K / 2) + (K / 256) * 16;
+        if (ingemm_emit) {
+            const size_t need = (size_t)repack_row_stride * (size_t)M;
+            if (extra0_q4_0->q_repack == nullptr || extra0_q4_0->size_q_repack < need) {
+                if (extra0_q4_0->q_repack != nullptr) { CL_CHECK(clReleaseMemObject(extra0_q4_0->q_repack)); }
+                cl_int aerr = CL_SUCCESS;
+                extra0_q4_0->q_repack = clCreateBuffer(backend_ctx->context, CL_MEM_READ_WRITE, need, NULL, &aerr);
+                CL_CHECK(aerr);
+                extra0_q4_0->size_q_repack = need;
+            }
+            kernel = backend_ctx->kernel_gemm_noshuffle_q4_0_f32_emit;
+        } else {
+            kernel = backend_ctx->kernel_gemm_noshuffle_q4_0_f32;
+        }
 
         CL_CHECK(clSetKernelArg(kernel, 0, sizeof(cl_mem),   &extra0_q4_0->q));
         CL_CHECK(clSetKernelArg(kernel, 1, sizeof(cl_mem),   &extra0_q4_0->d));
@@ -12127,6 +12166,10 @@ static void ggml_cl_mul_mat_q4_0_f32_adreno(ggml_backend_t backend, const ggml_t
         CL_CHECK(clSetKernelArg(kernel, 5, sizeof(cl_int),   &padded_N));
         CL_CHECK(clSetKernelArg(kernel, 6, sizeof(cl_int),   &ne00));
         CL_CHECK(clSetKernelArg(kernel, 7, sizeof(cl_int),   &ne1));
+        if (ingemm_emit) {
+            CL_CHECK(clSetKernelArg(kernel, 8, sizeof(cl_mem),  &extra0_q4_0->q_repack));
+            CL_CHECK(clSetKernelArg(kernel, 9, sizeof(cl_int),  &repack_row_stride));
+        }
 
         size_t global_work_size[3] = {(size_t)CEIL_DIV(ne1, 8), (size_t)CEIL_DIV(ne01, 4), 1};
         size_t local_work_size[3] = {1, 128, 1};
@@ -12146,10 +12189,13 @@ static void ggml_cl_mul_mat_q4_0_f32_adreno(ggml_backend_t backend, const ggml_t
 
         backend_ctx->enqueue_ndrange_kernel(kernel, 3, global_work_size, local_work_size, dst);
 
-        // LazyVLM design-delta V3.1 (δ-fast): emit the weight into Hexagon q4x4x2 from
-        // the noshuffle+transposed SoA, fused after this fast vendor GEMM (keeps the
-        // 498 t/s base). Skipped under δ-simple (that path runs l4_lm, not this branch).
-        if (backend_ctx->fused_repack && !backend_ctx->fused_repack_l4lm && (K % 256) == 0) {
+        if (ingemm_emit) {
+            // V3.2: emit already happened INSIDE the GEMM above. Dump for the gold cross-check.
+            lazyvlm_dump_first_qrepack(backend_ctx, extra0_q4_0->q_repack,
+                                       (size_t)repack_row_stride * (size_t)M, K, M, "δ-fast-ingemm");
+        } else if (backend_ctx->fused_repack && !backend_ctx->fused_repack_l4lm && (K % 256) == 0) {
+            // LazyVLM V3.1 (δ-fast, default): emit q4x4x2 from the noshuffle+transposed SoA
+            // in a separate pass after this fast vendor GEMM (keeps the 498 t/s base).
             ggml_cl_emit_q4x4x2_noshuffle(backend_ctx, extra0_q4_0, K, M);
         }
 
