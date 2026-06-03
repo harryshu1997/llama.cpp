@@ -416,6 +416,12 @@ struct ggml_backend_opencl_context {
     bool has_vector_subgroup_broadcast;
     bool has_qcom_subgroup_shuffle = false;     // cl_qcom_subgroup_shuffle
     bool disable_fusion;
+    // LazyVLM design-delta (V3): when set (env GGML_OPENCL_FUSED_REPACK), Q4_0
+    // weights are routed through the canonical-SoA + generic l4_lm GEMM path and,
+    // after each Q4_0 prefill MUL_MAT, repacked into Hexagon's q4x4x2 layout in a
+    // companion buffer (single-LPDDR-copy cross-backend handoff). Default OFF ->
+    // the Adreno noshuffle path is completely unaffected.
+    bool fused_repack = false;
 
     bool adreno_has_large_buffer;
     bool adreno_use_large_buffer;
@@ -667,6 +673,7 @@ struct ggml_backend_opencl_context {
     cl_kernel kernel_mul_mm_f32_f32_l4_lm;
     cl_kernel kernel_mul_mm_f16_f32_l4_lm;
     cl_kernel kernel_mul_mm_q4_0_f32_l4_lm;
+    cl_kernel kernel_conv_q4_0_to_q4x4x2; // LazyVLM V3: emit Hexagon q4x4x2 from canonical Q4_0 SoA
     cl_kernel kernel_mul_mm_q4_1_f32_l4_lm;
     cl_kernel kernel_mul_mm_q5_0_f32_l4_lm;
     cl_kernel kernel_mul_mm_q5_1_f32_l4_lm;
@@ -1896,6 +1903,22 @@ static void load_cl_kernels(ggml_backend_opencl_context *backend_ctx) {
             build_program_from_source(backend_ctx->context, backend_ctx->device, kernel_src.c_str(), compile_opts);
 
         CL_CHECK((backend_ctx->kernel_mul_mm_q4_0_f32_l4_lm = clCreateKernel(prog, "kernel_mul_mm_q4_0_f32_l4_lm", &err), err));
+        GGML_LOG_CONT(".");
+    }
+
+    // conv_q4_0_to_q4x4x2 (LazyVLM V3: Adreno-side emit of Hexagon q4x4x2 layout)
+    {
+#ifdef GGML_OPENCL_EMBED_KERNELS
+        const std::string kernel_src {
+            #include "conv_q4_0_to_q4x4x2.cl.h"
+        };
+#else
+        const std::string kernel_src = read_file("conv_q4_0_to_q4x4x2.cl");
+#endif
+        cl_program prog =
+            build_program_from_source(backend_ctx->context, backend_ctx->device, kernel_src.c_str(), compile_opts);
+
+        CL_CHECK((backend_ctx->kernel_conv_q4_0_to_q4x4x2 = clCreateKernel(prog, "kernel_conv_q4_0_to_q4x4x2", &err), err));
         GGML_LOG_CONT(".");
     }
 
@@ -4146,6 +4169,14 @@ static ggml_backend_opencl_context * ggml_cl_init(ggml_backend_dev_t dev) {
 
     backend_ctx->disable_fusion = getenv("GGML_OPENCL_DISABLE_FUSION") != nullptr;
 
+    // LazyVLM design-delta (V3): route Q4_0 weights through canonical-SoA + l4_lm
+    // and emit Hexagon q4x4x2 after each prefill MUL_MAT. Adreno-only; default OFF.
+    backend_ctx->fused_repack = getenv("GGML_OPENCL_FUSED_REPACK") != nullptr &&
+                                backend_ctx->gpu_family == GPU_FAMILY::ADRENO;
+    if (backend_ctx->fused_repack) {
+        fprintf(stderr, "ggml_opencl: GGML_OPENCL_FUSED_REPACK=1 -> Q4_0 routed to canonical l4_lm GEMM + q4x4x2 emit (experimental, LazyVLM design-delta)\n");
+    }
+
     dev_ctx->backend_ctx = backend_ctx.release();
     return dev_ctx->backend_ctx;
 }
@@ -4270,6 +4301,10 @@ struct ggml_tensor_extra_cl_q4_0 {
     size_t size_q = 0;
     // Size of scales.
     size_t size_d = 0;
+    // LazyVLM V3: companion buffer holding the weight repacked into Hexagon's
+    // q4x4x2 layout, emitted during Adreno prefill (only when fused_repack is on).
+    cl_mem q_repack = nullptr;
+    size_t size_q_repack = 0;
 
     ~ggml_tensor_extra_cl_q4_0() {
         reset();
@@ -4298,6 +4333,12 @@ struct ggml_tensor_extra_cl_q4_0 {
         d_img = nullptr;
         size_q = 0;
         size_d = 0;
+        // LazyVLM V3: q_repack is a standalone buffer (not a sub-buffer), release it.
+        if (q_repack != nullptr) {
+            CL_CHECK(clReleaseMemObject(q_repack));
+            q_repack = nullptr;
+        }
+        size_q_repack = 0;
     }
 };
 
@@ -4924,6 +4965,13 @@ static ggml_status ggml_backend_opencl_graph_compute(ggml_backend_t backend, ggm
 // The optimized gemm and gemv kernels are used for large matrices without batch.
 // tensor is the quantized weights matrix.
 inline bool use_adreno_kernels(const ggml_backend_opencl_context *backend_ctx, const ggml_tensor *tensor) {
+    // LazyVLM V3: under fused_repack, force Q4_0 onto the canonical-SoA + generic
+    // l4_lm path (this single predicate gates the convert kernel, the weight
+    // transpose, and the GEMM dispatch, so returning false here keeps all three
+    // coherent). Only Q4_0 is diverted; other quant types keep the Adreno path.
+    if (backend_ctx->fused_repack && tensor->type == GGML_TYPE_Q4_0) {
+        return false;
+    }
     int64_t threshold_ne0 = 512;
     int64_t threshold_ne1 = 512;
     if (!backend_ctx->adreno_cl_compiler_version.newer_than_or_same(E031, 38, 11, 0) &&
@@ -13101,6 +13149,85 @@ static void ggml_cl_mul_mat_q5_K_f32_adreno(ggml_backend_t backend, const ggml_t
 #endif
 }
 
+// LazyVLM design-delta (V3): canonical Q4_0 nibble accessor (host mirror of the
+// emit kernel's nib_of) used only by the one-shot VERIFY path below.
+static inline uint8_t lazyvlm_nibC(const uint8_t * q, int base, int e) {
+    int bi = e >> 5, wi = e & 31;
+    const uint8_t * qb = q + (size_t)(base + bi) * 16;
+    return (wi < 16) ? (uint8_t)(qb[wi] & 0x0F) : (uint8_t)(qb[wi - 16] >> 4);
+}
+
+// LazyVLM design-delta (V3): emit the Q4_0 weight (canonical SoA in extra->q/->d,
+// guaranteed by the use_adreno_kernels=false routing under fused_repack) into
+// Hexagon's q4x4x2 layout in a companion buffer extra->q_repack, fused with the
+// prefill MUL_MAT. Allocates the buffer on first use. Set GGML_OPENCL_FUSED_REPACK_VERIFY
+// for a one-shot read-back + host recompute byte-compare on a few rows.
+static void ggml_cl_emit_q4x4x2(ggml_backend_opencl_context * backend_ctx,
+                                ggml_tensor_extra_cl_q4_0 * extra, int K, int M) {
+    // Diagnostic: GGML_OPENCL_FUSED_REPACK_NOEMIT isolates the cost of forcing the
+    // canonical l4_lm GEMM (vs the Adreno noshuffle path) from the emit kernel cost.
+    static int noemit = (getenv("GGML_OPENCL_FUSED_REPACK_NOEMIT") != nullptr) ? 1 : 0;
+    if (noemit) { return; }
+    const int    nsb        = K / 256;
+    const size_t row_stride = (size_t)(K / 2) + (size_t)nsb * 16;
+    const size_t need       = row_stride * (size_t)M;
+
+    cl_int err = CL_SUCCESS;
+    if (extra->q_repack == nullptr || extra->size_q_repack < need) {
+        if (extra->q_repack != nullptr) {
+            CL_CHECK(clReleaseMemObject(extra->q_repack));
+            extra->q_repack = nullptr;
+        }
+        extra->q_repack = clCreateBuffer(backend_ctx->context, CL_MEM_READ_WRITE, need, NULL, &err);
+        CL_CHECK(err);
+        extra->size_q_repack = need;
+    }
+
+    cl_kernel k = backend_ctx->kernel_conv_q4_0_to_q4x4x2;
+    CL_CHECK(clSetKernelArg(k, 0, sizeof(cl_mem), &extra->q));
+    CL_CHECK(clSetKernelArg(k, 1, sizeof(cl_mem), &extra->d));
+    CL_CHECK(clSetKernelArg(k, 2, sizeof(cl_mem), &extra->q_repack));
+    CL_CHECK(clSetKernelArg(k, 3, sizeof(int),    &K));
+    CL_CHECK(clSetKernelArg(k, 4, sizeof(int),    &M));
+
+    size_t gws[1] = { (size_t)M };
+    CL_CHECK(clEnqueueNDRangeKernel(backend_ctx->queue, k, 1, NULL, gws, NULL, 0, NULL, NULL));
+
+    static int verify = (getenv("GGML_OPENCL_FUSED_REPACK_VERIFY") != nullptr) ? 1 : 0;
+    if (verify == 1) {
+        verify = 2; // one-shot
+        const int    nblk    = K / 32;
+        const size_t qbytes  = (size_t)M * (K / 2);            // canonical quants
+        const size_t dbytes  = (size_t)M * (K / 32) * 2;       // fp16 scales
+        std::vector<uint8_t> hq(qbytes), hd(dbytes), hr(need);
+        CL_CHECK(clFinish(backend_ctx->queue));
+        CL_CHECK(clEnqueueReadBuffer(backend_ctx->queue, extra->q,        CL_TRUE, 0, qbytes, hq.data(), 0, NULL, NULL));
+        CL_CHECK(clEnqueueReadBuffer(backend_ctx->queue, extra->d,        CL_TRUE, 0, dbytes, hd.data(), 0, NULL, NULL));
+        CL_CHECK(clEnqueueReadBuffer(backend_ctx->queue, extra->q_repack, CL_TRUE, 0, need,   hr.data(), 0, NULL, NULL));
+        int rows[3] = { 0, M / 2, M - 1 };
+        long mism = 0, checked = 0, nonzero = 0;
+        for (int ri = 0; ri < 3; ri++) {
+            int m = rows[ri];
+            const uint8_t * yr = hr.data() + (size_t)m * row_stride;
+            for (int sb = 0; sb < nsb; sb++) {
+                int base = m * nblk + sb * 8;
+                for (int j = 0; j < 128; j++) {
+                    uint8_t ref = (uint8_t)((lazyvlm_nibC(hq.data(), base, j + 128) << 4) | lazyvlm_nibC(hq.data(), base, j));
+                    uint8_t got = yr[sb * 128 + j];
+                    if (got) { nonzero++; }
+                    if (ref != got) { mism++; }
+                    checked++;
+                }
+                const uint8_t * sd = (const uint8_t *)hd.data() + (size_t)base * 2;
+                const uint8_t * yd = yr + (K / 2) + (size_t)sb * 16;
+                for (int b = 0; b < 16; b++) { if (sd[b] != yd[b]) { mism++; } if (yd[b]) { nonzero++; } checked++; }
+            }
+        }
+        fprintf(stderr, "ggml_opencl: [FUSED_REPACK VERIFY] K=%d M=%d row_stride=%zu q_repack=%zuB rows{0,%d,%d} checked=%ld nonzero=%ld mismatches=%ld -> %s\n",
+                      K, M, row_stride, need, M/2, M-1, checked, nonzero, mism, (mism == 0) ? "BYTE-IDENTICAL PASS" : "FAIL");
+    }
+}
+
 static void ggml_cl_mul_mat(ggml_backend_t backend, const ggml_tensor * src0, const ggml_tensor * src1, ggml_tensor * dst) {
     GGML_ASSERT(src0);
     GGML_ASSERT(src0->extra);
@@ -13418,6 +13545,13 @@ static void ggml_cl_mul_mat(ggml_backend_t backend, const ggml_tensor * src0, co
                 size_t local_work_size[] = {(size_t)nth0, 1, 1};
 
                 backend_ctx->enqueue_ndrange_kernel(kernel, 3, global_work_size, local_work_size, dst);
+
+                // LazyVLM design-delta (V3): fused with this Q4_0 prefill MUL_MAT,
+                // emit the (now-"dead"-for-prefill) weight into Hexagon's q4x4x2
+                // layout in a companion buffer for single-LPDDR-copy decode handoff.
+                if (backend_ctx->fused_repack && (ne00 % 256) == 0 && (ne00 % 32) == 0) {
+                    ggml_cl_emit_q4x4x2(backend_ctx, extra0_q4_0, ne00, ne01);
+                }
                 return;
             }
             case GGML_TYPE_Q4_1: {

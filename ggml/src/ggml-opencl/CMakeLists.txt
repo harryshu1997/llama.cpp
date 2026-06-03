@@ -129,6 +129,7 @@ set(GGML_OPENCL_KERNELS
     mul_mm_f32_f32_l4_lm
     mul_mm_f16_f32_l4_lm
     mul_mm_q4_0_f32_l4_lm
+    conv_q4_0_to_q4x4x2
     mul_mm_q4_1_f32_l4_lm
     mul_mm_q5_0_f32_l4_lm
     mul_mm_q5_1_f32_l4_lm
