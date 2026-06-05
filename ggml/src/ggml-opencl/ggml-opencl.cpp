@@ -356,6 +356,28 @@ static void populateProfilingInfo(
     info.output_size[3] = tensor->ne[3];
 }
 
+// route 2: zero-copy import of a Hexagon (HTP) rpcmem/dma-buf buffer as an OpenCL
+// cl_mem via the Qualcomm cl_qcom_dmabuf_host_ptr extension. Constants/structs match
+// CL/cl_ext_qcom.h and the team's proven V0 probe (phase0_smoke/fused_repack_scaffold.c).
+#ifndef CL_MEM_EXT_HOST_PTR_QCOM
+#define CL_MEM_EXT_HOST_PTR_QCOM      (1u << 29)
+#endif
+#ifndef CL_MEM_HOST_IOCOHERENT_QCOM
+#define CL_MEM_HOST_IOCOHERENT_QCOM   0x40A9
+#endif
+#ifndef CL_MEM_DMABUF_HOST_PTR_QCOM
+#define CL_MEM_DMABUF_HOST_PTR_QCOM   0x411D
+#endif
+typedef struct _ggml_cl_mem_ext_host_ptr_qcom {
+    cl_uint allocation_type;
+    cl_uint host_cache_policy;
+} ggml_cl_mem_ext_host_ptr_qcom;
+typedef struct _ggml_cl_mem_dmabuf_host_ptr_qcom {
+    ggml_cl_mem_ext_host_ptr_qcom ext;
+    int   dmabuf_filedesc;
+    void * dmabuf_hostptr;
+} ggml_cl_mem_dmabuf_host_ptr_qcom;
+
 struct ggml_backend_opencl_context;
 
 // backend device context
@@ -415,6 +437,10 @@ struct ggml_backend_opencl_context {
     bool fp16_support;
     bool has_vector_subgroup_broadcast;
     bool has_qcom_subgroup_shuffle = false;     // cl_qcom_subgroup_shuffle
+    bool has_qcom_dmabuf_host_ptr = false;      // cl_qcom_dmabuf_host_ptr (route 2: zero-copy HTP->Adreno)
+    std::map<void*, cl_mem> imported_dmabuf;    // hexagon buffer ptr -> imported cl_mem (cached per buffer)
+    std::map<void*, void*>  foreign_q_extra;    // weight data ptr -> ggml_tensor_extra_cl_q8_0* (route 2: SoA repack, cached once)
+    std::map<void*, cl_mem> foreign_act_buf;    // foreign F16/F32 data ptr -> dedicated cl_mem (route 2: copy-in, reused per frame)
     bool disable_fusion;
 
     bool adreno_has_large_buffer;
@@ -4054,6 +4080,11 @@ static ggml_backend_opencl_context * ggml_cl_init(ggml_backend_dev_t dev) {
         backend_ctx->has_qcom_subgroup_shuffle = true;
     }
 
+    // route 2: zero-copy import of Hexagon dma-buf buffers as cl_mem
+    if (strstr(ext_buffer, "cl_qcom_dmabuf_host_ptr") != NULL) {
+        backend_ctx->has_qcom_dmabuf_host_ptr = true;
+    }
+
     // Check if ext_buffer contains cl_khr_fp16
     backend_ctx->fp16_support = strstr(ext_buffer, "cl_khr_fp16") != NULL;
 
@@ -4876,8 +4907,254 @@ static void ggml_opencl_op_rms_norm_fused(ggml_backend_t backend, ggml_tensor * 
 static void ggml_opencl_op_norm_fused(ggml_backend_t backend, ggml_tensor * norm_tensor, ggml_tensor * mul_tensor, ggml_tensor * add_tensor);
 static void ggml_opencl_op_group_norm_fused(ggml_backend_t backend, ggml_tensor * gn_tensor, ggml_tensor * mul_tensor, ggml_tensor * add_tensor);
 
+// route 2: defined further down; forward-declared so the foreign-import path below can gate
+// the one-time weight transpose exactly like the normal set_tensor path does.
+inline bool enable_adreno_trans_weight(const ggml_backend_opencl_context *backend_ctx, const ggml_tensor *tensor);
+
+// route 2: wrap a Hexagon dma-buf fd as an OpenCL cl_mem (zero-copy) using the proven
+// cl_qcom_dmabuf_host_ptr recipe (phase0_smoke/fused_repack_scaffold.c:265-271).
+static cl_mem ggml_cl_import_dmabuf(ggml_backend_opencl_context * backend_ctx, int fd, void * host_ptr, size_t size) {
+    ggml_cl_mem_dmabuf_host_ptr_qcom hp = {};
+    hp.ext.allocation_type   = CL_MEM_DMABUF_HOST_PTR_QCOM;
+    hp.ext.host_cache_policy = CL_MEM_HOST_IOCOHERENT_QCOM;
+    hp.dmabuf_filedesc = fd;
+    hp.dmabuf_hostptr  = host_ptr;
+    cl_int err = CL_SUCCESS;
+    cl_mem mem = clCreateBuffer(backend_ctx->context,
+        CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR | CL_MEM_EXT_HOST_PTR_QCOM,
+        size, &hp, &err);
+    if (err != CL_SUCCESS) {
+        GGML_LOG_ERROR("ggml-opencl: dmabuf import failed (fd=%d size=%zu err=%d)\n", fd, size, (int)err);
+        return nullptr;
+    }
+    return mem;
+}
+
+// route 2: one-time SoA repack of a foreign (Hexagon-resident) quantized weight into OpenCL's
+// struct-of-arrays layout, so the Adreno mul_mm/mul_mv kernels can consume it. The Hexagon buffer
+// stores Q8_0 in its own q8x4x2 layout (set_tensor repacks, rows padded to a multiple of 256), so
+// we DON'T read the dma-buf raw -- we un-repack to standard Q8_0 via the producer buffer's own
+// get_tensor (ggml_backend_tensor_get), then deinterleave with kernel_convert_block_* into fresh
+// OpenCL device subbuffers and (Adreno) transpose -- exactly mirroring
+// ggml_backend_opencl_buffer_set_tensor's Q8_0 branch so the matmul treats this weight identically
+// to a normally-loaded one. The result extra is cached by the weight's data address (the graph
+// tensor ptr changes each frame; the weight data does not) so this runs once, not per frame.
+// Activations (F16/F32) need no layout change and stay zero-copy in the caller.
+static void ggml_cl_import_foreign_quantized(ggml_backend_opencl_context * backend_ctx,
+                                             ggml_tensor * t, cl_mem mem, cl_ulong tensor_off) {
+    auto cit = backend_ctx->foreign_q_extra.find(t->data);
+    if (cit != backend_ctx->foreign_q_extra.end()) {
+        t->extra = cit->second;   // may be nullptr for an unsupported type (falls to copy path)
+        return;
+    }
+
+    if (t->type != GGML_TYPE_Q8_0) {
+        // Only Q8_0 (gemma-4 mmproj) is implemented for foreign repack so far. Other quant
+        // types fall back to the scheduler's normal copy path.
+        GGML_LOG_WARN("ggml-opencl: route2 foreign repack: type %s not supported yet, using copy path\n",
+            ggml_type_name(t->type));
+        backend_ctx->foreign_q_extra[t->data] = nullptr;
+        return;
+    }
+
+    cl_context       context = backend_ctx->context;
+    cl_command_queue queue   = backend_ctx->queue;
+    cl_int err;
+
+    const size_t nbytes = ggml_nbytes(t);
+    const size_t n_blk  = ggml_nelements(t)/ggml_blck_size(t->type);
+    const size_t size_d = n_blk*sizeof(ggml_fp16_t);
+    const size_t size_q = n_blk*(ggml_blck_size(t->type)*sizeof(char));
+    GGML_ASSERT(size_d + size_q == nbytes && "Incorrect tensor size");
+
+    // 1) Get STANDARD Q8_0 bytes for this weight. The Hexagon buffer does NOT store Q8_0 raw:
+    //    its set_tensor repacks Q8_0 -> q8x4x2 ([quants k int8][scales nb*8 fp16], rows padded to
+    //    a multiple of 256). A raw dma-buf copy would feed that foreign layout into a standard-Q8_0
+    //    convert kernel -> garbage. So un-repack via the producer buffer's own get_tensor
+    //    (ggml_backend_tensor_get -> hexagon repack_q8x4x2_q8_0), which yields standard Q8_0, then
+    //    feed OpenCL's normal convert+transpose exactly like ggml_backend_opencl_buffer_set_tensor.
+    //    One-time per weight (weights are static). mem/tensor_off (the zero-copy dma-buf view) are
+    //    unused here precisely because quantized weights need a layout conversion, not a view.
+    GGML_UNUSED(mem);
+    GGML_UNUSED(tensor_off);
+    void * host_q8 = malloc(nbytes);
+    GGML_ASSERT(host_q8 && "route2 foreign repack: host alloc failed");
+    // These vision weights are stored STANDARD Q8_0 in the Hexagon buffer (verified: t->data bytes
+    // == GGUF; gemma-4 mmproj weights are NOT repacked to q8x4x2). t->data is a host-mapped rpcmem
+    // pointer, so read the standard Q8_0 directly on the CPU and feed OpenCL's normal convert+
+    // transpose. (The imported dma-buf is coherent, so clEnqueueCopyBuffer at tensor_off would also
+    // work; the CPU read is simplest and keeps this path independent of the import.)
+    memcpy(host_q8, t->data, nbytes);
+
+    cl_mem data_device = clCreateBuffer(context, CL_MEM_READ_WRITE, nbytes, NULL, &err);
+    CL_CHECK(err);
+    CL_CHECK(clEnqueueWriteBuffer(queue, data_device, CL_TRUE, 0, nbytes, host_q8, 0, NULL, NULL));
+    free(host_q8);
+
+    // 2) allocate a fresh SoA backing buffer + scales/quants subbuffers (scales then quants).
+    const size_t d_origin = 0;
+    const size_t q_origin = align_to(size_d, backend_ctx->alignment);
+    cl_mem dst = clCreateBuffer(context, CL_MEM_READ_WRITE, q_origin + size_q, NULL, &err);
+    CL_CHECK(err);
+
+    ggml_tensor_extra_cl_q8_0 * extra = new ggml_tensor_extra_cl_q8_0();
+    extra->size_d = size_d;
+    extra->size_q = size_q;
+
+    cl_buffer_region region;
+    region.origin = d_origin; region.size = size_d;
+    extra->d = clCreateSubBuffer(dst, CL_MEM_READ_WRITE, CL_BUFFER_CREATE_TYPE_REGION, &region, &err);
+    CL_CHECK(err);
+    region.origin = q_origin; region.size = size_q;
+    extra->q = clCreateSubBuffer(dst, CL_MEM_READ_WRITE, CL_BUFFER_CREATE_TYPE_REGION, &region, &err);
+    CL_CHECK(err);
+    // subbuffers retain dst; drop our handle so dst is freed with the extra's q/d.
+    CL_CHECK(clReleaseMemObject(dst));
+
+    // 3) deinterleave blocks -> q (int8) + d (fp16)
+    cl_kernel kernel = backend_ctx->kernel_convert_block_q8_0;
+    CL_CHECK(clSetKernelArg(kernel, 0, sizeof(cl_mem), &data_device));
+    CL_CHECK(clSetKernelArg(kernel, 1, sizeof(cl_mem), &extra->q));
+    CL_CHECK(clSetKernelArg(kernel, 2, sizeof(cl_mem), &extra->d));
+    size_t global_work_size[] = { n_blk, 1, 1 };
+    size_t local_work_size[]  = { 64, 1, 1 };
+    cl_event evt;
+    CL_CHECK(clEnqueueNDRangeKernel(queue, kernel, 3, NULL, global_work_size, local_work_size, 0, NULL, &evt));
+    CL_CHECK(clWaitForEvents(1, &evt));
+    CL_CHECK(clReleaseMemObject(data_device));
+
+    // 4) (Adreno) transpose q/d exactly as set_tensor does, under the same gate the matmul checks.
+#ifdef GGML_OPENCL_USE_ADRENO_KERNELS
+    if (enable_adreno_trans_weight(backend_ctx, t)) {
+        int M = t->ne[1];   // ne01
+        int K = t->ne[0];   // ne00
+        GGML_ASSERT(K % 32 == 0);
+        GGML_ASSERT(M % 4 == 0);
+        GGML_ASSERT(t->ne[2] == 1);
+        GGML_ASSERT(t->ne[3] == 1);
+        transpose_2d_as_32b(backend_ctx, extra->q, extra->q, size_q, K/4,  M);
+        transpose_2d_as_16b(backend_ctx, extra->d, extra->d, size_d, K/32, M);
+    }
+#endif
+
+    backend_ctx->foreign_q_extra[t->data] = extra;
+    t->extra = extra;
+    GGML_LOG_INFO("ggml-opencl: route2 repacked foreign Q8_0 weight %s (%zu bytes) to SoA\n",
+        t->name, nbytes);
+}
+
+// If 't' lives in a buffer that a producer backend (Hexagon) published into the cross-backend
+// dma-buf registry and it has no OpenCL extra yet, import that dma-buf as a cl_mem (once per
+// buffer) and build a ggml_tensor_extra_cl so OpenCL ops can read it in place with no copy.
+static void ggml_cl_ensure_foreign_extra(ggml_backend_opencl_context * backend_ctx, ggml_tensor * t) {
+    if (!t || t->extra != nullptr || t->buffer == nullptr || t->data == nullptr) {
+        return;
+    }
+    if (!backend_ctx->has_qcom_dmabuf_host_ptr) {
+        return;
+    }
+
+    int fd = -1; void * base = nullptr; size_t size = 0;
+    if (!ggml_backend_dmabuf_get((void *) t->buffer, &fd, &base, &size) || fd < 0 || base == nullptr || size == 0) {
+        return;
+    }
+
+    // Import (once per buffer) the whole HTP dma-buf as a cl_mem.
+    cl_mem mem = nullptr;
+    auto it = backend_ctx->imported_dmabuf.find((void*)t->buffer);
+    if (it != backend_ctx->imported_dmabuf.end()) {
+        mem = it->second;
+    } else {
+        mem = ggml_cl_import_dmabuf(backend_ctx, fd, base, size);
+        backend_ctx->imported_dmabuf[(void*)t->buffer] = mem; // cache (even null) to avoid retrying
+        if (mem) {
+            GGML_LOG_INFO("ggml-opencl: route2 imported HTP dma-buf fd=%d size=%zu as cl_mem\n", fd, size);
+        }
+    }
+    if (!mem) {
+        return;
+    }
+
+    const cl_ulong tensor_off = (cl_ulong)((char*)t->data - (char*)base);
+
+    // Quantized weights: OpenCL's matmul reads a struct-of-arrays (separate q/d cl_mems) that
+    // the normal set_tensor path builds, so we repack ONCE on import (weights are static).
+    if (ggml_is_quantized(t->type)) {
+        ggml_cl_import_foreign_quantized(backend_ctx, t, mem, tensor_off);
+        return;
+    }
+
+    // F16/F32 (activations + constants): copy this tensor's bytes from the imported dma-buf into a
+    // dedicated exact-sized OpenCL buffer at offset 0. NOTE: a true zero-copy offset-view into the
+    // imported buffer (extra->data_device=mem, extra->offset=tensor_off) does NOT work with the
+    // production Adreno GEMM kernels -- they sub-buffer + IMAGE the activation, and an OpenCL image
+    // cannot be created correctly over the imported Qualcomm dma-buf (verified gibberish across all
+    // host_cache_policy values, per-tensor import, and aligned sub-buffers; clEnqueueCopyBuffer at
+    // tensor_off, by contrast, returns correct bytes -- the dma-buf is coherent). So we do a single
+    // on-GPU device->device copy into an image-capable buffer (this is the "relayout-at-the-NPU->GPU
+    // boundary" cost, not a host round-trip). Cached & re-copied per tensor address so runtime-
+    // changing activations stay correct without leaking a buffer per frame.
+    const size_t tb = ggml_nbytes(t);
+
+    // DEBUG (GGML_OPENCL_HTP_DUMP): verify reading the imported dma-buf as a BUFFER at tensor_off
+    // returns the same bytes Hexagon wrote (CPU view of the host-mapped rpcmem). This isolates
+    // "is the import + offset correct at the buffer level" from any downstream image issue.
+    if (getenv("GGML_OPENCL_HTP_DUMP")) {
+        const int NF = 8;
+        float cpu_v[NF], gpu_v[NF];
+        memcpy(cpu_v, t->data, sizeof(cpu_v));
+        cl_int de = clEnqueueReadBuffer(backend_ctx->queue, mem, CL_TRUE, (size_t)tensor_off,
+                                        sizeof(gpu_v), gpu_v, 0, NULL, NULL);
+        GGML_LOG_INFO("ggml-opencl: [HTP_DUMP import] %s off=%llu align128=%llu readbuf_err=%d\n",
+            t->name, (unsigned long long)tensor_off, (unsigned long long)(tensor_off % 128), de);
+        GGML_LOG_INFO("  CPU(t->data): %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f\n",
+            cpu_v[0],cpu_v[1],cpu_v[2],cpu_v[3],cpu_v[4],cpu_v[5],cpu_v[6],cpu_v[7]);
+        GGML_LOG_INFO("  GPU(buf@off): %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f\n",
+            gpu_v[0],gpu_v[1],gpu_v[2],gpu_v[3],gpu_v[4],gpu_v[5],gpu_v[6],gpu_v[7]);
+    }
+
+    // ZERO-COPY (GGML_OPENCL_HTP_ZEROCOPY): point the extra directly at the imported dma-buf with
+    // the tensor's byte offset -- no copy. The matmul will sub-buffer + image this in place.
+    if (getenv("GGML_OPENCL_HTP_ZEROCOPY")) {
+        ggml_tensor_extra_cl * extra = new ggml_tensor_extra_cl();
+        extra->data_device = mem;
+        extra->offset      = (cl_ulong)tensor_off;
+        extra->actual_size = size;   // whole imported buffer
+        t->extra = extra;
+        return;
+    }
+
+    cl_mem buf = nullptr;
+    auto bit = backend_ctx->foreign_act_buf.find(t->data);
+    if (bit != backend_ctx->foreign_act_buf.end()) {
+        buf = bit->second;
+    } else {
+        cl_int e2 = CL_SUCCESS;
+        buf = clCreateBuffer(backend_ctx->context, CL_MEM_READ_WRITE, tb, NULL, &e2);
+        CL_CHECK(e2);
+        backend_ctx->foreign_act_buf[t->data] = buf;
+    }
+    CL_CHECK(clEnqueueCopyBuffer(backend_ctx->queue, mem, buf, (size_t)tensor_off, 0, tb, 0, NULL, NULL));
+
+    ggml_tensor_extra_cl * extra = new ggml_tensor_extra_cl();
+    extra->data_device = buf;
+    extra->offset      = 0;
+    extra->actual_size = tb;
+    t->extra = extra;
+}
+
 static ggml_status ggml_backend_opencl_graph_compute(ggml_backend_t backend, ggml_cgraph * cgraph) {
     ggml_backend_opencl_context *backend_ctx = (ggml_backend_opencl_context *)backend->context;
+
+    // route 2: ensure any Hexagon-resident src tensors have an OpenCL extra (zero-copy import)
+    if (backend_ctx->has_qcom_dmabuf_host_ptr) {
+        for (int i = 0; i < cgraph->n_nodes; i++) {
+            ggml_tensor * node = cgraph->nodes[i];
+            for (int j = 0; j < GGML_MAX_SRC; j++) {
+                ggml_cl_ensure_foreign_extra(backend_ctx, node->src[j]);
+            }
+        }
+    }
 
     for (int i = 0; i < cgraph->n_nodes; i++) {
         ggml_tensor * node = cgraph->nodes[i];
@@ -8150,6 +8427,20 @@ static bool ggml_backend_opencl_device_supports_op(ggml_backend_dev_t dev, const
 }
 
 static bool ggml_backend_opencl_device_supports_buft(ggml_backend_dev_t dev, ggml_backend_buffer_type_t buft) {
+    // route 2 (opt-in via GGML_OPENCL_IMPORT_HTP): accept a Hexagon (HTP) rpcmem/dma-buf
+    // buffer-type so the scheduler routes NPU-rejected ops to Adreno (zero-copy via
+    // cl_qcom_dmabuf_host_ptr) instead of CPU. Off by default. F16/F32 activations are
+    // imported zero-copy; quantized weights are SoA-repacked once on import (Q8_0 implemented,
+    // see ggml_cl_import_foreign_quantized) so quantized matmuls also land on Adreno.
+    if (getenv("GGML_OPENCL_IMPORT_HTP") &&
+        dev->iface.get_name == ggml_backend_opencl_device_get_name && buft->iface.get_name) {
+        const char * bn = buft->iface.get_name(buft);
+        if (bn && strncmp(bn, "HTP", 3) == 0) {
+            ggml_backend_opencl_context * bctx = ggml_cl_init(dev);
+            return bctx->has_qcom_dmabuf_host_ptr;
+        }
+    }
+
     // Check 'dev' and 'buffer_type' are not objects belonging to this backend.
     if (dev->iface.get_name != ggml_backend_opencl_device_get_name ||
         buft->iface.get_name != ggml_backend_opencl_buffer_type_get_name) {
@@ -12472,6 +12763,32 @@ static void ggml_cl_mul_mat_q8_0_f32_adreno(ggml_backend_t backend, const ggml_t
         img_desc.image_width = K * N / 4;
         img_desc.buffer = b_sub_buf;
         CL_CHECK((b_img = clCreateImage(context, CL_MEM_READ_ONLY, &img_fmt, &img_desc, NULL, &err), err));
+
+        // DEBUG (GGML_OPENCL_HTP_DUMP): compare what the IMAGE sees vs what the BUFFER holds for the
+        // activation, over the SAME b_sub_buf. If they diverge, the image addressing over this
+        // (possibly imported/offset) buffer is the bug; the divergence pattern reveals the shift.
+        if (getenv("GGML_OPENCL_HTP_DUMP")) {
+            const int NP = 8;            // pixels (RGBA float => 4 floats each)
+            const int NFL = NP * 4;
+            float buf_v[NFL], img_v[NFL];
+            cl_int be = clEnqueueReadBuffer(backend_ctx->queue, b_sub_buf, CL_TRUE, 0,
+                                            sizeof(buf_v), buf_v, 0, NULL, NULL);
+            size_t org[3] = {0,0,0}, reg[3] = {(size_t)NP,1,1};
+            cl_int ie = clEnqueueReadImage(backend_ctx->queue, b_img, CL_TRUE, org, reg, 0, 0,
+                                           img_v, 0, NULL, NULL);
+            int bad = -1;
+            for (int k = 0; k < NFL; k++) { if (buf_v[k] != img_v[k]) { bad = k; break; } }
+            GGML_LOG_INFO("ggml-opencl: [HTP_DUMP matmul] %s offset1=%llu K=%d N=%d readbuf=%d readimg=%d %s\n",
+                src1->name, (unsigned long long)offset1, K, N, be, ie,
+                bad<0 ? "IMAGE==BUFFER" : "IMAGE!=BUFFER");
+            GGML_LOG_INFO("  BUFFER: %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f\n",
+                buf_v[0],buf_v[1],buf_v[2],buf_v[3],buf_v[4],buf_v[5],buf_v[6],buf_v[7]);
+            GGML_LOG_INFO("  IMAGE : %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f\n",
+                img_v[0],img_v[1],img_v[2],img_v[3],img_v[4],img_v[5],img_v[6],img_v[7]);
+            if (bad >= 0) {
+                GGML_LOG_INFO("  first divergence at float %d: buf=%.4f img=%.4f\n", bad, buf_v[bad], img_v[bad]);
+            }
+        }
 
         // pad N to multiple of 8
         int extra_elements = N % 8;

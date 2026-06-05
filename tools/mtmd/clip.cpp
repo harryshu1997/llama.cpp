@@ -152,6 +152,7 @@ struct clip_ctx {
 
     ggml_backend_t backend = nullptr;
     ggml_backend_t backend_cpu = nullptr;
+    std::vector<ggml_backend_t> backend_extra; // additional GPU-class backends for NPU->GPU op fallback
     ggml_backend_buffer_ptr buf;
 
 
@@ -177,9 +178,27 @@ struct clip_ctx {
         if (ctx_params.use_gpu) {
             auto * backend_name = std::getenv("MTMD_BACKEND_DEVICE");
             if (backend_name != nullptr) {
-                backend = ggml_backend_init_by_name(backend_name, nullptr);
-                if (!backend) {
-                    LOG_WRN("%s: Warning: Failed to initialize \"%s\" backend, falling back to default GPU backend\n", __func__, backend_name);
+                // support a comma-separated priority list (e.g. "HTP0,GPUOpenCL"): ops
+                // unsupported by the primary backend (NPU) then fall back to the next
+                // GPU-class backend (e.g. Adreno) instead of going all the way to CPU.
+                std::string list(backend_name);
+                size_t start = 0;
+                while (start <= list.size()) {
+                    size_t comma = list.find(',', start);
+                    size_t len   = (comma == std::string::npos) ? list.size() - start : comma - start;
+                    std::string one = list.substr(start, len);
+                    while (!one.empty() && one.front() == ' ') one.erase(one.begin());
+                    while (!one.empty() && one.back()  == ' ') one.pop_back();
+                    if (!one.empty()) {
+                        ggml_backend_t b = ggml_backend_init_by_name(one.c_str(), nullptr);
+                        if (b) {
+                            if (!backend) { backend = b; } else { backend_extra.push_back(b); }
+                        } else {
+                            LOG_WRN("%s: Warning: Failed to initialize \"%s\" backend\n", __func__, one.c_str());
+                        }
+                    }
+                    if (comma == std::string::npos) break;
+                    start = comma + 1;
                 }
             }
             if (!backend) {
@@ -192,6 +211,11 @@ struct clip_ctx {
             LOG_INF("%s: CLIP using %s backend\n", __func__, ggml_backend_name(backend));
             backend_ptrs.push_back(backend);
             backend_buft.push_back(ggml_backend_get_default_buffer_type(backend));
+            for (auto * b : backend_extra) {
+                LOG_INF("%s: CLIP fallback backend %s\n", __func__, ggml_backend_name(b));
+                backend_ptrs.push_back(b);
+                backend_buft.push_back(ggml_backend_get_default_buffer_type(b));
+            }
         } else {
             backend = backend_cpu;
             LOG_INF("%s: CLIP using CPU backend\n", __func__);
@@ -220,6 +244,9 @@ struct clip_ctx {
 
     ~clip_ctx() {
         ggml_backend_free(backend);
+        for (auto * b : backend_extra) {
+            ggml_backend_free(b);
+        }
         if (backend != backend_cpu) {
             ggml_backend_free(backend_cpu);
         }

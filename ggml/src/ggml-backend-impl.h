@@ -78,6 +78,14 @@ extern "C" {
     // do not use directly, use ggml_backend_tensor_copy instead
     GGML_API bool ggml_backend_buffer_copy_tensor(const struct ggml_tensor * src, struct ggml_tensor * dst);
 
+    // cross-backend zero-copy dma-buf registry (route 2): a producer backend (e.g. Hexagon
+    // rpcmem) registers the dma-buf fd / host base / size for a buffer it allocates; a consumer
+    // backend (e.g. OpenCL/Adreno) looks it up by buffer pointer to import it as its own handle
+    // with no copy. Lives in libggml-base so both backends resolve it via normal linking.
+    GGML_API void ggml_backend_dmabuf_set(void * buffer, int fd, void * base, size_t size);
+    GGML_API bool ggml_backend_dmabuf_get(void * buffer, int * fd, void ** base, size_t * size);
+    GGML_API void ggml_backend_dmabuf_del(void * buffer);
+
     // multi-buffer
     // buffer that contains a collection of buffers
     GGML_API ggml_backend_buffer_t ggml_backend_multi_buffer_alloc_buffer(ggml_backend_buffer_t * buffers, size_t n_buffers);

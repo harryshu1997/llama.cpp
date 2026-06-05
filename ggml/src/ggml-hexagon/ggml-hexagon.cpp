@@ -282,6 +282,7 @@ static ggml_hexagon_session * ggml_backend_hexagon_buffer_get_sess(ggml_backend_
 }
 
 static void ggml_backend_hexagon_buffer_free_buffer(ggml_backend_buffer_t buffer) {
+    ggml_backend_dmabuf_del((void *) buffer); // route 2: drop the dma-buf registry entry
     auto sbuf = static_cast<ggml_hexagon_shared_buffer *>(buffer->context);
     delete sbuf;
 }
@@ -1721,7 +1722,12 @@ static ggml_backend_buffer_t ggml_backend_hexagon_buffer_type_alloc_buffer(
     try {
         size += 4 * 1024;  // guard page
         ggml_hexagon_shared_buffer * sbuf = new ggml_hexagon_shared_buffer(sess, size);
-        return ggml_backend_buffer_init(buffer_type, ggml_backend_hexagon_buffer_interface, sbuf, size);
+        ggml_backend_buffer_t buf = ggml_backend_buffer_init(buffer_type, ggml_backend_hexagon_buffer_interface, sbuf, size);
+        if (buf && sbuf->fd >= 0 && sbuf->base) {
+            // route 2: publish the rpcmem/dma-buf so OpenCL can import it zero-copy
+            ggml_backend_dmabuf_set((void *) buf, sbuf->fd, (void *) sbuf->base, sbuf->size);
+        }
+        return buf;
     } catch (const std::exception & exc) {
         GGML_LOG_ERROR("ggml-hex: %s failed to allocate buffer context (host): %s\n", sess->c_name(), exc.what());
         return nullptr;
@@ -1734,7 +1740,12 @@ static ggml_backend_buffer_t ggml_backend_hexagon_repack_buffer_type_alloc_buffe
     try {
         size += 4 * 1024;  // guard page
         ggml_hexagon_shared_buffer * sbuf = new ggml_hexagon_shared_buffer(sess, size);
-        return ggml_backend_buffer_init(buffer_type, ggml_backend_hexagon_buffer_interface, sbuf, size);
+        ggml_backend_buffer_t buf = ggml_backend_buffer_init(buffer_type, ggml_backend_hexagon_buffer_interface, sbuf, size);
+        if (buf && sbuf->fd >= 0 && sbuf->base) {
+            // route 2: publish the rpcmem/dma-buf so OpenCL can import it zero-copy
+            ggml_backend_dmabuf_set((void *) buf, sbuf->fd, (void *) sbuf->base, sbuf->size);
+        }
+        return buf;
     } catch (const std::exception & exc) {
         GGML_LOG_ERROR("ggml-hex: %s failed to allocate buffer context (repack): %s\n", sess->c_name(), exc.what());
         return nullptr;

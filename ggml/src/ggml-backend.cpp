@@ -21,11 +21,46 @@
 #include <string.h>
 #include <algorithm>
 #include <vector>
+#include <map>
+#include <mutex>
 
 #ifdef __APPLE__
 #include <sys/types.h>
 #include <sys/sysctl.h>
 #endif
+
+// cross-backend zero-copy dma-buf registry (route 2). See ggml-backend-impl.h.
+namespace {
+    struct ggml_dmabuf_entry { int fd; void * base; size_t size; };
+    std::mutex                                  g_dmabuf_mutex;
+    std::map<void *, ggml_dmabuf_entry> &       g_dmabuf_map() {
+        static std::map<void *, ggml_dmabuf_entry> m;
+        return m;
+    }
+}
+
+void ggml_backend_dmabuf_set(void * buffer, int fd, void * base, size_t size) {
+    if (!buffer) return;
+    std::lock_guard<std::mutex> lock(g_dmabuf_mutex);
+    g_dmabuf_map()[buffer] = ggml_dmabuf_entry{ fd, base, size };
+}
+
+bool ggml_backend_dmabuf_get(void * buffer, int * fd, void ** base, size_t * size) {
+    if (!buffer) return false;
+    std::lock_guard<std::mutex> lock(g_dmabuf_mutex);
+    auto it = g_dmabuf_map().find(buffer);
+    if (it == g_dmabuf_map().end()) return false;
+    if (fd)   { *fd   = it->second.fd;   }
+    if (base) { *base = it->second.base; }
+    if (size) { *size = it->second.size; }
+    return true;
+}
+
+void ggml_backend_dmabuf_del(void * buffer) {
+    if (!buffer) return;
+    std::lock_guard<std::mutex> lock(g_dmabuf_mutex);
+    g_dmabuf_map().erase(buffer);
+}
 
 
 // backend buffer type
