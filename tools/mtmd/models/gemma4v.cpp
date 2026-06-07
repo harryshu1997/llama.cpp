@@ -56,6 +56,10 @@ ggml_cgraph * clip_graph_gemma4v::build() {
                 cur->nb[1],
                 cur->nb[2],
                 0);
+            // route-2: this half-dim view is non-contiguous, so ggml-hexagon's rope supports_op
+            // rejects it (contiguity gate) and it falls back to CPU. Materializing it contiguous
+            // lets the existing HTP NEOX rope kernel run on the NPU. Gated so full-GPU is unchanged.
+            if (getenv("MTMD_ROPE_CONT")) { first = ggml_cont(ctx0, first); }
             first = ggml_rope_ext(
                 ctx0,
                 first,
@@ -75,6 +79,7 @@ ggml_cgraph * clip_graph_gemma4v::build() {
                 cur->nb[1],
                 cur->nb[2],
                 n_dim/2 * ggml_element_size(cur));
+            if (getenv("MTMD_ROPE_CONT")) { second = ggml_cont(ctx0, second); }
             second = ggml_rope_ext(
                 ctx0,
                 second,
@@ -143,9 +148,18 @@ ggml_tensor * clip_graph_gemma4v::build_mm(ggml_tensor * w, ggml_tensor * x) con
         return ggml_mul_mat(ctx0, w, x);
     } else {
         const auto & clamp_info = it->second;
-        ggml_tensor * clamped = ggml_clamp(ctx0, x, clamp_info.inp_min, clamp_info.inp_max);
+        // ggml_clamp is in-place (ggml_view_tensor): the op aliases its src's buffer. When the
+        // HTP backend claims the clamp but its src lives on another backend (CPU), the scheduler
+        // copies src->HTP, runs the clamp on HTP, then must write the in-place result back to the
+        // src's (CPU) buffer -> the host adds a non-hexagon buffer to the HTP op-batch -> corrupt
+        // b_vmem -> DSP 0x2e. Forcing a ggml_cont of the input first makes the clamp operate on a
+        // fresh tensor on its own (HTP) backend, so cross-backend results copy normally.
+        const bool clamp_cont = getenv("MTMD_CLAMP_CONT") != nullptr;
+        ggml_tensor * xin = clamp_cont ? ggml_cont(ctx0, x) : x;
+        ggml_tensor * clamped = ggml_clamp(ctx0, xin, clamp_info.inp_min, clamp_info.inp_max);
         ggml_tensor * out = ggml_mul_mat(ctx0, w, clamped);
-        out = ggml_clamp(ctx0, out, clamp_info.out_min, clamp_info.out_max);
+        ggml_tensor * oin = clamp_cont ? ggml_cont(ctx0, out) : out;
+        out = ggml_clamp(ctx0, oin, clamp_info.out_min, clamp_info.out_max);
         return out;
     }
 }

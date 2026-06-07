@@ -621,6 +621,114 @@ static void glu_geglu_f32_per_thread(unsigned int nth, unsigned int ith, void * 
          (unsigned) HAP_perf_qtimer_count_to_us(t2 - t1));
 }
 
+static void glu_geglu_quick_f32_per_thread(unsigned int nth, unsigned int ith, void * data) {
+    struct htp_act_context * actx = (struct htp_act_context *) data;
+    htp_act_preamble;
+
+    size_t src0_row_size = actx->src0_row_size;
+    size_t src1_row_size = actx->src1_row_size;
+    size_t dst_row_size  = actx->dst_row_size;
+
+    uint64_t t1, t2;
+    t1 = HAP_perf_get_qtimer_count();
+
+    const uint32_t src0_nrows = actx->src0_nrows;
+    const uint32_t src0_nrows_per_thread = actx->src0_nrows_per_thread;
+
+    const uint32_t src0_start_row = src0_nrows_per_thread * ith;
+    const uint32_t src0_end_row   = MIN(src0_start_row + src0_nrows_per_thread, src0_nrows);
+
+    // no work for this thread
+    if (src0_start_row >= src0_end_row) {
+        return;
+    }
+
+    const uint8_t * restrict data_src0 = actx->data_src0;
+    const uint8_t * restrict data_src1 = actx->data_src1;
+    uint8_t * restrict data_dst        = actx->data_dst;
+
+    const int nc = actx->nc;
+
+    const size_t src0_row_size_aligned = actx->src0_row_size_aligned;
+    const size_t src1_row_size_aligned = actx->src1_row_size_aligned;
+    const size_t dst_row_size_aligned  = actx->dst_row_size_aligned;
+
+    uint8_t * restrict src0_spad_data = actx->octx->src0_spad.data + (ith * actx->octx->src0_spad.size_per_thread);
+    uint8_t * restrict src1_spad_data = actx->octx->src1_spad.data + (ith * actx->octx->src1_spad.size_per_thread);
+    uint8_t * restrict dst_spad_data  = actx->octx->dst_spad.data + (ith * actx->octx->dst_spad.size_per_thread);
+
+    size_t src0_spad_half_size = actx->src0_spad_half_size;
+    size_t src1_spad_half_size = actx->src1_spad_half_size;
+    size_t dst_spad_half_size  = actx->dst_spad_half_size;
+
+    const int BLOCK = actx->block;
+    if (BLOCK == 0) {
+        FARF(ERROR,
+             "geglu-quick-f32 : current VTCM reservation %zu is too small for even 1 row per thread, needed at least %zu\n",
+             actx->octx->src0_spad.size_per_thread, src0_row_size_aligned);
+        return;
+    }
+
+    dma_queue * dma_queue = actx->octx->ctx->dma[ith];
+
+    for (uint32_t ir = src0_start_row, spad_idx = 0; ir < src0_end_row && spad_idx < 2; ir += BLOCK, spad_idx++) {
+        const uint32_t block_size = MIN(BLOCK, src0_end_row - ir);
+
+        // Dummy DMA transation for sequencing (interleaving dst,src,dst,...)
+        dma_queue_push_vtcm_to_ddr(dma_queue,
+            dma_make_ptr(data_dst, dst_spad_data + (spad_idx * dst_spad_half_size)),
+            dst_row_size, dst_row_size_aligned, 0);
+
+        dma_queue_push_ddr_to_vtcm(dma_queue,
+            dma_make_ptr(src0_spad_data + (spad_idx * src0_spad_half_size), data_src0 + (ir * src0_row_size)),
+            src0_row_size_aligned, src0_row_size, block_size);
+        dma_queue_push_ddr_to_vtcm(dma_queue,
+            dma_make_ptr(src1_spad_data + (spad_idx * src1_spad_half_size), data_src1 + (ir * src1_row_size)),
+            src1_row_size_aligned, src1_row_size, block_size);
+    }
+
+    for (uint32_t ir = src0_start_row; ir < src0_end_row; ir += BLOCK) {
+        const uint32_t block_size = MIN(BLOCK, src0_end_row - ir);
+
+        float * dst_spad  = (float *) dma_queue_pop(dma_queue).src;
+        float * src0_spad = (float *) dma_queue_pop(dma_queue).dst;
+        float * src1_spad = (float *) dma_queue_pop(dma_queue).dst;
+
+        for (uint32_t ib = 0; ib < block_size; ib++) {
+            const uint8_t * src0_spad_ptr = (const uint8_t *)(src0_spad + ib * (src0_row_size_aligned / sizeof(float)));
+            const uint8_t * src1_spad_ptr = (const uint8_t *)(src1_spad + ib * (src1_row_size_aligned / sizeof(float)));
+            uint8_t *       dst_spad_ptr  = (uint8_t *)(dst_spad + ib * (dst_row_size_aligned / sizeof(float)));
+
+            // geglu-quick: geglu_quick(x, g) = gelu_quick(x) * g, gelu_quick(x) = x * sigmoid(1.702*x)
+            hvx_mul_scalar_f32_aa(dst_spad_ptr, src0_spad_ptr, (float) 1.702, nc);             // res = 1.702 * x
+            hvx_sigmoid_f32_aa((uint8_t *) dst_spad_ptr, (const uint8_t *) dst_spad_ptr, nc);  // res = sigmoid(res)
+            hvx_mul_f32_aaa(dst_spad_ptr, (const uint8_t *) dst_spad_ptr, src0_spad_ptr, nc);  // res = res * x  = gelu_quick(x)
+            hvx_mul_f32_aaa(dst_spad_ptr, (const uint8_t *) dst_spad_ptr, src1_spad_ptr, nc);  // res = res * g
+        }
+
+        dma_queue_push_vtcm_to_ddr(dma_queue, dma_make_ptr(data_dst + (ir * dst_row_size), dst_spad), dst_row_size,
+                                   dst_row_size_aligned, block_size);
+
+        // prefetch N+2 loop iteration if any
+        const uint32_t pref_block = (ir + BLOCK * 2);
+        if (pref_block < src0_end_row) {
+            const uint32_t pref_block_size = MIN(BLOCK, src0_end_row - pref_block);
+            dma_queue_push_ddr_to_vtcm(dma_queue, dma_make_ptr(src0_spad, data_src0 + (pref_block * src0_row_size)),
+                                       src0_row_size_aligned, src0_row_size, pref_block_size);
+            dma_queue_push_ddr_to_vtcm(dma_queue, dma_make_ptr(src1_spad, data_src1 + (pref_block * src1_row_size)),
+                                       src1_row_size_aligned, src1_row_size, pref_block_size);
+        }
+    }
+
+    dma_queue_flush(dma_queue);
+
+    t2 = HAP_perf_get_qtimer_count();
+
+    FARF(HIGH, "geglu-quick-f32 %d/%d: %ux%ux%ux%u (%u:%u) x %ux%ux%ux%u -> %ux%ux%ux%u usec %u\n", ith, nth,
+         ne00, ne01, ne02, ne03, src0_start_row, src0_end_row, ne10, ne11, ne12, ne13, ne0, ne1, ne2, ne3,
+         (unsigned) HAP_perf_qtimer_count_to_us(t2 - t1));
+}
+
 static int execute_op_activations_f32(struct htp_ops_context * octx) {
     const struct htp_tensor * src0 = octx->src[0];
     const struct htp_tensor * src1 = octx->src[1];
@@ -657,6 +765,10 @@ static int execute_op_activations_f32(struct htp_ops_context * octx) {
         case HTP_OP_GLU_GEGLU:
             act_op_func = (worker_callback_t)glu_geglu_f32_per_thread;
             op_type     = "geglu-f32";
+            break;
+        case HTP_OP_GLU_GEGLU_QUICK:
+            act_op_func = (worker_callback_t)glu_geglu_quick_f32_per_thread;
+            op_type     = "geglu-quick-f32";
             break;
         default:
             FARF(ERROR, "Unsupported activations Op %u\n", octx->op);
@@ -744,7 +856,7 @@ static int execute_op_activations_f32(struct htp_ops_context * octx) {
     const uint8_t * data_src0 = (const uint8_t *) src0->data;
     const uint8_t * data_src1 = src1 ? (const uint8_t *) src1->data : NULL;
 
-    if (!src1 && (octx->op == HTP_OP_GLU_SWIGLU || octx->op == HTP_OP_GLU_SWIGLU_OAI || octx->op == HTP_OP_GLU_GEGLU)) {
+    if (!src1 && (octx->op == HTP_OP_GLU_SWIGLU || octx->op == HTP_OP_GLU_SWIGLU_OAI || octx->op == HTP_OP_GLU_GEGLU || octx->op == HTP_OP_GLU_GEGLU_QUICK)) {
          const int32_t swapped = octx->op_params[1];
          data_src1 = data_src0;
          actx.src1_row_size = actx.src0_row_size;

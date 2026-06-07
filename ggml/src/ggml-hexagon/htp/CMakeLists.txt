@@ -44,10 +44,16 @@ if (_hmx_idx GREATER_EQUAL 0)
 
     # -mhmx enables HMX instruction set (needed by files that include hmx-utils.h)
     set_source_files_properties(
-        hmx-flash-attn-ops.c
         hmx-matmul-ops.c
         hmx-queue.c
         PROPERTIES COMPILE_OPTIONS "-mhmx"
+    )
+    # hmx-flash-attn-ops.c: SDK 6.4 clang miscompiles the hand-written HVX/HMX FA
+    # softmax under -fvectorize (head-dim-64 large-kv produces wrong results vs the
+    # SDK 6.5 prebuilt). Disable auto-vectorization for this file only.
+    set_source_files_properties(
+        hmx-flash-attn-ops.c
+        PROPERTIES COMPILE_OPTIONS "-mhmx;-fno-vectorize"
     )
 
     target_compile_definitions(${HTP_LIB} PRIVATE HTP_HAS_HMX=1)

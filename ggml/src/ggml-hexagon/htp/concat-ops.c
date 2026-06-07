@@ -152,6 +152,47 @@ static void concat_2d_f16_transposed(unsigned int nth, unsigned int ith, void * 
     }
 }
 
+// Fast path for dim-0 concat of two dim-0-contiguous tensors into a contiguous dst
+// (e.g. gemma-4 vision 2D-rope recombine: [n_dim/2, n_head, n_pos] x2 -> [n_dim, ...]).
+// This is a pure interleave of fixed-size row chunks: each dst row = [src0 row | src1 row].
+// Both srcs and dst are fully contiguous, so the higher dims collapse to a flat row count and
+// the copy becomes two strided DDR->DDR 2D DMA transfers (no VTCM staging, no gather needed).
+// Type-agnostic byte copy (works for F32/I32/F16). Falls back to concat_generic if not contiguous.
+static void concat_dim0_contig(unsigned int nth, unsigned int ith, void * data) {
+    struct htp_concat_context * cctx = (struct htp_concat_context *) data;
+    struct htp_ops_context * octx = cctx->octx;
+
+    const struct htp_tensor * src0 = octx->src[0];
+    const struct htp_tensor * src1 = octx->src[1];
+    const struct htp_tensor * dst  = octx->dst;
+
+    const uint32_t nrows = dst->ne[1] * dst->ne[2] * dst->ne[3];
+
+    const uint32_t start_i = ith * cctx->nrows_per_thread;
+    const uint32_t end_i   = (start_i + cctx->nrows_per_thread < nrows) ? (start_i + cctx->nrows_per_thread) : nrows;
+    if (start_i >= end_i) return;
+    const uint32_t rows = end_i - start_i;
+
+    const uint32_t src0_row = src0->ne[0] * src0->nb[0]; // contiguous: nb[0] == type_size
+    const uint32_t src1_row = src1->ne[0] * src1->nb[0];
+
+    dma_queue * q = octx->ctx->dma[ith];
+
+    uint8_t * dst_base = (uint8_t *) dst->data  + (size_t) start_i * dst->nb[1];
+    uint8_t * s0_base  = (uint8_t *) src0->data + (size_t) start_i * src0->nb[1];
+    uint8_t * s1_base  = (uint8_t *) src1->data + (size_t) start_i * src1->nb[1];
+
+    // src0 -> left columns of each dst row
+    dma_queue_push(q, dma_make_ptr(dst_base, s0_base),
+                   dst->nb[1] /*dst_stride*/, src0->nb[1] /*src_stride*/, src0_row /*row_size*/, rows);
+    // src1 -> right columns of each dst row (offset by src0's width)
+    dma_queue_push(q, dma_make_ptr(dst_base + src0_row, s1_base),
+                   dst->nb[1], src1->nb[1], src1_row, rows);
+
+    dma_queue_pop(q);
+    dma_queue_pop(q);
+}
+
 static void concat_generic(unsigned int nth, unsigned int ith, void * data) {
     struct htp_concat_context * cctx = (struct htp_concat_context *) data;
     struct htp_ops_context * octx = cctx->octx;
@@ -235,7 +276,30 @@ int op_concat(struct htp_ops_context * octx) {
 
     void (*worker_func)(unsigned int, unsigned int, void *) = concat_generic;
 
-    if (dim == 0 && is_2d && is_src1_transposed && !is_src0_transposed) {
+    // Fully-contiguous dim-0 concat (gemma-4 vision rope recombine): collapse higher dims to a
+    // flat row count and copy via strided DDR->DDR DMA. Pure byte copy -> bit-identical to generic.
+    const bool src0_contig = (src0->nb[0] == type_size) &&
+                             (src0->nb[1] == src0->nb[0] * src0->ne[0]) &&
+                             (src0->nb[2] == src0->nb[1] * src0->ne[1]) &&
+                             (src0->nb[3] == src0->nb[2] * src0->ne[2]);
+    const bool src1_contig = (src1->nb[0] == type_size) &&
+                             (src1->nb[1] == src1->nb[0] * src1->ne[0]) &&
+                             (src1->nb[2] == src1->nb[1] * src1->ne[1]) &&
+                             (src1->nb[3] == src1->nb[2] * src1->ne[2]);
+    const bool dst_contig  = (dst->nb[0] == type_size) &&
+                             (dst->nb[1] == dst->nb[0] * dst->ne[0]) &&
+                             (dst->nb[2] == dst->nb[1] * dst->ne[1]) &&
+                             (dst->nb[3] == dst->nb[2] * dst->ne[2]);
+
+    if (dim == 0 && src0_contig && src1_contig && dst_contig) {
+        const uint32_t nrows = dst->ne[1] * dst->ne[2] * dst->ne[3];
+        n_threads = MIN(nrows, n_threads);
+        if (n_threads < 1) {
+            n_threads = 1;
+        }
+        cctx.nrows_per_thread = hmx_ceil_div(nrows, n_threads);
+        worker_func = concat_dim0_contig;
+    } else if (dim == 0 && is_2d && is_src1_transposed && !is_src0_transposed) {
         n_threads = MIN(dst->ne[1], n_threads);
         if (n_threads < 1) {
             n_threads = 1;

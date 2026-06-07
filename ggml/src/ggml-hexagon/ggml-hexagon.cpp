@@ -2599,8 +2599,15 @@ static bool ggml_hexagon_supported_mul_mat(const struct ggml_hexagon_session * s
                 return false;  // typically the lm-head which would be too large for VTCM
             }
 
-            if (ggml_nrows(src1) > 1024 || src1->ne[2] != 1 || src1->ne[3] != 1) {
-                return false;  // no huge batches or broadcasting (for now)
+            {
+                // The matmul kernel chunks src1 rows through VTCM, so large row counts are fine.
+                // gemma vision runs 2304 tokens/prefill at once; the default 1024 cap forced every
+                // vision projection matmul onto the CPU. Allow override via GGML_HEXAGON_MM_MAXROWS.
+                const char * mm_maxrows_s = getenv("GGML_HEXAGON_MM_MAXROWS");
+                const int64_t mm_maxrows = mm_maxrows_s ? atoll(mm_maxrows_s) : 1024;
+                if (ggml_nrows(src1) > mm_maxrows || src1->ne[2] != 1 || src1->ne[3] != 1) {
+                    return false;  // no broadcasting; row cap tunable for wide vision prefill
+                }
             }
 
             // src0 (weights) must be repacked
@@ -2738,6 +2745,25 @@ static bool ggml_hexagon_supported_add_id(const struct ggml_hexagon_session * se
         return false;
     }
 
+    return true;
+}
+
+static bool ggml_hexagon_supported_clamp(const struct ggml_hexagon_session * sess, const struct ggml_tensor * op) {
+    const struct ggml_tensor * src0 = op->src[0];
+    const struct ggml_tensor * dst  = op;
+
+    if (src0->type != GGML_TYPE_F32 || dst->type != GGML_TYPE_F32) {
+        return false;
+    }
+    if (!ggml_are_same_shape(src0, dst)) {
+        return false;
+    }
+    // the unary DSP kernel steps src and dst with a single row size, so require both contiguous
+    // (gemma vision has some CLAMP on strided half-dim views; those fall back, the rest run on HTP)
+    if (!ggml_is_contiguous(src0) || !ggml_is_contiguous(dst)) {
+        return false;
+    }
+    GGML_UNUSED(sess);
     return true;
 }
 
@@ -2981,7 +3007,11 @@ static bool ggml_hexagon_supported_rope(const struct ggml_hexagon_session * sess
             return false;
         }
     } else {
-        if (!ggml_is_contiguous(src0) || !ggml_is_contiguous(src1) || !ggml_is_contiguous(dst)) {
+        // src0 only needs contiguous ROWS (nb0==type_size): the rope kernel DMAs each row using
+        // src0->nb[1] as the DDR stride (rope-ops.c sets src0_row_size = nb[1]) and the compute
+        // takes ne0 elements per row, so a strided half-dim view (gemma-4 vision NEOX rope) is read
+        // correctly without a preceding ggml_cont. dst/src1 must stay fully contiguous.
+        if (!ggml_is_contiguous_rows(src0) || !ggml_is_contiguous(src1) || !ggml_is_contiguous(dst)) {
             return false;
         }
     }
@@ -3159,6 +3189,7 @@ static htp_op_code op_remap_to_htp(const ggml_tensor * t) {
         case GGML_OP_RMS_NORM:        return HTP_OP_RMS_NORM;
         case GGML_OP_CONCAT:          return HTP_OP_CONCAT;
         case GGML_OP_SCALE:           return HTP_OP_SCALE;
+        case GGML_OP_CLAMP:           return HTP_OP_CLAMP;
         case GGML_OP_SQR:             return HTP_OP_SQR;
         case GGML_OP_SQRT:            return HTP_OP_SQRT;
         case GGML_OP_SOFT_MAX:        return HTP_OP_SOFTMAX;
@@ -3193,6 +3224,7 @@ static htp_op_code op_remap_to_htp(const ggml_tensor * t) {
                 case GGML_GLU_OP_SWIGLU:     return HTP_OP_GLU_SWIGLU;
                 case GGML_GLU_OP_SWIGLU_OAI: return HTP_OP_GLU_SWIGLU_OAI;
                 case GGML_GLU_OP_GEGLU:      return HTP_OP_GLU_GEGLU;
+                case GGML_GLU_OP_GEGLU_QUICK: return HTP_OP_GLU_GEGLU_QUICK;
                 default: break;
             }
             break;
@@ -3640,6 +3672,10 @@ static bool ggml_backend_hexagon_device_supports_op(ggml_backend_dev_t dev, cons
             supp = ggml_hexagon_supported_unary(sess, op);
             break;
 
+        case GGML_OP_CLAMP:
+            supp = ggml_hexagon_supported_clamp(sess, op);
+            break;
+
         case GGML_OP_SQR:
         case GGML_OP_SQRT:
             supp = ggml_hexagon_supported_unary(sess, op);
@@ -3677,6 +3713,7 @@ static bool ggml_backend_hexagon_device_supports_op(ggml_backend_dev_t dev, cons
                 case GGML_GLU_OP_SWIGLU:
                 case GGML_GLU_OP_SWIGLU_OAI:
                 case GGML_GLU_OP_GEGLU:
+                case GGML_GLU_OP_GEGLU_QUICK:
                     supp = ggml_hexagon_supported_activations(sess, op);
                     break;
                 default:

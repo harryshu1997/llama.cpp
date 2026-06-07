@@ -69,6 +69,7 @@ enum htp_op_code {
     HTP_OP_GLU_SWIGLU,
     HTP_OP_GLU_SWIGLU_OAI,
     HTP_OP_GLU_GEGLU,
+    HTP_OP_GLU_GEGLU_QUICK,
     HTP_OP_SOFTMAX,
     HTP_OP_ADD_ID,
     HTP_OP_ROPE,
@@ -93,6 +94,7 @@ enum htp_op_code {
     HTP_OP_PAD,
     HTP_OP_NORM,
     HTP_OP_CONCAT,
+    HTP_OP_CLAMP,
 
     HTP_OP_INVALID
 };

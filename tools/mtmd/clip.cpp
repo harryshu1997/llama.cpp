@@ -2706,6 +2706,28 @@ struct clip_model_loader {
 
             // alloc memory and offload data
             ggml_backend_buffer_type_t buft = ggml_backend_get_default_buffer_type(ctx_clip.backend);
+            // route-2: if the backend exposes "extra" buffer types (e.g. the Hexagon/HTP repack
+            // buffer that stores quantized weights in the HMX layout), allocate the model weights
+            // there so quantized MUL_MAT can run on the NPU. Without this, clip weights land in the
+            // backend's default buffer and every quantized vision matmul is rejected by
+            // ggml-hexagon supports_op (repack-buffer gate at line ~2607), cascading to GPU/CPU.
+            // Set MTMD_NO_HTP_REPACK=1 to keep the old default-buffer behavior (A/B baseline).
+            if (!getenv("MTMD_NO_HTP_REPACK")) {
+                ggml_backend_dev_t dev = ggml_backend_get_device(ctx_clip.backend);
+                ggml_backend_reg_t reg = dev ? ggml_backend_dev_backend_reg(dev) : nullptr;
+                if (reg) {
+                    auto get_extra_bufts = (ggml_backend_dev_get_extra_bufts_t)
+                        ggml_backend_reg_get_proc_address(reg, "ggml_backend_dev_get_extra_bufts");
+                    if (get_extra_bufts) {
+                        ggml_backend_buffer_type_t * extra = get_extra_bufts(dev);
+                        if (extra && extra[0]) {
+                            LOG_INF("%s: CLIP weights -> extra buffer type %s (e.g. HTP repack)\n",
+                                    __func__, ggml_backend_buft_name(extra[0]));
+                            buft = extra[0];
+                        }
+                    }
+                }
+            }
             ctx_clip.buf.reset(ggml_backend_alloc_ctx_tensors_from_buft(ctx_clip.ctx_data.get(), buft));
             ggml_backend_buffer_set_usage(ctx_clip.buf.get(), GGML_BACKEND_BUFFER_USAGE_WEIGHTS);
             for (auto & t : tensors_to_load) {
