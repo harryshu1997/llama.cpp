@@ -5096,30 +5096,22 @@ static void ggml_cl_ensure_foreign_extra(ggml_backend_opencl_context * backend_c
     // changing activations stay correct without leaking a buffer per frame.
     const size_t tb = ggml_nbytes(t);
 
-    // DEBUG (GGML_OPENCL_HTP_DUMP): verify reading the imported dma-buf as a BUFFER at tensor_off
-    // returns the same bytes Hexagon wrote (CPU view of the host-mapped rpcmem). This isolates
-    // "is the import + offset correct at the buffer level" from any downstream image issue.
-    if (getenv("GGML_OPENCL_HTP_DUMP")) {
-        const int NF = 8;
-        float cpu_v[NF], gpu_v[NF];
-        memcpy(cpu_v, t->data, sizeof(cpu_v));
-        cl_int de = clEnqueueReadBuffer(backend_ctx->queue, mem, CL_TRUE, (size_t)tensor_off,
-                                        sizeof(gpu_v), gpu_v, 0, NULL, NULL);
-        GGML_LOG_INFO("ggml-opencl: [HTP_DUMP import] %s off=%llu align128=%llu readbuf_err=%d\n",
-            t->name, (unsigned long long)tensor_off, (unsigned long long)(tensor_off % 128), de);
-        GGML_LOG_INFO("  CPU(t->data): %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f\n",
-            cpu_v[0],cpu_v[1],cpu_v[2],cpu_v[3],cpu_v[4],cpu_v[5],cpu_v[6],cpu_v[7]);
-        GGML_LOG_INFO("  GPU(buf@off): %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f\n",
-            gpu_v[0],gpu_v[1],gpu_v[2],gpu_v[3],gpu_v[4],gpu_v[5],gpu_v[6],gpu_v[7]);
-    }
-
-    // ZERO-COPY (GGML_OPENCL_HTP_ZEROCOPY): point the extra directly at the imported dma-buf with
-    // the tensor's byte offset -- no copy. The matmul will sub-buffer + image this in place.
-    if (getenv("GGML_OPENCL_HTP_ZEROCOPY")) {
+    // TRUE ZERO-COPY (default): point the extra directly at the imported dma-buf -- the OpenCL op reads
+    // the Hexagon-resident tensor in place, no copy.
+    // CRITICAL: ggml-opencl ops address src as (extra->offset + tensor->view_offs). For a VIEW,
+    // t->data already includes view_offs, so extra->offset must be the STORAGE-ROOT offset
+    // (t->data minus view_offs == view_src->data), NOT t->data-base -- otherwise view_offs is
+    // double-counted and ops like GET_ROWS read out of bounds (garbage -> NaN). (The q8_0 matmul was
+    // immune only because it asserts src1->view_offs==0; GET_ROWS on the pos-embd view exposed this.)
+    // Escape hatch GGML_OPENCL_HTP_FORCE_COPY falls back to a device->device copy into an exact-sized
+    // offset-0 buffer (kept for A/B and as a safety net).
+    if (!getenv("GGML_OPENCL_HTP_FORCE_COPY")) {
+        void * root_data = t->view_src ? t->view_src->data : t->data;
+        cl_ulong root_off = (cl_ulong)((char*)root_data - (char*)base);
         ggml_tensor_extra_cl * extra = new ggml_tensor_extra_cl();
         extra->data_device = mem;
-        extra->offset      = (cl_ulong)tensor_off;
-        extra->actual_size = size;   // whole imported buffer
+        extra->offset      = root_off;          // op adds t->view_offs -> lands at t->data
+        extra->actual_size = size;              // whole imported buffer
         t->extra = extra;
         return;
     }
@@ -12763,32 +12755,6 @@ static void ggml_cl_mul_mat_q8_0_f32_adreno(ggml_backend_t backend, const ggml_t
         img_desc.image_width = K * N / 4;
         img_desc.buffer = b_sub_buf;
         CL_CHECK((b_img = clCreateImage(context, CL_MEM_READ_ONLY, &img_fmt, &img_desc, NULL, &err), err));
-
-        // DEBUG (GGML_OPENCL_HTP_DUMP): compare what the IMAGE sees vs what the BUFFER holds for the
-        // activation, over the SAME b_sub_buf. If they diverge, the image addressing over this
-        // (possibly imported/offset) buffer is the bug; the divergence pattern reveals the shift.
-        if (getenv("GGML_OPENCL_HTP_DUMP")) {
-            const int NP = 8;            // pixels (RGBA float => 4 floats each)
-            const int NFL = NP * 4;
-            float buf_v[NFL], img_v[NFL];
-            cl_int be = clEnqueueReadBuffer(backend_ctx->queue, b_sub_buf, CL_TRUE, 0,
-                                            sizeof(buf_v), buf_v, 0, NULL, NULL);
-            size_t org[3] = {0,0,0}, reg[3] = {(size_t)NP,1,1};
-            cl_int ie = clEnqueueReadImage(backend_ctx->queue, b_img, CL_TRUE, org, reg, 0, 0,
-                                           img_v, 0, NULL, NULL);
-            int bad = -1;
-            for (int k = 0; k < NFL; k++) { if (buf_v[k] != img_v[k]) { bad = k; break; } }
-            GGML_LOG_INFO("ggml-opencl: [HTP_DUMP matmul] %s offset1=%llu K=%d N=%d readbuf=%d readimg=%d %s\n",
-                src1->name, (unsigned long long)offset1, K, N, be, ie,
-                bad<0 ? "IMAGE==BUFFER" : "IMAGE!=BUFFER");
-            GGML_LOG_INFO("  BUFFER: %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f\n",
-                buf_v[0],buf_v[1],buf_v[2],buf_v[3],buf_v[4],buf_v[5],buf_v[6],buf_v[7]);
-            GGML_LOG_INFO("  IMAGE : %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f\n",
-                img_v[0],img_v[1],img_v[2],img_v[3],img_v[4],img_v[5],img_v[6],img_v[7]);
-            if (bad >= 0) {
-                GGML_LOG_INFO("  first divergence at float %d: buf=%.4f img=%.4f\n", bad, buf_v[bad], img_v[bad]);
-            }
-        }
 
         // pad N to multiple of 8
         int extra_elements = N % 8;

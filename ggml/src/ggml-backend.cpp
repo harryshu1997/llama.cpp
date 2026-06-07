@@ -23,6 +23,7 @@
 #include <vector>
 #include <map>
 #include <mutex>
+#include <string>
 
 #ifdef __APPLE__
 #include <sys/types.h>
@@ -1499,6 +1500,9 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
                 size_t id = hash_id(input);
                 for (int c = 0; c < sched->n_copies; c++) {
                     struct ggml_tensor * input_cpy = tensor_id_copy(id, backend_id, c);
+                    if (input_cpy == NULL) { // zero-copy in-place input has no copy tensor
+                        continue;
+                    }
                     sched->leaf_backend_ids[graph_copy->n_leafs] = backend_id;
                     assert(graph_copy->size > graph_copy->n_leafs);
                     graph_copy->leafs[graph_copy->n_leafs++] = input_cpy;
@@ -1581,10 +1585,23 @@ static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t s
     std::vector<int32_t> ids;
     std::vector<ggml_bitset_t> used_ids;
 
+    // --- route-2 per-backend profiling (GGML_SCHED_PROFILE) ---
+    const bool prof = getenv("GGML_SCHED_PROFILE") != NULL;
+    int64_t prof_copy_us[GGML_SCHED_MAX_BACKENDS] = {0};
+    int64_t prof_comp_us[GGML_SCHED_MAX_BACKENDS] = {0};
+    int     prof_splits [GGML_SCHED_MAX_BACKENDS] = {0};
+    int     prof_nodes  [GGML_SCHED_MAX_BACKENDS] = {0};
+    int     prof_inputs [GGML_SCHED_MAX_BACKENDS] = {0};
+    int     prof_xedges = 0;            // input edges whose producer backend != this split's backend
+    std::string prof_seq;              // compact backend-per-split sequence
+    std::vector<std::string> prof_detail; // per-split op/name dump (vision graph only)
+
     for (int split_id = 0; split_id < sched->n_splits; split_id++) {
         struct ggml_backend_sched_split * split = &splits[split_id];
         int split_backend_id = split->backend_id;
         ggml_backend_t split_backend = sched->backends[split_backend_id];
+
+        int64_t prof_t0 = prof ? ggml_time_us() : 0;
 
         // copy the input tensors to the split backend
         for (int input_id = 0; input_id < split->n_inputs; input_id++) {
@@ -1709,6 +1726,12 @@ static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t s
             }
         }
 
+        int64_t prof_t1 = 0;
+        if (prof) {
+            ggml_backend_synchronize(split_backend); // ensure input copies are done before timing compute
+            prof_t1 = ggml_time_us();
+        }
+
         if (!sched->callback_eval) {
             enum ggml_status ec = ggml_backend_graph_compute_async(split_backend, &split->graph);
             if (ec != GGML_STATUS_SUCCESS) {
@@ -1752,6 +1775,58 @@ static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t s
         if (split->n_inputs > 0) {
             if (sched->events[split_backend_id][sched->cur_copy] != NULL) {
                 ggml_backend_event_record(sched->events[split_backend_id][sched->cur_copy], split_backend);
+            }
+        }
+
+        if (prof) {
+            ggml_backend_synchronize(split_backend); // finish this split's compute before timing next
+            int64_t prof_t2 = ggml_time_us();
+            prof_copy_us[split_backend_id] += prof_t1 - prof_t0;
+            prof_comp_us[split_backend_id] += prof_t2 - prof_t1;
+            prof_splits [split_backend_id] += 1;
+            prof_nodes  [split_backend_id] += split->graph.n_nodes;
+            prof_inputs [split_backend_id] += split->n_inputs;
+            // count cross-backend dependency edges (producer backend != consumer backend)
+            for (int ii = 0; ii < split->n_inputs; ii++) {
+                ggml_backend_t pb = ggml_backend_sched_get_tensor_backend(sched, split->inputs[ii]);
+                if (pb != split_backend) prof_xedges++;
+            }
+            const char * nm = ggml_backend_name(split_backend);
+            char bc = (nm && nm[0]=='H') ? 'H' : (nm && nm[0]=='O') ? 'G' : (nm && nm[0]=='C') ? 'c' : '?';
+            prof_seq += bc;
+            // detailed per-split op dump for the big (vision) graph
+            if (sched->n_splits > 40) {
+                std::string d; d += bc; d += " [";
+                for (int jn = 0; jn < split->graph.n_nodes; jn++) {
+                    ggml_tensor * nd = split->graph.nodes[jn];
+                    const char * opn = ggml_op_name(nd->op);
+                    if (jn) d += ", ";
+                    d += opn;
+                    if (nd->name[0]) { d += "("; d += nd->name; d += ")"; }
+                }
+                d += "]";
+                prof_detail.push_back(d);
+            }
+        }
+    }
+
+    if (prof) {
+        int64_t tot_copy = 0, tot_comp = 0;
+        for (int b = 0; b < sched->n_backends; b++) { tot_copy += prof_copy_us[b]; tot_comp += prof_comp_us[b]; }
+        fprintf(stderr, "\n[SCHED_PROFILE] n_splits=%d  cross_backend_edges=%d  total: copy=%.2f ms  compute=%.2f ms\n",
+                sched->n_splits, prof_xedges, tot_copy/1000.0, tot_comp/1000.0);
+        for (int b = 0; b < sched->n_backends; b++) {
+            if (prof_splits[b] == 0) continue;
+            fprintf(stderr, "[SCHED_PROFILE]   %-12s splits=%-4d nodes=%-5d inputs=%-4d  copy=%8.2f ms  compute=%8.2f ms\n",
+                    ggml_backend_name(sched->backends[b]), prof_splits[b], prof_nodes[b], prof_inputs[b],
+                    prof_copy_us[b]/1000.0, prof_comp_us[b]/1000.0);
+        }
+        if (sched->n_splits > 40) { // only the big (vision) graph
+            fprintf(stderr, "[SCHED_PROFILE]   seq(H=HTP,G=GPU,c=CPU): %s\n", prof_seq.c_str());
+            int dn = (int)prof_detail.size(); int dlim = dn < 40 ? dn : 40;
+            fprintf(stderr, "[SCHED_PROFILE]   --- per-split op dump (first %d of %d) ---\n", dlim, dn);
+            for (int i = 0; i < dlim; i++) {
+                fprintf(stderr, "[SCHED_PROFILE]   #%-3d %s\n", i, prof_detail[i].c_str());
             }
         }
     }
