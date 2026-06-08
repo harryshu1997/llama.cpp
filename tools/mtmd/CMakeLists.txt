@@ -121,6 +121,13 @@ endif()
 target_link_libraries  (${TARGET} PRIVATE llama-common mtmd Threads::Threads)
 target_compile_features(${TARGET} PRIVATE cxx_std_17)
 
+# mtmd-coexec tool (VQ cross-backend co-exec experiment, Phase 1b)
+set(TARGET llama-mtmd-coexec)
+add_executable         (${TARGET} mtmd-coexec.cpp)
+set_target_properties  (${TARGET} PROPERTIES OUTPUT_NAME llama-mtmd-coexec)
+target_link_libraries  (${TARGET} PRIVATE llama-common mtmd Threads::Threads)
+target_compile_features(${TARGET} PRIVATE cxx_std_17)
+
 # mtmd-debug tool
 add_executable(llama-mtmd-debug debug/mtmd-debug.cpp)
 set_target_properties(llama-mtmd-debug PROPERTIES OUTPUT_NAME llama-mtmd-debug)
