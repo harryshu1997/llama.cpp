@@ -827,7 +827,7 @@ struct ggml_backend_opencl_context {
         // cl_event callback, which wedges the Adreno fire-and-forget pipeline.
         // Model-agnostic: keyed on the ggml op/shape only.
         if (tensor && ggml_vq_enabled()) {
-            ggml_vq_enqueue("GPU", ggml_op_name(tensor->op), tensor->name,
+            ggml_vq_enqueue("GPU", (int) tensor->op, tensor->name,
                             tensor->ne[0], tensor->ne[1], tensor->ne[2], tensor->ne[3],
                             ggml_nbytes(tensor));
         } else {

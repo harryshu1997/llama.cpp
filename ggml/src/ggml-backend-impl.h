@@ -87,19 +87,36 @@ extern "C" {
     GGML_API void ggml_backend_dmabuf_del(void * buffer);
 
     // VQ byte table (model-agnostic occupancy ledger). Env-gated GGML_VQ_BYTETABLE=1.
-    // A backend records an OP as it is enqueued onto its real (in-order, no-cancel)
-    // command queue, and marks it DONE on completion (GPU: cl_event callback;
-    // NPU: per-batch on dspqueue_read). Lives in libggml-base so every backend
-    // resolves it via normal linking. Zero overhead when disabled. Dumps
-    // vq_bytetable.csv at exit. This is the live state the VQ dispatcher reads.
+    //
+    // LIVE STATE = per-backend power-of-2 ring of bit-packed 64-bit words (one per
+    // in-flight OP). An OP is added as it is enqueued onto a backend's real (in-order,
+    // no-cancel) command queue and *removed* on completion (head advances; no DONE rows
+    // kept). depth(backend) = tail-head is O(1); a busy bitmask gives instant occupancy.
+    // Fixed ~64KB total, never grows, fits in cache. Lives in libggml-base so every
+    // backend resolves it via normal linking. Zero overhead when disabled.
+    //
+    // The packed word layout (see ggml-backend.cpp):
+    //   bits  0..2  backend_id (8)   3..6  model_id (16)   7..13 op_type (128)
+    //   bits 14..19 size_class (log2 nbytes, 64)          20..63 seq (op_id, 44b)
+    //
+    // GGML_VQ_TRACE=1 additionally keeps the heavy append-only log (op name, shape,
+    // ns timestamps) and dumps vq_bytetable.csv at exit — for offline cost calibration
+    // only, NOT the production scheduler path.
     GGML_API bool     ggml_vq_enabled(void);
-    GGML_API uint64_t ggml_vq_enqueue(const char * backend, const char * op, const char * node,
+    // backend: "CPU"/"GPU"/"NPU"/"REMOTE" (mapped by first char). op_type: ggml_op enum,
+    // or GGML_OP_COUNT.. for synthetic ops (e.g. an NPU batch). node/ne/nbytes feed the
+    // TRACE log and size_class only. Returns op_id (seq); 0 if disabled.
+    GGML_API uint64_t ggml_vq_enqueue(const char * backend, int op_type, const char * node,
                                       int64_t ne0, int64_t ne1, int64_t ne2, int64_t ne3,
-                                      size_t nbytes);              // -> op_id (0 if disabled)
-    GGML_API void     ggml_vq_complete(uint64_t op_id);            // explicit, by op_id
+                                      size_t nbytes);
+    GGML_API void     ggml_vq_complete(uint64_t op_id);            // by op_id (decodes backend, FIFO)
     GGML_API void     ggml_vq_complete_oldest(const char * backend); // FIFO (NPU, per batch)
     GGML_API void     ggml_vq_complete_all(const char * backend);  // drain (GPU, at queue sync)
-    GGML_API int      ggml_vq_depth(const char * backend);
+    GGML_API int      ggml_vq_depth(const char * backend);         // tail-head, O(1)
+    GGML_API unsigned ggml_vq_busy_mask(void);                     // bit b set iff backend b depth>0
+    GGML_API void     ggml_vq_set_model(int model_id);             // thread-local; tags subsequent enqueues
+    GGML_API void     ggml_vq_session_begin(int n_models);         // reset all rings/counters
+    GGML_API void     ggml_vq_session_end(void);                   // clear; dump TRACE csv if on
 
     // multi-buffer
     // buffer that contains a collection of buffers
