@@ -24,6 +24,9 @@
 #include <map>
 #include <mutex>
 #include <string>
+#include <atomic>
+#include <chrono>
+#include <deque>
 
 #ifdef __APPLE__
 #include <sys/types.h>
@@ -61,6 +64,137 @@ void ggml_backend_dmabuf_del(void * buffer) {
     if (!buffer) return;
     std::lock_guard<std::mutex> lock(g_dmabuf_mutex);
     g_dmabuf_map().erase(buffer);
+}
+
+// ---------------------------------------------------------------------------
+// VQ byte table — model-agnostic occupancy ledger. See ggml-backend-impl.h.
+// Env-gated (GGML_VQ_BYTETABLE=1). Records one row per OP enqueued onto a real
+// backend queue; backends mark DONE on completion. Dumps vq_bytetable.csv at
+// exit. Nothing here references model identity — it logs whatever any backend
+// enqueues, so it works for any model / any ggml graph.
+// ---------------------------------------------------------------------------
+namespace {
+    struct vq_record {
+        uint64_t    op_id;
+        std::string backend;
+        std::string op;
+        std::string node;
+        int64_t     ne[4];
+        size_t      nbytes;
+        uint64_t    t_enq_ns;
+        uint64_t    t_fin_ns;   // 0 while in flight
+        int         state;      // 1=QUEUED, 3=DONE
+    };
+
+    std::mutex                          g_vq_mutex;
+    std::vector<vq_record>              g_vq_rows;
+    std::map<uint64_t, size_t>          g_vq_index;             // op_id -> row
+    std::map<std::string, std::deque<uint64_t>> g_vq_open;      // backend -> open op_ids (FIFO)
+    std::map<std::string, int>          g_vq_depth;
+    std::atomic<uint64_t>               g_vq_next_id{1};
+    std::atomic<int>                    g_vq_state{-1};         // -1 unknown, 0 off, 1 on
+    bool                                g_vq_dump_registered = false;
+
+    uint64_t vq_now_ns() {
+        return (uint64_t) std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
+
+    void vq_dump_atexit() {
+        std::lock_guard<std::mutex> lock(g_vq_mutex);
+        if (g_vq_rows.empty()) return;
+        FILE * f = fopen("vq_bytetable.csv", "w");
+        if (!f) return;
+        fprintf(f, "op_id,backend,op,node,ne0,ne1,ne2,ne3,nbytes,t_enq_ns,t_fin_ns,dur_us,state\n");
+        for (const auto & r : g_vq_rows) {
+            double dur_us = (r.t_fin_ns && r.t_fin_ns >= r.t_enq_ns)
+                          ? (r.t_fin_ns - r.t_enq_ns) / 1000.0 : -1.0;
+            fprintf(f, "%llu,%s,%s,%s,%lld,%lld,%lld,%lld,%zu,%llu,%llu,%.3f,%d\n",
+                    (unsigned long long) r.op_id, r.backend.c_str(), r.op.c_str(), r.node.c_str(),
+                    (long long) r.ne[0], (long long) r.ne[1], (long long) r.ne[2], (long long) r.ne[3],
+                    r.nbytes, (unsigned long long) r.t_enq_ns, (unsigned long long) r.t_fin_ns,
+                    dur_us, r.state);
+        }
+        fclose(f);
+    }
+}
+
+bool ggml_vq_enabled(void) {
+    int s = g_vq_state.load(std::memory_order_relaxed);
+    if (s < 0) {
+        const char * e = getenv("GGML_VQ_BYTETABLE");
+        s = (e && atoi(e) != 0) ? 1 : 0;
+        g_vq_state.store(s, std::memory_order_relaxed);
+    }
+    return s == 1;
+}
+
+uint64_t ggml_vq_enqueue(const char * backend, const char * op, const char * node,
+                         int64_t ne0, int64_t ne1, int64_t ne2, int64_t ne3, size_t nbytes) {
+    if (!ggml_vq_enabled()) return 0;
+    uint64_t id = g_vq_next_id.fetch_add(1, std::memory_order_relaxed);
+    std::lock_guard<std::mutex> lock(g_vq_mutex);
+    if (!g_vq_dump_registered) { atexit(vq_dump_atexit); g_vq_dump_registered = true; }
+    vq_record r;
+    r.op_id = id;
+    r.backend = backend ? backend : "?";
+    r.op = op ? op : "?";
+    r.node = node ? node : "";
+    r.ne[0] = ne0; r.ne[1] = ne1; r.ne[2] = ne2; r.ne[3] = ne3;
+    r.nbytes = nbytes;
+    r.t_enq_ns = vq_now_ns();
+    r.t_fin_ns = 0;
+    r.state = 1;
+    g_vq_index[id] = g_vq_rows.size();
+    g_vq_rows.push_back(std::move(r));
+    g_vq_open[backend ? backend : "?"].push_back(id);
+    g_vq_depth[backend ? backend : "?"]++;
+    return id;
+}
+
+static void vq_close_locked(uint64_t op_id) {
+    auto it = g_vq_index.find(op_id);
+    if (it == g_vq_index.end()) return;
+    vq_record & r = g_vq_rows[it->second];
+    if (r.state == 3) return;
+    r.t_fin_ns = vq_now_ns();
+    r.state = 3;
+    auto & dq = g_vq_open[r.backend];
+    for (auto qit = dq.begin(); qit != dq.end(); ++qit) {
+        if (*qit == op_id) { dq.erase(qit); break; }
+    }
+    if (g_vq_depth[r.backend] > 0) g_vq_depth[r.backend]--;
+}
+
+void ggml_vq_complete(uint64_t op_id) {
+    if (!op_id || !ggml_vq_enabled()) return;
+    std::lock_guard<std::mutex> lock(g_vq_mutex);
+    vq_close_locked(op_id);
+}
+
+void ggml_vq_complete_oldest(const char * backend) {
+    if (!ggml_vq_enabled()) return;
+    std::lock_guard<std::mutex> lock(g_vq_mutex);
+    auto it = g_vq_open.find(backend ? backend : "?");
+    if (it == g_vq_open.end() || it->second.empty()) return;
+    vq_close_locked(it->second.front());
+}
+
+void ggml_vq_complete_all(const char * backend) {
+    if (!ggml_vq_enabled()) return;
+    std::lock_guard<std::mutex> lock(g_vq_mutex);
+    auto it = g_vq_open.find(backend ? backend : "?");
+    if (it == g_vq_open.end()) return;
+    // drain a snapshot (vq_close_locked erases from the same deque)
+    std::vector<uint64_t> ids(it->second.begin(), it->second.end());
+    for (uint64_t id : ids) vq_close_locked(id);
+}
+
+int ggml_vq_depth(const char * backend) {
+    if (!ggml_vq_enabled()) return 0;
+    std::lock_guard<std::mutex> lock(g_vq_mutex);
+    auto it = g_vq_depth.find(backend ? backend : "?");
+    return it == g_vq_depth.end() ? 0 : it->second;
 }
 
 

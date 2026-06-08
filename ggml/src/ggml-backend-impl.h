@@ -86,6 +86,21 @@ extern "C" {
     GGML_API bool ggml_backend_dmabuf_get(void * buffer, int * fd, void ** base, size_t * size);
     GGML_API void ggml_backend_dmabuf_del(void * buffer);
 
+    // VQ byte table (model-agnostic occupancy ledger). Env-gated GGML_VQ_BYTETABLE=1.
+    // A backend records an OP as it is enqueued onto its real (in-order, no-cancel)
+    // command queue, and marks it DONE on completion (GPU: cl_event callback;
+    // NPU: per-batch on dspqueue_read). Lives in libggml-base so every backend
+    // resolves it via normal linking. Zero overhead when disabled. Dumps
+    // vq_bytetable.csv at exit. This is the live state the VQ dispatcher reads.
+    GGML_API bool     ggml_vq_enabled(void);
+    GGML_API uint64_t ggml_vq_enqueue(const char * backend, const char * op, const char * node,
+                                      int64_t ne0, int64_t ne1, int64_t ne2, int64_t ne3,
+                                      size_t nbytes);              // -> op_id (0 if disabled)
+    GGML_API void     ggml_vq_complete(uint64_t op_id);            // explicit, by op_id
+    GGML_API void     ggml_vq_complete_oldest(const char * backend); // FIFO (NPU, per batch)
+    GGML_API void     ggml_vq_complete_all(const char * backend);  // drain (GPU, at queue sync)
+    GGML_API int      ggml_vq_depth(const char * backend);
+
     // multi-buffer
     // buffer that contains a collection of buffers
     GGML_API ggml_backend_buffer_t ggml_backend_multi_buffer_alloc_buffer(ggml_backend_buffer_t * buffers, size_t n_buffers);

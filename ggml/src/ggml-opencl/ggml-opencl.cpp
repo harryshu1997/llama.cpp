@@ -821,7 +821,18 @@ struct ggml_backend_opencl_context {
             flush_profiling_batch();
         }
 #else
-        GGML_UNUSED(tensor);
+        // VQ byte table (env GGML_VQ_BYTETABLE): record this kernel as enqueued
+        // onto the single in-order Adreno queue. Completion is marked in bulk at
+        // ggml_backend_opencl_synchronize (the queue-drain point) -- NO per-kernel
+        // cl_event callback, which wedges the Adreno fire-and-forget pipeline.
+        // Model-agnostic: keyed on the ggml op/shape only.
+        if (tensor && ggml_vq_enabled()) {
+            ggml_vq_enqueue("GPU", ggml_op_name(tensor->op), tensor->name,
+                            tensor->ne[0], tensor->ne[1], tensor->ne[2], tensor->ne[3],
+                            ggml_nbytes(tensor));
+        } else {
+            GGML_UNUSED(tensor);
+        }
         CL_CHECK(clEnqueueNDRangeKernel(queue, kernel, work_dim, NULL, global_work_size, local_work_size, 0, NULL, NULL));
 #endif
     }
@@ -4800,6 +4811,10 @@ static void ggml_backend_opencl_synchronize(ggml_backend_t backend) {
     CL_CHECK(clEnqueueBarrierWithWaitList(backend_ctx->queue, 0, nullptr, &evt));
     CL_CHECK(clWaitForEvents(1, &evt));
     CL_CHECK(clReleaseEvent(evt));
+
+    // VQ byte table: the in-order Adreno queue is now fully drained, so every
+    // GPU op enqueued since the last sync has completed -> mark them DONE.
+    ggml_vq_complete_all("GPU");
 }
 
 // Synchronizes the 'backend_ctx's device with others so that commands

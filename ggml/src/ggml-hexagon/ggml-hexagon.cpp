@@ -2168,6 +2168,9 @@ void ggml_hexagon_session::flush_pending(bool all) {
 
         this->op_pending--;  // atomic dec
 
+        // VQ byte table: this batch (the oldest in-flight on this NPU queue) is done.
+        if (ggml_vq_enabled()) { ggml_vq_complete_oldest("NPU"); }
+
         if (!all) break;
     }
 }
@@ -2191,6 +2194,13 @@ void ggml_hexagon_session::flush_batch() {
     int err = dspqueue_write(this->queue, 0, 1, &dbuf, sizeof(req), (const uint8_t*) &req, DSPQUEUE_TIMEOUT);
     if (err != 0) {
         GGML_ABORT("ggml-hex: %s dspqueue_write failed: 0x%08x\n", this->c_name(), (unsigned) err);
+    }
+
+    // VQ byte table: record the op-batch as enqueued onto the single NPU dspqueue
+    // (the NPU's natural dispatch unit; ne0 = op count in the batch).
+    if (ggml_vq_enabled()) {
+        ggml_vq_enqueue("NPU", "BATCH", this->c_name(),
+                        (int64_t) req.n_ops, 0, 0, 0, dbuf.size);
     }
 }
 
