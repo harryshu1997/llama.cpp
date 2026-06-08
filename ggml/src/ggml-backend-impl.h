@@ -117,6 +117,10 @@ extern "C" {
     GGML_API void     ggml_vq_set_model(int model_id);             // thread-local; tags subsequent enqueues
     GGML_API void     ggml_vq_session_begin(int n_models);         // reset all rings/counters
     GGML_API void     ggml_vq_session_end(void);                   // clear; dump TRACE csv if on
+    // Mode-A admission gate (CONWIP pull control): block until depth(backend) < k,
+    // so a dispatcher never over-commits a single in-order queue. Returns depth at
+    // release; best-effort with a 2s cap (never deadlocks); no-op (0) when disabled.
+    GGML_API int      ggml_vq_admit(const char * backend, int k);
 
     // multi-buffer
     // buffer that contains a collection of buffers

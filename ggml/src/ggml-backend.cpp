@@ -27,6 +27,7 @@
 #include <atomic>
 #include <chrono>
 #include <deque>
+#include <thread>
 
 #ifdef __APPLE__
 #include <sys/types.h>
@@ -72,9 +73,11 @@ void ggml_backend_dmabuf_del(void * buffer) {
 // LIVE STATE: per-backend power-of-2 ring of bit-packed 64-bit words, one word
 // per in-flight OP. Completion advances `head` (the slot is gone — no DONE rows
 // kept). depth = tail-head is O(1). Fixed ~64KB footprint, never grows, fits in
-// cache. Lock-free SPSC per backend: enqueue (single producer = the one in-order
-// queue's feeder thread) publishes via tail release; completion advances head;
-// depth/busy reads use acquire. Nothing references model identity beyond an
+// cache. Lock-free per backend: enqueue reserves a slot via tail fetch_add
+// (MPSC — two contexts may legitimately target one backend); completion advances
+// head (single consumer = that backend's completion thread); depth/busy reads use
+// acquire. Lean mode never reads slots on completion, so the reserve-then-write
+// window is benign. Nothing references model identity beyond an
 // optional thread-local tag — it logs whatever any backend enqueues.
 //
 // TRACE (GGML_VQ_TRACE=1): additionally keep a heavy append-only log (op name,
@@ -216,10 +219,9 @@ uint64_t ggml_vq_enqueue(const char * backend, int op_type, const char * node,
     int bk = vq_backend_id(backend);
     uint64_t seq = g_vq_seq.fetch_add(1, std::memory_order_relaxed);
 
-    vq_ring & R = g_ring[bk];                                  // single producer per backend queue
-    uint32_t tl = R.tail.load(std::memory_order_relaxed);
+    vq_ring & R = g_ring[bk];                                  // MPSC: two contexts may target one backend
+    uint32_t tl = R.tail.fetch_add(1, std::memory_order_acq_rel);
     R.slot[tl & VQ_RING_MASK] = vq_pack(bk, g_vq_model, op_type, vq_size_class(nbytes), seq);
-    R.tail.store(tl + 1, std::memory_order_release);
 
     if (vq_trace_on()) {
         std::lock_guard<std::mutex> lock(g_vq_tmutex);
@@ -296,6 +298,24 @@ void ggml_vq_session_end(void) {
     for (int bk = 0; bk < VQ_BK_N; ++bk) {
         g_ring[bk].head.store(0, std::memory_order_relaxed);
         g_ring[bk].tail.store(0, std::memory_order_relaxed);
+    }
+}
+
+// Admission gate (Mode A): the CONWIP pull-control primitive. Block (yield) until
+// `backend`'s real in-flight depth drops below `k`, so a dispatcher releasing many
+// contexts onto one in-order, no-cancel queue never over-commits it. Returns the
+// depth observed at release. Best-effort: a 2s wall-clock cap guarantees it can
+// never deadlock if the backend stalls. No-op (returns 0) when VQ is disabled or
+// k<=0 (ungated). The completion hooks (GPU synchronize / NPU dspqueue_read) are
+// what make depth fall, so this gates *across* contexts/threads, not within one.
+int ggml_vq_admit(const char * backend, int k) {
+    if (!ggml_vq_enabled() || k <= 0) return 0;
+    vq_ring & R = g_ring[vq_backend_id(backend)];
+    uint64_t deadline = vq_now_ns() + 2000000000ull;          // 2s safety cap
+    for (;;) {
+        int d = (int)(R.tail.load(std::memory_order_acquire) - R.head.load(std::memory_order_acquire));
+        if (d < k || vq_now_ns() >= deadline) return d;
+        std::this_thread::yield();
     }
 }
 
