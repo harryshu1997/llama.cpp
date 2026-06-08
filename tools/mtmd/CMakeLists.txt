@@ -128,6 +128,13 @@ set_target_properties  (${TARGET} PROPERTIES OUTPUT_NAME llama-mtmd-coexec)
 target_link_libraries  (${TARGET} PRIVATE llama-common mtmd Threads::Threads)
 target_compile_features(${TARGET} PRIVATE cxx_std_17)
 
+# mtmd-sched tool (VQ scheduler: virtual queue + WIP-cap dispatch, Phase 1b/2)
+set(TARGET llama-mtmd-sched)
+add_executable         (${TARGET} mtmd-sched.cpp)
+set_target_properties  (${TARGET} PROPERTIES OUTPUT_NAME llama-mtmd-sched)
+target_link_libraries  (${TARGET} PRIVATE llama-common mtmd Threads::Threads)
+target_compile_features(${TARGET} PRIVATE cxx_std_17)
+
 # mtmd-debug tool
 add_executable(llama-mtmd-debug debug/mtmd-debug.cpp)
 set_target_properties(llama-mtmd-debug PROPERTIES OUTPUT_NAME llama-mtmd-debug)
