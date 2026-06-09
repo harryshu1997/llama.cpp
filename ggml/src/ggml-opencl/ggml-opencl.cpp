@@ -5150,15 +5150,90 @@ static void ggml_cl_ensure_foreign_extra(ggml_backend_opencl_context * backend_c
     t->extra = extra;
 }
 
+// route 2 (GPU->NPU, opt-in via GGML_OPENCL_EXPORT_HTP): the INVERSE of ggml_cl_ensure_foreign_extra.
+// When an OpenCL op's OUTPUT tensor lives in a Hexagon (HTP) rpcmem dma-buf, import that buffer as a
+// writable cl_mem and point the node's extra at it so the op writes its result straight into the shared
+// LPDDR the DSP will read -- zero-copy. The buffer MUST be Hexagon-owned (only rpcmem is fastrpc_mmap'd
+// for the DSP); outputs are activations (standard F16/F32), so no relayout. GGML_OPENCL_HTP_FORCE_COPY =
+// the A/B "tax-on" baseline: write to a private cl_mem, then copy OUT to the shared buffer after compute
+// (the explicit transfer tax the zero-copy path removes). The producer flushes (clFinish) at graph end;
+// the DSP invalidates its caches before reading (DSPQUEUE_BUFFER_FLAG_INVALIDATE_RECIPIENT).
+struct ggml_cl_foreign_out { cl_mem priv; cl_mem shared; size_t off; size_t nbytes; };
+
+static void ggml_cl_ensure_foreign_output_extra(ggml_backend_opencl_context * backend_ctx, ggml_tensor * t,
+                                                 std::vector<ggml_cl_foreign_out> * copyouts) {
+    if (!t || t->extra != nullptr || t->buffer == nullptr || t->data == nullptr) {
+        return;
+    }
+    if (!backend_ctx->has_qcom_dmabuf_host_ptr || ggml_is_quantized(t->type)) {
+        return; // cross-backend outputs are activations; quantized weights never produced this way
+    }
+    int fd = -1; void * base = nullptr; size_t size = 0;
+    if (!ggml_backend_dmabuf_get((void *) t->buffer, &fd, &base, &size) || fd < 0 || base == nullptr || size == 0) {
+        return; // not a Hexagon dma-buf -> normal OpenCL output path
+    }
+    cl_mem mem = nullptr;
+    auto it = backend_ctx->imported_dmabuf.find((void*)t->buffer);
+    if (it != backend_ctx->imported_dmabuf.end()) {
+        mem = it->second;
+    } else {
+        mem = ggml_cl_import_dmabuf(backend_ctx, fd, base, size);
+        backend_ctx->imported_dmabuf[(void*)t->buffer] = mem;
+        if (mem) GGML_LOG_INFO("ggml-opencl: route2 EXPORT imported HTP dma-buf fd=%d size=%zu for output\n", fd, size);
+    }
+    if (!mem) {
+        return;
+    }
+    const size_t   tb         = ggml_nbytes(t);
+    const cl_ulong tensor_off = (cl_ulong)((char*)t->data - (char*)base);
+
+    if (!getenv("GGML_OPENCL_HTP_FORCE_COPY")) {
+        // zero-copy (tax-off): the op writes directly into the shared dma-buf at the tensor's offset.
+        void *   root_data = t->view_src ? t->view_src->data : t->data;
+        cl_ulong root_off  = (cl_ulong)((char*)root_data - (char*)base);
+        ggml_tensor_extra_cl * extra = new ggml_tensor_extra_cl();
+        extra->data_device = mem;
+        extra->offset      = root_off;     // op adds t->view_offs -> lands at t->data
+        extra->actual_size = size;
+        t->extra = extra;
+        return;
+    }
+
+    // FORCE_COPY (tax-on baseline): op writes to a private buffer; copy OUT to shared after compute.
+    cl_mem priv = nullptr;
+    auto bit = backend_ctx->foreign_act_buf.find(t->data);
+    if (bit != backend_ctx->foreign_act_buf.end()) {
+        priv = bit->second;
+    } else {
+        cl_int e2 = CL_SUCCESS;
+        priv = clCreateBuffer(backend_ctx->context, CL_MEM_READ_WRITE, tb, NULL, &e2);
+        CL_CHECK(e2);
+        backend_ctx->foreign_act_buf[t->data] = priv;
+    }
+    ggml_tensor_extra_cl * extra = new ggml_tensor_extra_cl();
+    extra->data_device = priv;
+    extra->offset      = 0;
+    extra->actual_size = tb;
+    t->extra = extra;
+    if (copyouts) copyouts->push_back({ priv, mem, (size_t)tensor_off, tb });
+}
+
 static ggml_status ggml_backend_opencl_graph_compute(ggml_backend_t backend, ggml_cgraph * cgraph) {
     ggml_backend_opencl_context *backend_ctx = (ggml_backend_opencl_context *)backend->context;
 
-    // route 2: ensure any Hexagon-resident src tensors have an OpenCL extra (zero-copy import)
+    // route 2: ensure any Hexagon-resident src tensors have an OpenCL extra (zero-copy import).
+    // route 2 (GPU->NPU): if GGML_OPENCL_EXPORT_HTP, also let an op write its OUTPUT into a Hexagon
+    // dma-buf (zero-copy, or copy-out under FORCE_COPY for the A/B baseline).
+    std::vector<ggml_cl_foreign_out> foreign_copyouts;
+    const bool export_htp = getenv("GGML_OPENCL_EXPORT_HTP") != nullptr;
     if (backend_ctx->has_qcom_dmabuf_host_ptr) {
         for (int i = 0; i < cgraph->n_nodes; i++) {
             ggml_tensor * node = cgraph->nodes[i];
             for (int j = 0; j < GGML_MAX_SRC; j++) {
                 ggml_cl_ensure_foreign_extra(backend_ctx, node->src[j]);
+            }
+            if (export_htp) {
+                ggml_cl_ensure_foreign_output_extra(backend_ctx, node, &foreign_copyouts);
             }
         }
     }
@@ -5200,6 +5275,15 @@ static ggml_status ggml_backend_opencl_graph_compute(ggml_backend_t backend, ggm
             GGML_LOG_ERROR("%s: error: op not supported %s (%s)\n", __func__, node->name, ggml_op_name(node->op));
         }
         GGML_ASSERT(ok);
+    }
+
+    // route 2 (GPU->NPU): flush GPU writes to LPDDR before the DSP reads. Under FORCE_COPY, copy each
+    // op's private output into its shared Hexagon dma-buf first (the explicit "tax-on" transfer).
+    if (export_htp && backend_ctx->has_qcom_dmabuf_host_ptr) {
+        for (const auto & co : foreign_copyouts) {
+            CL_CHECK(clEnqueueCopyBuffer(backend_ctx->queue, co.priv, co.shared, 0, co.off, co.nbytes, 0, NULL, NULL));
+        }
+        clFinish(backend_ctx->queue);
     }
 
     return GGML_STATUS_SUCCESS;
