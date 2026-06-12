@@ -135,6 +135,20 @@ set_target_properties  (${TARGET} PROPERTIES OUTPUT_NAME llama-mtmd-sched)
 target_link_libraries  (${TARGET} PRIVATE llama-common mtmd Threads::Threads)
 target_compile_features(${TARGET} PRIVATE cxx_std_17)
 
+# mtmd-stream tool (REQ-003 continuous-arrival serving harness)
+set(TARGET llama-mtmd-stream)
+add_executable         (${TARGET} mtmd-stream.cpp)
+set_target_properties  (${TARGET} PROPERTIES OUTPUT_NAME llama-mtmd-stream)
+target_link_libraries  (${TARGET} PRIVATE llama-common mtmd Threads::Threads)
+target_compile_features(${TARGET} PRIVATE cxx_std_17)
+
+# gate-coalesce tool (REQ-006 gates G1/G2)
+set(TARGET llama-gate-coalesce)
+add_executable         (${TARGET} gate-coalesce.cpp)
+set_target_properties  (${TARGET} PROPERTIES OUTPUT_NAME llama-gate-coalesce)
+target_link_libraries  (${TARGET} PRIVATE llama-common mtmd Threads::Threads)
+target_compile_features(${TARGET} PRIVATE cxx_std_17)
+
 # mtmd-debug tool
 add_executable(llama-mtmd-debug debug/mtmd-debug.cpp)
 set_target_properties(llama-mtmd-debug PROPERTIES OUTPUT_NAME llama-mtmd-debug)
