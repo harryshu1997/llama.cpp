@@ -3480,6 +3480,32 @@ bool clip_image_batch_encode(clip_ctx * ctx, const int n_threads, const clip_ima
     // build the inference graph
     ggml_backend_sched_reset(ctx->sched.get());
     ggml_cgraph * gf = clip_image_build_graph(ctx, imgs);
+    // REQ-004: hand-pin ~MTMD_PIN_FRAC of the graph's compute nodes to the 2nd backend
+    // (backend_extra[0]) via set_tensor_backend BETWEEN build and alloc. Op-level 50/50
+    // control under single-residency; the sched pays the cross-backend weight copy honestly.
+    if (const char * pf = std::getenv("MTMD_PIN_FRAC")) {
+        double frac = atof(pf);
+        const bool noweight = std::getenv("MTMD_PIN_NOWEIGHT") != nullptr; // skip weight-bearing matmul
+        ggml_backend_t b2 = ctx->backend_extra.empty() ? nullptr : ctx->backend_extra[0];
+        if (b2 && frac > 0.0) {
+            int n = ggml_graph_n_nodes(gf);
+            int start = (int) ((1.0 - frac) * n);   // pin the TAIL frac of nodes (later ViT blocks)
+            int pinned = 0, skipped_mm = 0;
+            for (int i = start; i < n; ++i) {
+                ggml_tensor * node = ggml_graph_node(gf, i);
+                if (node->op == GGML_OP_NONE || node->op == GGML_OP_VIEW ||
+                    node->op == GGML_OP_RESHAPE || node->op == GGML_OP_PERMUTE ||
+                    node->op == GGML_OP_TRANSPOSE) continue;
+                if (noweight && (node->op == GGML_OP_MUL_MAT || node->op == GGML_OP_MUL_MAT_ID)) {
+                    skipped_mm++; continue;            // weight resident on HTP → can't migrate (single-residency)
+                }
+                ggml_backend_sched_set_tensor_backend(ctx->sched.get(), node, b2);
+                pinned++;
+            }
+            LOG_INF("%s: REQ-004 pinned %d/%d tail nodes (frac=%.2f noweight=%d skipped_mm=%d) to %s\n",
+                    __func__, pinned, n, frac, (int)noweight, skipped_mm, ggml_backend_name(b2));
+        }
+    }
     ggml_backend_sched_alloc_graph(ctx->sched.get(), gf);
 
     // set inputs
