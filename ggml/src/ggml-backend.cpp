@@ -26,7 +26,9 @@
 #include <string>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <deque>
+#include <set>
 #include <thread>
 
 #ifdef __APPLE__
@@ -518,11 +520,15 @@ const char * ggml_backend_name(ggml_backend_t backend) {
     return backend->iface.get_name(backend);
 }
 
+static bool ggml_singleton_release(ggml_backend_t backend);   // fwd (defined near dev_init)
+
 void ggml_backend_free(ggml_backend_t backend) {
     if (backend == NULL) {
         return;
     }
-
+    if (ggml_singleton_release(backend)) {
+        return;                                   // shared instance still referenced
+    }
     backend->iface.free(backend);
 }
 
@@ -733,16 +739,12 @@ enum ggml_status ggml_backend_graph_plan_compute(ggml_backend_t backend, ggml_ba
     return backend->iface.graph_plan_compute(backend, plan);
 }
 
-enum ggml_status ggml_backend_graph_compute(ggml_backend_t backend, struct ggml_cgraph * cgraph) {
-    enum ggml_status err = ggml_backend_graph_compute_async(backend, cgraph);
-    ggml_backend_synchronize(backend);
-    return err;
-}
+struct ggml_singleton_entry;
+static ggml_singleton_entry * singleton_find(ggml_backend_t b);
+struct singleton_guard;
 
-enum ggml_status ggml_backend_graph_compute_async(ggml_backend_t backend, struct ggml_cgraph * cgraph) {
-    GGML_ASSERT(backend);
-    return backend->iface.graph_compute(backend, cgraph);
-}
+enum ggml_status ggml_backend_graph_compute(ggml_backend_t backend, struct ggml_cgraph * cgraph);
+enum ggml_status ggml_backend_graph_compute_async(ggml_backend_t backend, struct ggml_cgraph * cgraph);
 
 bool ggml_backend_supports_op(ggml_backend_t backend, const struct ggml_tensor * op) {
     GGML_ASSERT(backend);
@@ -888,8 +890,183 @@ ggml_backend_reg_t ggml_backend_dev_backend_reg(ggml_backend_dev_t device) {
     return device->reg;
 }
 
+// --- per-device backend SINGLETON (opt-in GGML_BACKEND_SINGLETON=1) ---------
+// One device = one HW queue/session: share ONE backend instance per device across
+// all contexts (2nd hexagon session SEGVs flush_pending). Refcounted; compute is
+// serialized per shared instance (one in-order queue anyway).
+// GGML_FAIR= grant order on that lock: unset = plain mutex (OS barging);
+// "ticket" = FIFO ticket order; "stride" = weighted time-share (vtime += hold_ms / w,
+// per-thread w via ggml_backend_fair_thread_weight, default 1 → equal NPU-time share).
+struct ggml_singleton_entry {
+    ggml_backend_t backend; int refs; std::mutex mtx;
+    std::condition_variable cv; bool held = false;
+    uint64_t next_ticket = 0, serving = 0;                       // ticket mode
+    std::map<std::thread::id, double> vtime;                     // stride mode
+    std::set<std::thread::id> waiting;
+    std::map<std::thread::id, double> prio;                      // GGML_FAIR=prio: highest g_fair_w served first
+};
+static std::mutex g_singleton_lock;
+static std::map<ggml_backend_dev_t, ggml_singleton_entry> & singleton_map() {
+    static std::map<ggml_backend_dev_t, ggml_singleton_entry> m; return m;
+}
+static bool singleton_on() {
+    static int s = -1;
+    if (s < 0) { const char * e = getenv("GGML_BACKEND_SINGLETON"); s = (e && atoi(e) != 0) ? 1 : 0; }
+    return s == 1;
+}
+static ggml_singleton_entry * singleton_find(ggml_backend_t b) {
+    if (!singleton_on() || !b) return nullptr;
+    std::lock_guard<std::mutex> lk(g_singleton_lock);
+    for (auto & kv : singleton_map()) if (kv.second.backend == b) return &kv.second;
+    return nullptr;
+}
+
+static int fair_mode() {                                         // 0=barging 1=ticket 2=stride 3=prio
+    static int m = -1;
+    if (m < 0) { const char * e = getenv("GGML_FAIR");
+                 m = !e ? 0 : !strcmp(e, "ticket") ? 1 : !strcmp(e, "stride") ? 2 : !strcmp(e, "prio") ? 3 : 0; }
+    return m;
+}
+static thread_local double g_fair_w = 1.0;
+extern "C" void ggml_backend_fair_thread_weight(double w) { g_fair_w = w > 0 ? w : 1.0; }
+
+static double singleton_lock_acquire(ggml_singleton_entry * e) { // returns grant time (ms) for stride
+    std::unique_lock<std::mutex> lk(e->mtx);
+    const int mode = fair_mode();
+    if (mode == 1) {
+        uint64_t my = e->next_ticket++;
+        e->cv.wait(lk, [&]{ return !e->held && my == e->serving; });
+    } else if (mode == 2) {
+        auto tid = std::this_thread::get_id();
+        if (!e->vtime.count(tid)) {                              // newcomer joins at the current floor
+            double mn = 0; bool have = false;
+            for (auto & kv : e->vtime) { if (!have || kv.second < mn) { mn = kv.second; have = true; } }
+            e->vtime[tid] = have ? mn : 0;
+        }
+        e->waiting.insert(tid);
+        e->cv.wait(lk, [&]{
+            if (e->held) return false;
+            double mn = 0; std::thread::id best; bool have = false;
+            for (auto & w : e->waiting) { double v = e->vtime[w];
+                if (!have || v < mn) { mn = v; best = w; have = true; } }
+            return have && best == tid;
+        });
+        e->waiting.erase(tid);
+    } else if (mode == 3) {                                      // strict priority: highest g_fair_w first (tie → any)
+        auto tid = std::this_thread::get_id();
+        e->prio[tid] = g_fair_w;
+        e->waiting.insert(tid);
+        e->cv.wait(lk, [&]{
+            if (e->held) return false;
+            double best = -1e300; std::thread::id bid; bool have = false;
+            for (auto & w : e->waiting) { double p = e->prio[w];
+                if (!have || p > best) { best = p; bid = w; have = true; } }
+            return have && bid == tid;
+        });
+        e->waiting.erase(tid);
+    } else {
+        e->cv.wait(lk, [&]{ return !e->held; });                 // plain (barging) exclusion
+    }
+    e->held = true;
+    lk.release();                                                // stays logically locked via held flag
+    e->mtx.unlock();
+    return (double) ggml_time_us() / 1000.0;
+}
+static void singleton_lock_release(ggml_singleton_entry * e, double t_grant) {
+    std::unique_lock<std::mutex> lk(e->mtx);
+    e->held = false;
+    if (fair_mode() == 1) e->serving++;
+    if (fair_mode() == 2)
+        e->vtime[std::this_thread::get_id()] += ((double) ggml_time_us() / 1000.0 - t_grant) / g_fair_w;
+    lk.unlock();
+    e->cv.notify_all();
+}
+struct singleton_guard {
+    ggml_singleton_entry * e; double t0;
+    singleton_guard(ggml_singleton_entry * e) : e(e), t0(singleton_lock_acquire(e)) {}
+    ~singleton_guard() { singleton_lock_release(e, t0); }
+};
+
+// REQ-015 submission grain: GGML_GRAPH_CHUNK=C (>1) splits a singleton backend's
+// graph_compute into C contiguous node-range sub-submissions, RELEASING the singleton
+// lock between chunks so a co-resident model is admitted at the boundary. unset/0/1 =
+// whole-graph (today). Safe: hexagon graph_compute is self-contained+drains per call,
+// intermediates persist (alloc'd once), and the two contexts have disjoint compute buffers.
+static thread_local int g_chunk_tls = 0;     // 0 = use env default; >0 = per-thread override
+extern "C" void ggml_backend_chunk_thread(int c) { g_chunk_tls = c > 0 ? c : 0; }
+static int singleton_chunk_count() {
+    if (g_chunk_tls > 0) return g_chunk_tls;  // big model's thread sets this; small model leaves 0 (whole-graph)
+    static int c = -1;
+    if (c < 0) { const char * e = getenv("GGML_GRAPH_CHUNK"); c = (e ? atoi(e) : 1); if (c < 1) c = 1; }
+    return c;
+}
+static enum ggml_status singleton_graph_compute_chunked(ggml_backend_t backend, ggml_singleton_entry * e, struct ggml_cgraph * cgraph) {
+    int n = ggml_graph_n_nodes(cgraph);
+    int C = singleton_chunk_count();
+    if (getenv("GGML_CHUNK_DEBUG")) fprintf(stderr, "[chunk] backend=%s n_nodes=%d C=%d\n", ggml_backend_name(backend), n, C);
+    if (C > n) C = n;
+    const int base = n / C, rem = n % C;        // first `rem` chunks get +1 node -> Σ len == n
+    int i0 = 0;
+    enum ggml_status err = GGML_STATUS_SUCCESS;
+    for (int k = 0; k < C; ++k) {
+        int i1 = i0 + base + (k < rem ? 1 : 0);
+        struct ggml_cgraph gv = ggml_graph_view(cgraph, i0, i1);
+        { singleton_guard lk(e);                // release between chunks = co-resident admit point
+          err = backend->iface.graph_compute(backend, &gv);
+          if (backend->iface.synchronize) backend->iface.synchronize(backend); }  // drain before release
+        if (err != GGML_STATUS_SUCCESS) return err;
+        i0 = i1;
+    }
+    return err;
+}
+
+enum ggml_status ggml_backend_graph_compute(ggml_backend_t backend, struct ggml_cgraph * cgraph) {
+    if (ggml_singleton_entry * e = singleton_find(backend)) {   // shared instance: compute+sync atomic
+        if (singleton_chunk_count() > 1 && ggml_graph_n_nodes(cgraph) > 1)
+            return singleton_graph_compute_chunked(backend, e, cgraph);
+        singleton_guard lk(e);
+        enum ggml_status err = backend->iface.graph_compute(backend, cgraph);
+        ggml_backend_synchronize(backend);
+        return err;
+    }
+    enum ggml_status err = ggml_backend_graph_compute_async(backend, cgraph);
+    ggml_backend_synchronize(backend);
+    return err;
+}
+
+enum ggml_status ggml_backend_graph_compute_async(ggml_backend_t backend, struct ggml_cgraph * cgraph) {
+    GGML_ASSERT(backend);
+    if (ggml_singleton_entry * e = singleton_find(backend)) {   // serialize co-submission on one session
+        if (singleton_chunk_count() > 1 && ggml_graph_n_nodes(cgraph) > 1)
+            return singleton_graph_compute_chunked(backend, e, cgraph);
+        singleton_guard lk(e);
+        enum ggml_status err = backend->iface.graph_compute(backend, cgraph);
+        if (backend->iface.synchronize) backend->iface.synchronize(backend);   // drain before releasing
+        return err;
+    }
+    return backend->iface.graph_compute(backend, cgraph);
+}
+static bool ggml_singleton_release(ggml_backend_t backend) {
+    if (!singleton_on()) return false;
+    std::lock_guard<std::mutex> lk(g_singleton_lock);
+    for (auto & kv : singleton_map()) {
+        if (kv.second.backend == backend) {
+            if (--kv.second.refs <= 0) { kv.second.backend = nullptr; return false; }  // last ref -> real free
+            return true;
+        }
+    }
+    return false;
+}
+
 ggml_backend_t ggml_backend_dev_init(ggml_backend_dev_t device, const char * params) {
     GGML_ASSERT(device);
+    if (singleton_on() && ggml_backend_dev_type(device) != GGML_BACKEND_DEVICE_TYPE_CPU) {
+        std::lock_guard<std::mutex> lk(g_singleton_lock);
+        auto & e = singleton_map()[device];
+        if (!e.backend) e.backend = device->iface.init_backend(device, params);
+        if (e.backend) e.refs++;
+        return e.backend;
+    }
     return device->iface.init_backend(device, params);
 }
 

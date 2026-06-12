@@ -156,6 +156,7 @@ struct ggml_hexagon_session {
     std::atomic<int>      op_pending;
     ggml_hexagon_opbatch* op_batch;
     ggml_hexagon_opqueue* op_queue;
+    std::recursive_mutex  submit_mtx;   // one dspqueue: serialize enqueue/flush across contexts (GGML_BACKEND_SINGLETON)
 
     ggml_backend_buffer_type buffer_type        = {};
     ggml_backend_buffer_type repack_buffer_type = {};
@@ -2135,6 +2136,7 @@ struct ggml_hexagon_opqueue {
 
 // Flush HTP response queue i.e wait for all outstanding requests to complete
 void ggml_hexagon_session::flush_pending(bool all) {
+    std::lock_guard<std::recursive_mutex> lk(submit_mtx);
     while (this->op_pending) {
         struct htp_opbatch_rsp rsp;
         uint32_t               rsp_size;
@@ -2176,6 +2178,7 @@ void ggml_hexagon_session::flush_pending(bool all) {
 }
 
 void ggml_hexagon_session::flush_batch() {
+    std::lock_guard<std::recursive_mutex> lk(submit_mtx);
     if (op_batch->empty()) { return; }
 
     htp_opbatch_req req {};
@@ -2205,6 +2208,7 @@ void ggml_hexagon_session::flush_batch() {
 }
 
 void ggml_hexagon_session::enqueue_op(const htp_opnode & node) {
+    std::lock_guard<std::recursive_mutex> lk(submit_mtx);
     if (!op_batch->fit_op(node)) {
         flush_batch();
     }
@@ -2213,6 +2217,7 @@ void ggml_hexagon_session::enqueue_op(const htp_opnode & node) {
 
 // Flush HTP response queue i.e wait for all outstanding requests to complete
 void ggml_hexagon_session::flush(bool all) {
+    std::lock_guard<std::recursive_mutex> lk(submit_mtx);
     flush_batch();
     flush_pending(all);
 }
