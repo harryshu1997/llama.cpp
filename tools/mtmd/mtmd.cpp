@@ -1134,6 +1134,35 @@ int32_t mtmd_encode(mtmd_context * ctx, const mtmd_image_tokens * image_tokens) 
             ctx->image_embd_v.data());
     }
 
+    // REQ-021 I2: dump the post-encode embedding, or REPLACE it (e.g. with a 30x
+    // compress->reconstruct round-trip) before it flows into batch.embd -> llama_decode.
+    // File layout: uint32 n_tokens, uint32 n_embd, then n_tokens*n_embd float32.
+    if (ok) {
+        const size_t n = ctx->image_embd_v.size();
+        const uint32_t nt = (uint32_t) image_tokens->n_tokens();
+        const uint32_t ne = (uint32_t) n_mmproj_embd;
+        if (const char * df = std::getenv("MTMD_EMBD_DUMP")) {
+            if (FILE * f = fopen(df, "wb")) {
+                fwrite(&nt, 4, 1, f); fwrite(&ne, 4, 1, f);
+                fwrite(ctx->image_embd_v.data(), sizeof(float), n, f); fclose(f);
+                LOG_INF("[embd_dump] %s n_tok=%u n_embd=%u (%zu floats)\n", df, nt, ne, n);
+            }
+        }
+        if (const char * rf = std::getenv("MTMD_EMBD_REPLACE")) {
+            if (FILE * f = fopen(rf, "rb")) {
+                uint32_t fnt = 0, fne = 0;
+                if (fread(&fnt, 4, 1, f) == 1 && fread(&fne, 4, 1, f) == 1 &&
+                    (size_t) fnt * fne == n) {
+                    size_t rd = fread(ctx->image_embd_v.data(), sizeof(float), n, f);
+                    LOG_INF("[embd_replace] %s loaded %zu/%zu floats (n_tok=%u n_embd=%u)\n", rf, rd, n, fnt, fne);
+                } else {
+                    LOG_ERR("[embd_replace] %s size mismatch (file %ux%u vs %zu) -- NOT replaced\n", rf, fnt, fne, n);
+                }
+                fclose(f);
+            }
+        }
+    }
+
     return ok ? 0 : 1;
 }
 
