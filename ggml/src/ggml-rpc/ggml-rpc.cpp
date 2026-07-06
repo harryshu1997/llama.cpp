@@ -858,6 +858,10 @@ private:
     std::vector<ggml_backend_t> backends;
     const char * cache_dir;
     std::unordered_set<ggml_backend_buffer_t> buffers;
+    // [plan-a port] persist backend-set tensor->extra (e.g. Adreno OpenCL SOA-Q repack metadata)
+    // keyed by data address, re-attached on later deserialize so extra-using backends
+    // (OpenCL/HTP) can be served over RPC. Implements the case the upstream comment leaves open.
+    std::unordered_map<uint64_t, void *> tensor_extras;
     // store the last computed graph for each backend
     std::vector<stored_graph> stored_graphs;
 };
@@ -1035,6 +1039,14 @@ ggml_tensor * rpc_server::deserialize_tensor(struct ggml_context * ctx, const rp
     result->flags = tensor->flags;
     result->data = reinterpret_cast<void *>(tensor->data);
     ggml_set_name(result, tensor->name);
+    // [plan-a port] re-attach backend extra persisted during init/set (keyed by data addr),
+    // so weight tensors recreated per-call keep their backend repack metadata.
+    if (tensor->data != 0) {
+        auto it = tensor_extras.find(tensor->data);
+        if (it != tensor_extras.end()) {
+            result->extra = it->second;
+        }
+    }
     return result;
 }
 
@@ -1088,6 +1100,11 @@ bool rpc_server::set_tensor(const std::vector<uint8_t> & input) {
         GGML_LOG_INFO("[%s] saved to '%s'\n", __func__, cache_file.string().c_str());
     }
     ggml_backend_tensor_set(tensor, data, offset, size);
+    // [plan-a port] the backend may set tensor->extra during the weight upload (e.g. Adreno SOA-Q
+    // repack) — capture it keyed by data addr so deserialize_tensor re-attaches it on compute.
+    if (tensor->extra != nullptr) {
+        tensor_extras[(uint64_t)(uintptr_t)tensor->data] = tensor->extra;
+    }
     return true;
 }
 
@@ -1149,6 +1166,10 @@ bool rpc_server::set_tensor_hash(const rpc_msg_set_tensor_hash_req & request, rp
         }
     }
     ggml_backend_tensor_set(tensor, cached_file.data(), request.offset, size);
+    // [plan-a port] capture backend-set extra (Adreno repack) on the cached upload path too.
+    if (tensor->extra != nullptr) {
+        tensor_extras[(uint64_t)(uintptr_t)tensor->data] = tensor->extra;
+    }
     response.result = 1;
     return true;
 }
@@ -1178,11 +1199,10 @@ bool rpc_server::init_tensor(const rpc_msg_init_tensor_req & request) {
         }
     }
 
+    // [plan-a port] persist the backend-set extra server-side (keyed by data addr) instead of
+    // bailing; deserialize_tensor re-attaches it on subsequent ops. Enables Adreno/HTP over RPC.
     if (tensor->extra != nullptr) {
-        // This pointer can either be passed around client/server, or probably better stored server-side and kept track of.
-        // Currently unimplemented.
-        GGML_LOG_ERROR("tensor->extra populated by the backend, this is currently unsupported.\n");
-        return false;
+        tensor_extras[(uint64_t)(uintptr_t)tensor->data] = tensor->extra;
     }
 
     return true;
