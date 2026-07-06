@@ -1,5 +1,7 @@
 #include "models.h"
 
+#include <cstdlib> // [plan-a port] getenv/atoi for LayerSplit env knobs
+
 void llama_model_gemma4::load_arch_hparams(llama_model_loader & ml) {
     hparams.swa_type = LLAMA_SWA_TYPE_STANDARD;
     ml.get_key_or_arr(LLM_KV_ATTENTION_SLIDING_WINDOW_PATTERN, hparams.is_swa_impl, hparams.n_layer());
@@ -176,6 +178,17 @@ llama_model_gemma4::graph::graph(const llama_model & model, const llm_graph_para
     ggml_tensor * cur;
     ggml_tensor * inpL;
 
+    // [plan-a port] LayerSplit (cross-device chunk-worker): compute only transformer layers [ls, le).
+    //   ls>0       => this stage's input is an injected activation (feed ubatch.embd, ubatch.token==nullptr).
+    //   le<n_layer => head-less stage: output the hidden state at the cut via res->t_h_nextn and skip
+    //                 the final norm + lm_head; the driver relays that hidden to the next stage.
+    int ls = 0, le = (int) n_layer;
+    if (const char * e = getenv("LLAMA_LAYER_START")) ls = atoi(e);
+    if (const char * e = getenv("LLAMA_LAYER_END"))   le = atoi(e);
+    if (ls < 0)             ls = 0;
+    if (le > (int) n_layer) le = (int) n_layer;
+    const bool split_tail_stage = (le == (int) n_layer);
+
     inpL = build_inp_embd(model.tok_embd);
 
     // important: do not normalize weights for raw embeddings input (i.e. encoded image emdeddings)
@@ -188,7 +201,9 @@ llama_model_gemma4::graph::graph(const llama_model & model, const llm_graph_para
     // TODO: is causal == true correct? might need some changes
     auto * inp_attn = build_attn_inp_kv_iswa();
 
-    ggml_tensor * inp_out_ids = build_inp_out_ids();
+    // [plan-a port] LayerSplit: inp_out_ids is only consumed at the final layer; a head-less stage
+    // never reaches it, and building it would orphan the graph input (set_input asserts).
+    ggml_tensor * inp_out_ids = split_tail_stage ? build_inp_out_ids() : nullptr;
 
     ggml_tensor * inp_per_layer = nullptr;
     if (model.per_layer_tok_embd) {
@@ -199,7 +214,7 @@ llama_model_gemma4::graph::graph(const llama_model & model, const llm_graph_para
         inp_per_layer = project_per_layer_inputs(inpL, inp_per_layer);
     }
 
-    for (int il = 0; il < n_layer; ++il) {
+    for (int il = ls; il < le; ++il) {   // [plan-a port] LayerSplit bounds (was: 0 .. n_layer)
         const int64_t n_embd_head = hparams.n_embd_head_k(il);
         GGML_ASSERT(n_embd_head == hparams.n_embd_head_v(il));
 
@@ -401,6 +416,16 @@ llama_model_gemma4::graph::graph(const llama_model & model, const llm_graph_para
         inpL = cur;
     }
     cur = inpL;
+
+    if (!split_tail_stage) {
+        // [plan-a port] LayerSplit head-less stage: expose the pre-norm hidden state at the cut and
+        // stop. The driver reads it via get_embeddings_nextn() (set cparams.embeddings_nextn) and
+        // relays it to the next stage as an injected activation. Skips final norm + lm_head.
+        res->t_h_nextn = cur;
+        ggml_set_output(res->t_h_nextn);
+        ggml_build_forward_expand(gf, res->t_h_nextn);
+        return;
+    }
 
     cur = build_norm(cur,
             model.output_norm, nullptr,
