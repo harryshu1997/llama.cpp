@@ -49,6 +49,9 @@ static void print_usage(int, char ** argv) {
         "  tailnet : --port P ; listen 0.0.0.0:P, own KV[k,48)+sampling (env LLAMA_LAYER_START=k)\n"
         "  headnet : --host H --port P -p PROMPT -n NGEN ; drive decode (env LLAMA_LAYER_END=k)\n"
         "  tailbench: -b STREAMS -n STEPS ; BATCHED tail decode, STREAMS seqs/forward (env LLAMA_LAYER_START=k)\n"
+        "  stagenet  : --port P ; PERSISTENT head-less stage server (env LLAMA_LAYER_START/END), KV-resident\n"
+        "  pipedriver: --host H --port A --port2 B -p PROMPT -n NGEN ; host tail (env LLAMA_LAYER_START=k3) drives\n"
+        "              stage A (op15 [0,k2)) + stage B (op12 [k2,k3)) over TCP/USB, incremental decode\n"
         "  prefill: mono/head take -p PROMPT (multi-token) or --tok <int> (single); tail/mid read N from --act-file\n"
         "  common opts: [-p <prompt>] [--tok <int>] [--act-file <path>] [--act-out <path>] [-ngl <int>]\n\n",
         argv[0]);
@@ -677,6 +680,147 @@ done:
     return rc;
 }
 
+// ---------------------------------------------------------------------------
+// [plan-a port] Persistent 3-stage pipeline over TCP (adb-forwarded USB).
+// HUB-AND-SPOKE (phones can't peer): each phone runs a `stagenet` — a persistent
+// HEAD-LESS layer-range server holding its own KV; the host runs `pipedriver`,
+// which owns the terminal tail stage inline and drives the loop, calling stage A
+// (op15 [0,k2)) then stage B (op12 [k2,k3)) then the local tail [k3,n) per token.
+// Unlike tailnet/headnet, the frame carries the token id and each stage injects a
+// DUAL batch (relayed token + injected residual) — required for gemma-3n per-layer
+// embeddings. KV persists across steps, so this decodes incrementally (no re-prefill).
+// ---------------------------------------------------------------------------
+static int connect_to(const std::string & host, int port) {
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) return -1;
+    sockaddr_in addr; memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET; addr.sin_port = htons((uint16_t) port);
+    if (inet_pton(AF_INET, host.c_str(), &addr.sin_addr) != 1) {
+        struct addrinfo hints, * res = nullptr; memset(&hints, 0, sizeof(hints));
+        hints.ai_family = AF_INET; hints.ai_socktype = SOCK_STREAM;
+        if (getaddrinfo(host.c_str(), nullptr, &hints, &res) != 0 || !res) { close(fd); return -1; }
+        addr.sin_addr = ((sockaddr_in *) res->ai_addr)->sin_addr; freeaddrinfo(res);
+    }
+    if (connect(fd, (sockaddr *) &addr, sizeof(addr)) < 0) { close(fd); return -1; }
+    set_nodelay(fd);
+    return fd;
+}
+
+// stagenet: persistent HEAD-LESS stage server. env LLAMA_LAYER_START/END bound [ls,le) (le<n_layer).
+//   request: { i32 pos; i32 tok; i32 nh; nh*f32 hidden }   (pos<0 => exit)
+//   reply:   { i32 ne; ne*f32 hidden }                     (cut residual via nextn)
+// ls==0 (head): token batch (token embedding). ls>0 (mid): DUAL batch {relayed token + residual}.
+static int run_stagenet(llama_context * ctx, int n_embd, int port) {
+    llama_set_embeddings_nextn(ctx, true, false);
+    int srv = socket(AF_INET, SOCK_STREAM, 0);
+    if (srv < 0) { fprintf(stderr, "error: socket(): %s\n", strerror(errno)); return 3; }
+    int one = 1; setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+    sockaddr_in addr; memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET; addr.sin_addr.s_addr = htonl(INADDR_ANY); addr.sin_port = htons((uint16_t) port);
+    if (bind(srv, (sockaddr *) &addr, sizeof(addr)) < 0) { fprintf(stderr, "error: bind(:%d): %s\n", port, strerror(errno)); close(srv); return 3; }
+    if (listen(srv, 1) < 0) { fprintf(stderr, "error: listen(): %s\n", strerror(errno)); close(srv); return 3; }
+    fprintf(stderr, "[stagenet] listening on 0.0.0.0:%d (n_embd=%d)\n", port, n_embd);
+    int cli = accept(srv, nullptr, nullptr);
+    if (cli < 0) { fprintf(stderr, "error: accept(): %s\n", strerror(errno)); close(srv); return 3; }
+    set_nodelay(cli);
+    fprintf(stderr, "[stagenet] client connected\n");
+
+    llama_batch tb = llama_batch_init(1, 0, 1);              // token-only (head, ls==0)
+    llama_batch db = llama_batch_init(1, n_embd, 1);         // dual (mid, ls>0): embd + our token
+    db.token = (llama_token *) malloc(sizeof(llama_token));  // freed by llama_batch_free
+    std::vector<float> hidden((size_t) n_embd);
+    int rc = 0; long steps = 0;
+    while (true) {
+        int32_t pos = 0, tok = 0, nh = 0;
+        if (!recv_all(cli, &pos, sizeof(pos))) { fprintf(stderr, "[stagenet] EOF after %ld steps\n", steps); break; }
+        if (pos < 0) { fprintf(stderr, "[stagenet] exit after %ld steps\n", steps); break; }
+        if (!recv_all(cli, &tok, sizeof(tok)) || !recv_all(cli, &nh, sizeof(nh))) { rc = 3; break; }
+        if (nh > 0 && !recv_all(cli, hidden.data(), (size_t) nh * sizeof(float))) { rc = 3; break; }
+
+        llama_batch * b;
+        if (nh > 0) {
+            db.n_tokens = 1; db.token[0] = tok; memcpy(db.embd, hidden.data(), (size_t) n_embd * sizeof(float));
+            db.pos[0] = pos; db.n_seq_id[0] = 1; db.seq_id[0][0] = 0; db.logits[0] = 1; b = &db;
+        } else {
+            tb.n_tokens = 1; tb.token[0] = tok; tb.pos[0] = pos;
+            tb.n_seq_id[0] = 1; tb.seq_id[0][0] = 0; tb.logits[0] = 1; b = &tb;
+        }
+        if (llama_decode(ctx, *b) != 0) { fprintf(stderr, "error: decode (stagenet pos=%d)\n", pos); rc = 3; break; }
+        const float * h = llama_get_embeddings_nextn(ctx);
+        if (!h) { fprintf(stderr, "error: nextn NULL (stagenet; LLAMA_LAYER_END<n_layer?)\n"); rc = 3; break; }
+        int32_t ne = (int32_t) n_embd;
+        if (!send_all(cli, &ne, sizeof(ne)) || !send_all(cli, h, (size_t) n_embd * sizeof(float))) { rc = 3; break; }
+        steps++;
+    }
+    llama_batch_free(tb); llama_batch_free(db);
+    close(cli); close(srv);
+    return rc;
+}
+
+// pipedriver: host orchestrator + inline TAIL (env LLAMA_LAYER_START=k3). Connects to stage A
+// (op15 [0,k2)) and stage B (op12 [k2,k3)) over TCP (adb-forwarded USB), drives incremental decode.
+static int run_pipedriver(llama_context * ctx, const llama_vocab * vocab, int n_embd, int n_vocab,
+                          const std::string & host, int portA, int portB,
+                          const std::string & prompt, int n_gen) {
+    int fdA = connect_to(host, portA);
+    if (fdA < 0) { fprintf(stderr, "error: connect A %s:%d failed\n", host.c_str(), portA); return 3; }
+    int fdB = connect_to(host, portB);
+    if (fdB < 0) { fprintf(stderr, "error: connect B %s:%d failed\n", host.c_str(), portB); close(fdA); return 3; }
+    fprintf(stderr, "[pipedriver] connected A=%s:%d B=%s:%d\n", host.c_str(), portA, host.c_str(), portB);
+
+    std::vector<llama_token> ptoks = common_tokenize(vocab, prompt, true, true);
+    if (ptoks.empty()) { fprintf(stderr, "error: prompt -> 0 tokens\n"); close(fdA); close(fdB); return 3; }
+    fprintf(stderr, "[pipedriver] prompt='%s' (%zu tok), n_gen=%d\n", prompt.c_str(), ptoks.size(), n_gen);
+
+    llama_batch tail = llama_batch_init(1, n_embd, 1);
+    tail.token = (llama_token *) malloc(sizeof(llama_token));
+    std::vector<float> hh((size_t) n_embd), hm((size_t) n_embd);
+
+    auto stage = [&](int fd, int32_t pos, int32_t tok, const float * hin, int32_t nh, float * hout) -> bool {
+        if (!send_all(fd, &pos, sizeof(pos)) || !send_all(fd, &tok, sizeof(tok)) || !send_all(fd, &nh, sizeof(nh))) return false;
+        if (nh > 0 && !send_all(fd, hin, (size_t) nh * sizeof(float))) return false;
+        int32_t ne = 0;
+        if (!recv_all(fd, &ne, sizeof(ne)) || ne != n_embd) return false;
+        return recv_all(fd, hout, (size_t) n_embd * sizeof(float));
+    };
+    auto step = [&](int32_t pos, llama_token tok, llama_token & out) -> bool {
+        if (!stage(fdA, pos, tok, nullptr, 0, hh.data()))       { fprintf(stderr, "error: stage A (pos=%d)\n", pos); return false; }
+        if (!stage(fdB, pos, tok, hh.data(), n_embd, hm.data())) { fprintf(stderr, "error: stage B (pos=%d)\n", pos); return false; }
+        tail.n_tokens = 1; tail.token[0] = tok; memcpy(tail.embd, hm.data(), (size_t) n_embd * sizeof(float));
+        tail.pos[0] = pos; tail.n_seq_id[0] = 1; tail.seq_id[0][0] = 0; tail.logits[0] = 1;
+        if (llama_decode(ctx, tail) != 0) { fprintf(stderr, "error: tail decode (pos=%d)\n", pos); return false; }
+        const float * lg = llama_get_logits_ith(ctx, 0);
+        if (!lg) return false;
+        int32_t best = 0; float bv = lg[0];
+        for (int i = 1; i < n_vocab; ++i) if (lg[i] > bv) { bv = lg[i]; best = i; }
+        out = best; return true;
+    };
+
+    int rc = 0; int32_t pos = 0; llama_token next = 0;
+    for (size_t i = 0; i < ptoks.size(); ++i) {
+        llama_token o = 0;
+        if (!step(pos, ptoks[i], o)) { rc = 3; goto done; }
+        if (i + 1 == ptoks.size()) next = o;
+        pos++;
+    }
+    printf("\n=== GENERATED ===\n%s", prompt.c_str()); fflush(stdout);
+    for (int g = 0; g < n_gen; ++g) {
+        std::string pc = common_token_to_piece(ctx, next, true);
+        printf("%s", pc.c_str()); fflush(stdout);
+        if (llama_vocab_is_eog(vocab, next)) { fprintf(stderr, "\n[pipedriver] EOG at gen %d\n", g); break; }
+        if (g + 1 >= n_gen) break;
+        llama_token o = 0;
+        if (!step(pos, next, o)) { rc = 3; goto done; }
+        next = o; pos++;
+    }
+    printf("\n=================\n"); fflush(stdout);
+done:
+    { int32_t s = -1; send_all(fdA, &s, sizeof(s)); send_all(fdB, &s, sizeof(s)); }
+    llama_batch_free(tail);
+    close(fdA); close(fdB);
+    return rc;
+}
+
 // ===========================================================================
 // STREAMING multi-caption relay (tailstream / headstream) — replays a trace.
 // Opcodes (int32, head->tail):  RESET=3 clear KV + ack ; DECODE=2 {pos,n_embd,h}
@@ -903,7 +1047,8 @@ int main(int argc, char ** argv) {
     std::string host;        // headnet
     std::string prompt;      // headnet
     std::string sched_file;  // headstream
-    int  port    = 0;        // tailnet/headnet
+    int  port    = 0;        // tailnet/headnet/stagenet ; pipedriver stage-A port
+    int  port2   = 0;        // pipedriver stage-B port
     int  n_gen   = 16;       // headnet / tailbench (steps)
     int  n_streams = 1;      // tailbench batch size
     double gap_ms  = 0.0;    // tailbench: per-round head-wait (models cross-device relay gap)
@@ -929,6 +1074,8 @@ int main(int argc, char ** argv) {
             tokens_file = argv[++i];
         } else if (strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
             port = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--port2") == 0 && i + 1 < argc) {
+            port2 = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--host") == 0 && i + 1 < argc) {
             host = argv[++i];
         } else if (strcmp(argv[i], "-p") == 0 && i + 1 < argc) {
@@ -971,6 +1118,8 @@ int main(int argc, char ** argv) {
     const bool is_mid      = (mode == "mid");
     const bool is_tailnet  = (mode == "tailnet");
     const bool is_headnet  = (mode == "headnet");
+    const bool is_stagenet   = (mode == "stagenet");
+    const bool is_pipedriver = (mode == "pipedriver");
     const bool is_tailbench = (mode == "tailbench");
     const bool is_tailstream = (mode == "tailstream");
     const bool is_headstream = (mode == "headstream");
@@ -979,13 +1128,17 @@ int main(int argc, char ** argv) {
     if (is_kvserver && port <= 0) { fprintf(stderr, "error: --port required for kvserver\n"); return 1; }
     if (is_kvclient && (host.empty() || port <= 0)) { fprintf(stderr, "error: --host --port required for kvclient\n"); return 1; }
     if (!is_mono && !is_monogen && !is_kvsave && !is_kvload && !is_kvserver && !is_kvclient && !is_head && !is_tail && !is_mid && !is_tailnet && !is_headnet && !is_tailbench
-        && !is_tailstream && !is_headstream) {
-        fprintf(stderr, "error: --mode must be mono|head|tail|mid|tailnet|headnet|tailbench|tailstream|headstream (got '%s')\n", mode.c_str());
+        && !is_tailstream && !is_headstream && !is_stagenet && !is_pipedriver) {
+        fprintf(stderr, "error: --mode must be mono|head|tail|mid|stagenet|pipedriver|tailnet|headnet|tailbench|tailstream|headstream (got '%s')\n", mode.c_str());
         return 1;
     }
     if (is_mid && (act_file.empty() || act_out.empty())) {
         fprintf(stderr, "error: --act-file (in) and --act-out (out) are required for mode=mid\n");
         return 1;
+    }
+    if (is_stagenet && port <= 0) { fprintf(stderr, "error: --port required for stagenet\n"); return 1; }
+    if (is_pipedriver && (host.empty() || port <= 0 || port2 <= 0 || prompt.empty())) {
+        fprintf(stderr, "error: --host --port (stage A) --port2 (stage B) -p PROMPT required for pipedriver\n"); return 1;
     }
     if (is_tailstream && port <= 0) { fprintf(stderr, "error: --port required for tailstream\n"); return 1; }
     if (is_headstream && (host.empty() || port <= 0 || sched_file.empty())) {
@@ -1072,7 +1225,7 @@ int main(int argc, char ** argv) {
 
     llama_context_params ctx_params = llama_context_default_params();
     // net modes advance KV one position per token (prompt + n_gen); size generously.
-    ctx_params.n_ctx   = (is_tailnet || is_headnet || is_tailstream || is_headstream) ? 4096 :
+    ctx_params.n_ctx   = (is_tailnet || is_headnet || is_tailstream || is_headstream || is_stagenet || is_pipedriver) ? 4096 :
                          (is_kvsave || is_kvload || is_kvserver || is_kvclient) ? (uint32_t)(prompt_len + n_gen + 64) : 64;
     ctx_params.n_batch = 8;
     if (is_kvsave || is_kvload || is_kvserver || is_kvclient) {   // prefill the whole prompt in one batch
@@ -1116,6 +1269,10 @@ int main(int argc, char ** argv) {
         rc = run_headstream(ctx, n_embd, host, port, sched_file);
     } else if (is_tailbench) {
         rc = run_tailbench(ctx, n_embd, n_streams, n_gen, gap_ms);
+    } else if (is_stagenet) {
+        rc = run_stagenet(ctx, n_embd, port);
+    } else if (is_pipedriver) {
+        rc = run_pipedriver(ctx, vocab, n_embd, n_vocab, host, port, port2, prompt, n_gen);
     } else if (is_tailnet) {
         rc = run_tailnet(ctx, vocab, n_embd, n_vocab, port);
     } else if (is_headnet) {
