@@ -27,6 +27,7 @@
 #include <cstdio>
 #include <cstring>
 #include <clocale>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -898,6 +899,7 @@ int main(int argc, char ** argv) {
     std::string mode;
     std::string act_file;
     std::string act_out;     // mid: output act-file (relayed onward)
+    std::string tokens_file; // head/mono: exact token-id list (pipeline generation loop)
     std::string host;        // headnet
     std::string prompt;      // headnet
     std::string sched_file;  // headstream
@@ -923,6 +925,8 @@ int main(int argc, char ** argv) {
             act_file = argv[++i];
         } else if (strcmp(argv[i], "--act-out") == 0 && i + 1 < argc) {
             act_out = argv[++i];
+        } else if (strcmp(argv[i], "--tokens-file") == 0 && i + 1 < argc) {
+            tokens_file = argv[++i];
         } else if (strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
             port = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--host") == 0 && i + 1 < argc) {
@@ -1045,10 +1049,16 @@ int main(int argc, char ** argv) {
         tok = (int) llama_vocab_bos(vocab);
     }
 
-    // [plan-a port] multi-token prefill source for mono/head: -p PROMPT (tokenized, +BOS) else the
-    // single --tok / BOS. tail/mid derive N from the act-file they receive (peek below).
+    // [plan-a port] multi-token prefill source for mono/head: --tokens-file (exact ids, for the
+    // pipeline generation loop) > -p PROMPT (tokenized, +BOS) > single --tok / BOS. tail/mid derive
+    // N from the act-file they receive (peek below).
     std::vector<llama_token> toks;
-    if ((is_mono || is_head) && !prompt.empty()) {
+    if ((is_mono || is_head) && !tokens_file.empty()) {
+        std::ifstream tf(tokens_file);
+        if (!tf) { fprintf(stderr, "error: cannot open --tokens-file '%s'\n", tokens_file.c_str()); llama_model_free(model); return 1; }
+        for (long v; tf >> v; ) toks.push_back((llama_token) v);
+        if (toks.empty()) { fprintf(stderr, "error: --tokens-file '%s' had 0 ids\n", tokens_file.c_str()); llama_model_free(model); return 1; }
+    } else if ((is_mono || is_head) && !prompt.empty()) {
         toks = common_tokenize(vocab, prompt, /*add_special*/ true, /*parse_special*/ true);
         if (toks.empty()) { fprintf(stderr, "error: prompt tokenized to 0 tokens\n"); llama_model_free(model); return 1; }
     } else {
