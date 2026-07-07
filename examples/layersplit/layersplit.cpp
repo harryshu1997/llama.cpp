@@ -206,8 +206,11 @@ static int run_mono_or_head(llama_context * ctx, const llama_vocab * vocab,
                 fprintf(stderr, "error: cannot open act-file '%s' for writing\n", act_file.c_str());
                 rc = 2;
             } else {
-                int32_t ne = (int32_t) n_embd;
-                fwrite(&ne, sizeof(int32_t), 1, f);
+                int32_t ne    = (int32_t) n_embd;
+                int32_t tok32 = (int32_t) tok; // [plan-a port] relay the input token id so the tail
+                                               // can rebuild gemma-3n per-layer token embeddings
+                fwrite(&ne,    sizeof(int32_t), 1, f);
+                fwrite(&tok32, sizeof(int32_t), 1, f);
                 fwrite(h, sizeof(float), (size_t) n_embd, f);
                 fclose(f);
                 double s = 0.0, smax = -1e30, smin = 1e30;
@@ -230,13 +233,18 @@ static int run_tail(llama_context * ctx, const llama_vocab * vocab,
         fprintf(stderr, "error: cannot open act-file '%s' for reading\n", act_file.c_str());
         return 2;
     }
-    int32_t ne = 0;
+    int32_t ne = 0, tok32 = 0;
     if (fread(&ne, sizeof(int32_t), 1, f) != 1) {
         fprintf(stderr, "error: failed to read n_embd header from act-file\n");
         fclose(f); return 2;
     }
     if (ne != n_embd) {
         fprintf(stderr, "error: act-file n_embd=%d != model n_embd=%d\n", ne, n_embd);
+        fclose(f); return 2;
+    }
+    // [plan-a port] relayed input token id (for gemma-3n per-layer token embedding reconstruction)
+    if (fread(&tok32, sizeof(int32_t), 1, f) != 1) {
+        fprintf(stderr, "error: failed to read relayed token id from act-file\n");
         fclose(f); return 2;
     }
     std::vector<float> act((size_t) n_embd);
@@ -246,17 +254,21 @@ static int run_tail(llama_context * ctx, const llama_vocab * vocab,
     }
     fclose(f);
 
-    // 1-token EMBD batch: token NULL, embd = injected activation.
+    // [plan-a port] DUAL batch: token = relayed input token (drives the correct per-layer token
+    // embeddings + scaled token embedding inside the gemma4 graph), embd = injected residual
+    // (swapped in as inpL for the tail layers). llama_batch_init(.,n_embd,.) allocates embd only,
+    // so allocate token ourselves (llama_batch_free releases it).
     llama_batch batch = llama_batch_init(1, n_embd, 1);
     batch.n_tokens     = 1;
-    // batch.token stays NULL (gemma4 applies no embd scale when token==NULL).
+    batch.token        = (llama_token *) malloc(sizeof(llama_token));
+    batch.token[0]     = (llama_token) tok32;
     memcpy(batch.embd, act.data(), (size_t) n_embd * sizeof(float));
     batch.pos[0]       = 0;
     batch.n_seq_id[0]  = 1;
     batch.seq_id[0][0] = 0;
     batch.logits[0]    = 1;
 
-    fprintf(stderr, "[tail] injecting activation (n_embd=%d) into 1-token embd batch\n", n_embd);
+    fprintf(stderr, "[tail] injecting activation (n_embd=%d) + relayed token id=%d (dual batch)\n", n_embd, tok32);
 
     int rc = 0;
     if (llama_decode(ctx, batch) != 0) {

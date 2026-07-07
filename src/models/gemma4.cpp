@@ -189,10 +189,33 @@ llama_model_gemma4::graph::graph(const llama_model & model, const llm_graph_para
     if (le > (int) n_layer) le = (int) n_layer;
     const bool split_tail_stage = (le == (int) n_layer);
 
-    inpL = build_inp_embd(model.tok_embd);
+    // [plan-a port] LayerSplit tail stage (ls>0): the batch is DUAL — a relayed input token (so the
+    // gemma-3n per-layer token embeddings + scaled token embedding below reconstruct exactly) plus
+    // the injected residual from the previous stage in ubatch.embd. build_inp_embd() cannot be used
+    // here: for a dual batch it build-time-selects the token path and prunes its own embd tensor,
+    // which set_input then writes to unallocated memory -> crash. So build the token embedding
+    // manually and take the injected residual from the MTP hidden-injection input (embd_h::h).
+    ggml_tensor * inj_h = nullptr; // injected residual; becomes inpL for the tail layer loop
+    if (ls > 0) {
+        auto inj = std::make_unique<llm_graph_input_embd_h>(n_embd);
+        ggml_tensor * inj_tokens = ggml_new_tensor_1d(ctx0, GGML_TYPE_I32, n_tokens); // <- ubatch.token
+        ggml_set_input(inj_tokens);
+        inj->tokens       = inj_tokens;
+        res->t_inp_tokens = inj_tokens;
+        inj_h = ggml_new_tensor_2d(ctx0, GGML_TYPE_F32, n_embd, n_tokens); // <- ubatch.embd (real decode)
+        ggml_set_input(inj_h);
+        inj->h = inj_h;
+        cb(inj_h, "layersplit_inject", -1);
+        res->add_input(std::move(inj));
 
-    // important: do not normalize weights for raw embeddings input (i.e. encoded image emdeddings)
-    inpL = ggml_scale(ctx0, inpL, ubatch.token ? sqrtf(n_embd) : 1.0f);
+        // scaled token embedding (mirrors build_inp_embd token path) for the per-layer projection
+        inpL = ggml_get_rows(ctx0, model.tok_embd, inj_tokens);
+        inpL = ggml_scale(ctx0, inpL, sqrtf(n_embd));
+    } else {
+        inpL = build_inp_embd(model.tok_embd);
+        // important: do not normalize weights for raw embeddings input (i.e. encoded image embeddings)
+        inpL = ggml_scale(ctx0, inpL, ubatch.token ? sqrtf(n_embd) : 1.0f);
+    }
     cb(inpL, "inp_scaled", -1);
 
     // inp_pos - contains the positions
@@ -212,6 +235,12 @@ llama_model_gemma4::graph::graph(const llama_model & model, const llm_graph_para
 
         // inp_per_layer shape: [n_embd_per_layer, n_tokens, n_layer]
         inp_per_layer = project_per_layer_inputs(inpL, inp_per_layer);
+    }
+
+    // [plan-a port] LayerSplit tail: now that the token-derived per-layer inputs are built from the
+    // scaled token embedding, swap inpL to the injected residual for the layer loop [ls, le).
+    if (inj_h) {
+        inpL = inj_h;
     }
 
     for (int il = ls; il < le; ++il) {   // [plan-a port] LayerSplit bounds (was: 0 .. n_layer)

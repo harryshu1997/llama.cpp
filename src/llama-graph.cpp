@@ -84,13 +84,19 @@ static ggml_tensor * ggml_mul_mat_aux(
 }
 
 void llm_graph_input_embd::set_input(const llama_ubatch * ubatch) {
-    if (ubatch->token) {
+    // [plan-a port] guard on the tensor as well as the ubatch field: a token-only embd input
+    // (e.g. gemma4's build_inp_per_layer, which creates this input with only `tokens`) has a null
+    // `embd`. That is normally unreachable, but a LayerSplit tail decodes a DUAL batch (relayed
+    // token + injected residual in ubatch.embd), so ubatch->embd is set while this input has no
+    // embd tensor. Without the guard we would deref/write a null-or-unallocated tensor. No-op for
+    // every existing single-mode batch, where the matching tensor is always present.
+    if (ubatch->token && tokens) {
         const int64_t n_tokens = ubatch->n_tokens;
 
         ggml_backend_tensor_set(tokens, ubatch->token, 0, n_tokens*ggml_element_size(tokens));
     }
 
-    if (ubatch->embd) {
+    if (ubatch->embd && embd) {
         GGML_ASSERT(n_embd == embd->ne[0]);
 
         const int64_t n_tokens = ubatch->n_tokens;
