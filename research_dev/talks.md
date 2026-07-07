@@ -65,6 +65,20 @@
 
 ## 🗒️ Log
 
+### `2026-07-07 EDT` — Design check: NPU-batch-decode ∥ GPU-prefill — verdict + S1 hang localized 🔎
+Question raised: *"can we form a decode batch, run it on the phone NPU, and prefill on the GPU concurrently?"* Ran a 6-agent code+roofline review (4 readers of the actual backends + synthesis + adversary). **Verdict: partly on the same page — right goal, wrong as a static rule, currently unbuildable.**
+
+**On the same page (correct):** batched decode is graph-feasible (gemma-4 graph is `n_seqs`-general; `tailbench` already assembles a real B-way batch, `llama_batch_init(n_streams,…)`, `seq_id[j]=j`, one `llama_decode`). Batching is exactly what pushes decode to high-M where the NPU/HMX wins. The utilization idea (NPU holds sustained decode, GPU absorbs bursty prefill) is legitimate.
+
+**Corrections (why it's not a fixed rule):**
+1. **It inverts the locked baseline** (decode→GPU, prefill→NPU) and is right *only* at sustained **B>4** (HMX gate) inside an NPU-favorable band — energy is **non-monotone**: NPU B≤16, **GPU B32–64**, NPU B128. Below B=4 it loses on *both* phases (NPU decode → HVX/no-win; prefill stranded on the 17× weaker GPU, 403 GFLOPS vs 7.12 TFLOPS). ⇒ must be an **adaptive router on batch occupancy**, baseline as low-load default.
+2. **"Simultaneously" ⇒ two processes, not one.** One `ggml_backend_sched` serializes splits; pipeline-parallel overlap is force-disabled because OpenCL & Hexagon both report `events=false` ([opencl:8906](../ggml/src/ggml-opencl/ggml-opencl.cpp#L8906), [hexagon:3640](../ggml/src/ggml-hexagon/ggml-hexagon.cpp#L3640), gate [llama-context:385](../src/llama-context.cpp#L385)). Two pinned contexts ⇒ **2× weight RAM** (no cross-engine dmabuf import = the S2 veto). 12B likely infeasible at 2× without S2.
+3. **Zero-interference may not transfer** — it was NPU-*compute* ∥ GPU-*memory*; this pairing is likely *memory ∥ memory* (M=1 decode is bandwidth-bound), which our data says **contends** on the bus. Re-measure.
+
+**S1 hang localized (the blocker).** `n_parallel=2` hung on op15 — *not* a llama deadlock (batching is lock-free, `n_seqs`-general). It's an **HTP backend bug**: host `flush_pending()` infinite-retries on the 1 s DSP timeout with no watchdog (`AEE_EEXPIRED → continue`, [hexagon:1516-1550](../ggml/src/ggml-hexagon/ggml-hexagon.cpp#L1516)); DSP worker-pool busy-spins `while(atomic_load(&n_pending))` (`worker-pool.c:216`); `FLASH_ATTN_EXT` `supports_op` accepts a 2-seq attention op with no mask/KV validation ([hexagon:1883-1916](../ggml/src/ggml-hexagon/ggml-hexagon.cpp#L1883)). **Fixable, and the floor** — nothing else builds until real B>4 decode completes on the NPU.
+
+**Also found:** the serving path isn't ready — `stagenet`/`pipedriver` are strictly single-seq (`llama_batch_init(1,…)`, `seq_id 0`); a B-way NPU decode needs `tailbench`'s batch-assembly ported into the persistent socket loop (protocol carrying B tokens+hidden, `n_seq_max=B`, B residual replies).
+
 ### `2026-07-07 EDT` — Pipeline on phone NPU + GPU, A6000 CUDA terminal — per-hop timing ✅
 Ran the persistent pipeline with the phone stages on each engine, host tail on the **A6000/CUDA** (was silently `-ngl 0`=CPU; added `HNGL` to `pipeline_persistent.sh`, default 99). Added per-hop timing to `pipedriver` (times only the 32 generation-phase steps). All three engines emit the same correct text.
 
