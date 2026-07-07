@@ -40,14 +40,16 @@
 
 static void print_usage(int, char ** argv) {
     fprintf(stderr,
-        "\nusage: %s -m <model> --mode <mono|head|tail|tailnet|headnet> [opts]\n"
-        "  mono    : full model on one token, print top-1 + top-5\n"
-        "  head    : run layers [0,LLAMA_LAYER_END), dump cut activation to --act-file\n"
-        "  tail    : run layers [LLAMA_LAYER_START,n_layer) on injected activation, print top-1 + top-5\n"
+        "\nusage: %s -m <model> --mode <mono|head|mid|tail|tailnet|headnet> [opts]\n"
+        "  mono    : full model on the prompt, print last-token top-1 + top-5\n"
+        "  head    : run layers [0,LLAMA_LAYER_END), dump N cut activations + token ids to --act-file\n"
+        "  mid     : env LLAMA_LAYER_START=k2 LLAMA_LAYER_END=k3 ; inject --act-file, run [k2,k3) head-less, relay to --act-out\n"
+        "  tail    : run layers [LLAMA_LAYER_START,n_layer) on injected activations, print last-token top-1 + top-5\n"
         "  tailnet : --port P ; listen 0.0.0.0:P, own KV[k,48)+sampling (env LLAMA_LAYER_START=k)\n"
         "  headnet : --host H --port P -p PROMPT -n NGEN ; drive decode (env LLAMA_LAYER_END=k)\n"
         "  tailbench: -b STREAMS -n STEPS ; BATCHED tail decode, STREAMS seqs/forward (env LLAMA_LAYER_START=k)\n"
-        "  common opts: [--tok <int>] [--act-file <path>] [-ngl <int>]\n\n",
+        "  prefill: mono/head take -p PROMPT (multi-token) or --tok <int> (single); tail/mid read N from --act-file\n"
+        "  common opts: [-p <prompt>] [--tok <int>] [--act-file <path>] [--act-out <path>] [-ngl <int>]\n\n",
         argv[0]);
 }
 
@@ -143,6 +145,57 @@ static int run_kv(llama_context * ctx, const llama_vocab * vocab, int n_vocab,
     return rc;
 }
 
+// [plan-a port] act-file v2: { int32 n_embd, int32 n_tokens(N), int32 tokens[N], float residual[N*n_embd] }.
+// Carries the relayed input token ids (needed at EVERY stage to rebuild gemma-3n per-layer token
+// embeddings) alongside the N cut-hidden residuals, one per prefill position.
+static bool write_actfile(const std::string & path, int n_embd,
+                          const std::vector<llama_token> & toks, const std::vector<float> & residual) {
+    FILE * f = fopen(path.c_str(), "wb");
+    if (!f) { fprintf(stderr, "error: cannot open act-file '%s' for writing\n", path.c_str()); return false; }
+    const int32_t ne = (int32_t) n_embd, N = (int32_t) toks.size();
+    std::vector<int32_t> t32(toks.begin(), toks.end());
+    bool ok = fwrite(&ne, sizeof(int32_t), 1, f) == 1
+           && fwrite(&N,  sizeof(int32_t), 1, f) == 1
+           && fwrite(t32.data(), sizeof(int32_t), (size_t) N, f) == (size_t) N
+           && fwrite(residual.data(), sizeof(float), (size_t) N * n_embd, f) == (size_t) N * n_embd;
+    fclose(f);
+    if (!ok) fprintf(stderr, "error: short write to act-file '%s'\n", path.c_str());
+    return ok;
+}
+
+static bool read_actfile(const std::string & path, int n_embd,
+                         std::vector<llama_token> & toks, std::vector<float> & residual) {
+    FILE * f = fopen(path.c_str(), "rb");
+    if (!f) { fprintf(stderr, "error: cannot open act-file '%s' for reading\n", path.c_str()); return false; }
+    int32_t ne = 0, N = 0;
+    if (fread(&ne, sizeof(int32_t), 1, f) != 1 || fread(&N, sizeof(int32_t), 1, f) != 1) {
+        fprintf(stderr, "error: failed to read act-file header\n"); fclose(f); return false;
+    }
+    if (ne != n_embd) { fprintf(stderr, "error: act-file n_embd=%d != model n_embd=%d\n", ne, n_embd); fclose(f); return false; }
+    if (N <= 0)       { fprintf(stderr, "error: act-file n_tokens=%d invalid\n", N); fclose(f); return false; }
+    std::vector<int32_t> t32((size_t) N);
+    if (fread(t32.data(), sizeof(int32_t), (size_t) N, f) != (size_t) N) {
+        fprintf(stderr, "error: failed to read %d token ids from act-file\n", N); fclose(f); return false;
+    }
+    toks.assign(t32.begin(), t32.end());
+    residual.resize((size_t) N * n_embd);
+    if (fread(residual.data(), sizeof(float), (size_t) N * n_embd, f) != (size_t) N * n_embd) {
+        fprintf(stderr, "error: failed to read %dx%d activation floats from act-file\n", N, n_embd); fclose(f); return false;
+    }
+    fclose(f);
+    return true;
+}
+
+// [plan-a port] read just the n_tokens header (so tail/mid can size their context before decoding).
+static int peek_actfile_ntokens(const std::string & path) {
+    FILE * f = fopen(path.c_str(), "rb");
+    if (!f) return -1;
+    int32_t ne = 0, N = 0;
+    const bool ok = fread(&ne, sizeof(int32_t), 1, f) == 1 && fread(&N, sizeof(int32_t), 1, f) == 1;
+    fclose(f);
+    return ok ? (int) N : -1;
+}
+
 // monogen: whole-model greedy reference for the correctness oracle. Generates n_gen tokens
 // from `tok` (greedy argmax, feeding back) and prints the token-id sequence. Run with NO
 // LLAMA_LAYER_START/END (full 48 L) → this is the ground truth the head∥tail relay must match.
@@ -166,58 +219,55 @@ static int run_monogen(llama_context * ctx, const llama_vocab * vocab,
     return rc;
 }
 
-// mono / head share the literal-token decode path.
+// mono / head share the literal-token prefill path (N tokens at pos 0..N-1).
+//   mono : full model -> report the last token's next-token logits.
+//   head : run layers [0,LLAMA_LAYER_END) -> dump all N cut residuals + the N token ids (act-file v2).
 static int run_mono_or_head(llama_context * ctx, const llama_vocab * vocab,
-                            int n_embd, int n_vocab, llama_token tok,
+                            int n_embd, int n_vocab, const std::vector<llama_token> & toks,
                             bool is_head, const std::string & act_file) {
     if (is_head) {
-        // expose the cut hidden state regardless of logits flag (masked=false); single row anyway.
+        // expose the cut hidden state for ALL token positions (masked=false dumps every row).
         llama_set_embeddings_nextn(ctx, true, false);
     }
 
-    llama_batch batch = llama_batch_init(1, 0, 1);
-    batch.n_tokens     = 1;
-    batch.token[0]     = tok;
-    batch.pos[0]       = 0;
-    batch.n_seq_id[0]  = 1;
-    batch.seq_id[0][0] = 0;
-    batch.logits[0]    = 1;
+    const int N = (int) toks.size();
+    llama_batch batch = llama_batch_init(N, 0, 1);
+    batch.n_tokens = N;
+    for (int i = 0; i < N; ++i) {
+        batch.token[i]     = toks[i];
+        batch.pos[i]       = i;
+        batch.n_seq_id[i]  = 1;
+        batch.seq_id[i][0] = 0;
+        batch.logits[i]    = (i == N - 1); // only the last token predicts the next
+    }
 
-    fprintf(stderr, "[%s] decoding single token id=%d (n_embd=%d, n_vocab=%d)\n",
-            is_head ? "head" : "mono", tok, n_embd, n_vocab);
+    fprintf(stderr, "[%s] %d-token prefill (n_embd=%d, n_vocab=%d)\n",
+            is_head ? "head" : "mono", N, n_embd, n_vocab);
 
     int rc = 0;
     if (llama_decode(ctx, batch) != 0) {
         fprintf(stderr, "error: llama_decode failed\n");
         rc = 2;
     } else if (!is_head) {
-        const float * logits = llama_get_logits_ith(ctx, 0);
+        const float * logits = llama_get_logits_ith(ctx, N - 1);
         if (!logits) { fprintf(stderr, "error: llama_get_logits_ith returned NULL\n"); rc = 2; }
         else         { report_logits(vocab, logits, n_vocab); }
     } else {
-        const float * h = llama_get_embeddings_nextn(ctx);
-        if (!h) {
-            fprintf(stderr, "error: llama_get_embeddings_nextn returned NULL "
-                            "(is LLAMA_LAYER_END < n_layer set?)\n");
-            rc = 2;
-        } else {
-            FILE * f = fopen(act_file.c_str(), "wb");
-            if (!f) {
-                fprintf(stderr, "error: cannot open act-file '%s' for writing\n", act_file.c_str());
-                rc = 2;
-            } else {
-                int32_t ne    = (int32_t) n_embd;
-                int32_t tok32 = (int32_t) tok; // [plan-a port] relay the input token id so the tail
-                                               // can rebuild gemma-3n per-layer token embeddings
-                fwrite(&ne,    sizeof(int32_t), 1, f);
-                fwrite(&tok32, sizeof(int32_t), 1, f);
-                fwrite(h, sizeof(float), (size_t) n_embd, f);
-                fclose(f);
-                double s = 0.0, smax = -1e30, smin = 1e30;
-                for (int i = 0; i < n_embd; ++i) { s += h[i]; smax = std::max(smax,(double)h[i]); smin = std::min(smin,(double)h[i]); }
-                fprintf(stderr, "[head] wrote %d floats to %s (mean=%.5f min=%.5f max=%.5f)\n",
-                        n_embd, act_file.c_str(), s / n_embd, smin, smax);
-            }
+        // collect all N cut-hidden rows (t_h_nextn) in token order, relay them + the token ids.
+        std::vector<float> residual((size_t) N * n_embd);
+        bool ok = true;
+        for (int i = 0; i < N; ++i) {
+            const float * h = llama_get_embeddings_nextn_ith(ctx, i);
+            if (!h) { fprintf(stderr, "error: llama_get_embeddings_nextn_ith(%d) NULL (LLAMA_LAYER_END<n_layer?)\n", i); ok = false; break; }
+            memcpy(residual.data() + (size_t) i * n_embd, h, (size_t) n_embd * sizeof(float));
+        }
+        if (!ok || !write_actfile(act_file, n_embd, toks, residual)) rc = 2;
+        else {
+            const float * h0 = residual.data();
+            double s = 0.0, smax = -1e30, smin = 1e30;
+            for (int i = 0; i < n_embd; ++i) { s += h0[i]; smax = std::max(smax,(double)h0[i]); smin = std::min(smin,(double)h0[i]); }
+            fprintf(stderr, "[head] wrote %dx%d residual + %d token ids to %s (row0 mean=%.5f min=%.5f max=%.5f)\n",
+                    N, n_embd, N, act_file.c_str(), s / n_embd, smin, smax);
         }
     }
 
@@ -225,59 +275,81 @@ static int run_mono_or_head(llama_context * ctx, const llama_vocab * vocab,
     return rc;
 }
 
+// [plan-a port] Build a DUAL batch of N tokens: token[i] = relayed id (rebuilds gemma-3n per-layer
+// token embeddings + scaled token embedding), embd[i] = injected residual (becomes inpL for the
+// stage's layers). llama_batch_init(.,n_embd,.) allocates only embd, so allocate token ourselves
+// (llama_batch_free releases it). Only the last token is flagged for output.
+static llama_batch make_inject_batch(int n_embd, const std::vector<llama_token> & toks,
+                                     const std::vector<float> & act) {
+    const int N = (int) toks.size();
+    llama_batch batch = llama_batch_init(N, n_embd, 1);
+    batch.n_tokens = N;
+    batch.token    = (llama_token *) malloc((size_t) N * sizeof(llama_token));
+    for (int i = 0; i < N; ++i) {
+        batch.token[i]     = toks[i];
+        memcpy((float *) batch.embd + (size_t) i * n_embd, act.data() + (size_t) i * n_embd, (size_t) n_embd * sizeof(float));
+        batch.pos[i]       = i;
+        batch.n_seq_id[i]  = 1;
+        batch.seq_id[i][0] = 0;
+        batch.logits[i]    = (i == N - 1);
+    }
+    return batch;
+}
+
 static int run_tail(llama_context * ctx, const llama_vocab * vocab,
                     int n_embd, int n_vocab, const std::string & act_file) {
-    // read activation file: int32 n_embd, then n_embd float32.
-    FILE * f = fopen(act_file.c_str(), "rb");
-    if (!f) {
-        fprintf(stderr, "error: cannot open act-file '%s' for reading\n", act_file.c_str());
-        return 2;
-    }
-    int32_t ne = 0, tok32 = 0;
-    if (fread(&ne, sizeof(int32_t), 1, f) != 1) {
-        fprintf(stderr, "error: failed to read n_embd header from act-file\n");
-        fclose(f); return 2;
-    }
-    if (ne != n_embd) {
-        fprintf(stderr, "error: act-file n_embd=%d != model n_embd=%d\n", ne, n_embd);
-        fclose(f); return 2;
-    }
-    // [plan-a port] relayed input token id (for gemma-3n per-layer token embedding reconstruction)
-    if (fread(&tok32, sizeof(int32_t), 1, f) != 1) {
-        fprintf(stderr, "error: failed to read relayed token id from act-file\n");
-        fclose(f); return 2;
-    }
-    std::vector<float> act((size_t) n_embd);
-    if (fread(act.data(), sizeof(float), (size_t) n_embd, f) != (size_t) n_embd) {
-        fprintf(stderr, "error: failed to read %d activation floats\n", n_embd);
-        fclose(f); return 2;
-    }
-    fclose(f);
+    std::vector<llama_token> toks;
+    std::vector<float> act;
+    if (!read_actfile(act_file, n_embd, toks, act)) return 2;
+    const int N = (int) toks.size();
 
-    // [plan-a port] DUAL batch: token = relayed input token (drives the correct per-layer token
-    // embeddings + scaled token embedding inside the gemma4 graph), embd = injected residual
-    // (swapped in as inpL for the tail layers). llama_batch_init(.,n_embd,.) allocates embd only,
-    // so allocate token ourselves (llama_batch_free releases it).
-    llama_batch batch = llama_batch_init(1, n_embd, 1);
-    batch.n_tokens     = 1;
-    batch.token        = (llama_token *) malloc(sizeof(llama_token));
-    batch.token[0]     = (llama_token) tok32;
-    memcpy(batch.embd, act.data(), (size_t) n_embd * sizeof(float));
-    batch.pos[0]       = 0;
-    batch.n_seq_id[0]  = 1;
-    batch.seq_id[0][0] = 0;
-    batch.logits[0]    = 1;
-
-    fprintf(stderr, "[tail] injecting activation (n_embd=%d) + relayed token id=%d (dual batch)\n", n_embd, tok32);
+    llama_batch batch = make_inject_batch(n_embd, toks, act);
+    fprintf(stderr, "[tail] injecting %d activations + relayed token ids (dual batch)\n", N);
 
     int rc = 0;
     if (llama_decode(ctx, batch) != 0) {
         fprintf(stderr, "error: llama_decode failed (mode=tail)\n");
         rc = 2;
     } else {
-        const float * logits = llama_get_logits_ith(ctx, 0);
+        const float * logits = llama_get_logits_ith(ctx, N - 1);
         if (!logits) { fprintf(stderr, "error: llama_get_logits_ith returned NULL (tail)\n"); rc = 2; }
         else         { report_logits(vocab, logits, n_vocab); }
+    }
+
+    llama_batch_free(batch);
+    return rc;
+}
+
+// [plan-a port] mid: a MIDDLE cross-device stage (env LLAMA_LAYER_START=k2, LLAMA_LAYER_END=k3, both
+// strictly inside (0,n_layer)). Injects the relayed {tokens, residual} from the previous stage as a
+// dual batch, runs layers [k2,k3) HEAD-LESS (le<n_layer), then relays the new {tokens, residual}
+// onward. Reads --act-file (in), writes --act-out (out). The gemma4 graph already supports
+// ls>0 && le<n_layer with no source change.
+static int run_mid(llama_context * ctx, int n_embd,
+                   const std::string & act_in, const std::string & act_out) {
+    std::vector<llama_token> toks;
+    std::vector<float> act;
+    if (!read_actfile(act_in, n_embd, toks, act)) return 2;
+    const int N = (int) toks.size();
+
+    llama_set_embeddings_nextn(ctx, true, false); // expose the cut hidden for all N rows
+    llama_batch batch = make_inject_batch(n_embd, toks, act);
+    fprintf(stderr, "[mid] inject %d activations + relayed tokens, run head-less, relay onward\n", N);
+
+    int rc = 0;
+    if (llama_decode(ctx, batch) != 0) {
+        fprintf(stderr, "error: llama_decode failed (mode=mid)\n");
+        rc = 2;
+    } else {
+        std::vector<float> residual((size_t) N * n_embd);
+        bool ok = true;
+        for (int i = 0; i < N; ++i) {
+            const float * h = llama_get_embeddings_nextn_ith(ctx, i);
+            if (!h) { fprintf(stderr, "error: llama_get_embeddings_nextn_ith(%d) NULL (mid)\n", i); ok = false; break; }
+            memcpy(residual.data() + (size_t) i * n_embd, h, (size_t) n_embd * sizeof(float));
+        }
+        if (!ok || !write_actfile(act_out, n_embd, toks, residual)) rc = 2;
+        else fprintf(stderr, "[mid] wrote %dx%d residual + %d token ids to %s\n", N, n_embd, N, act_out.c_str());
     }
 
     llama_batch_free(batch);
@@ -825,6 +897,7 @@ int main(int argc, char ** argv) {
     std::string model_path;
     std::string mode;
     std::string act_file;
+    std::string act_out;     // mid: output act-file (relayed onward)
     std::string host;        // headnet
     std::string prompt;      // headnet
     std::string sched_file;  // headstream
@@ -848,6 +921,8 @@ int main(int argc, char ** argv) {
             tok = atoi(argv[++i]); tok_set = true;
         } else if (strcmp(argv[i], "--act-file") == 0 && i + 1 < argc) {
             act_file = argv[++i];
+        } else if (strcmp(argv[i], "--act-out") == 0 && i + 1 < argc) {
+            act_out = argv[++i];
         } else if (strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
             port = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--host") == 0 && i + 1 < argc) {
@@ -889,6 +964,7 @@ int main(int argc, char ** argv) {
     const bool is_kvclient = (mode == "kvclient");
     const bool is_head     = (mode == "head");
     const bool is_tail     = (mode == "tail");
+    const bool is_mid      = (mode == "mid");
     const bool is_tailnet  = (mode == "tailnet");
     const bool is_headnet  = (mode == "headnet");
     const bool is_tailbench = (mode == "tailbench");
@@ -898,9 +974,13 @@ int main(int argc, char ** argv) {
     if ((is_kvsave || is_kvload) && act_file.empty()) { fprintf(stderr, "error: --act-file (blob path) required for %s\n", mode.c_str()); return 1; }
     if (is_kvserver && port <= 0) { fprintf(stderr, "error: --port required for kvserver\n"); return 1; }
     if (is_kvclient && (host.empty() || port <= 0)) { fprintf(stderr, "error: --host --port required for kvclient\n"); return 1; }
-    if (!is_mono && !is_monogen && !is_kvsave && !is_kvload && !is_kvserver && !is_kvclient && !is_head && !is_tail && !is_tailnet && !is_headnet && !is_tailbench
+    if (!is_mono && !is_monogen && !is_kvsave && !is_kvload && !is_kvserver && !is_kvclient && !is_head && !is_tail && !is_mid && !is_tailnet && !is_headnet && !is_tailbench
         && !is_tailstream && !is_headstream) {
-        fprintf(stderr, "error: --mode must be mono|head|tail|tailnet|headnet|tailbench|tailstream|headstream (got '%s')\n", mode.c_str());
+        fprintf(stderr, "error: --mode must be mono|head|tail|mid|tailnet|headnet|tailbench|tailstream|headstream (got '%s')\n", mode.c_str());
+        return 1;
+    }
+    if (is_mid && (act_file.empty() || act_out.empty())) {
+        fprintf(stderr, "error: --act-file (in) and --act-out (out) are required for mode=mid\n");
         return 1;
     }
     if (is_tailstream && port <= 0) { fprintf(stderr, "error: --port required for tailstream\n"); return 1; }
@@ -965,6 +1045,21 @@ int main(int argc, char ** argv) {
         tok = (int) llama_vocab_bos(vocab);
     }
 
+    // [plan-a port] multi-token prefill source for mono/head: -p PROMPT (tokenized, +BOS) else the
+    // single --tok / BOS. tail/mid derive N from the act-file they receive (peek below).
+    std::vector<llama_token> toks;
+    if ((is_mono || is_head) && !prompt.empty()) {
+        toks = common_tokenize(vocab, prompt, /*add_special*/ true, /*parse_special*/ true);
+        if (toks.empty()) { fprintf(stderr, "error: prompt tokenized to 0 tokens\n"); llama_model_free(model); return 1; }
+    } else {
+        toks = { (llama_token) tok };
+    }
+    int n_prefill = (int) toks.size();
+    if (is_tail || is_mid) {
+        n_prefill = peek_actfile_ntokens(act_file);
+        if (n_prefill <= 0) { fprintf(stderr, "error: cannot read n_tokens from act-file '%s'\n", act_file.c_str()); llama_model_free(model); return 1; }
+    }
+
     llama_context_params ctx_params = llama_context_default_params();
     // net modes advance KV one position per token (prompt + n_gen); size generously.
     ctx_params.n_ctx   = (is_tailnet || is_headnet || is_tailstream || is_headstream) ? 4096 :
@@ -975,6 +1070,12 @@ int main(int argc, char ** argv) {
         ctx_params.n_ubatch = (uint32_t) std::max(prompt_len, 8);
     }
     ctx_params.no_perf = true;
+    if (is_mono || is_head || is_tail || is_mid) {   // [plan-a port] size for an N-token prefill
+        const uint32_t N = (uint32_t) std::max(n_prefill, 1);
+        ctx_params.n_ctx    = std::max<uint32_t>(N + 8, 64);
+        ctx_params.n_batch  = std::max<uint32_t>(N, 8);
+        ctx_params.n_ubatch = std::max<uint32_t>(N, 8);
+    }
     if (is_tailbench) {
         // B sequences, each advancing n_gen positions -> need B*n_gen KV cells.
         ctx_params.n_seq_max = n_streams;
@@ -1009,10 +1110,12 @@ int main(int argc, char ** argv) {
         rc = run_tailnet(ctx, vocab, n_embd, n_vocab, port);
     } else if (is_headnet) {
         rc = run_headnet(ctx, vocab, n_embd, host, port, prompt, n_gen);
+    } else if (is_mid) {
+        rc = run_mid(ctx, n_embd, act_file, act_out);
     } else if (is_tail) {
         rc = run_tail(ctx, vocab, n_embd, n_vocab, act_file);
     } else {
-        rc = run_mono_or_head(ctx, vocab, n_embd, n_vocab, (llama_token) tok, is_head, act_file);
+        rc = run_mono_or_head(ctx, vocab, n_embd, n_vocab, toks, is_head, act_file);
     }
 
     llama_free(ctx);
