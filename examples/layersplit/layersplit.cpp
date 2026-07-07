@@ -776,6 +776,13 @@ static int run_pipedriver(llama_context * ctx, const llama_vocab * vocab, int n_
     tail.token = (llama_token *) malloc(sizeof(llama_token));
     std::vector<float> hh((size_t) n_embd), hm((size_t) n_embd);
 
+    // [plan-a port] per-hop timing: wall-clock spent in stage A (op15 = RTT+compute),
+    // stage B (op12 = RTT+compute), and the inline host tail (A6000 CUDA compute).
+    // Only the generation-phase steps are timed (decode), not prompt prefill.
+    using clk = std::chrono::steady_clock;
+    double us_A = 0, us_B = 0, us_T = 0; long timed = 0; bool do_time = false;
+    auto now_us = [&]() { return std::chrono::duration<double, std::micro>(clk::now().time_since_epoch()).count(); };
+
     auto stage = [&](int fd, int32_t pos, int32_t tok, const float * hin, int32_t nh, float * hout) -> bool {
         if (!send_all(fd, &pos, sizeof(pos)) || !send_all(fd, &tok, sizeof(tok)) || !send_all(fd, &nh, sizeof(nh))) return false;
         if (nh > 0 && !send_all(fd, hin, (size_t) nh * sizeof(float))) return false;
@@ -784,8 +791,11 @@ static int run_pipedriver(llama_context * ctx, const llama_vocab * vocab, int n_
         return recv_all(fd, hout, (size_t) n_embd * sizeof(float));
     };
     auto step = [&](int32_t pos, llama_token tok, llama_token & out) -> bool {
+        double a0 = do_time ? now_us() : 0;
         if (!stage(fdA, pos, tok, nullptr, 0, hh.data()))       { fprintf(stderr, "error: stage A (pos=%d)\n", pos); return false; }
+        double a1 = do_time ? now_us() : 0;
         if (!stage(fdB, pos, tok, hh.data(), n_embd, hm.data())) { fprintf(stderr, "error: stage B (pos=%d)\n", pos); return false; }
+        double a2 = do_time ? now_us() : 0;
         tail.n_tokens = 1; tail.token[0] = tok; memcpy(tail.embd, hm.data(), (size_t) n_embd * sizeof(float));
         tail.pos[0] = pos; tail.n_seq_id[0] = 1; tail.seq_id[0][0] = 0; tail.logits[0] = 1;
         if (llama_decode(ctx, tail) != 0) { fprintf(stderr, "error: tail decode (pos=%d)\n", pos); return false; }
@@ -793,6 +803,7 @@ static int run_pipedriver(llama_context * ctx, const llama_vocab * vocab, int n_
         if (!lg) return false;
         int32_t best = 0; float bv = lg[0];
         for (int i = 1; i < n_vocab; ++i) if (lg[i] > bv) { bv = lg[i]; best = i; }
+        if (do_time) { double a3 = now_us(); us_A += a1 - a0; us_B += a2 - a1; us_T += a3 - a2; timed++; }
         out = best; return true;
     };
 
@@ -804,6 +815,7 @@ static int run_pipedriver(llama_context * ctx, const llama_vocab * vocab, int n_
         pos++;
     }
     printf("\n=== GENERATED ===\n%s", prompt.c_str()); fflush(stdout);
+    do_time = true;   // time only the generation-phase steps (steady-state decode)
     for (int g = 0; g < n_gen; ++g) {
         std::string pc = common_token_to_piece(ctx, next, true);
         printf("%s", pc.c_str()); fflush(stdout);
@@ -814,6 +826,15 @@ static int run_pipedriver(llama_context * ctx, const llama_vocab * vocab, int n_
         next = o; pos++;
     }
     printf("\n=================\n"); fflush(stdout);
+    if (timed > 0) {
+        double tot = (us_A + us_B + us_T) / timed / 1000.0;
+        fprintf(stderr, "[pipedriver] per-tok decode breakdown over %ld steps (ms):\n"
+                        "    stageA op15 (RTT+compute) = %.2f\n"
+                        "    stageB op12 (RTT+compute) = %.2f\n"
+                        "    tail   A6000 (CUDA)       = %.2f\n"
+                        "    total decode/tok          = %.2f\n",
+                timed, us_A / timed / 1000.0, us_B / timed / 1000.0, us_T / timed / 1000.0, tot);
+    }
 done:
     { int32_t s = -1; send_all(fdA, &s, sizeof(s)); send_all(fdB, &s, sizeof(s)); }
     llama_batch_free(tail);
