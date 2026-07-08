@@ -8,7 +8,7 @@
 
 ## 📍 Current status — `2026-07-08 EDT`
 
-**Phase: M4 in progress — DUAL-ENGINE (one session, two backends) live on BOTH real phones.** ✅ New `dualengine` mode in `llama-layersplit`: ONE process loads the shard on TWO devices and runs **NPU decode (HTP0) ∥ GPU prefill (GPUOpenCL)** on two threads concurrently. On the real phones the wall time == the *longer* single-engine leg → **zero-interference overlap** (op12 **1.76×**, op15 **1.92×** vs serial). Static **B=16 batched decode** on the NPU is bit-correct vs single-seq (rel_L2 ~5e-4, 0/16 argmax mismatch) — **no cross-seq bleed** — and the recorded **op15 S1 hang did NOT reproduce** (a static lockstep batch avoids the continuous-batching `n_parallel` path that hung). This delivers the user's requirements **(1) one session/two backends** and **(2) static batch (16/32) decode ∥ one-by-one prefill**. Still 2× weight (one shard copy per engine); **(3) one weight copy** is next (Build 3: rpcmem dmabuf + `clImportMemoryARM`, gated on the S2 probe). *xmem changes untouched.* Tracker: [PORT.md](PORT.md).
+**Phase: M4 in progress — DUAL-ENGINE (one session, two backends) live on BOTH real phones.** ✅ New `dualengine` mode in `llama-layersplit`: ONE process loads the shard on TWO devices and runs **NPU decode (HTP0) ∥ GPU prefill (GPUOpenCL)** on two threads concurrently. On the real phones the wall time == the *longer* single-engine leg → **zero-interference overlap** (op12 **1.76×**, op15 **1.92×** vs serial). Static **B=16 batched decode** on the NPU is bit-correct vs single-seq (rel_L2 ~5e-4, 0/16 argmax mismatch) — **no cross-seq bleed** — and the recorded **op15 S1 hang did NOT reproduce** (a static lockstep batch avoids the continuous-batching `n_parallel` path that hung). This delivers the user's requirements **(1) one session/two backends** and **(2) static batch (16/32) decode ∥ one-by-one prefill**. **(3) one weight copy is now SPIKE-PROVEN** (S2: rpcmem dmabuf read bit-exact by the Adreno GPU on both phones via `CL_MEM_EXT_HOST_PTR_QCOM|USE_HOST_PTR` + ion host-ptr) — the remaining Build 3 wires it into ggml (a shared buffer-type), which edits the protected xmem files, so it needs coordination. Dualengine still runs 2× weight until Build 3 lands. *xmem changes untouched.* Tracker: [PORT.md](PORT.md).
 
 *(prior)* **M2 done — gemma-4 12B fp16 live on the actual phones over USB.** `op15[0,2) → op12[2,3) → A6000[3,48)` answers *"…capital of France?"* → **"The capital of France is Paris."** Each phone stores ONLY its shard (op15 2.72 GB, op12 0.43 GB) via partial-load (`c615983dd`) + `shard_gguf.py`. Single-engine pipeline: **NPU 194 / CPU 219 / GPU 264 ms/tok**.
 
@@ -66,6 +66,13 @@
 ---
 
 ## 🗒️ Log
+
+### `2026-07-08 EDT` — 🔑 S2 one-copy weight-share PROVEN on both phones (req 3 feasible) ✅
+Standalone probe (`research_dev/spikes/s2_shared_weights/s2_shared_probe.c`, all-dlopen, no vendor link libs): a Hexagon **rpcmem** dmabuf written by the CPU is imported into OpenCL and read **BIT-EXACT by an Adreno GPU kernel — 0/1048576 mismatches on op12 AND op15**. Since `ggml-hexagon` already reads rpcmem natively for HMX, the GPU reading the *same fd* proves **one physical f16 copy can serve both engines** (requirement 3).
+
+**The import combo that works (both devices, identical):** `cl_mem_ion_host_ptr{ allocation_type=CL_MEM_ION_HOST_PTR_QCOM, host_cache_policy=UNCACHED, ion_filedesc=fd, ion_hostptr=base }` + `clCreateBuffer(CL_MEM_EXT_HOST_PTR_QCOM | CL_MEM_USE_HOST_PTR, size, &h)`. Gotchas found by matrix-sweep: `USE_HOST_PTR` is mandatory (without it → -30); use **ion** allocation_type not dmabuf (the rpcmem fd imports as ION even though the ext string says dmabuf; dmabuf type → -59). Device caps (`cl_ext_probe.c`): both Adreno 750/840 expose `cl_qcom_dmabuf_host_ptr`+`cl_qcom_ext_host_ptr`(+iocoherent); `clImportMemoryARM` absent; page=4096, ext_mem_padding=0. Open for Build 3: clean RSS/smaps 1×-copy measurement; CACHED+WRITEBACK+one-time-flush vs UNCACHED for GPU read bandwidth.
+
+**→ All three requirements now proven achievable: (1)+(2) BUILT on hardware, (3) SPIKE-PROVEN. Remaining: Build 3 = ggml shared buffer-type (rpcmem alloc + ION import), which edits the protected xmem files — needs coordination.**
 
 ### `2026-07-08 EDT` — ⚡ DUAL-ENGINE: one session, NPU decode ∥ GPU prefill, on BOTH real phones ✅
 Built the `dualengine` mode (`examples/layersplit/layersplit.cpp`) — the user's design requirements (1)+(2), realized in ONE process:
