@@ -65,6 +65,15 @@
 
 ## 🗒️ Log
 
+### `2026-07-08 EDT` — Phone stores ONLY its layer slice (partial load + gguf shard tool) ✅ (`c615983dd`)
+Requirement: 12B fp16 (~24 GB) can't fit a phone → each stage must hold only its layers. Built two pieces in our repo:
+1. **`gemma4.cpp` partial load** — `load_arch_tensors` now reads the same `LLAMA_LAYER_START/END` as the graph and creates ONLY layers `[ls,le)` (+ `tok_embd` for head/terminal, `output`+`output_norm` for terminal). Out-of-range tensors are never created → never allocated, never loaded. `llama-model.cpp` passes `done_getting_tensors(partial=true)` when the env is set so a full-gguf partial load doesn't trip the tensor-count check.
+2. **`research_dev/shard_gguf.py`** — extracts a layer slice into a per-stage gguf, keeping **original block indices + all metadata** (block_count, SWA pattern, rope, tokenizer) so per-layer SWA/rope indexing is bit-identical.
+
+**Validated:** E2B shards load (312/601 tensors for tail; `is_swa` correct per *absolute* index). **12B shard sizes:** op12 `[2,3)` = **0.43 GB** (1.9% of 22 GB), op15 `[0,2)` = 2.72 GB (2 layers ~0.9 GB + `tok_embd` ~1.9 GB). Also: **f16 12B conversion done** (bf16→f16, mandatory per the kernel audit).
+
+**Note:** op15's 1.9 GB is the `tok_embd` table, kept because the head currently EMBEDS (`ls==0`). The intended design has the **server embed** and send the residual to op15 → then op15 needs no `tok_embd` (~0.9 GB). That's a driver/topology change (next). E2B shards stay large because the MatFormer `per_layer_token_embd` table (~1.3 GB) is global — a 12B non-issue.
+
 ### `2026-07-07 EDT` — Model = gemma-4 12B fp16; kernel-shape audit + S1 hang did NOT reproduce 🔎
 On-device (op15, before the user reclaimed it): the recorded **S1 hang did NOT reproduce**. Lockstep batched decode (our `tailbench`, full model) ran B=1→**64** (27→51 tok/s); continuous-batching `batched-bench` (Q4_0) ran npl=1→**8** (TG 21→31 t/s) — all clean. The old "npl=2 hangs on op15" was the **fp16** sweep; fp16 npl=2 was the one run in progress when op15 was reclaimed (no verdict). So the hang is at worst fp16-specific, not multi-seq-attention-general. **#4 (static lockstep batch) is proven feasible on the NPU today.** ([[s1-npu-batch-decode-hang-localized]])
 
