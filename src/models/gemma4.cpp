@@ -65,7 +65,9 @@ void llama_model_gemma4::load_arch_tensors(llama_model_loader &) {
         }
     }
 
-    if (is_head || is_tail) {
+    // head embeds, terminal has the tied lm_head; a per-layer arch (E2B) also needs tok_embd on
+    // EVERY stage to rebuild per-layer token embeddings from the relayed token (see build graph).
+    if (is_head || is_tail || n_embd_per_layer > 0) {
         tok_embd = create_tensor(tn(LLM_TENSOR_TOKEN_EMBD, "weight"), {n_embd, n_vocab}, 0);
     }
 
@@ -223,19 +225,31 @@ llama_model_gemma4::graph::graph(const llama_model & model, const llm_graph_para
     ggml_tensor * inj_h = nullptr; // injected residual; becomes inpL for the tail layer loop
     if (ls > 0) {
         auto inj = std::make_unique<llm_graph_input_embd_h>(n_embd);
-        ggml_tensor * inj_tokens = ggml_new_tensor_1d(ctx0, GGML_TYPE_I32, n_tokens); // <- ubatch.token
-        ggml_set_input(inj_tokens);
-        inj->tokens       = inj_tokens;
-        res->t_inp_tokens = inj_tokens;
         inj_h = ggml_new_tensor_2d(ctx0, GGML_TYPE_F32, n_embd, n_tokens); // <- ubatch.embd (real decode)
         ggml_set_input(inj_h);
         inj->h = inj_h;
         cb(inj_h, "layersplit_inject", -1);
-        res->add_input(std::move(inj));
 
-        // scaled token embedding (mirrors build_inp_embd token path) for the per-layer projection
-        inpL = ggml_get_rows(ctx0, model.tok_embd, inj_tokens);
-        inpL = ggml_scale(ctx0, inpL, sqrtf(n_embd));
+        if (model.per_layer_tok_embd) {
+            // per-layer arch (gemma-3n E2B): DUAL batch — the relayed input token reconstructs the
+            // per-layer token embeddings; the injected residual (inj_h) becomes inpL. Needs tok_embd
+            // loaded on EVERY stage (loader keeps it when n_embd_per_layer>0). [M1 dual-batch]
+            ggml_tensor * inj_tokens = ggml_new_tensor_1d(ctx0, GGML_TYPE_I32, n_tokens); // <- ubatch.token
+            ggml_set_input(inj_tokens);
+            inj->tokens       = inj_tokens;
+            res->t_inp_tokens = inj_tokens;
+            res->add_input(std::move(inj));
+
+            // scaled token embedding (mirrors build_inp_embd token path) for the per-layer projection
+            inpL = ggml_get_rows(ctx0, model.tok_embd, inj_tokens);
+            inpL = ggml_scale(ctx0, inpL, sqrtf(n_embd));
+        } else {
+            // plain arch (gemma-4 12B): no per-layer embeddings — the injected residual IS the input.
+            // No token is referenced, so a middle stage needs neither tok_embd nor an inj_tokens input
+            // (which would otherwise be an orphaned graph input). set_input tolerates the null token.
+            res->add_input(std::move(inj));
+            inpL = inj_h;
+        }
     } else {
         inpL = build_inp_embd(model.tok_embd);
         // important: do not normalize weights for raw embeddings input (i.e. encoded image embeddings)
