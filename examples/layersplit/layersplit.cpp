@@ -17,6 +17,7 @@
 #include "llama.h"
 #include "ggml-backend.h"         // ggml_backend_dev_* for the HTP+Adreno device split
 #include "common.h"               // common_tokenize / common_token_to_piece
+#include "chat.h"                 // [plan-a port] common_chat_templates_* for --chat prompt formatting
 #include "../../src/llama-ext.h" // staging header: llama_set/get_embeddings_nextn
 
 #include <algorithm>
@@ -759,18 +760,33 @@ static int run_stagenet(llama_context * ctx, int n_embd, int port) {
 
 // pipedriver: host orchestrator + inline TAIL (env LLAMA_LAYER_START=k3). Connects to stage A
 // (op15 [0,k2)) and stage B (op12 [k2,k3)) over TCP (adb-forwarded USB), drives incremental decode.
+// [plan-a port] format a single user message with the model's chat template (Jinja). gemma-4-it
+// needs its channel-based template — raw prompts are out-of-distribution and generate degenerately.
+static std::string apply_chat_template(const llama_model * model, const std::string & user_msg) {
+    common_chat_templates_ptr tmpls = common_chat_templates_init(model, "");
+    common_chat_templates_inputs in;
+    common_chat_msg m; m.role = "user"; m.content = user_msg;
+    in.messages = { m };
+    in.add_generation_prompt = true;
+    in.use_jinja = true;
+    in.add_bos   = false; // BOS is added at tokenization (common_tokenize add_special=true)
+    return common_chat_templates_apply(tmpls.get(), in).prompt;
+}
+
 static int run_pipedriver(llama_context * ctx, const llama_vocab * vocab, int n_embd, int n_vocab,
                           const std::string & host, int portA, int portB,
-                          const std::string & prompt, int n_gen) {
+                          const std::string & prompt, int n_gen, bool chat_mode) {
     int fdA = connect_to(host, portA);
     if (fdA < 0) { fprintf(stderr, "error: connect A %s:%d failed\n", host.c_str(), portA); return 3; }
     int fdB = connect_to(host, portB);
     if (fdB < 0) { fprintf(stderr, "error: connect B %s:%d failed\n", host.c_str(), portB); close(fdA); return 3; }
     fprintf(stderr, "[pipedriver] connected A=%s:%d B=%s:%d\n", host.c_str(), portA, host.c_str(), portB);
 
-    std::vector<llama_token> ptoks = common_tokenize(vocab, prompt, true, true);
+    const std::string eff = chat_mode ? apply_chat_template(llama_get_model(ctx), prompt) : prompt;
+    // add BOS (gemma requires it) + parse the template's special tokens (<|channel> etc.)
+    std::vector<llama_token> ptoks = common_tokenize(vocab, eff, true, true);
     if (ptoks.empty()) { fprintf(stderr, "error: prompt -> 0 tokens\n"); close(fdA); close(fdB); return 3; }
-    fprintf(stderr, "[pipedriver] prompt='%s' (%zu tok), n_gen=%d\n", prompt.c_str(), ptoks.size(), n_gen);
+    fprintf(stderr, "[pipedriver] chat=%d prompt='%s' (%zu tok), n_gen=%d\n", (int)chat_mode, prompt.c_str(), ptoks.size(), n_gen);
 
     llama_batch tail = llama_batch_init(1, n_embd, 1);
     tail.token = (llama_token *) malloc(sizeof(llama_token));
@@ -1079,6 +1095,7 @@ int main(int argc, char ** argv) {
     int  ngl     = 99;
     int  tok     = -1;     // -1 => use model BOS
     bool tok_set = false;
+    bool chat_mode = false; // pipedriver --chat: apply the model's chat template to -p
 
     for (int i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "-m") == 0 && i + 1 < argc) {
@@ -1101,6 +1118,8 @@ int main(int argc, char ** argv) {
             host = argv[++i];
         } else if (strcmp(argv[i], "-p") == 0 && i + 1 < argc) {
             prompt = argv[++i];
+        } else if (strcmp(argv[i], "--chat") == 0) {
+            chat_mode = true;
         } else if (strcmp(argv[i], "--sched") == 0 && i + 1 < argc) {
             sched_file = argv[++i];
         } else if (strcmp(argv[i], "-n") == 0 && i + 1 < argc) {
@@ -1293,7 +1312,7 @@ int main(int argc, char ** argv) {
     } else if (is_stagenet) {
         rc = run_stagenet(ctx, n_embd, port);
     } else if (is_pipedriver) {
-        rc = run_pipedriver(ctx, vocab, n_embd, n_vocab, host, port, port2, prompt, n_gen);
+        rc = run_pipedriver(ctx, vocab, n_embd, n_vocab, host, port, port2, prompt, n_gen, chat_mode);
     } else if (is_tailnet) {
         rc = run_tailnet(ctx, vocab, n_embd, n_vocab, port);
     } else if (is_headnet) {
