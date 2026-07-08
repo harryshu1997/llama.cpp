@@ -1474,7 +1474,11 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
             }
         }
     }
-    ml.done_getting_tensors();
+    // [plan-a port] LayerSplit partial load: when a stage loads only its layer slice from a FULL
+    // gguf (LLAMA_LAYER_START/END set), fewer tensors are created than the file holds — tolerate it.
+    // (A per-stage SHARDED gguf creates exactly its tensors, so n_created == n_tensors regardless.)
+    const bool ls_partial = getenv("LLAMA_LAYER_START") != nullptr || getenv("LLAMA_LAYER_END") != nullptr;
+    ml.done_getting_tensors(ls_partial);
 
     // Tied NVFP4 output is valid when no separate LM-head scale tensors are present.
     // If sidecar scales exist, the output weight must be an actual output tensor.

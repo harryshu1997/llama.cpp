@@ -43,13 +43,31 @@ void llama_model_gemma4::load_arch_tensors(llama_model_loader &) {
         throw std::runtime_error("Gemma 4 requires n_embd_head_k_swa == n_embd_head_v_swa");
     }
 
-    output = create_tensor(tn(LLM_TENSOR_OUTPUT, "weight"), {n_embd, n_vocab}, TENSOR_NOT_REQUIRED);
-    // if output is NULL, init from the input tok embed
-    if (output == NULL) {
-        output = create_tensor(tn(LLM_TENSOR_TOKEN_EMBD, "weight"), {n_embd, n_vocab}, TENSOR_DUPLICATED);
+    // [plan-a port] LayerSplit PARTIAL LOAD — store ONLY this stage's slice on device.
+    // A phone stage holds just its transformer layers [ls,le); the head (ls==0) also needs tok_embd
+    // for the embedding lookup, and the terminal (le==n_layer) needs tok_embd (tied lm_head) +
+    // output + output_norm. Out-of-range tensors are never created -> never allocated, never loaded.
+    // Works with a per-stage SHARDED gguf (those tensors absent) AND a full gguf (simply skipped).
+    // Same env knobs as the graph (LLAMA_LAYER_START/END), so a stage's weights and graph agree.
+    int ls = 0, le = (int) n_layer;
+    if (const char * e = getenv("LLAMA_LAYER_START")) ls = atoi(e);
+    if (const char * e = getenv("LLAMA_LAYER_END"))   le = atoi(e);
+    if (ls < 0)             ls = 0;
+    if (le > (int) n_layer) le = (int) n_layer;
+    const bool is_head = (ls == 0);
+    const bool is_tail = (le == (int) n_layer);
+
+    if (is_tail) {
+        output = create_tensor(tn(LLM_TENSOR_OUTPUT, "weight"), {n_embd, n_vocab}, TENSOR_NOT_REQUIRED);
+        // if output is NULL, init from the input tok embed
+        if (output == NULL) {
+            output = create_tensor(tn(LLM_TENSOR_TOKEN_EMBD, "weight"), {n_embd, n_vocab}, TENSOR_DUPLICATED);
+        }
     }
 
-    tok_embd = create_tensor(tn(LLM_TENSOR_TOKEN_EMBD, "weight"), {n_embd, n_vocab}, 0);
+    if (is_head || is_tail) {
+        tok_embd = create_tensor(tn(LLM_TENSOR_TOKEN_EMBD, "weight"), {n_embd, n_vocab}, 0);
+    }
 
     if (n_embd_per_layer > 0) {
         per_layer_tok_embd   = create_tensor(tn(LLM_TENSOR_PER_LAYER_TOKEN_EMBD, "weight"),    {n_embd_per_layer * n_layer, n_vocab}, 0);
@@ -57,12 +75,19 @@ void llama_model_gemma4::load_arch_tensors(llama_model_loader &) {
         per_layer_proj_norm  = create_tensor(tn(LLM_TENSOR_PER_LAYER_PROJ_NORM,  "weight", 0), {n_embd_per_layer}, 0);
     }
 
-    output_norm = create_tensor(tn(LLM_TENSOR_OUTPUT_NORM, "weight"), {n_embd}, 0);
+    if (is_tail) {
+        output_norm = create_tensor(tn(LLM_TENSOR_OUTPUT_NORM, "weight"), {n_embd}, 0);
+    }
 
     int rope_freqs_flag = 0;
 
     for (int i = 0; i < n_layer; ++i) {
         auto & layer = layers[i];
+
+        // [plan-a port] skip layers this stage does not own — no alloc, no load
+        if (i < ls || i >= le) {
+            continue;
+        }
         const int64_t n_head      = hparams.n_head(i);
         const int64_t n_embd_head = hparams.n_embd_head_k(i);
         const int64_t n_embd_k    = hparams.n_embd_k_gqa(i);
