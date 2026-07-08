@@ -65,6 +65,17 @@
 
 ## 🗒️ Log
 
+### `2026-07-08 EDT` — 12B split validated end-to-end on host; fixed a plain-arch injection bug 🐛✅ (`3f7784540`)
+Ran the **12B f16** pipeline on host CUDA from real shards: `op15[0,2)` + `op12[2,3)` (shards) → server `[3,48)` (full f16, partial load). Caught + fixed a real bug **before** phone deploy (the point of host validation):
+- **Bug:** a 12B *middle* stage segfaulted — the `ls>0` injection path always did `ggml_get_rows(model.tok_embd, inj_tokens)` (an E2B per-layer-rebuild leftover), but 12B has no per-layer embd and a middle stage doesn't load `tok_embd` → null deref.
+- **Fix:** branch the injection on `model.per_layer_tok_embd`. Plain arch (12B) builds only the injected-residual input (`inj_h`) and uses it as `inpL` — no token, no `tok_embd`, no orphaned input. Guarded `llm_graph_input_embd_h::set_input` for the null token/embd tensors; loader keeps `tok_embd` when `n_embd_per_layer>0` (E2B).
+
+**Correctness: the split reproduces the full f16 model's argmax bit-for-bit** (verified on several raw prompts — split and mono-full both give the same token id). Per-hop timing (12B): op15 1.8 ms, op12 1.1 ms, A6000 tail 35.6 ms.
+
+**Gotcha found:** raw-prompt output is **degenerate** (`a a a…`) — but so is the *full* bf16 AND f16 model (identical), because **gemma-4-12B-it is instruction-tuned + "any-to-any"** with a complex **channel-based Jinja chat template** (`<|channel>`, `<|"|>`, function-calling). Raw completion prompts are out-of-distribution. Not a pipeline bug — coherent output needs the model's chat template applied (separate task). Also: 12B loads as `LLM_TYPE_UNKNOWN` (48 not in the gemma4 n_layer switch) — cosmetic, inference unaffected (E2B path identical).
+
+**Also:** phone lib set rebuilt with the partial-load loader; f16 12B shards staged (op15 2.72 GB, op12 0.43 GB). Ready for phone deploy.
+
 ### `2026-07-08 EDT` — Phone stores ONLY its layer slice (partial load + gguf shard tool) ✅ (`c615983dd`)
 Requirement: 12B fp16 (~24 GB) can't fit a phone → each stage must hold only its layers. Built two pieces in our repo:
 1. **`gemma4.cpp` partial load** — `load_arch_tensors` now reads the same `LLAMA_LAYER_START/END` as the graph and creates ONLY layers `[ls,le)` (+ `tok_embd` for head/terminal, `output`+`output_norm` for terminal). Out-of-range tensors are never created → never allocated, never loaded. `llama-model.cpp` passes `done_getting_tensors(partial=true)` when the env is set so a full-gguf partial load doesn't trip the tensor-count check.
