@@ -65,6 +65,18 @@
 
 ## 🗒️ Log
 
+### `2026-07-07 EDT` — Model = gemma-4 12B fp16; kernel-shape audit + S1 hang did NOT reproduce 🔎
+On-device (op15, before the user reclaimed it): the recorded **S1 hang did NOT reproduce**. Lockstep batched decode (our `tailbench`, full model) ran B=1→**64** (27→51 tok/s); continuous-batching `batched-bench` (Q4_0) ran npl=1→**8** (TG 21→31 t/s) — all clean. The old "npl=2 hangs on op15" was the **fp16** sweep; fp16 npl=2 was the one run in progress when op15 was reclaimed (no verdict). So the hang is at worst fp16-specific, not multi-seq-attention-general. **#4 (static lockstep batch) is proven feasible on the NPU today.** ([[s1-npu-batch-decode-hang-localized]])
+
+**Model locked: gemma-4 12B fp16.** Dumped the local gguf: n_layer=48, n_embd=3840, n_ff=15360, n_head=16/kv=8, head_dim=256, vocab=262144. **12B is the PLAIN arch** — `per_layer_token_embd=0` (no E2B token-relay hack) + `shared_kv_layers=0` (cut ANY layer). Simpler to split than E2B.
+
+**Kernel-shape audit (code-grounded) — user's "be careful about shapes" concern resolved:**
+- **bf16→f16 MANDATORY.** NPU `supports_mul_mat` has no BF16 case → whole matmul → CPU (`ggml-hexagon.cpp:2672`). The local file is bf16; must convert to f16 (~24 GB) before deploy.
+- **All 12B GEMMs are kernel-clean** (every K,N ÷32; xmem K%16 + out≥64). Prefill→**xmem** (M≥16), decode→**HMX** (B≥5). Only lm_head falls off xmem (harmless, terminal).
+- **HMX gate: decode B≥5** (`m≤4→HVX`). Static batch 32/64 is well clear. ✓
+- **xmem triple-gated**: compile `-DGGML_OPENCL_USE_ADRENO_KERNELS` + env `GGML_OPENCL_ADRENO_XMEM_GEMM` + Adreno. Default OFF → l4_lm (~3–4× slower).
+- **CORRECTION to earlier claim:** peak-kernels vs one-shared-weight is NOT strictly either/or. HMX reads the **native-linear f16 in place**; xmem **prepacks from that same linear copy**. With S2 dmabuf-import + **uncached** xmem you keep **both peak kernels at 1× persistent RAM** (small per-call repack tax); **cached** os8 = 2× RAM, zero tax (fine at a 2–3-layer split, ~2–3 GB). Only degrade GPU→l4_lm if the tax bites; HMX never lost. ([[gemma-4-12b-arch-kernel-shapes]], [[npu-decode-gpu-prefill-conditional]])
+
 ### `2026-07-07 EDT` — Design check: NPU-batch-decode ∥ GPU-prefill — verdict + S1 hang localized 🔎
 Question raised: *"can we form a decode batch, run it on the phone NPU, and prefill on the GPU concurrently?"* Ran a 6-agent code+roofline review (4 readers of the actual backends + synthesis + adversary). **Verdict: partly on the same page — right goal, wrong as a static rule, currently unbuildable.**
 
