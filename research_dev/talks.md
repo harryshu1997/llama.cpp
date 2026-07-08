@@ -6,9 +6,9 @@
 
 ---
 
-## 📍 Current status — `2026-07-07 EDT`
+## 📍 Current status — `2026-07-08 EDT`
 
-**Phase: M2 — live 3-device pipeline runs on phone NPU *and* GPU, with the A6000 as CUDA terminal.** ✅ Ran the persistent pipeline with the phone stages on **HTP0 (Hexagon NPU)** and **GPUOpenCL (Adreno)**, host tail offloaded to the **A6000/CUDA** (fixed a `-ngl 0` bug that had the tail on host CPU). Added per-hop timing to `pipedriver`. All three phone engines generate identical correct text. **Finding: at a 2–3-layer split the phone accelerators LOSE to the phone CPU** — the A6000 tail (32/35 layers) is only **6.4 ms**, so the phone stages dominate, and the NPU's fixed fastRPC dispatch (~34 ms on op15 for a 2-layer forward) makes it the *slowest*. Confirms R2/M5: 3 layers is plumbing, not a win — accelerators only pay off after rebalancing many layers onto the phones. *xmem changes untouched.* Tracker: [PORT.md](PORT.md).
+**Phase: M2 done on the REAL target — gemma-4 12B fp16 live on the actual phones over USB.** ✅ `op15[0,2) → op12[2,3) → A6000[3,48)` runs the **12B** model and answers *"…capital of France?"* → **"The capital of France is Paris."** (`--chat` applies the model's channel Jinja template; matches the full model). **Each phone stores ONLY its shard** — op15 2.72 GB, op12 **0.43 GB**, not the 24 GB model — via partial-load (`c615983dd`) + `shard_gguf.py`. All 3 phone engines correct: **NPU 194 / CPU 219 / GPU 264 ms/tok**. Fixed a plain-arch injection segfault (`3f7784540`) that holds on op12's real NPU. Earlier finding still stands: at a 2–3-layer split the phone accelerators barely matter (A6000 tail dominates) — the split is plumbing until many layers move onto the phones (R2/M5). *xmem changes untouched.* Tracker: [PORT.md](PORT.md).
 
 ```
  EXPLORE ✅ ─── DESIGN ✅ ─── M0 🔵 ─── M1 ✅ ─── M2 🔵 ─── M3 ⬜ ─── M4 ⬜ ─── M5 ⬜
@@ -64,6 +64,25 @@
 ---
 
 ## 🗒️ Log
+
+### `2026-07-08 EDT` — 🚀 gemma-4 **12B** deployed to the ACTUAL PHONES over USB — correct coherent output ✅
+The real target model, sharded across the fleet, generating correct text end-to-end:
+
+```
+ "What is the capital of France?"  --chat (channel template)
+   [op15] L0-1 (shard 2.72 GB) ─USB─► [op12] L2 (shard 0.43 GB) ─USB─► [A6000] L3-47 + lm_head
+   → "The capital of France is Paris."   ✓ (matches full model via llama-cli)
+```
+
+Each phone stores **ONLY its slice** (op15 2.72 GB, op12 **0.43 GB** — not the 24 GB model). Ran on all three phone engines, all correct:
+
+| phones engine | 12B ms/tok (incl prefill+USB) |
+|---|---|
+| **NPU** (HTP0)   | **194** |
+| CPU              | 219 |
+| GPU (GPUOpenCL)  | 264 |
+
+**What it took:** `--chat` (apply the model's channel Jinja template — raw prompts degenerate; missing BOS was a gotcha), the plain-arch injection fix (`3f7784540`), partial-load + shard tool (`c615983dd`), f16 conversion, and a phone-lib rebuild with the injection fix. The injection fix holds on op12's **real NPU** (middle stage, no segfault). Phones cleaned up after (0 procs, 0 forwards). *xmem files untouched.*
 
 ### `2026-07-08 EDT` — 12B split validated end-to-end on host; fixed a plain-arch injection bug 🐛✅ (`3f7784540`)
 Ran the **12B f16** pipeline on host CUDA from real shards: `op15[0,2)` + `op12[2,3)` (shards) → server `[3,48)` (full f16, partial load). Caught + fixed a real bug **before** phone deploy (the point of host validation):

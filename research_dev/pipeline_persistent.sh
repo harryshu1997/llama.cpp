@@ -38,6 +38,6 @@ done
 
 echo "both stages listening. driving decode ($NGEN tokens)..."
 t0=$(date +%s%3N)
-LLAMA_LAYER_START=$K3 "$HOST_BIN" -m "$HOST_MODEL" -ngl $HNGL --mode pipedriver --host 127.0.0.1 --port $PA --port2 $PB -p "$PROMPT" -n $NGEN 2> >(grep '\[pipedriver\] per-tok\|stageA\|stageB\|tail \|total decode' >&2)
+LLAMA_LAYER_START=$K3 "$HOST_BIN" -m "$HOST_MODEL" -ngl $HNGL --mode pipedriver --host 127.0.0.1 --port $PA --port2 $PB ${CHAT:+--chat} -p "$PROMPT" -n $NGEN 2> >(grep '\[pipedriver\] per-tok\|stageA\|stageB\|tail \|total decode\|chat=' >&2)
 t1=$(date +%s%3N)
 echo "[pipeline] $NGEN tokens in $((t1-t0)) ms = $(( (t1-t0)/NGEN )) ms/tok (incl prompt prefill + USB RTT/tok)"
