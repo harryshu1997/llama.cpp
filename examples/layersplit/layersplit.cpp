@@ -1137,18 +1137,28 @@ static void fill_batch_Bway(llama_batch & b, int n_embd, int B, int32_t pos, boo
 }
 
 static int run_dualengine(const std::string & model_path, const std::string & dev_prefill,
-                          const std::string & dev_decode, int B, int rounds, int prefill_tokens, int ngl) {
+                          const std::string & dev_decode, int B, int rounds, int prefill_tokens, int ngl,
+                          bool share_weights) {
     const char * e_ls = getenv("LLAMA_LAYER_START");
     const char * e_le = getenv("LLAMA_LAYER_END");
     const bool is_head = (e_ls == nullptr || atoi(e_ls) == 0);
-    fprintf(stderr, "[dualengine] prefill=%s decode=%s  B=%d rounds=%d prefill_tokens=%d  shard[ls=%s,le=%s] is_head=%d\n",
+    fprintf(stderr, "[dualengine] prefill=%s decode=%s  B=%d rounds=%d prefill_tokens=%d  shard[ls=%s,le=%s] is_head=%d share_weights=%d\n",
             dev_prefill.c_str(), dev_decode.c_str(), B, rounds, prefill_tokens,
-            e_ls ? e_ls : "0", e_le ? e_le : "n_layer", (int) is_head);
+            e_ls ? e_ls : "0", e_le ? e_le : "n_layer", (int) is_head, (int) share_weights);
 
     // --- load the SAME shard on each engine's device (requirement 1: two backends, one process) ---
+    // requirement 3 (one weight copy): with --share-weights, the DECODE model (Hexagon) publishes
+    // each rpcmem weight buffer, and the PREFILL model (OpenCL) imports the SAME dmabuf instead of
+    // allocating a second copy. Publish is scoped to the decode model's WEIGHT load only (unset
+    // before its context/KV buffers are created, which must stay private per engine).
+    if (share_weights) setenv("GGML_PHONE_SHARE_PUBLISH", "1", 1);
     llama_model * m_dec = load_shard_on_device(model_path, dev_decode, ngl);
+    if (share_weights) unsetenv("GGML_PHONE_SHARE_PUBLISH");
     if (!m_dec) { fprintf(stderr, "error: decode-engine model load failed\n"); return 1; }
+
+    if (share_weights) setenv("GGML_PHONE_SHARE_IMPORT", "1", 1);
     llama_model * m_pre = load_shard_on_device(model_path, dev_prefill, ngl);
+    if (share_weights) unsetenv("GGML_PHONE_SHARE_IMPORT");
     if (!m_pre) { fprintf(stderr, "error: prefill-engine model load failed\n"); llama_model_free(m_dec); return 1; }
 
     const int n_embd = llama_model_n_embd(m_dec);
@@ -1348,6 +1358,7 @@ int main(int argc, char ** argv) {
     int  tok     = -1;     // -1 => use model BOS
     bool tok_set = false;
     bool chat_mode = false; // pipedriver --chat: apply the model's chat template to -p
+    bool share_weights = false; // dualengine --share-weights: one rpcmem weight copy for both engines
 
     for (int i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "-m") == 0 && i + 1 < argc) {
@@ -1386,6 +1397,8 @@ int main(int argc, char ** argv) {
             dev_prefill = argv[++i];
         } else if (strcmp(argv[i], "--dev-decode") == 0 && i + 1 < argc) {
             dev_decode = argv[++i];
+        } else if (strcmp(argv[i], "--share-weights") == 0) {
+            share_weights = true;
         } else if (strcmp(argv[i], "--prompt-len") == 0 && i + 1 < argc) {
             prompt_len = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--gap-ms") == 0 && i + 1 < argc) {
@@ -1464,7 +1477,7 @@ int main(int argc, char ** argv) {
         const int B       = std::max(n_streams, 1);              // -b : static decode batch
         const int rounds  = std::max(n_gen, 1);                  // -n : decode rounds
         const int pf_toks = std::max(prompt_len, 1);             // --prompt-len : tokens/prefill request
-        return run_dualengine(model_path, dp, dd, B, rounds, pf_toks, ngl);
+        return run_dualengine(model_path, dp, dd, B, rounds, pf_toks, ngl, share_weights);
     }
 
     llama_model_params model_params = llama_model_default_params();

@@ -67,6 +67,19 @@
 
 ## 🗒️ Log
 
+### `2026-07-08 EDT` — 🧩 Build 3: ONE weight copy for both engines — LIVE (requirement 3 done) ✅
+Wired the S2 proof into the real dualengine. Turned out to need only **3 small env-gated edits** (default behavior + xmem prepack-cache untouched), because the two-model structure means the OpenCL model's weight buffers stay normal OpenCL buffers — just backed by imported memory — so **no `supports_buft`, `init_tensor`, or loader changes were needed**:
+- **ggml-hexagon** (`+36`): when `GGML_PHONE_SHARE_PUBLISH`, `alloc_buffer` publishes each rpcmem weight buffer's `{fd,base,size}`; exported `ggml_hexagon_shared_weight_take()`.
+- **ggml-opencl** (`+51`): when `GGML_PHONE_SHARE_IMPORT`, `alloc_buffer` dlsym's the publisher, claims the matching buffer, and imports the rpcmem fd via the S2-proven QCOM path (`ion + UNCACHED + CL_MEM_EXT_HOST_PTR_QCOM|USE_HOST_PTR`) instead of `clCreateBuffer` — **no second copy**.
+- **layersplit** (`+21`): `--share-weights` scopes PUBLISH to the decode model's weight load and IMPORT to the prefill model's, so KV/compute buffers stay private per engine.
+
+**Why it's bit-correct:** both backends use **128-byte alignment** (verified on both phones: `CL_DEVICE_MEM_BASE_ADDR_ALIGN`=1024 bits), and Hexagon indexes weights by `t->data − sbuf->base` while OpenCL indexes by `t->data − get_base()` (fake base = alignment) — **both resolve to the same `tensor_offset` into the same physical rpcmem.** The prefill model writes each F16 weight exactly where HMX reads it (identical shard → identical bytes anyway).
+
+**op12 [2,3) (448 MB weights):** handshake `published fd=23 … imported fd=23 — no second copy`; **CORRECTNESS PASS** (rel_L2 5.27e-4, 0/16); **1.80× overlap** (unchanged); **peak RSS 1570→1155 MiB, saved 415 MiB** ≈ the whole second weight buffer.
+**op15 [0,2) head shard:** `published fd=24 (855 MiB) → imported fd=24 — no second copy`; **CORRECTNESS PASS** (rel_L2 5.04e-4, 0/16); **1.48× overlap** (855 MiB layer weights shared; the 1.9 GB `token_embd` stays on CPU/mmap for both — page-cache shared).
+
+**→ All three requirements now BUILT + validated on real hardware: (1) one session/two backends, (2) static batch decode ∥ prefill, (3) one weight copy.** Env-gated so it composes with the existing pipeline; default path unchanged.
+
 ### `2026-07-08 EDT` — 🔑 S2 one-copy weight-share PROVEN on both phones (req 3 feasible) ✅
 Standalone probe (`research_dev/spikes/s2_shared_weights/s2_shared_probe.c`, all-dlopen, no vendor link libs): a Hexagon **rpcmem** dmabuf written by the CPU is imported into OpenCL and read **BIT-EXACT by an Adreno GPU kernel — 0/1048576 mismatches on op12 AND op15**. Since `ggml-hexagon` already reads rpcmem natively for HMX, the GPU reading the *same fd* proves **one physical f16 copy can serve both engines** (requirement 3).
 

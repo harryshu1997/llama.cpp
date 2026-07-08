@@ -31,6 +31,7 @@
 #include <regex>
 #include <set>
 #include <unordered_set>
+#include <dlfcn.h>   // [plan-a M4] dlsym the Hexagon shared-weight publisher for one-copy import
 
 #undef MIN
 #undef MAX
@@ -8808,12 +8809,62 @@ static const char * ggml_backend_opencl_buffer_type_get_name(ggml_backend_buffer
     GGML_UNUSED(buffer_type);
 }
 
+// [plan-a M4] one-copy weight share (requirement 3): import a sibling Hexagon model's rpcmem
+// dmabuf as a cl_mem instead of allocating a second physical copy. The Hexagon backend publishes
+// each weight buffer's {fd, base, size} (env GGML_PHONE_SHARE_PUBLISH); here we claim the matching
+// one and import it via the QCOM ext-host-ptr path proven bit-correct in the S2 spike
+// (ion alloc-type + UNCACHED + CL_MEM_EXT_HOST_PTR_QCOM | CL_MEM_USE_HOST_PTR). Both backends use
+// 128-byte alignment, so identical shards place tensors at identical offsets and the import is
+// exact. Returns nullptr (fall through to a normal alloc) if no published buffer matches.
+static cl_mem ggml_opencl_try_import_shared(ggml_backend_opencl_context * backend_ctx, size_t size) {
+    typedef bool (*take_fn)(size_t, int *, void **, size_t *);
+    static take_fn take     = nullptr;
+    static bool    resolved = false;
+    if (!resolved) {
+        resolved = true;
+        void * h = dlopen("libggml-hexagon.so", RTLD_NOW | RTLD_GLOBAL);
+        if (!h) h = dlopen(nullptr, RTLD_NOW);
+        if (h)  take = (take_fn) dlsym(h, "ggml_hexagon_shared_weight_take");
+        if (!take) GGML_LOG_INFO("ggml-opencl: [phone-share] hexagon publisher symbol not found\n");
+    }
+    if (!take) return nullptr;
+
+    int fd = -1; void * base = nullptr; size_t map_size = 0;
+    if (!take(size, &fd, &base, &map_size)) {
+        GGML_LOG_INFO("ggml-opencl: [phone-share] no published weight buffer matching size=%zu\n", size);
+        return nullptr;
+    }
+
+    // QCOM constants (not in all CL headers) — values from CL/cl_ext.h.
+    const cl_uint     QCOM_ION_HOST_PTR  = 0x40A8;
+    const cl_uint     QCOM_HOST_UNCACHED = 0x40A4;
+    const cl_mem_flags QCOM_EXT_HOST_PTR = (cl_mem_flags) (1u << 29);
+    struct { cl_uint allocation_type; cl_uint host_cache_policy; int ion_filedesc; void * ion_hostptr; } ion = {
+        QCOM_ION_HOST_PTR, QCOM_HOST_UNCACHED, fd, base };
+    cl_int err = 0;
+    cl_mem mem = clCreateBuffer(backend_ctx->context, QCOM_EXT_HOST_PTR | CL_MEM_USE_HOST_PTR, size, &ion, &err);
+    if (err != CL_SUCCESS || !mem) {
+        GGML_LOG_ERROR("ggml-opencl: [phone-share] import FAILED err=%d (size=%zu fd=%d) — falling back to a 2nd copy\n", err, size, fd);
+        return nullptr;
+    }
+    GGML_LOG_INFO("ggml-opencl: [phone-share] imported rpcmem fd=%d as cl_mem (size=%zu) — no second weight copy\n", fd, size);
+    return mem;
+}
+
 static ggml_backend_buffer_t ggml_backend_opencl_buffer_type_alloc_buffer(ggml_backend_buffer_type_t buffer_type, size_t size) {
     ggml_backend_opencl_context *backend_ctx = ggml_cl_init(buffer_type->device);
     load_cl_kernels(backend_ctx);
 
     // clCreateBuffer returns -61 for size 0
     size = std::max(size, (size_t)1);
+
+    if (getenv("GGML_PHONE_SHARE_IMPORT")) {
+        cl_mem shared = ggml_opencl_try_import_shared(backend_ctx, size);
+        if (shared) {
+            ggml_backend_opencl_buffer_context * ctx = new ggml_backend_opencl_buffer_context(shared);
+            return ggml_backend_buffer_init(buffer_type, ggml_backend_opencl_buffer_interface, ctx, size);
+        }
+    }
 
     cl_int err;
     cl_mem mem = clCreateBuffer(backend_ctx->context, CL_MEM_READ_WRITE, size, NULL, &err);

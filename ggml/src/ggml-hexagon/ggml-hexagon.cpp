@@ -978,6 +978,38 @@ static ggml_backend_buffer_i ggml_backend_hexagon_buffer_interface = {
 
 // ** backend buffer type
 
+// [plan-a M4] one-copy weight share (requirement 3): publish each rpcmem weight buffer's
+// {fd, base, size} so a sibling OpenCL model can IMPORT the SAME dmabuf (via the QCOM
+// ext-host-ptr path) instead of allocating a second physical copy. Both backends use a
+// 128-byte alignment, so identical shards lay tensors out at identical offsets -> the
+// import is bit-correct. Gated by env GGML_PHONE_SHARE_PUBLISH; default OFF (no change).
+struct hex_shared_weight_entry { int fd; void * base; size_t match_size; size_t map_size; bool taken; };
+static std::vector<hex_shared_weight_entry> g_hex_shared_weights;
+static std::mutex                           g_hex_shared_mtx;
+
+static void ggml_hexagon_publish_shared_weight(int fd, void * base, size_t match_size, size_t map_size) {
+    std::lock_guard<std::mutex> lk(g_hex_shared_mtx);
+    g_hex_shared_weights.push_back({ fd, base, match_size, map_size, false });
+    GGML_LOG_INFO("ggml-hex: [phone-share] published weight buffer #%zu fd=%d base=%p size=%zu\n",
+                  g_hex_shared_weights.size() - 1, fd, base, match_size);
+}
+
+// exported for the OpenCL backend (resolved via dlsym): claim the next unclaimed weight
+// buffer whose ggml request size == want_size (in publish order among equal sizes).
+extern "C" bool ggml_hexagon_shared_weight_take(size_t want_size, int * out_fd, void ** out_base, size_t * out_size) {
+    std::lock_guard<std::mutex> lk(g_hex_shared_mtx);
+    for (auto & e : g_hex_shared_weights) {
+        if (!e.taken && e.match_size == want_size) {
+            e.taken   = true;
+            *out_fd   = e.fd;
+            *out_base = e.base;
+            *out_size = e.map_size;
+            return true;
+        }
+    }
+    return false;
+}
+
 static const char * ggml_backend_hexagon_buffer_type_name(ggml_backend_buffer_type_t buffer_type) {
     return static_cast<ggml_backend_hexagon_buffer_type_context *>(buffer_type->context)->name.c_str();
 }
@@ -986,8 +1018,12 @@ static ggml_backend_buffer_t ggml_backend_hexagon_buffer_type_alloc_buffer(
             ggml_backend_buffer_type_t buffer_type, size_t size) {
     auto sess = static_cast<ggml_backend_hexagon_buffer_type_context *>(buffer_type->context)->sess;
     try {
+        const size_t orig_size = size;
         size += 4 * 1024;  // guard page
         ggml_hexagon_shared_buffer * sbuf = new ggml_hexagon_shared_buffer(sess, size);
+        if (getenv("GGML_PHONE_SHARE_PUBLISH")) {
+            ggml_hexagon_publish_shared_weight(sbuf->fd, sbuf->base, orig_size, sbuf->size);
+        }
         return ggml_backend_buffer_init(buffer_type, ggml_backend_hexagon_buffer_interface, sbuf, size);
     } catch (const std::exception & exc) {
         GGML_LOG_ERROR("ggml-hex: %s failed to allocate buffer context (host): %s\n", sess->c_name(), exc.what());
