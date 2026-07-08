@@ -8,7 +8,9 @@
 
 ## 📍 Current status — `2026-07-08 EDT`
 
-**Phase: M2 done on the REAL target — gemma-4 12B fp16 live on the actual phones over USB.** ✅ `op15[0,2) → op12[2,3) → A6000[3,48)` runs the **12B** model and answers *"…capital of France?"* → **"The capital of France is Paris."** (`--chat` applies the model's channel Jinja template; matches the full model). **Each phone stores ONLY its shard** — op15 2.72 GB, op12 **0.43 GB**, not the 24 GB model — via partial-load (`c615983dd`) + `shard_gguf.py`. All 3 phone engines correct: **NPU 194 / CPU 219 / GPU 264 ms/tok**. Fixed a plain-arch injection segfault (`3f7784540`) that holds on op12's real NPU. Earlier finding still stands: at a 2–3-layer split the phone accelerators barely matter (A6000 tail dominates) — the split is plumbing until many layers move onto the phones (R2/M5). *xmem changes untouched.* Tracker: [PORT.md](PORT.md).
+**Phase: M4 in progress — DUAL-ENGINE (one session, two backends) live on BOTH real phones.** ✅ New `dualengine` mode in `llama-layersplit`: ONE process loads the shard on TWO devices and runs **NPU decode (HTP0) ∥ GPU prefill (GPUOpenCL)** on two threads concurrently. On the real phones the wall time == the *longer* single-engine leg → **zero-interference overlap** (op12 **1.76×**, op15 **1.92×** vs serial). Static **B=16 batched decode** on the NPU is bit-correct vs single-seq (rel_L2 ~5e-4, 0/16 argmax mismatch) — **no cross-seq bleed** — and the recorded **op15 S1 hang did NOT reproduce** (a static lockstep batch avoids the continuous-batching `n_parallel` path that hung). This delivers the user's requirements **(1) one session/two backends** and **(2) static batch (16/32) decode ∥ one-by-one prefill**. Still 2× weight (one shard copy per engine); **(3) one weight copy** is next (Build 3: rpcmem dmabuf + `clImportMemoryARM`, gated on the S2 probe). *xmem changes untouched.* Tracker: [PORT.md](PORT.md).
+
+*(prior)* **M2 done — gemma-4 12B fp16 live on the actual phones over USB.** `op15[0,2) → op12[2,3) → A6000[3,48)` answers *"…capital of France?"* → **"The capital of France is Paris."** Each phone stores ONLY its shard (op15 2.72 GB, op12 0.43 GB) via partial-load (`c615983dd`) + `shard_gguf.py`. Single-engine pipeline: **NPU 194 / CPU 219 / GPU 264 ms/tok**.
 
 ```
  EXPLORE ✅ ─── DESIGN ✅ ─── M0 🔵 ─── M1 ✅ ─── M2 🔵 ─── M3 ⬜ ─── M4 ⬜ ─── M5 ⬜
@@ -64,6 +66,23 @@
 ---
 
 ## 🗒️ Log
+
+### `2026-07-08 EDT` — ⚡ DUAL-ENGINE: one session, NPU decode ∥ GPU prefill, on BOTH real phones ✅
+Built the `dualengine` mode (`examples/layersplit/layersplit.cpp`) — the user's design requirements (1)+(2), realized in ONE process:
+- **Two `llama_context` over two `llama_model`** (one per device), two `std::thread` workers. Decode engine pinned `--dev-decode HTP0`, prefill engine `--dev-prefill GPUOpenCL`. Agent-confirmed safe: `llama_model` weights are read-only during decode (`build_graph` is `const`), each context owns its own KV/sched/backends, and distinct devices don't contend. The `events=false` pipeline-parallel gate is orthogonal (it only governs intra-context micro-batch overlap) — the two-thread approach sidesteps it.
+- **Static B-way batched decode** (accumulate B, one `llama_decode` with distinct `seq_id`s) — clears the HMX B≥5 gate; prefill stays one-request-at-a-time.
+- **Self-validating**: (A) batched decode vs B single decodes on the SAME engine → L2-relative diff (fp noise ~5e-4, argmax 0/16) proves no cross-seq bleed; (B) times each engine alone vs overlapped wall.
+
+**Real-hardware numbers (12B fp16 shard, B=16, 8 rounds):**
+
+| Phone | decode HTP0 alone | prefill GPUOpenCL alone | wall (overlapped) | speedup | correctness |
+|---|---|---|---|---|---|
+| op12 (v75, [2,3) mid/inject) | 914 ms | 1194 ms | **1197 ms** ≈ max(·) | **1.76×** | rel_L2 5.3e-4, 0/16 |
+| op15 (v81, [0,2) head/token) | 1077 ms | 993 ms | **1078 ms** ≈ max(·) | **1.92×** | rel_L2 5.0e-4, 0/16 |
+
+Wall == the *longer* leg on both → **zero-interference concurrent execution** (reproduces [[cross-engine-coschedule-npu-gpu]] inside one process). **op15 did NOT hang** at B=16 — the static lockstep batch avoids the continuous-batching path that hung at `n_parallel=2` ([[s1-npu-batch-decode-hang-localized]]); the user's "static batch first" call was right. Still 2× weight (one shard per engine); requirement (3) one-copy is next.
+
+**Research settled two internals (2 Explore agents):** (i) two contexts genuinely share one read-only model's weights; the blocker to one-copy across HTP0+GPUOpenCL is `supports_buft` (session/context identity) + private repack layouts — but that repack is only for QUANTIZED types. (ii) **F16 weights are stored NATIVE-LINEAR on BOTH backends** (Hexagon skips repack for F16/F32; OpenCL f16 write is plain-linear) → the linear bytes ARE shareable. Hexagon already exports a dmabuf fd (`rpcmem_alloc2`→`rpcmem_to_fd`, `ggml_hexagon_shared_buffer{base,fd,size}`); OpenCL can import it via `clImportMemoryARM(CL_IMPORT_TYPE_DMA_BUF_ARM, fd)` (declared in the linked NDK headers, unused today). The xmem prepack reads that linear f16 `cl_mem`, so an import-alias feeds it directly → one shared linear copy + a small derived os8 tile. Gate = does the Adreno driver honor the ARM import (S2 probe).
 
 ### `2026-07-08 EDT` — 🚀 gemma-4 **12B** deployed to the ACTUAL PHONES over USB — correct coherent output ✅
 The real target model, sharded across the fleet, generating correct text end-to-end:

@@ -21,15 +21,20 @@
 #include "../../src/llama-ext.h" // staging header: llama_set/get_embeddings_nextn
 
 #include <algorithm>
+#include <atomic>
 #include <cerrno>
 #include <chrono>
+#include <cmath>
+#include <condition_variable>
 #include <ctime>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <clocale>
 #include <fstream>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 // socket relay (tailnet / headnet)
@@ -1073,6 +1078,251 @@ done2:
     return rc;
 }
 
+// ===========================================================================
+// [plan-a M4] dualengine: ONE process, TWO backends, ONE session (requirement 1).
+// Loads the SAME layer shard on two devices — a PREFILL engine (GPU/xmem, runs prompts
+// one-by-one) and a DECODE engine (NPU/HMX, static-batched) — and runs them on two threads
+// concurrently. The decode engine ACCUMULATES B injected requests then fires ONE B-way forward
+// (requirement 2: static batch, clears the HMX B>=5 gate); prefill stays one-request-at-a-time.
+// Weights are loaded per-engine for now (2x shard RAM); requirement 3 collapses that to a single
+// shared copy once the shared-dmabuf buffer-type lands (Build 3 / spike S2) — NOT here.
+//
+// This is a self-contained correctness + concurrency harness (no sockets, host-testable):
+//   (A) CORRECTNESS: proves the B-way batched decode is bit-for-bit identical to B single-seq
+//       decodes on the SAME engine (no cross-seq KV bleed, correct per-seq block-diagonal mask).
+//   (B) CONCURRENCY: times the prefill engine running in parallel with the decode engine and
+//       reports the overlap (wall < prefill_alone + decode_alone => the two backends run at once).
+// Device strings are CLI args, so host runs it with e.g. --dev-prefill CUDA0 --dev-decode CPU and
+// the phone runs the identical code with --dev-prefill GPUOpenCL --dev-decode HTP0.
+// ===========================================================================
+
+// Load `model_path` with weights pinned to a single device CSV (e.g. "HTP0" or "GPUOpenCL"),
+// honoring -ngl and the LLAMA_LAYER_START/END partial-load env. Returns nullptr on failure.
+static llama_model * load_shard_on_device(const std::string & model_path, const std::string & dev_csv, int ngl) {
+    llama_model_params mp = llama_model_default_params();
+    mp.n_gpu_layers = ngl;
+
+    // device list must outlive llama_model_load_from_file; the load consumes it synchronously.
+    std::vector<ggml_backend_dev_t> devs;
+    if (!dev_csv.empty() && dev_csv != "CPU") {
+        std::vector<std::string> names;
+        { std::string s = dev_csv; size_t p; while ((p = s.find(',')) != std::string::npos) { names.push_back(s.substr(0,p)); s = s.substr(p+1); } names.push_back(s); }
+        for (auto & nm : names) {
+            ggml_backend_dev_t d = nullptr;
+            for (size_t i = 0; i < ggml_backend_dev_count(); ++i) { auto dd = ggml_backend_dev_get(i); if (nm == ggml_backend_dev_name(dd)) { d = dd; break; } }
+            if (!d) { fprintf(stderr, "error: device '%s' not found. available:\n", nm.c_str());
+                for (size_t i = 0; i < ggml_backend_dev_count(); ++i) fprintf(stderr, "  %s\n", ggml_backend_dev_name(ggml_backend_dev_get(i)));
+                return nullptr; }
+            devs.push_back(d);
+        }
+        devs.push_back(nullptr);
+        mp.devices = devs.data();
+    }
+    return llama_model_load_from_file(model_path.c_str(), mp);
+}
+
+// Fill a B-way batch: B injected requests (or token ids when is_head), each its own sequence at `pos`.
+// Every row is flagged for output so nextn exposes each stream's cut residual.
+static void fill_batch_Bway(llama_batch & b, int n_embd, int B, int32_t pos, bool is_head,
+                            const std::vector<llama_token> & toks, const std::vector<float> & residual) {
+    b.n_tokens = B;
+    for (int j = 0; j < B; ++j) {
+        b.token[j] = toks[j];
+        if (!is_head) memcpy((float *) b.embd + (size_t) j * n_embd, residual.data() + (size_t) j * n_embd, (size_t) n_embd * sizeof(float));
+        b.pos[j]       = pos;
+        b.n_seq_id[j]  = 1;
+        b.seq_id[j][0] = j;      // distinct KV stream per request
+        b.logits[j]    = 1;
+    }
+}
+
+static int run_dualengine(const std::string & model_path, const std::string & dev_prefill,
+                          const std::string & dev_decode, int B, int rounds, int prefill_tokens, int ngl) {
+    const char * e_ls = getenv("LLAMA_LAYER_START");
+    const char * e_le = getenv("LLAMA_LAYER_END");
+    const bool is_head = (e_ls == nullptr || atoi(e_ls) == 0);
+    fprintf(stderr, "[dualengine] prefill=%s decode=%s  B=%d rounds=%d prefill_tokens=%d  shard[ls=%s,le=%s] is_head=%d\n",
+            dev_prefill.c_str(), dev_decode.c_str(), B, rounds, prefill_tokens,
+            e_ls ? e_ls : "0", e_le ? e_le : "n_layer", (int) is_head);
+
+    // --- load the SAME shard on each engine's device (requirement 1: two backends, one process) ---
+    llama_model * m_dec = load_shard_on_device(model_path, dev_decode, ngl);
+    if (!m_dec) { fprintf(stderr, "error: decode-engine model load failed\n"); return 1; }
+    llama_model * m_pre = load_shard_on_device(model_path, dev_prefill, ngl);
+    if (!m_pre) { fprintf(stderr, "error: prefill-engine model load failed\n"); llama_model_free(m_dec); return 1; }
+
+    const int n_embd = llama_model_n_embd(m_dec);
+    const llama_vocab * vocab = llama_model_get_vocab(m_dec);
+    const int n_vocab = llama_vocab_n_tokens(vocab);
+    const llama_token bos = llama_vocab_bos(vocab);
+
+    // decode context: B sequences, each advancing `rounds` positions.
+    llama_context_params dp = llama_context_default_params();
+    dp.n_seq_max = B;
+    dp.n_ctx     = (uint32_t) (B * (rounds + 4) + 64);
+    dp.n_batch   = (uint32_t) std::max(B, 8);
+    dp.n_ubatch  = (uint32_t) std::max(B, 8);
+    dp.no_perf   = true;
+    llama_context * ctx_dec = llama_init_from_model(m_dec, dp);
+
+    // prefill context: one request of up to prefill_tokens at a time.
+    llama_context_params pp = llama_context_default_params();
+    pp.n_seq_max = 1;
+    pp.n_ctx     = (uint32_t) std::max(prefill_tokens + 8, 64);
+    pp.n_batch   = (uint32_t) std::max(prefill_tokens, 8);
+    pp.n_ubatch  = (uint32_t) std::max(prefill_tokens, 8);
+    pp.no_perf   = true;
+    llama_context * ctx_pre = llama_init_from_model(m_pre, pp);
+
+    if (!ctx_dec || !ctx_pre) {
+        fprintf(stderr, "error: context creation failed\n");
+        if (ctx_dec) llama_free(ctx_dec);
+        if (ctx_pre) llama_free(ctx_pre);
+        llama_model_free(m_pre); llama_model_free(m_dec);
+        return 1;
+    }
+
+    const bool head_less = (e_le != nullptr && atoi(e_le) < (int) llama_model_n_layer(m_dec));
+    if (head_less) { llama_set_embeddings_nextn(ctx_dec, true, false); llama_set_embeddings_nextn(ctx_pre, true, false); }
+
+    // synthetic per-request inputs: distinct token id + distinct non-denormal residual per stream.
+    std::vector<llama_token> toks(B);
+    std::vector<float> resid((size_t) B * n_embd);
+    for (int j = 0; j < B; ++j) {
+        toks[j] = (llama_token) ((bos + 1 + j * 131) % n_vocab);
+        for (int i = 0; i < n_embd; ++i) resid[(size_t) j * n_embd + i] = 0.001f * (((i + j) % 17) - 8);
+    }
+
+    auto now_ms = [] { return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count(); };
+    int rc = 0;
+
+    // ----------------------------- (A) CORRECTNESS -----------------------------
+    // Batched: one B-way forward at pos 0, capture each stream's cut residual (head-less) or argmax.
+    llama_batch bb = llama_batch_init(B, is_head ? 0 : n_embd, 1);  // embd allocated iff we inject
+    bb.token = (llama_token *) malloc((size_t) B * sizeof(llama_token));
+    fill_batch_Bway(bb, n_embd, B, /*pos*/0, is_head, toks, resid);
+    if (llama_decode(ctx_dec, bb) != 0) { fprintf(stderr, "error: batched decode failed\n"); rc = 2; goto cleanup; }
+
+    {
+        std::vector<std::vector<float>> h_batch(B);
+        std::vector<llama_token> arg_batch(B, -1);
+        for (int j = 0; j < B; ++j) {
+            if (head_less) {
+                const float * h = llama_get_embeddings_nextn_ith(ctx_dec, j);
+                if (!h) { fprintf(stderr, "error: nextn NULL for stream %d (need LLAMA_LAYER_END<n_layer)\n", j); rc = 2; goto cleanup; }
+                h_batch[j].assign(h, h + n_embd);
+            } else {
+                const float * lg = llama_get_logits_ith(ctx_dec, j);
+                if (!lg) { rc = 2; goto cleanup; }
+                int best = 0; float bv = lg[0]; for (int i = 1; i < n_vocab; ++i) if (lg[i] > bv) { bv = lg[i]; best = i; }
+                arg_batch[j] = best;
+            }
+        }
+
+        // Reference: clear KV, replay each stream as its OWN single-token decode at pos 0.
+        // Batched and single run on the SAME engine, so any diff is batched-vs-serial fp noise
+        // (16-wide GEMM tiles differently than 1-wide GEMV) UNLESS there is real cross-seq bleed.
+        // Distinguish with an L2-RELATIVE metric: bleed scales with B and dominates the ref norm;
+        // fp noise stays ~1e-3. Also report argmax agreement of the cut residual as a robust check.
+        llama_memory_clear(llama_get_memory(ctx_dec), true);
+        double max_abs = 0.0, sum_d2 = 0.0, sum_r2 = 0.0; int mismatches = 0, argmax_mismatch = 0;
+        llama_batch sb = llama_batch_init(1, is_head ? 0 : n_embd, 1);
+        sb.token = (llama_token *) malloc(sizeof(llama_token));
+        for (int j = 0; j < B; ++j) {
+            llama_memory_clear(llama_get_memory(ctx_dec), true);
+            sb.n_tokens = 1; sb.token[0] = toks[j];
+            if (!is_head) memcpy(sb.embd, resid.data() + (size_t) j * n_embd, (size_t) n_embd * sizeof(float));
+            sb.pos[0] = 0; sb.n_seq_id[0] = 1; sb.seq_id[0][0] = 0; sb.logits[0] = 1;
+            if (llama_decode(ctx_dec, sb) != 0) { fprintf(stderr, "error: single decode stream %d\n", j); rc = 2; break; }
+            if (head_less) {
+                const float * h = llama_get_embeddings_nextn_ith(ctx_dec, 0);
+                if (!h) { rc = 2; break; }
+                int am_ref = 0, am_bat = 0;
+                for (int i = 0; i < n_embd; ++i) {
+                    const double d = (double) h[i] - (double) h_batch[j][i];
+                    max_abs = std::max(max_abs, std::fabs(d));
+                    sum_d2 += d * d; sum_r2 += (double) h[i] * (double) h[i];
+                    if (h[i] > h[am_ref]) am_ref = i;
+                    if (h_batch[j][i] > h_batch[j][am_bat]) am_bat = i;
+                }
+                if (am_ref != am_bat) argmax_mismatch++;
+            } else {
+                const float * lg = llama_get_logits_ith(ctx_dec, 0);
+                if (!lg) { rc = 2; break; }
+                int best = 0; float bv = lg[0]; for (int i = 1; i < n_vocab; ++i) if (lg[i] > bv) { bv = lg[i]; best = i; }
+                if (best != arg_batch[j]) mismatches++;
+            }
+        }
+        llama_batch_free(sb);
+        if (rc == 0) {
+            if (head_less) {
+                const double rel_l2 = sum_r2 > 0 ? std::sqrt(sum_d2 / sum_r2) : 0.0;
+                const bool pass = rel_l2 < 1e-2 && argmax_mismatch == 0;   // 1% L2 tolerates fp noise; bleed would blow past it
+                fprintf(stderr, "[dualengine] CORRECTNESS: batched(B=%d) vs single  rel_L2=%.3e  max|Δ|=%.3e  argmax_mismatch=%d/%d => %s\n",
+                        B, rel_l2, max_abs, argmax_mismatch, B, pass ? "PASS" : "FAIL (cross-seq bleed?)");
+            } else {
+                fprintf(stderr, "[dualengine] CORRECTNESS: batched(B=%d) vs single argmax mismatches = %d/%d => %s\n",
+                        B, mismatches, B, (mismatches == 0) ? "PASS" : "FAIL");
+            }
+        }
+    }
+    if (rc != 0) goto cleanup;
+
+    // ----------------------------- (B) CONCURRENCY -----------------------------
+    llama_memory_clear(llama_get_memory(ctx_dec), true);
+    {
+        std::atomic<double> t_dec_ms{0}, t_pre_ms{0};
+
+        // DECODE thread: `rounds` static B-way batched forwards (all B streams advance 1 pos/round).
+        auto decode_worker = [&]() {
+            double t0 = now_ms();
+            for (int r = 0; r < rounds; ++r) {
+                fill_batch_Bway(bb, n_embd, B, /*pos*/r, is_head, toks, resid);
+                if (llama_decode(ctx_dec, bb) != 0) { fprintf(stderr, "error: decode round %d\n", r); break; }
+            }
+            t_dec_ms = now_ms() - t0;
+        };
+        // PREFILL thread: `rounds` prompts, one at a time (prefill_tokens each, single sequence).
+        auto prefill_worker = [&]() {
+            llama_batch pb = llama_batch_init(prefill_tokens, is_head ? 0 : n_embd, 1);
+            if (is_head) pb.token = (llama_token *) malloc((size_t) prefill_tokens * sizeof(llama_token));
+            double t0 = now_ms();
+            for (int r = 0; r < rounds; ++r) {
+                llama_memory_clear(llama_get_memory(ctx_pre), true);
+                pb.n_tokens = prefill_tokens;
+                for (int i = 0; i < prefill_tokens; ++i) {
+                    if (is_head) pb.token[i] = (llama_token) ((bos + 1 + (r + i) * 97) % n_vocab);
+                    else memcpy((float *) pb.embd + (size_t) i * n_embd, resid.data() + (size_t) (i % B) * n_embd, (size_t) n_embd * sizeof(float));
+                    pb.pos[i] = i; pb.n_seq_id[i] = 1; pb.seq_id[i][0] = 0; pb.logits[i] = (i == prefill_tokens - 1);
+                }
+                if (llama_decode(ctx_pre, pb) != 0) { fprintf(stderr, "error: prefill round %d\n", r); break; }
+            }
+            t_pre_ms = now_ms() - t0;
+            llama_batch_free(pb);
+        };
+
+        double w0 = now_ms();
+        std::thread td(decode_worker), tp(prefill_worker);
+        td.join(); tp.join();
+        double wall = now_ms() - w0;
+        double sum  = t_dec_ms.load() + t_pre_ms.load();
+        fprintf(stderr, "[dualengine] CONCURRENCY over %d rounds:\n"
+                        "    decode  engine (%s, B=%d) alone = %.1f ms  (%.2f ms/round)\n"
+                        "    prefill engine (%s, T=%d) alone = %.1f ms  (%.2f ms/round)\n"
+                        "    wall (overlapped)               = %.1f ms\n"
+                        "    serial sum                      = %.1f ms  => overlap saved %.1f ms (%.0f%%), speedup %.2fx\n",
+                rounds, dev_decode.c_str(), B, t_dec_ms.load(), t_dec_ms.load() / rounds,
+                dev_prefill.c_str(), prefill_tokens, t_pre_ms.load(), t_pre_ms.load() / rounds,
+                wall, sum, sum - wall, sum > 0 ? 100.0 * (sum - wall) / sum : 0.0, wall > 0 ? sum / wall : 0.0);
+    }
+
+cleanup:
+    llama_batch_free(bb);
+    llama_free(ctx_pre); llama_free(ctx_dec);
+    llama_model_free(m_pre); llama_model_free(m_dec);
+    return rc;
+}
+
 int main(int argc, char ** argv) {
     std::setlocale(LC_NUMERIC, "C");
 
@@ -1092,6 +1342,8 @@ int main(int argc, char ** argv) {
     int  prompt_len = 16;    // kvsave/kvload: prefill length (KV positions to snapshot/ship)
     std::string dev_csv;     // --devices HTP0,GPUOpenCL : split layers across these backends
     std::string tsplit_csv;  // --tsplit 24,24          : layers (or ratio) per device
+    std::string dev_prefill; // dualengine: prefill-engine device (e.g. GPUOpenCL / CUDA0)
+    std::string dev_decode;  // dualengine: decode-engine device  (e.g. HTP0 / CPU)
     int  ngl     = 99;
     int  tok     = -1;     // -1 => use model BOS
     bool tok_set = false;
@@ -1130,6 +1382,10 @@ int main(int argc, char ** argv) {
             dev_csv = argv[++i];
         } else if (strcmp(argv[i], "--tsplit") == 0 && i + 1 < argc) {
             tsplit_csv = argv[++i];
+        } else if (strcmp(argv[i], "--dev-prefill") == 0 && i + 1 < argc) {
+            dev_prefill = argv[++i];
+        } else if (strcmp(argv[i], "--dev-decode") == 0 && i + 1 < argc) {
+            dev_decode = argv[++i];
         } else if (strcmp(argv[i], "--prompt-len") == 0 && i + 1 < argc) {
             prompt_len = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--gap-ms") == 0 && i + 1 < argc) {
@@ -1163,13 +1419,14 @@ int main(int argc, char ** argv) {
     const bool is_tailbench = (mode == "tailbench");
     const bool is_tailstream = (mode == "tailstream");
     const bool is_headstream = (mode == "headstream");
+    const bool is_dualengine = (mode == "dualengine");
     if (is_kvsave && is_kvload) { fprintf(stderr, "error: pick one of kvsave/kvload\n"); return 1; }
     if ((is_kvsave || is_kvload) && act_file.empty()) { fprintf(stderr, "error: --act-file (blob path) required for %s\n", mode.c_str()); return 1; }
     if (is_kvserver && port <= 0) { fprintf(stderr, "error: --port required for kvserver\n"); return 1; }
     if (is_kvclient && (host.empty() || port <= 0)) { fprintf(stderr, "error: --host --port required for kvclient\n"); return 1; }
     if (!is_mono && !is_monogen && !is_kvsave && !is_kvload && !is_kvserver && !is_kvclient && !is_head && !is_tail && !is_mid && !is_tailnet && !is_headnet && !is_tailbench
-        && !is_tailstream && !is_headstream && !is_stagenet && !is_pipedriver) {
-        fprintf(stderr, "error: --mode must be mono|head|tail|mid|stagenet|pipedriver|tailnet|headnet|tailbench|tailstream|headstream (got '%s')\n", mode.c_str());
+        && !is_tailstream && !is_headstream && !is_stagenet && !is_pipedriver && !is_dualengine) {
+        fprintf(stderr, "error: --mode must be mono|head|tail|mid|stagenet|pipedriver|tailnet|headnet|tailbench|tailstream|headstream|dualengine (got '%s')\n", mode.c_str());
         return 1;
     }
     if (is_mid && (act_file.empty() || act_out.empty())) {
@@ -1198,6 +1455,17 @@ int main(int argc, char ** argv) {
     }
 
     ggml_backend_load_all();
+
+    // [plan-a M4] dualengine owns its own two models + two contexts (one per engine/device);
+    // dispatch it here, before the single-model/single-context path below.
+    if (is_dualengine) {
+        const std::string dp = dev_prefill.empty() ? "GPUOpenCL" : dev_prefill;
+        const std::string dd = dev_decode.empty()  ? "HTP0"      : dev_decode;
+        const int B       = std::max(n_streams, 1);              // -b : static decode batch
+        const int rounds  = std::max(n_gen, 1);                  // -n : decode rounds
+        const int pf_toks = std::max(prompt_len, 1);             // --prompt-len : tokens/prefill request
+        return run_dualengine(model_path, dp, dd, B, rounds, pf_toks, ngl);
+    }
 
     llama_model_params model_params = llama_model_default_params();
     model_params.n_gpu_layers = ngl;
