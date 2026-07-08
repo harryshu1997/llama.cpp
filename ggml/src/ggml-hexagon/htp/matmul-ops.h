@@ -36,7 +36,7 @@ extern "C" {
 #define HTP_MM_ACT_TILE_SIZE_Q8_0      1152
 #define HTP_MM_ACT_TILE_SIZE_Q8_1      1280
 
-#define HTP_MM_MAX_PREFETCH 16
+#define HTP_MM_MAX_PREFETCH 128  // raised from 16 to allow the env-guarded F16 prefetch-depth sweep (asserts only)
 
 // --- Solver Cost Model Penalty Weights (HMX-specific) ---
 #define HTP_MM_HMX_COST_W_DEQUANT 3 // cost penalty for quantized weight loading/dequantization

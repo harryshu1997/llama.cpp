@@ -4130,6 +4130,169 @@ struct test_mul_mat : public test_case {
     }
 };
 
+// --- Single-token GEMV K-split study (Hexagon HMX) ---
+// A: plain decode GEMV, one token. out = mul_mat [N,1] (a compute op, timed correctly by perf mode).
+struct test_gemv_baseline : public test_case {
+    const ggml_type type_w;
+    const ggml_type type_a;
+    const int64_t   N;
+    const int64_t   K;
+
+    test_gemv_baseline(ggml_type type_w = GGML_TYPE_F16, ggml_type type_a = GGML_TYPE_F32,
+                       int64_t N = 4096, int64_t K = 3840)
+        : type_w(type_w), type_a(type_a), N(N), K(K) {}
+
+    std::string op_desc(ggml_tensor * t) override { GGML_UNUSED(t); return "GEMV_BASELINE"; }
+    std::string vars()                   override { return VARS_TO_STR4(type_w, type_a, N, K); }
+    double   max_nmse_err()              override { return 5e-4; }
+    uint64_t op_flops(ggml_tensor * t)   override { GGML_UNUSED(t); return 2ull * N * K; }
+
+    ggml_tensor * build_graph(ggml_context * ctx) override {
+        ggml_tensor * w = ggml_new_tensor_2d(ctx, type_w, K, N); ggml_set_name(w, "w");
+        ggml_tensor * a = ggml_new_tensor_2d(ctx, type_a, K, 1); ggml_set_name(a, "a");
+        ggml_tensor * out = ggml_mul_mat(ctx, w, a);
+        ggml_set_name(out, "out");
+        return out;
+    }
+};
+
+// B (perf): batched split-K matmul alone -> [N,1,S], distinct weight slice per group.
+// Ends in mul_mat so eval_perf's op-duplication replicates real matmul work (not an empty view).
+struct test_gemv_split_perf : public test_case {
+    const ggml_type type_w;
+    const ggml_type type_a;
+    const int64_t   N;
+    const int64_t   K;
+    const int64_t   S;
+
+    test_gemv_split_perf(ggml_type type_w = GGML_TYPE_F16, ggml_type type_a = GGML_TYPE_F32,
+                         int64_t N = 4096, int64_t K = 3840, int64_t S = 8)
+        : type_w(type_w), type_a(type_a), N(N), K(K), S(S) { GGML_ASSERT(K % S == 0); }
+
+    std::string op_desc(ggml_tensor * t) override { GGML_UNUSED(t); return "GEMV_SPLIT_PERF"; }
+    std::string vars()                   override { return VARS_TO_STR5(type_w, type_a, N, K, S); }
+    uint64_t op_flops(ggml_tensor * t)   override { GGML_UNUSED(t); return 2ull * N * K; }
+
+    ggml_tensor * build_graph(ggml_context * ctx) override {
+        const int64_t Kp = K / S;
+        ggml_tensor * w = ggml_new_tensor_3d(ctx, type_w, Kp, N, S); ggml_set_name(w, "w");
+        ggml_tensor * a = ggml_new_tensor_3d(ctx, type_a, Kp, 1, S); ggml_set_name(a, "a");
+        ggml_tensor * out = ggml_mul_mat(ctx, w, a);   // batched over ne2=S -> [N,1,S]
+        ggml_set_name(out, "out");
+        return out;
+    }
+};
+
+// B (correctness): split-K + reduction of the S partials -> [N,1], same math/shape as A.
+// S contiguous slices, S matmuls, chained add (no permute). Run in `test` mode.
+struct test_gemv_split_reduce : public test_case {
+    const ggml_type type_w;
+    const ggml_type type_a;
+    const int64_t   N;
+    const int64_t   K;
+    const int64_t   S;
+
+    test_gemv_split_reduce(ggml_type type_w = GGML_TYPE_F16, ggml_type type_a = GGML_TYPE_F32,
+                           int64_t N = 4096, int64_t K = 3840, int64_t S = 8)
+        : type_w(type_w), type_a(type_a), N(N), K(K), S(S) { GGML_ASSERT(K % S == 0); }
+
+    std::string op_desc(ggml_tensor * t) override { GGML_UNUSED(t); return "GEMV_SPLIT_REDUCE"; }
+    std::string vars()                   override { return VARS_TO_STR5(type_w, type_a, N, K, S); }
+    double   max_nmse_err()              override { return 5e-4; }
+
+    ggml_tensor * build_graph(ggml_context * ctx) override {
+        const int64_t Kp = K / S;
+        ggml_tensor * w = ggml_new_tensor_3d(ctx, type_w, Kp, N, S); ggml_set_name(w, "w");
+        ggml_tensor * a = ggml_new_tensor_3d(ctx, type_a, Kp, 1, S); ggml_set_name(a, "a");
+        ggml_tensor * acc = nullptr;
+        for (int64_t s = 0; s < S; ++s) {
+            ggml_tensor * w_s = ggml_view_2d(ctx, w, Kp, N, w->nb[1], s * w->nb[2]); // group s weight [K',N]
+            ggml_tensor * a_s = ggml_view_2d(ctx, a, Kp, 1, a->nb[1], s * a->nb[2]); // group s act    [K',1]
+            ggml_tensor * p_s = ggml_mul_mat(ctx, w_s, a_s);                         // partial [N,1]
+            acc = acc ? ggml_add(ctx, acc, p_s) : p_s;
+        }
+        ggml_set_name(acc, "out");
+        return acc;
+    }
+};
+
+// C (perf): plain batched decode GEMM, M tokens. out = mul_mat(w[K,N], a[K,M]) -> [N,M].
+// Sweep M to see the DURABLE win: weight (30 MiB) is read once for all M tokens, so latency grows
+// sublinearly in M (bytes/token = weight/M falls). Also crosses the Hexagon HMX gate at M>4.
+struct test_gemm_batch : public test_case {
+    const ggml_type type_w;
+    const ggml_type type_a;
+    const int64_t   N;
+    const int64_t   K;
+    const int64_t   M;
+
+    test_gemm_batch(ggml_type type_w = GGML_TYPE_F16, ggml_type type_a = GGML_TYPE_F32,
+                    int64_t N = 4096, int64_t K = 3840, int64_t M = 1)
+        : type_w(type_w), type_a(type_a), N(N), K(K), M(M) {}
+
+    std::string op_desc(ggml_tensor * t) override { GGML_UNUSED(t); return "GEMM_BATCH"; }
+    std::string vars()                   override { return VARS_TO_STR5(type_w, type_a, N, K, M); }
+    uint64_t op_flops(ggml_tensor * t)   override { GGML_UNUSED(t); return 2ull * N * K * M; }
+
+    ggml_tensor * build_graph(ggml_context * ctx) override {
+        ggml_tensor * w = ggml_new_tensor_2d(ctx, type_w, K, N); ggml_set_name(w, "w");
+        ggml_tensor * a = ggml_new_tensor_2d(ctx, type_a, K, M); ggml_set_name(a, "a");
+        ggml_tensor * out = ggml_mul_mat(ctx, w, a);   // [N,M]
+        ggml_set_name(out, "out");
+        return out;
+    }
+};
+
+// D (perf): batch M tokens AND split K into S groups together -> [N,M,S] (the (T,S) tuning grid).
+// Distinct weight slab per group (3D src0), so this is real combined batch+split work. Sweep (M,S)
+// over pairs that keep the machine full ({1,8},{4,2},{32,1}) to show split shrinks as batch grows.
+struct test_gemm_batch_split_perf : public test_case {
+    const ggml_type type_w;
+    const ggml_type type_a;
+    const int64_t   N;
+    const int64_t   K;
+    const int64_t   M;
+    const int64_t   S;
+
+    test_gemm_batch_split_perf(ggml_type type_w = GGML_TYPE_F16, ggml_type type_a = GGML_TYPE_F32,
+                               int64_t N = 4096, int64_t K = 3840, int64_t M = 4, int64_t S = 2)
+        : type_w(type_w), type_a(type_a), N(N), K(K), M(M), S(S) { GGML_ASSERT(K % S == 0); }
+
+    std::string op_desc(ggml_tensor * t) override { GGML_UNUSED(t); return "GEMM_BATCH_SPLIT_PERF"; }
+    std::string vars()                   override { return VARS_TO_STR6(type_w, type_a, N, K, M, S); }
+    uint64_t op_flops(ggml_tensor * t)   override { GGML_UNUSED(t); return 2ull * N * K * M; }
+
+    ggml_tensor * build_graph(ggml_context * ctx) override {
+        const int64_t Kp = K / S;
+        ggml_tensor * w = ggml_new_tensor_3d(ctx, type_w, Kp, N, S); ggml_set_name(w, "w");
+        ggml_tensor * a = ggml_new_tensor_3d(ctx, type_a, Kp, M, S); ggml_set_name(a, "a");
+        ggml_tensor * out = ggml_mul_mat(ctx, w, a);   // [N,M,S]
+        ggml_set_name(out, "out");
+        return out;
+    }
+};
+
+// Cross-engine co-scheduling study: two clean single-case f16 ops (no q4_0 abort, no small-N clutter)
+// so each backend can be driven with exactly one workload while measuring concurrent execution.
+// GEMV_MEM = memory-bound decode GEMV (M=1); GEMM_COMPUTE = compute-bound GEMM (M=32, hits HMX on HTP).
+struct test_gemv_mem : public test_gemv_baseline {
+    test_gemv_mem() : test_gemv_baseline(GGML_TYPE_F16, GGML_TYPE_F32, 4096, 3840) {}
+    std::string op_desc(ggml_tensor * t) override { GGML_UNUSED(t); return "GEMV_MEM"; }
+};
+
+struct test_gemm_compute : public test_gemm_batch {
+    test_gemm_compute() : test_gemm_batch(GGML_TYPE_F16, GGML_TYPE_F32, 4096, 3840, 32) {}
+    std::string op_desc(ggml_tensor * t) override { GGML_UNUSED(t); return "GEMM_COMPUTE"; }
+};
+
+// Roofline knee study: sweep batch M to find where the GEMM crosses from memory-bound (latency ~flat,
+// GFLOPS rising ~linearly, per-token time falling) to compute-bound (latency ~linear in M, GFLOPS plateaus).
+// The turning-point M* is where GFLOPS stops rising. f16 weight [K,N] read once; op_flops = 2*N*K*M.
+struct test_gemm_roofline : public test_gemm_batch {
+    test_gemm_roofline(int64_t M) : test_gemm_batch(GGML_TYPE_F16, GGML_TYPE_F32, 4096, 3840, M) {}
+    std::string op_desc(ggml_tensor * t) override { GGML_UNUSED(t); return "GEMM_ROOFLINE"; }
+};
+
 // GGML_HINT_SRC0_IS_HADAMARD
 struct test_mul_mat_hadamard : public test_mul_mat {
     test_mul_mat_hadamard(ggml_type type_a = GGML_TYPE_F32, ggml_type type_b = GGML_TYPE_F32,
@@ -9277,6 +9440,16 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
     test_cases.emplace_back(new test_falcon(2));
 #endif
 
+    // Single-token GEMV K-split study: correctness (`test` mode). Valid S: K'=K/S must be a multiple of 32.
+    {
+        const int64_t gemv_N = 4096, gemv_K = 3840;
+        test_cases.emplace_back(new test_gemv_baseline(GGML_TYPE_F16,  GGML_TYPE_F32, gemv_N, gemv_K));
+        test_cases.emplace_back(new test_gemv_baseline(GGML_TYPE_Q4_0, GGML_TYPE_F32, gemv_N, gemv_K)); // realistic decode quant (HVX thread-scaling study)
+        for (int64_t S : {2, 4, 8}) {
+            test_cases.emplace_back(new test_gemv_split_reduce(GGML_TYPE_F16, GGML_TYPE_F32, gemv_N, gemv_K, S));
+        }
+    }
+
     return test_cases;
 }
 #ifdef _MSC_VER
@@ -9403,6 +9576,59 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_perf() {
 
     test_cases.emplace_back(new test_mul_mat(GGML_TYPE_F16, GGML_TYPE_F32, 16416, 1, 128, {8,  1}, {4, 1}, {0, 2, 1, 3}));
     test_cases.emplace_back(new test_mul_mat(GGML_TYPE_F16, GGML_TYPE_F32, 128, 1, 16416, {8,  1}, {4, 1}, {0, 1, 2, 3}, 2*16416));
+
+    // Single-token GEMV K-split study: latency (`perf` mode). A vs B(S). Valid S: K'=K/S multiple of 32.
+    {
+        const int64_t gemv_N = 4096, gemv_K = 3840;
+        test_cases.emplace_back(new test_gemv_baseline(GGML_TYPE_F16,  GGML_TYPE_F32, gemv_N, gemv_K));
+        test_cases.emplace_back(new test_gemv_baseline(GGML_TYPE_Q4_0, GGML_TYPE_F32, gemv_N, gemv_K)); // realistic decode quant (HVX thread-scaling study)
+        for (int64_t S : {2, 4, 8}) {
+            test_cases.emplace_back(new test_gemv_split_perf(GGML_TYPE_F16, GGML_TYPE_F32, gemv_N, gemv_K, S));
+        }
+    }
+
+    // Batch-vs-split study: latency (`perf` mode). C sweeps batch M (weight amortization + HMX gate M>4);
+    // D combines batch+split over the (M,S) tuning grid to show the split shrinks as the batch grows.
+    {
+        const int64_t gemv_N = 4096, gemv_K = 3840;
+        for (int64_t M : {1, 4, 16, 32}) {
+            test_cases.emplace_back(new test_gemm_batch(GGML_TYPE_F16, GGML_TYPE_F32, gemv_N, gemv_K, M));
+        }
+        // cross-engine co-scheduling: clean single-case memory-bound + compute-bound workloads
+        test_cases.emplace_back(new test_gemv_mem());
+        test_cases.emplace_back(new test_gemm_compute());
+        // roofline knee: fine batch sweep to locate the memory->compute turning point
+        for (int64_t M : {1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024}) {
+            test_cases.emplace_back(new test_gemm_roofline(M));
+        }
+        // small-batch x various-split grid: at each small batch M, sweep split S (S=1 = no split) to
+        // find the best split and watch it shrink as M grows (batch supplies its own parallelism).
+        for (int64_t M : {1, 2, 4, 8, 32}) {
+            for (int64_t S : {1, 2, 4, 8}) {
+                test_cases.emplace_back(new test_gemm_batch_split_perf(GGML_TYPE_F16, GGML_TYPE_F32, gemv_N, gemv_K, M, S));
+            }
+        }
+        // same grid at a split-friendly width (on Adreno the split-K win persists out to ~N=1024).
+        for (int64_t M : {1, 2, 4, 8}) {
+            for (int64_t S : {1, 2, 4, 8}) {
+                test_cases.emplace_back(new test_gemm_batch_split_perf(GGML_TYPE_F16, GGML_TYPE_F32, 1024, gemv_K, M, S));
+            }
+        }
+    }
+
+    // GPU split-K crossover: on a wide machine split-K wins ONLY when N (output tiles) is too small to
+    // fill the SMs. Sweep N: at small N the baseline GEMV under-occupies the GPU and split-K (S extra
+    // partial passes over K) fills idle SMs -> lower latency; the win shrinks as N grows and vanishes
+    // once the plain GEMV already saturates memory bandwidth (~N=4096 on A6000). K stays 3840.
+    {
+        const int64_t gemv_K = 3840;
+        for (int64_t Nsmall : {32, 64, 128, 256, 1024}) {
+            test_cases.emplace_back(new test_gemv_baseline(GGML_TYPE_F16, GGML_TYPE_F32, Nsmall, gemv_K));
+            for (int64_t S : {2, 4, 8}) {
+                test_cases.emplace_back(new test_gemv_split_perf(GGML_TYPE_F16, GGML_TYPE_F32, Nsmall, gemv_K, S));
+            }
+        }
+    }
 
     // FWHT tests
     test_cases.emplace_back(new test_mul_mat_hadamard(GGML_TYPE_F32, GGML_TYPE_F32, 128, 1, 128));

@@ -13152,25 +13152,47 @@ static void ggml_cl_mul_mat_f16_f32_adreno_xmem(
     cl_mem dst_img = clCreateImage(backend_ctx->context, CL_MEM_READ_WRITE, &fmt, &desc_dst, nullptr, &err);
     CL_CHECK(err);
 
-    cl_mem weights = clCreateBuffer(backend_ctx->context, CL_MEM_READ_WRITE, weight_bytes, nullptr, &err);
-    CL_CHECK(err);
+    // Prepack the weight once and cache it: the weight is constant across calls, so re-transposing the
+    // whole weight every invocation is pure overhead. Exploratory, env-guarded (GGML_OPENCL_XMEM_PREPACK_CACHE).
+    static std::map<std::pair<cl_mem, cl_ulong>, cl_mem> s_xmem_weight_cache;
+    static const bool s_xmem_cache = getenv("GGML_OPENCL_XMEM_PREPACK_CACHE") != nullptr;
 
-    cl_kernel prepack = backend_ctx->kernel_adreno_xmem_prepack_weight_f16;
-    CL_CHECK(clSetKernelArg(prepack, 0, sizeof(cl_mem),   &weights));
-    CL_CHECK(clSetKernelArg(prepack, 1, sizeof(cl_mem),   &extra0->data_device));
-    CL_CHECK(clSetKernelArg(prepack, 2, sizeof(cl_ulong), &offset0));
-    CL_CHECK(clSetKernelArg(prepack, 3, sizeof(int),      &K));
-    CL_CHECK(clSetKernelArg(prepack, 4, sizeof(int),      &M));
-    CL_CHECK(clSetKernelArg(prepack, 5, sizeof(int),      &kpack));
-    CL_CHECK(clSetKernelArg(prepack, 6, sizeof(int),      &npack));
-    CL_CHECK(clSetKernelArg(prepack, 7, sizeof(int),      &os));
-    size_t lws = 256;
-    size_t max_wg = backend_ctx->get_kernel_workgroup_size(prepack);
-    if (lws > max_wg) {
-        lws = max_wg;
+    const std::pair<cl_mem, cl_ulong> wkey = std::make_pair(extra0->data_device, offset0);
+    cl_mem weights = nullptr;
+    bool weights_cached = false;
+    if (s_xmem_cache) {
+        auto it = s_xmem_weight_cache.find(wkey);
+        if (it != s_xmem_weight_cache.end()) {
+            weights        = it->second;
+            weights_cached = true; // reuse: skip alloc + prepack
+        }
     }
-    size_t gws = CEIL_DIV(static_cast<size_t>(kpack) * static_cast<size_t>(npack), lws) * lws;
-    backend_ctx->enqueue_ndrange_kernel(prepack, 1, &gws, &lws, dst);
+
+    if (!weights_cached) {
+        weights = clCreateBuffer(backend_ctx->context, CL_MEM_READ_WRITE, weight_bytes, nullptr, &err);
+        CL_CHECK(err);
+
+        cl_kernel prepack = backend_ctx->kernel_adreno_xmem_prepack_weight_f16;
+        CL_CHECK(clSetKernelArg(prepack, 0, sizeof(cl_mem),   &weights));
+        CL_CHECK(clSetKernelArg(prepack, 1, sizeof(cl_mem),   &extra0->data_device));
+        CL_CHECK(clSetKernelArg(prepack, 2, sizeof(cl_ulong), &offset0));
+        CL_CHECK(clSetKernelArg(prepack, 3, sizeof(int),      &K));
+        CL_CHECK(clSetKernelArg(prepack, 4, sizeof(int),      &M));
+        CL_CHECK(clSetKernelArg(prepack, 5, sizeof(int),      &kpack));
+        CL_CHECK(clSetKernelArg(prepack, 6, sizeof(int),      &npack));
+        CL_CHECK(clSetKernelArg(prepack, 7, sizeof(int),      &os));
+        size_t lws = 256;
+        size_t max_wg = backend_ctx->get_kernel_workgroup_size(prepack);
+        if (lws > max_wg) {
+            lws = max_wg;
+        }
+        size_t gws = CEIL_DIV(static_cast<size_t>(kpack) * static_cast<size_t>(npack), lws) * lws;
+        backend_ctx->enqueue_ndrange_kernel(prepack, 1, &gws, &lws, dst);
+
+        if (s_xmem_cache) {
+            s_xmem_weight_cache[wkey] = weights; // retained for reuse (leaks at exit; fine for benchmark)
+        }
+    }
 
     cl_kernel pack_src = backend_ctx->kernel_adreno_xmem_pack_src_f32;
     CL_CHECK(clSetKernelArg(pack_src, 0, sizeof(cl_mem),   &extra1->data_device));
@@ -13215,7 +13237,9 @@ static void ggml_cl_mul_mat_f16_f32_adreno_xmem(
     };
     backend_ctx->enqueue_ndrange_kernel(store_dst, 2, store_gws, store_lws, dst);
 
-    CL_CHECK(clReleaseMemObject(weights));
+    if (!s_xmem_cache) {
+        CL_CHECK(clReleaseMemObject(weights)); // when caching, the prepacked weight is retained in s_xmem_weight_cache
+    }
     CL_CHECK(clReleaseMemObject(dst_img));
     CL_CHECK(clReleaseMemObject(src_img));
 }

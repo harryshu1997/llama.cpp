@@ -2009,7 +2009,9 @@ static bool ggml_hexagon_matmul_is_hmx_eligible(
 
     // M alignment: Use HMX when M > HTP_MM_HMX_MIN_NROWS
     const int m = is_matmul_id ? ne12 : ne11;
-    if (m <= HTP_MM_HMX_MIN_NROWS) {
+    // GEMV/HMX study: GGML_HEXAGON_HMX_MIN1 lets M=1..4 onto the 2D HMX path for measurement.
+    static const int hmx_min_nrows = getenv("GGML_HEXAGON_HMX_MIN1") ? 0 : HTP_MM_HMX_MIN_NROWS;
+    if (m <= hmx_min_nrows) {
         return false;
     }
 
@@ -2200,6 +2202,10 @@ static void ggml_hexagon_precompute_hvx_mm_params(
     const bool is_quant = (wtype != GGML_TYPE_F16 && wtype != GGML_TYPE_F32);
     const int src1_nrows = ne11 * ne12 * ne13;
 
+    // Env-guarded F16 prefetch-depth override (prefetch-scaling study). Must be a power of 2.
+    static const uint32_t opt_nprefetch_f16 =
+        getenv("GGML_HEXAGON_NPREFETCH") ? (uint32_t) strtoul(getenv("GGML_HEXAGON_NPREFETCH"), NULL, 0) : 0;
+
     if (is_quant) {
         // Quantized HVX
         kparams->tile_size = htp_mm_get_weight_tile_size(wtype);
@@ -2304,10 +2310,12 @@ static void ggml_hexagon_precompute_hvx_mm_params(
         const bool is_batched  = (ne02 > 1) || (ne03 > 1);
         const bool is_permuted = ggml_is_permuted(src0) || ggml_is_permuted(src1);
 
+        const uint32_t f16_np = opt_nprefetch_f16 ? opt_nprefetch_f16 : 16; // prefetch depth (env override)
+
         size_t vtcm_src0_size = 0, vtcm_src1_size = 0, vtcm_dst_size = 0;
         size_t vtcm_size = htp_mm_hvx_get_vtcm_sizes(
             HTP_MM_KERNEL_HVX_F16_F16_VTCM, wtype, ne10, src1_nrows, sess->n_threads,
-            dst->nb[1], src0->nb[1], src1->nb[1], 16, &vtcm_src0_size, &vtcm_src1_size, &vtcm_dst_size
+            dst->nb[1], src0->nb[1], src1->nb[1], f16_np, &vtcm_src0_size, &vtcm_src1_size, &vtcm_dst_size
         );
 
         if (!is_batched && !is_permuted && vtcm_size <= vtcm_budget) {
@@ -2317,7 +2325,7 @@ static void ggml_hexagon_precompute_hvx_mm_params(
             kparams->vtcm_src0_size = vtcm_src0_size;
             kparams->vtcm_src1_size = vtcm_src1_size;
             kparams->vtcm_dst_size = vtcm_dst_size;
-            kparams->n_prefetch = 16;
+            kparams->n_prefetch = f16_np;
         } else {
             if (src1->type == GGML_TYPE_F32) {
                 kparams->kernel_type = HTP_MM_KERNEL_HVX_F16_F32_DDR;
@@ -2327,13 +2335,13 @@ static void ggml_hexagon_precompute_hvx_mm_params(
             kparams->src1_row_size = src1->nb[1];
             size_t ddr_size = htp_mm_hvx_get_vtcm_sizes(
                 kparams->kernel_type, wtype, ne10, src1_nrows, sess->n_threads,
-                dst->nb[1], src0->nb[1], src1->nb[1], 16, &vtcm_src0_size, &vtcm_src1_size, &vtcm_dst_size
+                dst->nb[1], src0->nb[1], src1->nb[1], f16_np, &vtcm_src0_size, &vtcm_src1_size, &vtcm_dst_size
             );
             kparams->vtcm_size = ddr_size;
             kparams->vtcm_src0_size = vtcm_src0_size;
             kparams->vtcm_src1_size = vtcm_src1_size;
             kparams->vtcm_dst_size = vtcm_dst_size;
-            kparams->n_prefetch = 16;
+            kparams->n_prefetch = f16_np;
         }
     } else {
         // F32 HVX
