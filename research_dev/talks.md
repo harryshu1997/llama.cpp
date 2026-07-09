@@ -76,6 +76,22 @@
 
 ## 🗒️ Log
 
+### `2026-07-09 EDT` — ⚡ Decode 5.2× faster: kill the attention V-repack by storing V transposed ✅
+Per-op profiling (`GGML_HEXAGON_PROFILE`) of the B=32 NPU decode on op12 exposed a shocker: one op, **`v_cont` (the attention V materialization), was 154 ms/layer — 80% of a 193 ms layer** — while the weight matmuls (q/k/v/o/ffn) were already fast on **HMX (~21 ms total)**.
+
+**Root cause — a latent flash-attn/`v_trans` ordering mismatch:** the KV cache is created with `v_trans = !flash_attn`, but with the AUTO default `flash_attn` starts *true* → V stored **non-transposed**; then auto-FA downgrades `flash_attn` to *off* on the Hexagon decode device ("Flash-Attn tensor assigned to CPU, missing support"). Net: flash off **but** V non-transposed → the explicit attention path (`build_attn_mha`, the branch llama.cpp itself flags *"note: avoid this branch"*) **transposes the whole V cache every step**, and it scales with batch (M=1 = 4.85 ms → M=32 = 154 ms).
+
+**Fix (1 line):** set `flash_attn_type = DISABLED` on the decode context up front → cache stores V **transposed** (`v_trans=true`) → `kqv = mul_mat(v, kq)` reads it directly, no `v_cont`; the transpose becomes a cheap per-token write. Prefill context keeps AUTO (flash-attn IS useful there and works on the Adreno GPU). Verified by a 4-agent adversarial workflow (Hexagon supports the transposed-V layout, no CPU fallback) + on-device re-profile.
+
+**Re-profiled on op12 (B=32, 1 layer):**
+```
+                     before → after
+v_cont (V repack):   153 837 µs → GONE (0)
+LAYER TOTAL:          193.0 ms  → 37.3 ms     (5.2× faster)
+correctness:          argmax 2/32 FAIL → 0/32 PASS, rel_L2 2.7e-3 → 5.2e-4   (also cleaner!)
+```
+The decode is now **HMX-weight-bound** (weights ~21 ms = 57%); the remaining attention cost is the `kq`/`kqv` score matmuls (~14 ms, HVX-flat) — a future flash-attn-on-Hexagon target, but no longer catastrophic. **Why flash-attn wasn't the answer for decode:** batched decode is B *independent block-diagonal* attentions (small per-stream `kq`), so FA's avoid-the-big-score-matrix win doesn't apply — the prize was the V transpose, which `v_trans` gets for free.
+
 ### `2026-07-09 EDT` — 🌐 3-DEVICE STREAMING PIPELINE runs the 12B end-to-end → correct answer ✅
 The persistent hub-and-spoke pipeline (`stagenet` on each phone + `pipedriver` on the server) is **live on the real 12B across all three devices**. Unlike the old O(N²) file-relay (`pipeline_3dev.sh`, model reload per stage per token), this keeps **KV resident on every stage** and decodes **incrementally (O(N))** over TCP-over-USB (adb forward).
 

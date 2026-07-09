@@ -1173,6 +1173,14 @@ static int run_dualengine(const std::string & model_path, const std::string & de
     dp.n_batch   = (uint32_t) std::max(B, 8);
     dp.n_ubatch  = (uint32_t) std::max(B, 8);
     dp.no_perf   = true;
+    // [plan-a M5] Force flash-attn OFF on the NPU decode context so the KV cache is created with
+    // v_trans=TRUE (V stored transposed). Hexagon has no flash_attn_ext kernel, so with the AUTO
+    // default it initially stores V NON-transposed (v_trans=!flash_attn, evaluated before auto-FA
+    // downgrades flash_attn to off on the HTP device) — then the explicit attention path transposes
+    // the WHOLE V cache every step (the ~154 ms/layer `v_cont`). Disabling FA up front stores V in
+    // the layout kqv wants, so the transpose becomes a cheap per-token write. (Prefill keeps AUTO —
+    // flash-attn IS useful there and works on the Adreno GPU.)
+    dp.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_DISABLED;
     llama_context * ctx_dec = llama_init_from_model(m_dec, dp);
 
     // prefill context: one request of up to prefill_tokens at a time.
