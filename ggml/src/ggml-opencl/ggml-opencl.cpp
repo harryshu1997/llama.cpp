@@ -5938,6 +5938,16 @@ struct ggml_backend_opencl_buffer_context {
         buffer.push_back(buf);
     }
 
+    // [plan-a M5] per-tensor one-copy share (import side). When is_shared_import, this buffer's
+    // weight tensors alias a sibling Hexagon model's rpcmem (extra->data_device points into the
+    // process-global fd->cl_mem registry, NOT into ctx->buffer). buffer[0] starts as a 1-byte
+    // dummy; on the first name-MISS it is promoted once to a real requested_size buffer that
+    // holds any non-shared tensors (compute/KV/token_embd). The destructor is unchanged: it only
+    // releases ctx->buffer (dummy + optional promoted real), never the shared aliases.
+    bool   is_shared_import = false;
+    bool   backing_is_real  = false;
+    size_t requested_size   = 0;
+
     ~ggml_backend_opencl_buffer_context() {
         for (cl_mem buf : buffer) {
             CL_CHECK(clReleaseMemObject(buf));
@@ -6305,6 +6315,63 @@ static void * ggml_backend_opencl_buffer_get_base(ggml_backend_buffer_t buffer) 
     return (void *) (uintptr_t) dev_ctx->backend_ctx->alignment;
 }
 
+// [plan-a M5] PER-TENSOR one-copy weight share (requirement 3). The Hexagon (decode) model
+// publishes each weight tensor's identity by NAME (env GGML_PHONE_SHARE_PUBLISH). Here, on the
+// OpenCL (prefill) side, every weight tensor is aliased to the SAME physical rpcmem bytes by name
+// — independent of how each backend partitions the shard into buffers (which is what broke the
+// old whole-buffer size-match once Hexagon's ~1GB cap diverged from OpenCL's ~1.9GB cap). Each
+// distinct Hexagon fd is imported ONCE via the QCOM ext-host-ptr path proven bit-correct in S2
+// (ion alloc-type + UNCACHED + CL_MEM_EXT_HOST_PTR_QCOM | CL_MEM_USE_HOST_PTR); tensors then
+// index it with a per-tensor byte offset (ggml kernels already take data_device + offset).
+static std::mutex         g_ocl_shared_mtx;
+static std::map<int, cl_mem> g_ocl_shared_fd;    // fd -> imported cl_mem (import each fd once)
+static std::set<cl_mem>      g_ocl_shared_mems;  // aliases (so set_tensor/clear can recognize them)
+
+typedef bool (*hex_lookup_fn)(const char *, int *, void **, size_t *, uint64_t *, size_t *);
+
+// dlsym the Hexagon per-tensor name resolver (once). Null => sharing unavailable, fall back.
+static hex_lookup_fn ggml_opencl_hex_lookup() {
+    static hex_lookup_fn f = nullptr;
+    static bool done = false;
+    if (!done) {
+        done = true;
+        void * h = dlopen("libggml-hexagon.so", RTLD_NOW | RTLD_GLOBAL);
+        if (!h) h = dlopen(nullptr, RTLD_NOW);
+        if (h) f = (hex_lookup_fn) dlsym(h, "ggml_hexagon_shared_tensor_lookup");
+        if (!f) GGML_LOG_INFO("ggml-opencl: [phone-share] hexagon per-tensor lookup symbol not found\n");
+    }
+    return f;
+}
+
+// Import a Hexagon rpcmem fd as a cl_mem, memoized per fd (process-global). The imported handle
+// intentionally outlives every buffer that aliases it and is leaked at process exit (mirrors the
+// xmem weight cache); releasing a USE_HOST_PTR handle would free only the CL wrapper, not the ion.
+static cl_mem ggml_opencl_import_fd(ggml_backend_opencl_context * backend_ctx, int fd, void * base, size_t import_size) {
+    std::lock_guard<std::mutex> lk(g_ocl_shared_mtx);
+    auto it = g_ocl_shared_fd.find(fd);
+    if (it != g_ocl_shared_fd.end()) return it->second;
+
+    // QCOM constants (not in all CL headers) — values from CL/cl_ext.h.
+    const cl_uint     QCOM_ION_HOST_PTR  = 0x40A8;
+    const cl_uint     QCOM_HOST_UNCACHED = 0x40A4;
+    const cl_mem_flags QCOM_EXT_HOST_PTR = (cl_mem_flags) (1u << 29);
+    struct { cl_uint allocation_type; cl_uint host_cache_policy; int ion_filedesc; void * ion_hostptr; } ion = {
+        QCOM_ION_HOST_PTR, QCOM_HOST_UNCACHED, fd, base };
+    cl_int err = 0;
+    cl_mem mem = clCreateBuffer(backend_ctx->context, QCOM_EXT_HOST_PTR | CL_MEM_USE_HOST_PTR, import_size, &ion, &err);
+    if (err != CL_SUCCESS || !mem) {
+        GGML_LOG_ERROR("ggml-opencl: [phone-share] per-fd import FAILED err=%d fd=%d size=%zu\n", err, fd, import_size);
+        return nullptr;
+    }
+    // Coherency: order any prior Hexagon-visible writes before the first GPU read of this uncached
+    // alias. Safe in the sequential dualengine load (decode model fully loaded before prefill).
+    clFinish(backend_ctx->queue);
+    g_ocl_shared_fd[fd] = mem;
+    g_ocl_shared_mems.insert(mem);
+    GGML_LOG_INFO("ggml-opencl: [phone-share] imported fd=%d once as cl_mem (size=%zu)\n", fd, import_size);
+    return mem;
+}
+
 static enum ggml_status ggml_backend_opencl_buffer_init_tensor(ggml_backend_buffer_t buffer, ggml_tensor * tensor) {
     ggml_backend_opencl_buffer_context * ctx = (ggml_backend_opencl_buffer_context *) buffer->context;
 
@@ -6332,16 +6399,52 @@ static enum ggml_status ggml_backend_opencl_buffer_init_tensor(ggml_backend_buff
         // there could be other places that need fix.
         tensor->extra = view_extra;
     } else {
-        {
-            size_t offset = (char *) tensor->data - (char *) ggml_backend_opencl_buffer_get_base(buffer);
+        ggml_tensor_extra_cl * extra = ctx->ggml_opencl_alloc_temp_tensor_extra();
+        extra->actual_size = ggml_nbytes(tensor);
 
-            ggml_tensor_extra_cl * extra = ctx->ggml_opencl_alloc_temp_tensor_extra();
-            extra->offset = offset;
+        if (ctx->is_shared_import) {
+            // [plan-a M5] per-tensor one-copy share. Resolve this tensor by name against the
+            // sibling Hexagon model's published map.
+            ggml_backend_opencl_context * backend_ctx =
+                ((ggml_backend_opencl_device_context *) buffer->buft->device->context)->backend_ctx;
+            int fd = -1; void * base = nullptr; size_t import_size = 0, tsz = 0; uint64_t hoff = 0;
+            if (ggml_opencl_hex_lookup()(tensor->name, &fd, &base, &import_size, &hoff, &tsz)) {
+                // HIT: alias the Hexagon rpcmem bytes; zero own allocation. The kernel indexes
+                // data_device + offset, so offset is the Hexagon intra-buffer byte offset.
+                cl_mem alias = ggml_opencl_import_fd(backend_ctx, fd, base, import_size);
+                GGML_ASSERT(alias && "shared-weight fd import failed");
+                extra->data_device = alias;
+                extra->offset      = hoff;
+            } else {
+                // MISS (compute/KV/token_embd — not published): promote the dummy to ONE real
+                // buffer sized to the whole requested buffer, preserving ggml-alloc's peak-reuse
+                // layout. These tensors keep the normal data-minus-fake_base offset.
+                if (!ctx->backing_is_real) {
+                    CL_CHECK(clReleaseMemObject(ctx->buffer[0]));
+                    cl_int err;
+                    cl_mem real = clCreateBuffer(backend_ctx->context, CL_MEM_READ_WRITE,
+                                                 std::max<size_t>(ctx->requested_size, 1), NULL, &err);
+                    if (err != CL_SUCCESS && backend_ctx->adreno_use_large_buffer) {
+                        cl_mem_properties props[] = { 0x41A6 /* CL_LARGE_BUFFER_QCOM */, 1, 0 };
+                        real = clCreateBufferWithProperties(backend_ctx->context, props,
+                                                            CL_MEM_READ_WRITE, ctx->requested_size, NULL, &err);
+                    }
+                    CL_CHECK(err);
+                    ctx->buffer[0]       = real;
+                    ctx->backing_is_real = true;
+                    GGML_LOG_INFO("ggml-opencl: [phone-share] buffer name-miss -> promoted to real %zu bytes (no reclaim for this buffer)\n",
+                                  ctx->requested_size);
+                }
+                extra->offset      = (char *) tensor->data - (char *) ggml_backend_opencl_buffer_get_base(buffer);
+                extra->data_device = ctx->buffer[0];
+            }
+        } else {
+            // legacy path — unchanged.
+            extra->offset      = (char *) tensor->data - (char *) ggml_backend_opencl_buffer_get_base(buffer);
             extra->data_device = ctx->buffer[0];
-            extra->actual_size = ggml_nbytes(tensor);
-
-            tensor->extra = extra;
         }
+
+        tensor->extra = extra;
     }
     return GGML_STATUS_SUCCESS;
 }
@@ -7724,6 +7827,19 @@ static void ggml_backend_opencl_buffer_set_tensor(ggml_backend_buffer_t buffer, 
     ggml_tensor_extra_cl * extra = (ggml_tensor_extra_cl *) tensor->extra;
     GGML_ASSERT(extra);
 
+    // [plan-a M5] per-tensor one-copy share: if data_device is an imported Hexagon alias, the
+    // bytes were already loaded by the decode model — skip the (redundant, same-bytes) write. This
+    // keeps it truly one-copy AND turns any offset-provenance bug into a benign mislocated READ
+    // instead of scribbling mmap bytes into Hexagon's live weights. MISS/promoted tensors own
+    // their buffer (not in the registry) and still take the normal write below.
+    {
+        std::lock_guard<std::mutex> lk(g_ocl_shared_mtx);
+        if (g_ocl_shared_mems.count(extra->data_device)) {
+            GGML_UNUSED(data); GGML_UNUSED(offset); GGML_UNUSED(size); GGML_UNUSED(buffer);
+            return;
+        }
+    }
+
     CL_CHECK(clEnqueueWriteBuffer(
         queue, extra->data_device, CL_TRUE, extra->offset + offset,
         size, data, 0, NULL, NULL));
@@ -8774,6 +8890,13 @@ static void ggml_backend_opencl_buffer_clear(ggml_backend_buffer_t buffer, uint8
     cl_command_queue queue = backend_ctx->queue;
 
     ggml_backend_opencl_buffer_context * ctx = (ggml_backend_opencl_buffer_context *) buffer->context;
+    // [plan-a M5] per-tensor one-copy share: never fill buffer->size bytes onto the 1-byte dummy
+    // (imported aliases live outside ctx->buffer, so they are never touched). Once promoted, the
+    // real buffer is exactly buffer->size and the fill below is correct. Weights are not cleared
+    // in normal runs anyway.
+    if (ctx->is_shared_import && !ctx->backing_is_real) {
+        return;
+    }
     for (cl_mem buf : ctx->buffer) {
         CL_CHECK(clEnqueueFillBuffer(queue, buf, &value, sizeof(value), 0, buffer->size, 0, NULL, NULL));
     }
@@ -8809,48 +8932,6 @@ static const char * ggml_backend_opencl_buffer_type_get_name(ggml_backend_buffer
     GGML_UNUSED(buffer_type);
 }
 
-// [plan-a M4] one-copy weight share (requirement 3): import a sibling Hexagon model's rpcmem
-// dmabuf as a cl_mem instead of allocating a second physical copy. The Hexagon backend publishes
-// each weight buffer's {fd, base, size} (env GGML_PHONE_SHARE_PUBLISH); here we claim the matching
-// one and import it via the QCOM ext-host-ptr path proven bit-correct in the S2 spike
-// (ion alloc-type + UNCACHED + CL_MEM_EXT_HOST_PTR_QCOM | CL_MEM_USE_HOST_PTR). Both backends use
-// 128-byte alignment, so identical shards place tensors at identical offsets and the import is
-// exact. Returns nullptr (fall through to a normal alloc) if no published buffer matches.
-static cl_mem ggml_opencl_try_import_shared(ggml_backend_opencl_context * backend_ctx, size_t size) {
-    typedef bool (*take_fn)(size_t, int *, void **, size_t *);
-    static take_fn take     = nullptr;
-    static bool    resolved = false;
-    if (!resolved) {
-        resolved = true;
-        void * h = dlopen("libggml-hexagon.so", RTLD_NOW | RTLD_GLOBAL);
-        if (!h) h = dlopen(nullptr, RTLD_NOW);
-        if (h)  take = (take_fn) dlsym(h, "ggml_hexagon_shared_weight_take");
-        if (!take) GGML_LOG_INFO("ggml-opencl: [phone-share] hexagon publisher symbol not found\n");
-    }
-    if (!take) return nullptr;
-
-    int fd = -1; void * base = nullptr; size_t map_size = 0;
-    if (!take(size, &fd, &base, &map_size)) {
-        GGML_LOG_INFO("ggml-opencl: [phone-share] no published weight buffer matching size=%zu\n", size);
-        return nullptr;
-    }
-
-    // QCOM constants (not in all CL headers) — values from CL/cl_ext.h.
-    const cl_uint     QCOM_ION_HOST_PTR  = 0x40A8;
-    const cl_uint     QCOM_HOST_UNCACHED = 0x40A4;
-    const cl_mem_flags QCOM_EXT_HOST_PTR = (cl_mem_flags) (1u << 29);
-    struct { cl_uint allocation_type; cl_uint host_cache_policy; int ion_filedesc; void * ion_hostptr; } ion = {
-        QCOM_ION_HOST_PTR, QCOM_HOST_UNCACHED, fd, base };
-    cl_int err = 0;
-    cl_mem mem = clCreateBuffer(backend_ctx->context, QCOM_EXT_HOST_PTR | CL_MEM_USE_HOST_PTR, size, &ion, &err);
-    if (err != CL_SUCCESS || !mem) {
-        GGML_LOG_ERROR("ggml-opencl: [phone-share] import FAILED err=%d (size=%zu fd=%d) — falling back to a 2nd copy\n", err, size, fd);
-        return nullptr;
-    }
-    GGML_LOG_INFO("ggml-opencl: [phone-share] imported rpcmem fd=%d as cl_mem (size=%zu) — no second weight copy\n", fd, size);
-    return mem;
-}
-
 static ggml_backend_buffer_t ggml_backend_opencl_buffer_type_alloc_buffer(ggml_backend_buffer_type_t buffer_type, size_t size) {
     ggml_backend_opencl_context *backend_ctx = ggml_cl_init(buffer_type->device);
     load_cl_kernels(backend_ctx);
@@ -8858,12 +8939,22 @@ static ggml_backend_buffer_t ggml_backend_opencl_buffer_type_alloc_buffer(ggml_b
     // clCreateBuffer returns -61 for size 0
     size = std::max(size, (size_t)1);
 
-    if (getenv("GGML_PHONE_SHARE_IMPORT")) {
-        cl_mem shared = ggml_opencl_try_import_shared(backend_ctx, size);
-        if (shared) {
-            ggml_backend_opencl_buffer_context * ctx = new ggml_backend_opencl_buffer_context(shared);
+    // [plan-a M5] per-tensor one-copy share: DON'T size-match a whole buffer here (that broke once
+    // the two backends' partitions diverged). Defer all placement to init_tensor, which knows the
+    // tensor name. Back this buffer with a 1-byte dummy but report the FULL requested size so
+    // ggml-alloc's tallocr / get_base keep a consistent fake address space (get_base returns NULL
+    // for a size-0 buffer). On a name-miss, init_tensor promotes the dummy to a real buffer once.
+    if (getenv("GGML_PHONE_SHARE_IMPORT") && ggml_opencl_hex_lookup()) {
+        cl_int err;
+        cl_mem dummy = clCreateBuffer(backend_ctx->context, CL_MEM_READ_WRITE, 1, NULL, &err);
+        if (err == CL_SUCCESS && dummy) {
+            ggml_backend_opencl_buffer_context * ctx = new ggml_backend_opencl_buffer_context(dummy);
+            ctx->is_shared_import = true;
+            ctx->requested_size   = size;
+            ctx->backing_is_real  = false;
             return ggml_backend_buffer_init(buffer_type, ggml_backend_opencl_buffer_interface, ctx, size);
         }
+        // dummy alloc failed — fall through to a normal buffer.
     }
 
     cl_int err;

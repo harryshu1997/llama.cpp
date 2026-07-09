@@ -356,6 +356,11 @@ static void * ggml_backend_hexagon_buffer_get_base(ggml_backend_buffer_t buffer)
     return sbuf->base;
 }
 
+// [plan-a M5] fwd-decl: the per-tensor share publisher is defined later (near the buffer-type
+// helpers, alongside g_hex_shared_mtx); init_tensor below calls it.
+static void ggml_hexagon_publish_shared_tensor(const char * name, int fd, void * base,
+                                               size_t import_size, uint64_t offset, size_t size);
+
 static enum ggml_status ggml_backend_hexagon_buffer_init_tensor(ggml_backend_buffer_t buffer, ggml_tensor * tensor) {
     auto sbuf = static_cast<ggml_hexagon_shared_buffer *>(buffer->context);
     auto sess = sbuf->sess;
@@ -365,6 +370,21 @@ static enum ggml_status ggml_backend_hexagon_buffer_init_tensor(ggml_backend_buf
 
     if (tensor->view_src != NULL && tensor->view_offs == 0) {
         return GGML_STATUS_SUCCESS; // nothing to do for the view
+    }
+
+    // [plan-a M5] per-tensor one-copy share: publish each shareable native-linear weight so the
+    // sibling OpenCL model can alias its exact bytes by name. Only F16/F32 ".weight" tensors are
+    // stored linearly (quantized types repack, and this host buffer type never holds them). The
+    // offset is the SAME expression add_tensor uses (t->data - sbuf->base). 128B-aligned by design.
+    if (getenv("GGML_PHONE_SHARE_PUBLISH") && tensor->view_src == NULL &&
+        (tensor->type == GGML_TYPE_F16 || tensor->type == GGML_TYPE_F32) &&
+        tensor->name[0] && strstr(tensor->name, ".weight")) {
+        uint64_t off = (uint64_t) ((uint8_t *) tensor->data - sbuf->base);
+        GGML_ASSERT(off % 128 == 0 && "shared weight offset must be 128B-aligned");
+        // import_size = the ggml-requested buffer size (orig_size), i.e. sbuf->size minus the 4KB
+        // guard page added in alloc_buffer — leaves that page as EXT_MEM_PADDING slack on import.
+        ggml_hexagon_publish_shared_tensor(tensor->name, sbuf->fd, (void *) sbuf->base,
+                                           sbuf->size - 4 * 1024, off, ggml_nbytes(tensor));
     }
 
     return GGML_STATUS_SUCCESS;
@@ -986,6 +1006,37 @@ static ggml_backend_buffer_i ggml_backend_hexagon_buffer_interface = {
 struct hex_shared_weight_entry { int fd; void * base; size_t match_size; size_t map_size; bool taken; };
 static std::vector<hex_shared_weight_entry> g_hex_shared_weights;
 static std::mutex                           g_hex_shared_mtx;
+
+// [plan-a M5] PER-TENSOR one-copy share: publish each shareable weight tensor's identity
+// (name -> {fd, base, import_size, offset-within-rpcmem-buffer, size}) so the OpenCL model
+// can alias the SAME physical bytes by NAME, independent of how each backend partitions the
+// shard into buffers. Replaces the fragile whole-buffer size-match (which broke once buffer
+// counts diverged: Hexagon ~1GB cap vs OpenCL ~1.9GB cap). Gated by GGML_PHONE_SHARE_PUBLISH.
+struct hex_shared_tensor_entry { int fd; void * base; size_t import_size; uint64_t offset; size_t size; };
+static std::unordered_map<std::string, hex_shared_tensor_entry> g_hex_shared_tensors;
+
+static void ggml_hexagon_publish_shared_tensor(const char * name, int fd, void * base,
+                                               size_t import_size, uint64_t offset, size_t size) {
+    std::lock_guard<std::mutex> lk(g_hex_shared_mtx);
+    // emplace = first-insert-wins so the actual weight tensor keeps the slot; a stray same-name
+    // compute/KV entry (there are none in practice) would be harmless (never queried by name).
+    g_hex_shared_tensors.emplace(name, hex_shared_tensor_entry{ fd, base, import_size, offset, size });
+}
+
+// exported for the OpenCL backend (resolved via dlsym): resolve a weight tensor by NAME to the
+// Hexagon rpcmem fd + intra-buffer byte offset it lives at. Returns false on miss.
+extern "C" bool ggml_hexagon_shared_tensor_lookup(const char * name, int * out_fd, void ** out_base,
+                                                  size_t * out_import_size, uint64_t * out_offset, size_t * out_size) {
+    std::lock_guard<std::mutex> lk(g_hex_shared_mtx);
+    auto it = g_hex_shared_tensors.find(name);
+    if (it == g_hex_shared_tensors.end()) return false;
+    *out_fd          = it->second.fd;
+    *out_base        = it->second.base;
+    *out_import_size = it->second.import_size;
+    *out_offset      = it->second.offset;
+    *out_size        = it->second.size;
+    return true;
+}
 
 static void ggml_hexagon_publish_shared_weight(int fd, void * base, size_t match_size, size_t map_size) {
     std::lock_guard<std::mutex> lk(g_hex_shared_mtx);

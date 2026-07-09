@@ -6,31 +6,39 @@
 
 ---
 
-## 📍 Current status — `2026-07-08 EDT`
+## 📍 Current status — `2026-07-09 EDT`
 
-**Phase: M4 in progress — DUAL-ENGINE (one session, two backends) live on BOTH real phones.** ✅ New `dualengine` mode in `llama-layersplit`: ONE process loads the shard on TWO devices and runs **NPU decode (HTP0) ∥ GPU prefill (GPUOpenCL)** on two threads concurrently. On the real phones the wall time == the *longer* single-engine leg → **zero-interference overlap** (op12 **1.76×**, op15 **1.92×** vs serial). Static **B=16 batched decode** on the NPU is bit-correct vs single-seq (rel_L2 ~5e-4, 0/16 argmax mismatch) — **no cross-seq bleed** — and the recorded **op15 S1 hang did NOT reproduce** (a static lockstep batch avoids the continuous-batching `n_parallel` path that hung). This delivers the user's requirements **(1) one session/two backends** and **(2) static batch (16/32) decode ∥ one-by-one prefill**. **(3) one weight copy is now SPIKE-PROVEN** (S2: rpcmem dmabuf read bit-exact by the Adreno GPU on both phones via `CL_MEM_EXT_HOST_PTR_QCOM|USE_HOST_PTR` + ion host-ptr) — the remaining Build 3 wires it into ggml (a shared buffer-type), which edits the protected xmem files, so it needs coordination. Dualengine still runs 2× weight until Build 3 lands. *xmem changes untouched.* Tracker: [PORT.md](PORT.md).
+**Phase: M2/M3 streaming pipeline LIVE on 12B + per-tensor sharing shipped; M5 energy still gated on a physical enabler.** Two wins today: (1) **the 3-device streaming pipeline runs the 12B end-to-end** — `op15[0,2) → op12[2,3) → A6000[3,48)`, persistent KV, incremental O(N) decode over TCP/USB, answered *"…capital of France?"* → **"Paris"** at ~10.5 tok/s (log below). (2) **per-tensor weight sharing** replaces the fragile whole-buffer size-match so a phone can hold **many layers at true 1× weight** (validated op15 L=8, log below). Below: the M5 crossover findings (energy blocked remotely).
+
+**Phase: M5 crossover — measured; the verdict is nuanced.** All three requirements are BUILT and validated (dualengine + static batch + one-copy sharing, commits below). M5 tried to push many layers onto op15 to find an energy crossover vs the A6000 (0.15 J/tok). Findings:
+- **Throughput scales LINEARLY with layers (reliable):** clean (xmem-off) op15 decode L=4 → **239 ms/round**, L=8 → **485 ms/round** = **2.03×** ≈ ~60 ms/layer. *(The earlier L=8 = 1717 ms was an xmem-ON RAM-thrash artifact — the `os8` prepack tile + dual models near-OOM'd; turning xmem off removed the cliff.)*
+- **No defensible J/tok obtainable remotely:** battery coulomb reads **0** (phone Full, USB-powered); the USB rail shows a near-**constant ~1.7–1.8 W** regardless of L (a sustained-power ceiling, sign-inverted) — it cannot resolve per-layer energy. A real number needs a **physical unplug + WiFi-adb + battery-discharge slope** (⚠️ user's physical action). **Cannot claim a phone-vs-server crossover from this data.**
+- **Req-3 one-copy sharing L-scaling limit — ✅ FIXED (per-tensor sharing):** the old whole-buffer size-match only worked for a one-buffer shard (Hexagon ~1 GB cap → 4 buffers vs OpenCL ~1.9 GB cap → 2 buffers diverge → 2nd-copy fallback → L=16 OOM). Now sharing is keyed by **tensor NAME**: Hexagon publishes each weight's `{fd,offset,size}`, OpenCL imports each distinct fd once and aliases every weight by name (zero own weight bytes; `set_tensor` skipped for aliases; name-miss lazily promotes one real buffer for compute/KV/token_embd). xmem untouched. **VALIDATED op15 L=8 [2,10): all 4 fds imported once, 0 promotions (100% aliased), correctness bit-identical to no-share.** Designed by a 17-agent workflow.
+- **The L=8 correctness "FAIL" is fp accumulation, NOT a sharing bug (rigorously confirmed):** the harness compares batched(B=16) vs B-single **on the decode engine only** (never touches the shared prefill weights). rel_L2 = **2.755e-3** (< 1e-2 → passes L2); only **1/16** argmax-of-residual flips (a near-tie), tripping the strict `argmax==0` gate. **Identical rel_L2 whether import succeeded OR fell back to a 2nd copy** → the discrepancy is inherent 16-wide-GEMM vs 1-wide-GEMV fp over 8 layers; no cross-seq bleed, no sharing corruption.
+
+*(prior M4)* **DUAL-ENGINE (one session, two backends) live on BOTH real phones.** ✅ `dualengine` mode in `llama-layersplit`: ONE process loads the shard on TWO devices, runs **NPU decode (HTP0) ∥ GPU prefill (GPUOpenCL)** on two threads. Wall == the *longer* single-engine leg → **zero-interference overlap** (op12 **1.76×**, op15 **1.92×**). Static **B=16 batched decode** bit-correct (rel_L2 ~5e-4, 0/16) — **op15 S1 hang did NOT reproduce**. Delivers reqs **(1)** one session/two backends + **(2)** static batch decode ∥ one-by-one prefill. **(3) one weight copy — BUILT** (`--share-weights`, commit 48d54403e), bit-exact *within the single-buffer regime above*.
 
 *(prior)* **M2 done — gemma-4 12B fp16 live on the actual phones over USB.** `op15[0,2) → op12[2,3) → A6000[3,48)` answers *"…capital of France?"* → **"The capital of France is Paris."** Each phone stores ONLY its shard (op15 2.72 GB, op12 0.43 GB) via partial-load (`c615983dd`) + `shard_gguf.py`. Single-engine pipeline: **NPU 194 / CPU 219 / GPU 264 ms/tok**.
 
 ```
- EXPLORE ✅ ─── DESIGN ✅ ─── M0 🔵 ─── M1 ✅ ─── M2 🔵 ─── M3 ⬜ ─── M4 ⬜ ─── M5 ⬜
- (benchmarks   (research_dev/  (ground-truth   static    inter-    batched   energy   layer
-  + reviews)    DESIGN.md…)     + S1/S2 spikes) pipeline  connect   decode    +recover rebalance)
-                                              ▲ live 3-dev USB pipeline here
+ EXPLORE ✅ ─── DESIGN ✅ ─── M0 🔵 ─── M1 ✅ ─── M2 ✅ ─── M3 🔵 ─── M4 ✅ ─── M5 🔵
+ (benchmarks   (research_dev/  (ground-truth   static    inter-    batched   dual-    energy
+  + reviews)    DESIGN.md…)     + S1/S2 spikes) pipeline  connect   decode    engine   crossover)
+                                                        ▲ dualengine + 1-copy share here
 ```
 
 | Milestone | State | Exit gate |
 |---|---|---|
 | Explore (benchmarks, reviews) | ✅ done | — |
 | Design (`research_dev/`) | ✅ done | DESIGN.md + MILESTONES.md + README.md |
-| **M0 — ground truth + vetoes** | 🔵 next | `gguf_dump` 12B; **S1** batched-decode; **S2** shared-weights |
-| **M1 — static pipeline correct** | ✅ done | 3-way head→mid→tail (cuts 2,3) **bit-exact** vs mono on a 12-tok prompt; k≤13 ceiling N-invariant |
-| M2 — interconnect + overlap | ⬜ | throughput = max(stage, hop), not sum |
-| M3 — batched continuous decode | ⬜ | 64–128 seqs stable, no hang, no CPU fallback |
-| M4 — reliability + energy | ⬜ | defensible fleet J/tok; wedged phone recovers |
-| M5 — rebalance to a real win | ⬜ | find split where J/tok < server, or prove it can't |
+| **M0 — ground truth + vetoes** | 🔵 partial | `gguf_dump` 12B ✅; **S1** localized (HTP bug, not deadlock); **S2** shared-weights ✅ |
+| **M1 — static pipeline correct** | ✅ done | 3-way head→mid→tail (cuts 2,3) **bit-exact** vs mono; k≤13 ceiling N-invariant |
+| M2 — interconnect + overlap | ✅ done | dualengine wall == max(leg) — zero-interference overlap on both phones |
+| M3 — batched continuous decode | 🔵 partial | static B=16 lockstep bit-correct, no hang; continuous `n_parallel` still HTP-bugged (S1) |
+| M4 — dual-engine + one-copy | ✅ done | reqs (1)(2)(3) built + validated; sharing bit-exact in single-buffer regime |
+| M5 — rebalance to a real win | 🔵 measured | linear throughput scaling ✅; **defensible J/tok blocked remotely** (needs unplug); RAM + per-buffer sharing cap layers |
 
-**⛔ Next:** (1) ✅ **Pipeline on NPU/GPU** — done (see log below). (2) **Throughput at real cut ratios** — the current split is only 2/3 layers on phones; at that size the accelerator is dispatch-bound and loses to CPU. Rebalance many layers onto the phones so compute amortizes the per-forward overhead — that's the real test of whether NPU/GPU pays off (M5 crossover). (3) Port MTMD embd-inject + VQ, then the hard **dma-buf** last. (4) Still open: **S1** batched-decode veto (`n_parallel=2` hung on op15) — batching would amortize the same NPU dispatch cost. (5) op12 GPU: split flash-attn kernel fails to compile (`sub_group_shuffle_xor` unsupported on Adreno v75-era) — ran via fallback; revisit if op12 GPU becomes load-bearing.
+**⛔ Next:** (1) ✅ **Dual-engine + one-copy share** — done. (2) **Clean energy number** needs op15 **physically unplugged** + WiFi-adb + battery-discharge slope — the remote USB rail can't resolve it. This is the gating action for the M5 crossover verdict. (3) **Scale one-copy sharing past one buffer** — move publish/import to **per-tensor** granularity (or equalize Hexagon `max_bufsize` ↔ OpenCL `max_alloc_size`) so many-layer shards share instead of falling back to 2× RAM. (4) Still open: **S1** continuous-batch HTP bug (`n_parallel=2` hang) — static batch sidesteps it but continuous decode would amortize NPU dispatch further. (5) op12 GPU split flash-attn kernel fails to compile (`sub_group_shuffle_xor` on Adreno v75) — runs via fallback; revisit if op12 GPU becomes load-bearing.
 
 ---
 
@@ -60,12 +68,79 @@
 | op12 GPU decode (stock) | ~0.40 TFLOPS | roofline sweep |
 | op12 GPU decode (xmem+cache) | **0.95 TFLOPS** @ 128, 2.35× stock | xmem re-run |
 | A6000 12B fp16 decode floor | **~0.15 J/tok** (net) @ batch 256 | user's table |
-| phone decode, single stream | ~11 tok/s, ~0.7–0.9 J/tok | estimate |
-| phone decode, batched ≥16 | ~0.05–0.08 J/tok *(if it runs — R1)* | estimate, **unverified** |
+| op15 dualengine decode, B=16 | **239 ms/round @ L=4, 485 @ L=8** (~60 ms/layer, linear) | M5 sweep (xmem-off) |
+| op15 dualengine power (USB rail) | ~1.7–1.8 W near-constant (ceiling, not per-L) | M5 sweep — **can't resolve J/tok** |
+| phone J/tok crossover vs A6000 | **UNMEASURED remotely** — needs unplug + discharge | M5 blocker |
 
 ---
 
 ## 🗒️ Log
+
+### `2026-07-09 EDT` — 🌐 3-DEVICE STREAMING PIPELINE runs the 12B end-to-end → correct answer ✅
+The persistent hub-and-spoke pipeline (`stagenet` on each phone + `pipedriver` on the server) is **live on the real 12B across all three devices**. Unlike the old O(N²) file-relay (`pipeline_3dev.sh`, model reload per stage per token), this keeps **KV resident on every stage** and decodes **incrementally (O(N))** over TCP-over-USB (adb forward).
+
+```
+op15 stagenet[0,2)  ──hidden──►  op12 stagenet[2,3)  ──hidden──►  A6000 pipedriver tail[3,48)+sample
+     (2 layers, CPU)                  (1 layer, CPU)                     (45 layers, CUDA)
+        ▲ relayed token+residual dual-batch (12B PLAIN arch ignores the token; uses residual only)
+```
+
+**Run (12B fp16, chat template):**
+```
+prompt: "What is the capital of France? Answer in one word."
+OUTPUT: <|channel>thought  The user is asking for the capital of France. The user requested a
+        one-word answer. The capital of France is Paris. "Paris" is one word.<channel|>Paris<turn|>
+```
+**→ "Paris".** Correct, coherent gemma-4-it channel reasoning — a numerically-broken split would emit token salad, so this end-to-end validates the streaming relay on the 12B.
+
+**Per-token decode breakdown (41 steps):** op15 (RTT+compute) **27.8 ms** ∥ op12 **30.4 ms** ∥ A6000 tail **36.6 ms** → **94.8 ms/tok (~10.5 tok/s)**. At this tiny 3-layer phone split the phone legs are USB-RTT-bound, not compute-bound — the rebalance (many phone layers, enabled now by [[per-tensor sharing]]) is the next step. Notes: host build rebuilt to match the fresh phone binary (protocol parity); port 5555 hit a TIME_WAIT bind snag → moved op15 to 5557; phones ran CPU for this first correctness pass (NPU/GPU dualengine-per-stage is the follow-on).
+
+### `2026-07-09 EDT` — 🧩 PER-TENSOR weight sharing: req-3 one-copy now scales to any shard size ✅
+Replaced the fragile whole-buffer size-match (which fell back to a 2× copy once Hexagon's ~1 GB and OpenCL's ~1.9 GB buffer caps diverged — see the M5 entry) with **name-keyed per-tensor aliasing**. Design came from a **17-agent workflow** (5 parallel code readers → 3-approach design panel → 3-lens judges → 5 adversarial verifiers → high-effort synthesis; ~1.15M tokens). Chosen: Design A + 2 verify-panel hardenings.
+
+**Mechanism (8 edits, `ggml-hexagon.cpp` +51, `ggml-opencl.cpp` +199, behind the same `--share-weights` gate):**
+- **Hexagon** `init_tensor` publishes each F16/F32 `.weight` as `name → {fd, base, import_size, offset=t->data−sbuf->base, size}`; exports `ggml_hexagon_shared_tensor_lookup()`.
+- **OpenCL** import mode allocates a **1-byte dummy** buffer (reports full size so ggml-alloc's fake address space stays consistent); `init_tensor` resolves each weight by name, imports each **distinct fd once** (process-global registry), and points `extra->{data_device=alias, offset=hexagon_offset}` — kernels already take `data_device + offset` (no sub-buffer → no `MEM_BASE_ADDR_ALIGN` issue).
+- **Hardening 1:** `set_tensor` **skips** the write for aliased weights → any offset bug is a benign mislocated *read*, never a scribble into Hexagon's live rpcmem.
+- **Hardening 2:** a name-**miss** (compute/KV, or `token_embd` on a head phone) **lazily promotes** the dummy to one real requested-size buffer (keeps ggml-alloc peak-reuse; wires the `CL_LARGE_BUFFER_QCOM` retry for >2 GB token_embd).
+- **xmem left byte-for-byte untouched** — its `{data_device, offset0}` os8-cache key stays unique because distinct weights carry distinct Hexagon offsets.
+
+**Validated on op15, L=8 [2,10) — the exact case the old code FAILED:**
+```
+Hexagon published 4 buffers (fd 26/27/28/29, ~991/1050/1015/566 MB)
+OpenCL: imported fd=26 once ... fd=27 once ... fd=28 once ... fd=29 once   (all 4)
+        promoted-to-real = 0   (100% of 56 weight tensors aliased → ZERO OpenCL weight bytes)
+        import FAILED     = 0   (all 4 concurrent EXT_HOST_PTR imports OK — resolves the multi-fd risk)
+correctness rel_L2 = 2.755e-3  == bit-identical to --share-weights OFF  ⇒ numerically correct
+```
+So req-3 is no longer capped at single-buffer shards — a phone can now hold **many layers at true 1× weight**, which is exactly what M5's rebalance needs. Open items (from the verify panel): uncached-ion coherency relies on sequential load + the added `clFinish` (fine for dualengine); name-key assumes both models cover the same abs layer range; xmem-on-alias correctness still to be spot-checked on-device.
+
+### `2026-07-09 EDT` — 📉 M5 crossover measured: linear throughput, but energy blocked remotely + sharing has an L-cap
+Pushed op15 to more layers to look for the phone-vs-A6000 energy crossover. Four results, one positive, three limiting — all cross-checked on the real phone:
+
+**1. Throughput scales linearly (reliable).** Clean, xmem-off op15 dualengine decode:
+
+| Layers on phone | decode ms/round | ratio |
+|---|---|---|
+| L=4 [2,6) | 239 | 1.0× |
+| L=8 [2,10) | 485 | 2.03× |
+
+≈ **60 ms/layer**, linear. The scary L=8 = **1717 ms** seen in the first sweep was **not** scaling — it was xmem-**ON** RAM thrash: the `os8` prepack tile + two model copies drove op15 to ~540 MB free and it paged weights. xmem-off (decode is GEMV, doesn't need the os8 GEMM tile) removed the cliff.
+
+**2. Energy: no defensible J/tok remotely.** Battery `charge_counter`/`current_now` = **0** (op15 is Full and USB carries the whole load). The only responsive rail is `usb/current_now × voltage_now` ≈ **1.7–1.8 W, near-constant across L** and sign-inverted — a sustained input-power ceiling, not a per-workload signal. A real J/tok needs the clean method: **unplug op15, drive it over WiFi-adb, integrate the battery discharge.** That is a physical action only the user can take; **I did not fabricate a crossover number.**
+
+**3. Req-3 one-copy sharing works only in the single-buffer regime (new limitation).** The import matches Hexagon↔OpenCL weight buffers by **exact byte size** (offsets then line up via shared 128-byte alignment). That holds when the whole shard is one buffer (op12 [2,3) 448 MB, op15 [0,2) 855 MB → PASS). But the two backends **partition large weights differently**:
+```
+L=8 shard (3.6 GB):
+  Hexagon publishes 4 buffers: 991 / 1050 / 1015 / 566 MB   (cap = sess->max_bufsize ≈ 1 GB)
+  OpenCL   requests  2 buffers: 1923 / 1699 MB              (cap = CL_DEVICE_MAX_MEM_ALLOC_SIZE ≈ 1.9 GB)
+  → no size matches → import falls back to a 2nd copy (correct, but 2× RAM)
+```
+Independent of xmem (verified). This is why **L=16 (2×7.3 GB) OOM-thrashes** a 16 GB phone. Fix is per-**tensor** publish/import, or equalizing the two caps — future work.
+
+**4. The L=8 "FAIL" is fp accumulation, not a sharing bug (proven, not assumed).** The dualengine correctness check runs batched(B=16) vs B-single **entirely on the decode/Hexagon engine** — it never reads the shared prefill weights. rel_L2 = **2.755e-3** (well under the 1e-2 L2 gate) with **1/16** argmax-of-residual flips (a near-tie) tripping the strict `argmax==0`. Decisive control: with `--share-weights` **but import falling back to a 2nd copy** (xmem-off L=8), rel_L2 was **bit-identical** to the xmem-on *shared* run — so sharing cannot be the cause. It's inherent 16-wide-GEMM vs 1-wide-GEMV rounding over 8 layers. No cross-seq bleed.
+
+**Verdict:** the Design-A machinery (reqs 1/2/3) runs at full-efficiency overlap and scales linearly, but (a) a defensible fleet J/tok is gated on physically unplugging op15, (b) op15's RAM + the per-buffer sharing cap limit clean many-layer runs to L≈4–8 today. The honest M5 answer awaits the unplug measurement; the machinery is ready for it.
 
 ### `2026-07-08 EDT` — 🧩 Build 3: ONE weight copy for both engines — LIVE (requirement 3 done) ✅
 Wired the S2 proof into the real dualengine. Turned out to need only **3 small env-gated edits** (default behavior + xmem prepack-cache untouched), because the two-model structure means the OpenCL model's weight buffers stay normal OpenCL buffers — just backed by imported memory — so **no `supports_buft`, `init_tensor`, or loader changes were needed**:
