@@ -1,0 +1,175 @@
+{
+  "actions": [
+    {
+      "ack_us": 275001000,
+      "action_id": "a.lease",
+      "action_kind": "LEASE_ACQUIRE",
+      "end_us": 275001000,
+      "enqueue_us": 275000000,
+      "lease_id": "lease.0",
+      "parent_action_id": null,
+      "request_ids": [],
+      "start_us": 275000000,
+      "state": "COMPLETE"
+    },
+    {
+      "ack_us": 275500000,
+      "action_id": "a.prefetch",
+      "action_kind": "PREFETCH",
+      "end_us": 275500000,
+      "enqueue_us": 275000000,
+      "lease_id": null,
+      "parent_action_id": null,
+      "request_ids": [],
+      "start_us": 275001000,
+      "state": "COMPLETE"
+    },
+    {
+      "ack_us": 275900000,
+      "action_id": "a.h2d",
+      "action_kind": "H2D",
+      "end_us": 275900000,
+      "enqueue_us": 275500000,
+      "lease_id": null,
+      "parent_action_id": null,
+      "request_ids": [],
+      "start_us": 275500000,
+      "state": "COMPLETE"
+    },
+    {
+      "ack_us": 275920000,
+      "action_id": "a.submit.0",
+      "action_kind": "QUEUE_SUBMIT",
+      "end_us": 275920000,
+      "enqueue_us": 275920000,
+      "lease_id": null,
+      "parent_action_id": null,
+      "request_ids": [
+        "req.0"
+      ],
+      "start_us": 275920000,
+      "state": "COMPLETE"
+    },
+    {
+      "ack_us": 275930000,
+      "action_id": "a.submit.1",
+      "action_kind": "QUEUE_SUBMIT",
+      "end_us": 275930000,
+      "enqueue_us": 275930000,
+      "lease_id": null,
+      "parent_action_id": null,
+      "request_ids": [
+        "req.1"
+      ],
+      "start_us": 275930000,
+      "state": "COMPLETE"
+    },
+    {
+      "ack_us": 275940000,
+      "action_id": "a.submit.2",
+      "action_kind": "QUEUE_SUBMIT",
+      "end_us": 275940000,
+      "enqueue_us": 275940000,
+      "lease_id": null,
+      "parent_action_id": null,
+      "request_ids": [
+        "req.2"
+      ],
+      "start_us": 275940000,
+      "state": "COMPLETE"
+    },
+    {
+      "ack_us": 293000000,
+      "action_id": "a.exec",
+      "action_kind": "EXEC",
+      "end_us": 293000000,
+      "enqueue_us": 275900000,
+      "lease_id": null,
+      "parent_action_id": null,
+      "request_ids": [
+        "req.0",
+        "req.1",
+        "req.2"
+      ],
+      "start_us": 276000000,
+      "state": "COMPLETE"
+    },
+    {
+      "ack_us": 293500000,
+      "action_id": "a.d2h",
+      "action_kind": "D2H",
+      "end_us": 293500000,
+      "enqueue_us": 293000000,
+      "lease_id": null,
+      "parent_action_id": null,
+      "request_ids": [],
+      "start_us": 293000000,
+      "state": "COMPLETE"
+    },
+    {
+      "ack_us": 293700000,
+      "action_id": "a.result",
+      "action_kind": "RESULT_EMIT",
+      "end_us": 293700000,
+      "enqueue_us": 293500000,
+      "lease_id": null,
+      "parent_action_id": "a.exec",
+      "request_ids": [
+        "req.0",
+        "req.1",
+        "req.2"
+      ],
+      "start_us": 293600000,
+      "state": "COMPLETE"
+    },
+    {
+      "ack_us": 294100000,
+      "action_id": "a.cleanup",
+      "action_kind": "CLEANUP",
+      "end_us": 294100000,
+      "enqueue_us": 293700000,
+      "lease_id": null,
+      "parent_action_id": null,
+      "request_ids": [],
+      "start_us": 293800000,
+      "state": "COMPLETE"
+    },
+    {
+      "ack_us": 294200000,
+      "action_id": "a.release",
+      "action_kind": "LEASE_RELEASE",
+      "end_us": 294200000,
+      "enqueue_us": 294100000,
+      "lease_id": "lease.0",
+      "parent_action_id": null,
+      "request_ids": [],
+      "start_us": 294100000,
+      "state": "COMPLETE"
+    },
+    {
+      "ack_us": 294400000,
+      "action_id": "a.drain",
+      "action_kind": "QUEUE_DRAIN",
+      "end_us": 294400000,
+      "enqueue_us": 294200000,
+      "lease_id": null,
+      "parent_action_id": null,
+      "request_ids": [],
+      "start_us": 294300000,
+      "state": "COMPLETE"
+    }
+  ],
+  "clock_epoch_id": "boot-synthetic-e2a-0000",
+  "drain_acknowledged_us": 294400000,
+  "entry_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+  "exit_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+  "kind": "LifecycleRecord",
+  "lifecycle_id": "lc.slot10",
+  "record_sha256": "d6628a1806a4ad8847ecae61f921822f38199d454681914615eddc2f4a4a1125",
+  "run_nonce": "run.tl.slot10",
+  "schema_version": 2,
+  "set_id": "set.s10.e2a.synthetic",
+  "timeline_id": "tl.slot10",
+  "window_end_us": 295000000,
+  "window_start_us": 275000000
+}

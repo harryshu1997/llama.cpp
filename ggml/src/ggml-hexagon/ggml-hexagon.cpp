@@ -60,6 +60,7 @@ static int    opt_etm     = 0;
 static int    opt_verbose = 0;
 static int    opt_profile = 0; // profiling mode (0-disabled, 1-basic, 2-pmu)
 static int    opt_hostbuf = 1; // hostbuf ON by default
+static int    opt_fa_skip_masked = 0;
 
 static int    opt_mm_select = 3; // 3 = HMX -> Tiled -> Flat -> CPU, 2 = Tiled -> Flat -> CPU, 1 = Flat -> CPU
 
@@ -1370,6 +1371,9 @@ struct ggml_hexagon_opbatch {
         if (!(opt_opstage & HTP_OPSTAGE_COMPUTE)) {
             o.flags |= HTP_OPFLAGS_SKIP_COMPUTE;
         }
+        if (node.opcode == HTP_OP_FLASH_ATTN_EXT && opt_fa_skip_masked) {
+            o.flags |= HTP_OPFLAGS_FA_SKIP_MASKED;
+        }
 
         ggml_hexagon_dump_op_exec(sess->c_name(), ops[n], o.flags);
 
@@ -1995,9 +1999,14 @@ static bool ggml_hexagon_supported_flash_attn_ext(const struct ggml_hexagon_sess
         return false;
     }
 
-    if (dst->ne[3] != 1) {
+    // Fused attention on v75 fails CPU-reference correctness. Use the explicit
+    // NPU attention graph on that architecture.
+    if (opt_arch == 75) {
         return false;
     }
+
+    // ne[3] contains independent decode sequences. Both Hexagon attention
+    // kernels iterate that dimension, so batched decode is supported.
 
     return true;
 }
@@ -4179,6 +4188,7 @@ static void ggml_hexagon_init(ggml_backend_reg * reg) {
     const char * str_vmem     = getenv("GGML_HEXAGON_VMEM");
     const char * str_mbuf     = getenv("GGML_HEXAGON_MBUF");
     const char * str_optrace  = getenv("GGML_HEXAGON_OPTRACE");
+    const char * str_fa_skip_masked = getenv("GGML_HEXAGON_FA_SKIP_MASKED");
 
     // Init Arch first since it affects other defaults
     if (!str_arch) {
@@ -4219,6 +4229,7 @@ static void ggml_hexagon_init(ggml_backend_reg * reg) {
     opt_hostbuf   = str_hostbuf  ? atoi(str_hostbuf)                      : opt_hostbuf;
     opt_mbuf      = str_mbuf     ? strtoul(str_mbuf, NULL, 0) * MiB       : opt_mbuf;
     opt_vmem      = str_vmem     ? strtoul(str_vmem, NULL, 0) * MiB       : opt_vmem;
+    opt_fa_skip_masked = str_fa_skip_masked ? atoi(str_fa_skip_masked)    : opt_fa_skip_masked;
 
     if (opt_ndev > GGML_HEXAGON_MAX_SESSIONS) {
         opt_ndev = GGML_HEXAGON_MAX_SESSIONS;

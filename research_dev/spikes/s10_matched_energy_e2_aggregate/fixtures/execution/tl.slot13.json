@@ -1,0 +1,32 @@
+{
+  "build_revision": "synthetic-e2a-build-0",
+  "clock_epoch_id": "boot-synthetic-e2a-0000",
+  "completed_work": 3,
+  "device_identity": "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f",
+  "execution_artifact_id": "execution.tl.slot13",
+  "marker_end_us": 370000000,
+  "marker_start_us": 350000000,
+  "offered_work": 3,
+  "outcomes": {
+    "canceled": 0,
+    "met": 3,
+    "rejected": 0,
+    "tardy": 0
+  },
+  "paid_payload_sha256": "0e1f4f4a31f8ff826d1a6e4921c79d89c244668ccd2af8f0c7a84bbbcf37562e",
+  "policy_digest": "5f2695d6035857bf89327b912bbb04864ebfa4f478c1ae527097c6a77a91909c",
+  "provenance": "SYNTHETIC",
+  "raw_artifact_id": "raw.tl.slot13",
+  "raw_artifact_sha256": "b8074ed4bc2c88a0d81d2cd5bf0103b70d5c4470bae9bbdeb5571d12991d7efa",
+  "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+  "role": "Q_PIM_TREATMENT",
+  "route_schedule_digest": "74fab39d591850d3c60fcfa9fadaff1b915c6b20de09f099b61b50952697bc7f",
+  "run_nonce": "run.tl.slot13",
+  "schema": "e2.execution.v2",
+  "slo_policy_digest": "17972eecf35e4c0bf8b8238c232753dd60adc68e112c0d9b40a7813cefd4a192",
+  "source_revision": "933c722f6",
+  "status": "OK",
+  "timeline_id": "tl.slot13",
+  "trace_digest": "edbc9fb8c78b14b155f3f81b5fb02fd95b24f8f00a6c51001e6a593bbeb38b83",
+  "workload_digest": "d5fc40efce7c5d511d2cdc724f2e2857e21bea8dd3bab648916b81e63c86f7f8"
+}

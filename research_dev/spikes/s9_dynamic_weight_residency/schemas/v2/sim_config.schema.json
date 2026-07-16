@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s9/schemas/v2/sim_config.schema.json",
+  "title": "Residency simulator config (v2)",
+  "$comment": "Self-contained. The COMPLETE deterministic input to the repaired offline simulator. All quantities are integers. v2 adds: per-phone ufs_total_bytes + contention_domain (separate USB buses do not contend); bounded queues (prefetch_depth, server_depth); per-model state_policy (stateless/sticky/rebuildable); and the failure kinds reset_state + drain. Interference is per-mille and honored ONLY when measured==true, and even then only over the ACTUAL resource-overlap window. link_goodput_sweep_bytes_per_s parameterizes the (still symbolic) link capacity; the H2D and D2H legs both use it in V0-R (directional decomposition is the S9-V1 blocker).",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "integer", "const": 2 },
+    "config_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "seed": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "horizon_us": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "link_goodput_sweep_bytes_per_s": { "type": "array", "minItems": 1, "maxItems": 64, "items": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 } },
+    "baselines": { "type": "array", "minItems": 1, "maxItems": 16, "items": { "type": "string", "enum": ["server_only", "per_request_fetch", "static_placement", "lru", "lfu_ttl", "fastest_ready", "relief_predictive", "clairvoyant"] } },
+    "interference": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "htp_gpu_slowdown_permille": { "type": "integer", "minimum": 1000, "maximum": 10000 },
+        "transfer_compute_slowdown_permille": { "type": "integer", "minimum": 1000, "maximum": 10000 },
+        "measured": { "type": "boolean" }
+      },
+      "required": ["htp_gpu_slowdown_permille", "transfer_compute_slowdown_permille", "measured"]
+    },
+    "queues": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "prefetch_depth": { "type": "integer", "minimum": 1, "maximum": 100000 },
+        "server_depth": { "type": "integer", "minimum": 1, "maximum": 100000 }
+      },
+      "required": ["prefetch_depth", "server_depth"]
+    },
+    "server": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gpu_lane_slots": { "type": "integer", "minimum": 1, "maximum": 100000 },
+        "hbm_credit_bytes": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "per_class_gpu_us": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 } },
+        "per_class_hbm_bytes": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 } }
+      },
+      "required": ["gpu_lane_slots", "hbm_credit_bytes", "per_class_gpu_us", "per_class_hbm_bytes"]
+    },
+    "phones": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "device_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "soc": { "type": "string", "enum": ["op12", "op15"] },
+          "contention_domain": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "boot_epoch": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "lpddr_total_bytes": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+          "ufs_total_bytes": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+          "ufs_write_bytes_per_s": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+          "verify_bytes_per_s": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+          "materialize_bytes_per_s": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+          "prepare_htp_bytes_per_s": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+          "prepare_gpu_bytes_per_s": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+          "warmup_us": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "htp_lane_slots": { "type": "integer", "minimum": 1, "maximum": 100000 },
+          "gpu_lane_slots": { "type": "integer", "minimum": 1, "maximum": 100000 },
+          "thermal_eligible": { "type": "boolean" }
+        },
+        "required": ["device_id", "soc", "contention_domain", "boot_epoch", "lpddr_total_bytes", "ufs_total_bytes", "ufs_write_bytes_per_s", "verify_bytes_per_s", "materialize_bytes_per_s", "prepare_htp_bytes_per_s", "prepare_gpu_bytes_per_s", "warmup_us", "htp_lane_slots", "gpu_lane_slots", "thermal_eligible"]
+      }
+    },
+    "models": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "model_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "weight_set_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "canonical_bytes": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+          "derived_bytes_htp": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "derived_bytes_gpu": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "scratch_bytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "partial_load_supported": { "type": "boolean" },
+          "eligible_backends": { "type": "array", "minItems": 1, "maxItems": 2, "items": { "type": "string", "enum": ["htp", "gpu"] } },
+          "phone_compute_us": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "state_policy": { "type": "string", "enum": ["stateless", "sticky", "rebuildable"] }
+        },
+        "required": ["model_id", "weight_set_id", "canonical_bytes", "derived_bytes_htp", "derived_bytes_gpu", "scratch_bytes", "partial_load_supported", "eligible_backends", "phone_compute_us", "state_policy"]
+      }
+    },
+    "workload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requests": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100000,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "arrival_us": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "rank": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "request_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+              "service_class": { "type": "string", "enum": ["decode", "prefill", "embedding", "rerank", "vision_encode", "background"] },
+              "model_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+              "weight_set_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+              "input_bytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "output_bytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "state_bytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "deadline_us": { "type": ["integer", "null"], "minimum": 0, "maximum": 9007199254740991 }
+            },
+            "required": ["arrival_us", "rank", "request_id", "service_class", "model_id", "weight_set_id", "input_bytes", "output_bytes", "state_bytes", "deadline_us"]
+          }
+        }
+      },
+      "required": ["requests"]
+    },
+    "failure_schedule": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "at_us": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "kind": { "type": "string", "enum": ["hash_mismatch", "partial_transfer", "thermal_trip", "link_drop", "stale_epoch", "unknown_profile", "unsupported_backend", "reset_state", "drain"] },
+          "target": { "type": "string", "minLength": 1, "maxLength": 256 }
+        },
+        "required": ["at_us", "kind", "target"]
+      }
+    },
+    "policy_params": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "reuse_horizon_us": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "min_hold_us": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "ttl_us": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "predictor_ewma_permille": { "type": "integer", "minimum": 0, "maximum": 1000 }
+      },
+      "required": ["reuse_horizon_us", "min_hold_us", "ttl_us", "predictor_ewma_permille"]
+    }
+  },
+  "required": ["schema_version", "config_id", "seed", "horizon_us", "link_goodput_sweep_bytes_per_s", "baselines", "interference", "queues", "server", "phones", "models", "workload", "failure_schedule", "policy_params"]
+}

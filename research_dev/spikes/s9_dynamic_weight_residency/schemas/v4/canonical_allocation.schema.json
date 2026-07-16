@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s9/schemas/v4/canonical_allocation.schema.json",
+  "title": "Canonical allocation (v4)",
+  "$comment": "Self-contained. The ONE physical byte-charge for a canonical (backend-neutral) weight set on a (device, weight_set, residency_generation). Backend prepared images ALIAS this allocation; they do NOT re-charge the canonical bytes. alias_refcount == len(alias_prepared_image_ids) (semantic). The allocation is reclaimable ONLY when no alias and no lease hold it: alias_refcount>=1 OR lease_refcount>=1 forces reclaimable=false (if/then). This separates canonical-allocation ownership from BackendPreparedImage ownership so a shared F16 base is charged once and cannot be reclaimed while any backend alias or residency lease still references it.",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": { "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" } },
+  "properties": {
+    "schema_version": { "type": "integer", "const": 4 },
+    "kind": { "type": "string", "const": "canonical_allocation" },
+    "allocation_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "device_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "soc": { "type": "string", "enum": ["op12", "op15"] },
+    "weight_set_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "weight_set_digest": { "$ref": "#/$defs/sha256" },
+    "dtype": { "type": "string", "enum": ["f16", "f32", "bf16"] },
+    "layout_version": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+    "boot_epoch": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "residency_generation": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "canonical_bytes": { "type": "integer", "minimum": 1, "maximum": 9007199254740991, "description": "the single physical LPDDR charge for this canonical base" },
+    "alias_refcount": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "alias_prepared_image_ids": { "type": "array", "maxItems": 64, "items": { "type": "string", "minLength": 1, "maxLength": 256 } },
+    "lease_refcount": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "reclaimable": { "type": "boolean" },
+    "allocation_digest": { "$ref": "#/$defs/sha256" }
+  },
+  "required": ["schema_version", "kind", "allocation_id", "device_id", "soc", "weight_set_id", "weight_set_digest", "dtype", "layout_version", "boot_epoch", "residency_generation", "canonical_bytes", "alias_refcount", "alias_prepared_image_ids", "lease_refcount", "reclaimable", "allocation_digest"],
+  "allOf": [
+    {
+      "$comment": "a live backend alias pins the canonical allocation: it cannot be reclaimed",
+      "if": { "properties": { "alias_refcount": { "minimum": 1 } }, "required": ["alias_refcount"] },
+      "then": { "properties": { "reclaimable": { "const": false } } }
+    },
+    {
+      "$comment": "a live residency lease pins the canonical allocation: it cannot be reclaimed",
+      "if": { "properties": { "lease_refcount": { "minimum": 1 } }, "required": ["lease_refcount"] },
+      "then": { "properties": { "reclaimable": { "const": false } } }
+    }
+  ]
+}

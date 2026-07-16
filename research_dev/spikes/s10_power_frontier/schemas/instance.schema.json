@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "S10-V0 controlled multi-DAG instance",
+  "description": "Frozen tiny instance consumed by oracle, policies, and checker. Time in integer us, power in mW, energy in nJ (=mW*us). One request = a linear DAG PRE(server)->MID(FFN island)->SUF(server). The lffn_us_table and phone e2e are DATA derived from the CP2 measured atlas so oracle and checker never re-derive latency.",
+  "type": "object",
+  "required": ["instance_version", "instance_id", "horizon_us", "pre_us", "suf_us",
+               "activation_mem_bound_bytes", "power_model", "phones", "weight_sets",
+               "model_ids", "requests", "lffn_us_table", "lffn_us_table_max_m",
+               "atlas_provenance", "cp1_params"],
+  "properties": {
+    "instance_version": {"const": 1},
+    "instance_id": {"type": "string"},
+    "horizon_us": {"type": "integer", "minimum": 1},
+    "pre_us": {"type": "integer", "minimum": 0},
+    "suf_us": {"type": "integer", "minimum": 0},
+    "activation_mem_bound_bytes": {"type": "integer", "minimum": 1},
+    "power_model": {
+      "type": "object",
+      "required": ["name", "gpu_active_mw", "gpu_idle_mw", "phone_mw", "usb_host_mw",
+                   "count_server_idle", "count_phone_idle"],
+      "properties": {
+        "name": {"enum": ["favorable", "conservative"]},
+        "gpu_active_mw": {"type": "integer"}, "gpu_idle_mw": {"type": "integer"},
+        "phone_mw": {"type": "object", "additionalProperties": {"type": "integer"}},
+        "usb_host_mw": {"type": "integer"},
+        "count_server_idle": {"type": "boolean"}, "count_phone_idle": {"type": "boolean"}
+      }
+    },
+    "phones": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["e2e_us", "resident_weight_sets", "certified_tokens"],
+        "properties": {
+          "e2e_us": {"type": "integer", "minimum": 1},
+          "resident_weight_sets": {"type": "array", "items": {"type": "string"}},
+          "certified_tokens": {"type": "array", "items": {"type": "integer"}}
+        }
+      }
+    },
+    "weight_sets": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "model_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "requests": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "wave", "release_us", "deadline_us", "weight_set",
+                     "model_id", "mid_tokens"],
+        "properties": {
+          "id": {"type": "string"},
+          "wave": {"type": "integer", "minimum": 0},
+          "release_us": {"type": "integer", "minimum": 0},
+          "deadline_us": {"type": "integer", "minimum": 1},
+          "weight_set": {"type": "string"},
+          "model_id": {"type": "string"},
+          "mid_tokens": {"type": "integer", "enum": [16]},
+          "pre_us": {"type": "integer", "minimum": 0},
+          "suf_us": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "lffn_us_table": {"type": "object", "additionalProperties": {"type": "integer"}},
+    "lffn_us_table_max_m": {"type": "integer"},
+    "atlas_provenance": {
+      "type": "object",
+      "required": ["island", "n_embd", "n_ff", "weight_bytes_f16"],
+      "properties": {
+        "island": {"type": "string"}, "n_embd": {"type": "integer"},
+        "n_ff": {"type": "integer"}, "weight_bytes_f16": {"type": "integer"}
+      }
+    },
+    "cp1_params": {"type": "object"}
+  }
+}

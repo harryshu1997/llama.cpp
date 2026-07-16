@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s9/schemas/state_lease.schema.json",
+  "title": "State lease (fast loop) (v1)",
+  "$comment": "Self-contained. Owns ONE request's mutable KV/state on exactly one owner. It DEPENDS on a residency lease (depends_on_residency_lease_id + depends_on_residency_generation); a completion whose epochs mismatch the current values is rejected fail-closed at runtime. Carries the three monotonic identities route_epoch + lease_epoch + seq_slot_epoch. A stateless island reserves zero mutable state (const 0); sticky AND rebuildable each reserve >0 (both if/then), matching WEIGHT_RESIDENCY_CONTRACT section 5 which groups sticky+rebuildable as the reserved_state_bytes>0 case that pins residency. A residency lease going stale (its generation bumped) invalidates every state lease that depends_on the old generation.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "state_lease_id": { "type": "string", "minLength": 1 },
+    "request_id": { "type": "string", "minLength": 1 },
+    "device_id": { "type": "string", "minLength": 1 },
+    "backend": { "type": "string", "enum": ["htp", "gpu"] },
+    "island_id": { "type": "string", "minLength": 1 },
+    "boot_epoch": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "route_epoch": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "lease_epoch": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "seq_slot_epoch": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "depends_on_residency_lease_id": { "type": "string", "minLength": 1 },
+    "depends_on_residency_generation": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "state_policy": { "type": "string", "enum": ["stateless", "sticky", "rebuildable"] },
+    "reserved_state_bytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "reserved_activation_bytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "in_flight_mutation_seq": { "type": "integer", "minimum": 0, "maximum": 9007199254740991, "description": "at most one mutation per state object may be in flight; monotonic" }
+  },
+  "required": ["schema_version", "state_lease_id", "request_id", "device_id", "backend", "island_id", "boot_epoch", "route_epoch", "lease_epoch", "seq_slot_epoch", "depends_on_residency_lease_id", "depends_on_residency_generation", "state_policy", "reserved_state_bytes", "reserved_activation_bytes", "in_flight_mutation_seq"],
+  "allOf": [
+    {
+      "$comment": "stateless islands own no mutable state",
+      "if": { "properties": { "state_policy": { "const": "stateless" } }, "required": ["state_policy"] },
+      "then": { "properties": { "reserved_state_bytes": { "const": 0 } } }
+    },
+    {
+      "$comment": "sticky state must reserve mutable bytes",
+      "if": { "properties": { "state_policy": { "const": "sticky" } }, "required": ["state_policy"] },
+      "then": { "properties": { "reserved_state_bytes": { "minimum": 1 } } }
+    },
+    {
+      "$comment": "rebuildable state also reserves mutable bytes while live (pins residency, per WEIGHT_RESIDENCY_CONTRACT section 5)",
+      "if": { "properties": { "state_policy": { "const": "rebuildable" } }, "required": ["state_policy"] },
+      "then": { "properties": { "reserved_state_bytes": { "minimum": 1 } } }
+    }
+  ]
+}

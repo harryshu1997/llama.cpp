@@ -32,6 +32,7 @@
 #include <cstring>
 #include <clocale>
 #include <fstream>
+#include <functional>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -1136,9 +1137,105 @@ static void fill_batch_Bway(llama_batch & b, int n_embd, int B, int32_t pos, boo
     }
 }
 
+static inline double ol_now_ms() {
+    return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+// Deadlines. A balanced phase is ~2.5 s of work, so these are generous; exceeding one means a real
+// stall (e.g. a hung DSP llama_decode), which the driver turns into a diagnosable process abort.
+static const double OL_BARRIER_MS = 30000.0;    // all legs must arrive at the start barrier within this
+static const double OL_PHASE_MS   = 180000.0;   // a launched leg must finish its rounds within this
+
+static inline std::chrono::duration<double, std::milli> ol_dur(double ms) {
+    return std::chrono::duration<double, std::milli>(ms);
+}
+
+// Shared start barrier for the concurrent legs: every launched leg arrives, the driver waits (with a
+// deadline) until all have arrived, then releases them together. All waits are timed so a stalled leg
+// becomes a diagnosable timeout instead of a silent spin.
+struct OverlapBarrier {
+    std::mutex m; std::condition_variable cv;
+    int target = 0, arrived = 0; bool release = false;
+    void arm(int t) { std::unique_lock<std::mutex> lk(m); target = t; arrived = 0; release = false; }
+    void arrive() { std::unique_lock<std::mutex> lk(m); ++arrived; cv.notify_all(); }
+    bool wait_all_arrived(double dl) { std::unique_lock<std::mutex> lk(m); return cv.wait_for(lk, ol_dur(dl), [&]{ return arrived >= target; }); }
+    bool wait_release(double dl)     { std::unique_lock<std::mutex> lk(m); return cv.wait_for(lk, ol_dur(dl), [&]{ return release; }); }
+    void go() { std::unique_lock<std::mutex> lk(m); release = true; cv.notify_all(); }
+};
+
+// Persistent per-leg worker for the overlap benchmark. Start state is an OWNED generation counter
+// (gen requested vs done_gen finished), not a raw pointer into the caller's stack, so every handshake
+// is unambiguous and detectable. On launch() it runs `rounds` fixed-shape decodes, timing ONLY
+// llama_decode (reset() runs between rounds, untimed), stamping compute_done_ms right after the last
+// decode (before the trailing reset) so a compute-only makespan is separable from the reset-inclusive
+// cycle, and optionally capturing the last output residual (for solo-vs-concurrent correctness).
+// Contexts/batches are preallocated and the thread is spawned once, so neither is inside a timed window.
+struct OverlapLeg {
+    std::string name;
+    std::function<int()>  step;    // one fixed-shape decode; 0 == ok
+    std::function<void()> reset;   // KV reset, outside the timed window
+    std::function<void(std::vector<float>&)> grab;   // optional: capture the last output residual
+    std::thread th;
+    std::mutex m; std::condition_variable cv;
+    uint64_t gen = 0, done_gen = 0;     // owned generation handshake (no caller-stack pointers)
+    bool quit = false;
+    int  rounds = 0;
+    OverlapBarrier * barrier = nullptr; // shared, owned by the driver; set per launch
+    bool capture = false;
+    std::vector<float> last_out;
+    int  completed = 0, failed_round = -1;
+    double compute_done_ms = 0.0;       // stamped right after the last decode, before reset()
+    std::vector<double> times;
+
+    void loop() {
+        for (;;) {
+            uint64_t g; OverlapBarrier * bar; int n; bool cap;
+            {
+                std::unique_lock<std::mutex> lk(m);
+                cv.wait(lk, [&]{ return gen != done_gen || quit; });
+                if (quit) return;
+                g = gen; bar = barrier; n = rounds; cap = capture;
+            }
+            times.clear(); completed = 0; failed_round = -1; compute_done_ms = 0.0;
+            if (bar) { bar->arrive(); bar->wait_release(OL_BARRIER_MS); }
+            for (int r = 0; r < n; ++r) {
+                const double t0 = ol_now_ms();
+                const int    rc = step();
+                const double dt = ol_now_ms() - t0;
+                if (rc != 0) { failed_round = r; break; }
+                times.push_back(dt); ++completed; compute_done_ms = ol_now_ms();
+                if (cap && r == n - 1 && grab) grab(last_out);
+                reset();
+            }
+            { std::unique_lock<std::mutex> lk2(m); done_gen = g; } cv.notify_all();
+        }
+    }
+    void start() { th = std::thread([this]{ loop(); }); }
+    void launch(int rounds_, OverlapBarrier * bar, bool cap = false) {
+        { std::unique_lock<std::mutex> lk(m); rounds = rounds_; barrier = bar; capture = cap; ++gen; }
+        cv.notify_all();
+    }
+    // timed completion wait; false == the leg did not finish its generation within `dl`
+    bool wait_done(double dl) { std::unique_lock<std::mutex> lk(m); return cv.wait_for(lk, ol_dur(dl), [&]{ return done_gen == gen; }); }
+    void stop() { { std::unique_lock<std::mutex> lk(m); quit = true; } cv.notify_all(); if (th.joinable()) th.join(); }
+};
+
+struct OLStat { double p50 = 0, p95 = 0, mean = 0, cov = 0; int n = 0; };
+static OLStat ol_stat(std::vector<double> v) {
+    OLStat s; s.n = (int) v.size();
+    if (v.empty()) return s;
+    std::sort(v.begin(), v.end());
+    s.p50 = v[(size_t)(0.50*(v.size()-1)+0.5)];
+    s.p95 = v[(size_t)(0.95*(v.size()-1)+0.5)];
+    double sum = 0; for (double x : v) sum += x; s.mean = sum / v.size();
+    double d2 = 0; for (double x : v) d2 += (x - s.mean)*(x - s.mean);
+    s.cov = s.mean > 0 ? std::sqrt(d2/v.size())/s.mean : 0.0;
+    return s;
+}
+
 static int run_dualengine(const std::string & model_path, const std::string & dev_prefill,
                           const std::string & dev_decode, int B, int rounds, int prefill_tokens, int ngl,
-                          bool share_weights) {
+                          bool share_weights, int decode_ctx, int rep, bool cpu_ref) {
     const char * e_ls = getenv("LLAMA_LAYER_START");
     const char * e_le = getenv("LLAMA_LAYER_END");
     const bool is_head = (e_ls == nullptr || atoi(e_ls) == 0);
@@ -1161,26 +1258,35 @@ static int run_dualengine(const std::string & model_path, const std::string & de
     if (share_weights) unsetenv("GGML_PHONE_SHARE_IMPORT");
     if (!m_pre) { fprintf(stderr, "error: prefill-engine model load failed\n"); llama_model_free(m_dec); return 1; }
 
+    // Optional separate CPU reference model (device-independent ground truth for cross-backend
+    // correctness). Disable with --no-cpu-ref when RAM is tight; then only same-engine and
+    // solo-vs-concurrent self-consistency checks run.
+    llama_model * m_cpu = nullptr;
+    if (cpu_ref) {
+        m_cpu = load_shard_on_device(model_path, "CPU", 0);
+        if (!m_cpu) fprintf(stderr, "[dualengine] warning: CPU reference load failed; cross-backend check BLOCKED\n");
+    }
+
     const int n_embd = llama_model_n_embd(m_dec);
     const llama_vocab * vocab = llama_model_get_vocab(m_dec);
     const int n_vocab = llama_vocab_n_tokens(vocab);
     const llama_token bos = llama_vocab_bos(vocab);
 
-    // decode context: B sequences, each advancing `rounds` positions.
+    // decode context: B sequences at a FIXED context length decode_ctx (C). The overlap loop
+    // decodes B tokens at pos=C then trims back to C, so the transient peak is B*(C+1) positions,
+    // independent of round count (min_secs/round count can never overrun the KV).
+    const int C = std::max(decode_ctx, 1);
     llama_context_params dp = llama_context_default_params();
     dp.n_seq_max = B;
-    dp.n_ctx     = (uint32_t) (B * (rounds + 4) + 64);
-    dp.n_batch   = (uint32_t) std::max(B, 8);
-    dp.n_ubatch  = (uint32_t) std::max(B, 8);
+    dp.n_ctx     = (uint32_t) ((size_t) B * (C + 1) + 64);
+    dp.n_batch   = (uint32_t) std::max(C, std::max(B, 8));
+    dp.n_ubatch  = (uint32_t) std::max(C, std::max(B, 8));
     dp.no_perf   = true;
-    // [plan-a M5] Force flash-attn OFF on the NPU decode context so the KV cache is created with
-    // v_trans=TRUE (V stored transposed). Hexagon has no flash_attn_ext kernel, so with the AUTO
-    // default it initially stores V NON-transposed (v_trans=!flash_attn, evaluated before auto-FA
-    // downgrades flash_attn to off on the HTP device) — then the explicit attention path transposes
-    // the WHOLE V cache every step (the ~154 ms/layer `v_cont`). Disabling FA up front stores V in
-    // the layout kqv wants, so the transpose becomes a cheap per-token write. (Prefill keeps AUTO —
-    // flash-attn IS useful there and works on the Adreno GPU.)
-    dp.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_DISABLED;
+    // AUTO lets the backend select its validated attention path. The environment
+    // override keeps the explicit path available for controlled comparisons.
+    dp.flash_attn_type = getenv("GGML_DECODE_NO_FA")
+        ? LLAMA_FLASH_ATTN_TYPE_DISABLED
+        : LLAMA_FLASH_ATTN_TYPE_AUTO;
     llama_context * ctx_dec = llama_init_from_model(m_dec, dp);
 
     // prefill context: one request of up to prefill_tokens at a time.
@@ -1203,6 +1309,14 @@ static int run_dualengine(const std::string & model_path, const std::string & de
     const bool head_less = (e_le != nullptr && atoi(e_le) < (int) llama_model_n_layer(m_dec));
     if (head_less) { llama_set_embeddings_nextn(ctx_dec, true, false); llama_set_embeddings_nextn(ctx_pre, true, false); }
 
+    // CPU reference decode context, sized like the decode engine so the fixed-C batch reproduces.
+    llama_context * ctx_cpu = nullptr;
+    if (m_cpu) {
+        ctx_cpu = llama_init_from_model(m_cpu, dp);
+        if (!ctx_cpu) fprintf(stderr, "[dualengine] warning: CPU reference ctx failed; cross-backend check BLOCKED\n");
+        else if (head_less) llama_set_embeddings_nextn(ctx_cpu, true, false);
+    }
+
     // synthetic per-request inputs: distinct token id + distinct non-denormal residual per stream.
     std::vector<llama_token> toks(B);
     std::vector<float> resid((size_t) B * n_embd);
@@ -1211,7 +1325,6 @@ static int run_dualengine(const std::string & model_path, const std::string & de
         for (int i = 0; i < n_embd; ++i) resid[(size_t) j * n_embd + i] = 0.001f * (((i + j) % 17) - 8);
     }
 
-    auto now_ms = [] { return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count(); };
     int rc = 0;
 
     // ----------------------------- (A) CORRECTNESS -----------------------------
@@ -1276,67 +1389,368 @@ static int run_dualengine(const std::string & model_path, const std::string & de
             if (head_less) {
                 const double rel_l2 = sum_r2 > 0 ? std::sqrt(sum_d2 / sum_r2) : 0.0;
                 const bool pass = rel_l2 < 1e-2 && argmax_mismatch == 0;   // 1% L2 tolerates fp noise; bleed would blow past it
-                fprintf(stderr, "[dualengine] CORRECTNESS: batched(B=%d) vs single  rel_L2=%.3e  max|Δ|=%.3e  argmax_mismatch=%d/%d => %s\n",
+                fprintf(stderr, "[dualengine] CORRECTNESS: batched(B=%d) vs single  rel_L2=%.3e  max|d|=%.3e  argmax_mismatch=%d/%d => %s\n",
                         B, rel_l2, max_abs, argmax_mismatch, B, pass ? "PASS" : "FAIL (cross-seq bleed?)");
+                if (!pass) rc = 3;   // correctness failure is a hard nonzero exit
             } else {
                 fprintf(stderr, "[dualengine] CORRECTNESS: batched(B=%d) vs single argmax mismatches = %d/%d => %s\n",
                         B, mismatches, B, (mismatches == 0) ? "PASS" : "FAIL");
+                if (mismatches != 0) rc = 3;
             }
         }
     }
     if (rc != 0) goto cleanup;
 
-    // ----------------------------- (B) CONCURRENCY -----------------------------
+    // ----------------------------- (B) OVERLAP LATENCY (4 distinct cases) -----------------------------
+    // decode leg  : fixed C-context KV, B-way decode at pos=C, seq_rm reset (context fixed at C).
+    // prefill leg : clear KV + prefill_tokens-token empty-KV prefill.
+    // Round counts auto-balance so the two legs do comparable total work (~target_ms each), then
+    // we measure: (1) D solo, (2) P solo, (3) directly-measured D-then-P serial, (4) D||P concurrent
+    // (start barrier). Concurrent worker durations are reported as CONCURRENT, never "alone".
     llama_memory_clear(llama_get_memory(ctx_dec), true);
     {
-        std::atomic<double> t_dec_ms{0}, t_pre_ms{0};
+        llama_memory_t mem_dec = llama_get_memory(ctx_dec);
+        llama_memory_t mem_pre = llama_get_memory(ctx_pre);
 
-        // DECODE thread: `rounds` static B-way batched forwards (all B streams advance 1 pos/round).
-        auto decode_worker = [&]() {
-            double t0 = now_ms();
-            for (int r = 0; r < rounds; ++r) {
-                fill_batch_Bway(bb, n_embd, B, /*pos*/r, is_head, toks, resid);
-                if (llama_decode(ctx_dec, bb) != 0) { fprintf(stderr, "error: decode round %d\n", r); break; }
-            }
-            t_dec_ms = now_ms() - t0;
-        };
-        // PREFILL thread: `rounds` prompts, one at a time (prefill_tokens each, single sequence).
-        auto prefill_worker = [&]() {
-            llama_batch pb = llama_batch_init(prefill_tokens, is_head ? 0 : n_embd, 1);
-            if (is_head) pb.token = (llama_token *) malloc((size_t) prefill_tokens * sizeof(llama_token));
-            double t0 = now_ms();
-            for (int r = 0; r < rounds; ++r) {
-                llama_memory_clear(llama_get_memory(ctx_pre), true);
-                pb.n_tokens = prefill_tokens;
-                for (int i = 0; i < prefill_tokens; ++i) {
-                    if (is_head) pb.token[i] = (llama_token) ((bos + 1 + (r + i) * 97) % n_vocab);
-                    else memcpy((float *) pb.embd + (size_t) i * n_embd, resid.data() + (size_t) (i % B) * n_embd, (size_t) n_embd * sizeof(float));
-                    pb.pos[i] = i; pb.n_seq_id[i] = 1; pb.seq_id[i][0] = 0; pb.logits[i] = (i == prefill_tokens - 1);
+        // establish the fixed C-context KV per decode stream (untimed)
+        bool pf_ok = true;
+        {
+            llama_batch pcb = llama_batch_init(std::max(C,1), is_head ? 0 : n_embd, 1);
+            if (is_head) pcb.token = (llama_token *) malloc((size_t) C * sizeof(llama_token));
+            for (int j = 0; j < B && pf_ok; ++j) {
+                pcb.n_tokens = C;
+                for (int i = 0; i < C; ++i) {
+                    if (is_head) pcb.token[i] = toks[j];
+                    else memcpy((float *) pcb.embd + (size_t) i * n_embd, resid.data() + (size_t) j * n_embd, (size_t) n_embd * sizeof(float));
+                    pcb.pos[i] = i; pcb.n_seq_id[i] = 1; pcb.seq_id[i][0] = j; pcb.logits[i] = 0;
                 }
-                if (llama_decode(ctx_pre, pb) != 0) { fprintf(stderr, "error: prefill round %d\n", r); break; }
+                if (llama_decode(ctx_dec, pcb) != 0) pf_ok = false;
             }
-            t_pre_ms = now_ms() - t0;
-            llama_batch_free(pb);
+            if (is_head) free(pcb.token);
+            llama_batch_free(pcb);
+        }
+        if (!pf_ok) { fprintf(stderr, "error: decode-leg C-prefill failed\n"); rc = 2; goto cleanup; }
+
+        // preallocated fixed-shape batches (excluded from every timed window). fill_batch_Bway
+        // always writes token[], so db.token is allocated unconditionally (freed by llama_batch_free).
+        llama_batch db = llama_batch_init(B, is_head ? 0 : n_embd, 1);
+        db.token = (llama_token *) malloc((size_t) B * sizeof(llama_token));
+        fill_batch_Bway(db, n_embd, B, /*pos*/C, is_head, toks, resid);   // fixed shape: pos=C, all B rows output
+
+        llama_batch pb = llama_batch_init(prefill_tokens, is_head ? 0 : n_embd, 1);
+        if (is_head) pb.token = (llama_token *) malloc((size_t) prefill_tokens * sizeof(llama_token));
+        pb.n_tokens = prefill_tokens;
+        for (int i = 0; i < prefill_tokens; ++i) {
+            if (is_head) pb.token[i] = toks[i % B];
+            else memcpy((float *) pb.embd + (size_t) i * n_embd, resid.data() + (size_t) (i % B) * n_embd, (size_t) n_embd * sizeof(float));
+            pb.pos[i] = i; pb.n_seq_id[i] = 1; pb.seq_id[i][0] = 0; pb.logits[i] = 1;
+        }
+
+        // checked decode-KV reset: seq_rm must trim EVERY sequence back to C; else a checked
+        // reprefill fallback rebuilds the C-context. A hard reset failure is sticky.
+        std::atomic<bool> reset_failed{false};
+        auto reprefill_dec = [&]() -> bool {
+            llama_memory_clear(mem_dec, true);
+            llama_batch pcb = llama_batch_init(std::max(C,1), is_head ? 0 : n_embd, 1);
+            if (is_head) pcb.token = (llama_token *) malloc((size_t) C * sizeof(llama_token));
+            bool ok = true;
+            for (int j = 0; j < B && ok; ++j) {
+                pcb.n_tokens = C;
+                for (int i = 0; i < C; ++i) {
+                    if (is_head) pcb.token[i] = toks[j];
+                    else memcpy((float *) pcb.embd + (size_t) i * n_embd, resid.data() + (size_t) j * n_embd, (size_t) n_embd * sizeof(float));
+                    pcb.pos[i] = i; pcb.n_seq_id[i] = 1; pcb.seq_id[i][0] = j; pcb.logits[i] = 0;
+                }
+                if (llama_decode(ctx_dec, pcb) != 0) ok = false;
+            }
+            if (is_head) free(pcb.token);
+            llama_batch_free(pcb);
+            return ok;
         };
 
-        double w0 = now_ms();
-        std::thread td(decode_worker), tp(prefill_worker);
-        td.join(); tp.join();
-        double wall = now_ms() - w0;
-        double sum  = t_dec_ms.load() + t_pre_ms.load();
-        fprintf(stderr, "[dualengine] CONCURRENCY over %d rounds:\n"
-                        "    decode  engine (%s, B=%d) alone = %.1f ms  (%.2f ms/round)\n"
-                        "    prefill engine (%s, T=%d) alone = %.1f ms  (%.2f ms/round)\n"
-                        "    wall (overlapped)               = %.1f ms\n"
-                        "    serial sum                      = %.1f ms  => overlap saved %.1f ms (%.0f%%), speedup %.2fx\n",
-                rounds, dev_decode.c_str(), B, t_dec_ms.load(), t_dec_ms.load() / rounds,
-                dev_prefill.c_str(), prefill_tokens, t_pre_ms.load(), t_pre_ms.load() / rounds,
-                wall, sum, sum - wall, sum > 0 ? 100.0 * (sum - wall) / sum : 0.0, wall > 0 ? sum / wall : 0.0);
+        // decode-leg output capture (head-less nextn residual for all B streams) for the
+        // solo-vs-concurrent and cross-backend correctness checks.
+        auto grab_dec = [&](std::vector<float> & out) {
+            out.assign((size_t) B * n_embd, 0.0f);
+            for (int j = 0; j < B; ++j) {
+                const float * h = llama_get_embeddings_nextn_ith(ctx_dec, j);
+                if (h) memcpy(out.data() + (size_t) j * n_embd, h, (size_t) n_embd * sizeof(float));
+            }
+        };
+
+        OverlapLeg legD, legP;
+        legD.name = "decode";  legP.name = "prefill";
+        legD.step  = [&]{ return llama_decode(ctx_dec, db); };
+        legD.reset = [&]{
+            bool ok = llama_memory_seq_rm(mem_dec, -1, C, -1);
+            if (ok) for (int j = 0; j < B; ++j) if (llama_memory_seq_pos_max(mem_dec, j) != C - 1) { ok = false; break; }
+            if (!ok && !reprefill_dec()) reset_failed.store(true);
+        };
+        legD.grab  = head_less ? std::function<void(std::vector<float>&)>(grab_dec) : nullptr;
+        legP.step  = [&]{ return llama_decode(ctx_pre, pb); };
+        legP.reset = [&]{ llama_memory_clear(mem_pre, true); };
+        legD.start(); legP.start();   // thread spawn OUTSIDE all timed windows
+
+        // Owned barrier + fail-closed run(): arm the barrier, launch, wait (timed) for all legs to
+        // arrive, release, then wait (timed) for completion. A blown deadline is a real stall (e.g. a
+        // hung DSP llama_decode) that we cannot join out of, so the watchdog dumps phase/generation
+        // diagnostics and aborts for a stack capture. `cap` marks one leg to record its last output.
+        OverlapBarrier bar;
+        double last_release_ms = 0.0;
+        auto dump_abort = [&](const char * where, const std::vector<OverlapLeg*> & legs) {
+            fprintf(stderr, "WATCHDOG: stall in %s; aborting for stack capture\n", where);
+            for (auto * L : legs) fprintf(stderr, "  leg=%s gen=%llu done_gen=%llu completed=%d failed_round=%d\n",
+                    L->name.c_str(), (unsigned long long) L->gen, (unsigned long long) L->done_gen, L->completed, L->failed_round);
+            fflush(stderr); std::abort();
+        };
+        auto run = [&](std::vector<OverlapLeg*> legs, std::vector<int> ns, OverlapLeg * cap = nullptr) -> double {
+            bar.arm((int) legs.size());
+            for (size_t i = 0; i < legs.size(); ++i) legs[i]->launch(ns[i], &bar, cap == legs[i]);
+            if (!bar.wait_all_arrived(OL_BARRIER_MS)) dump_abort("barrier-arrive", legs);
+            const double w0 = ol_now_ms(); last_release_ms = w0;
+            bar.go();
+            for (auto * L : legs) if (!L->wait_done(OL_PHASE_MS)) dump_abort("phase-complete", legs);
+            return ol_now_ms() - w0;
+        };
+
+        bool any_fail = false;
+        std::string fail_phase;
+        // returns true when the phase is clean; latches + names the first failing phase otherwise.
+        auto check = [&](const char * phase) -> bool {
+            if (legD.failed_round >= 0 || legP.failed_round >= 0 || reset_failed.load()) {
+                fprintf(stderr, "error: worker/reset failed in %s (D@%d P@%d reset=%d)\n",
+                        phase, legD.failed_round, legP.failed_round, (int) reset_failed.load());
+                if (!any_fail) fail_phase = phase;
+                any_fail = true;
+                return false;
+            }
+            return true;
+        };
+        auto require_n = [&](int got, int want, const char * phase) -> bool {
+            if (got != want) {
+                fprintf(stderr, "error: undersample in %s (%d of %d rounds)\n", phase, got, want);
+                if (!any_fail) fail_phase = std::string(phase) + "_undersample";
+                any_fail = true;
+                return false;
+            }
+            return true;
+        };
+
+        const int    warm      = std::max(rounds >= 1 ? 10 : 1, 1);   // matched warmups per leg
+        const double target_ms = 2500.0;                              // per-leg balanced work target
+
+        // warmups (absorb graph compile + one-time prepack); excluded from timing
+        run({&legD}, {warm}); run({&legP}, {warm}); check("warmup");
+
+        // probe per-round p50, then choose balanced round counts
+        double dprobe = 0.0, pprobe = 0.0;
+        int Np = 12, Nd = 20;
+        if (!any_fail) { run({&legD}, {std::max(warm,10)}); dprobe = ol_stat(legD.times).p50; check("probeD"); }
+        if (!any_fail) { run({&legP}, {std::max(warm,5)});  pprobe = ol_stat(legP.times).p50; check("probeP"); }
+        if (!any_fail) {
+            Np = (int) (target_ms / std::max(pprobe, 0.05)); if (Np < 12) Np = 12; if (Np > 200) Np = 200;
+            Nd = (int) (Np * pprobe / std::max(dprobe, 0.05)); if (Nd < 20) Nd = 20; if (Nd > 6000) Nd = 6000;
+        }
+
+        // CPU cross-backend reference for the decode fixed-C output at pos=C (device-independent).
+        std::vector<float> cpu_ref; bool cpu_ref_ok = false;
+        if (!any_fail && ctx_cpu && head_less) {
+            llama_memory_t mem_cpu = llama_get_memory(ctx_cpu);
+            llama_memory_clear(mem_cpu, true);
+            bool ok = true;
+            llama_batch pcb = llama_batch_init(std::max(C,1), is_head ? 0 : n_embd, 1);
+            if (is_head) pcb.token = (llama_token *) malloc((size_t) C * sizeof(llama_token));
+            for (int j = 0; j < B && ok; ++j) {
+                pcb.n_tokens = C;
+                for (int i = 0; i < C; ++i) {
+                    if (is_head) pcb.token[i] = toks[j];
+                    else memcpy((float *) pcb.embd + (size_t) i * n_embd, resid.data() + (size_t) j * n_embd, (size_t) n_embd * sizeof(float));
+                    pcb.pos[i] = i; pcb.n_seq_id[i] = 1; pcb.seq_id[i][0] = j; pcb.logits[i] = 0;
+                }
+                if (llama_decode(ctx_cpu, pcb) != 0) ok = false;
+            }
+            if (is_head) free(pcb.token);
+            llama_batch_free(pcb);
+            if (ok && llama_decode(ctx_cpu, db) == 0) {
+                cpu_ref.assign((size_t) B * n_embd, 0.0f);
+                cpu_ref_ok = true;
+                for (int j = 0; j < B && cpu_ref_ok; ++j) {
+                    const float * h = llama_get_embeddings_nextn_ith(ctx_cpu, j);
+                    if (!h) cpu_ref_ok = false; else memcpy(cpu_ref.data() + (size_t) j * n_embd, h, (size_t) n_embd * sizeof(float));
+                }
+            }
+        }
+        auto rel_l2_vs = [&](const std::vector<float> & v, const std::vector<float> & ref) -> double {
+            if (v.empty() || v.size() != ref.size()) return 1.0;
+            double d2 = 0, r2 = 0;
+            for (size_t k = 0; k < v.size(); ++k) {
+                if (!std::isfinite((double) v[k])) return 1.0;
+                const double d = (double) v[k] - (double) ref[k];
+                d2 += d * d; r2 += (double) ref[k] * (double) ref[k];
+            }
+            return r2 > 0 ? std::sqrt(d2 / r2) : (d2 == 0 ? 0.0 : 1.0);
+        };
+
+        // ============ (I) SATURATED THROUGHPUT: balanced backlogs, controls in rotated order ============
+        double wD = 0, wP = 0, wSerial = 0, wConc = 0, conc_compute = 0;
+        OLStat sD, sP, sDc, sPc; int cDc = 0, cPc = 0;
+        std::vector<float> solo_out, conc_out;
+        auto ctrl_Dsolo = [&]{ wD = run({&legD}, {Nd}, &legD); sD = ol_stat(legD.times); require_n(legD.completed, Nd, "D_solo"); solo_out = legD.last_out; };
+        auto ctrl_Psolo = [&]{ wP = run({&legP}, {Np}); sP = ol_stat(legP.times); require_n(legP.completed, Np, "P_solo"); };
+        auto ctrl_serial = [&]{ const double t0 = ol_now_ms(); run({&legD}, {Nd}); run({&legP}, {Np}); wSerial = ol_now_ms() - t0; };
+        auto ctrl_conc = [&]{
+            wConc = run({&legD, &legP}, {Nd, Np}, &legD);
+            sDc = ol_stat(legD.times); sPc = ol_stat(legP.times); cDc = legD.completed; cPc = legP.completed;
+            conc_compute = std::max(legD.compute_done_ms, legP.compute_done_ms) - last_release_ms;
+            conc_out = legD.last_out;
+        };
+        std::function<void()> ctrls[4] = { ctrl_Dsolo, ctrl_Psolo, ctrl_serial, ctrl_conc };
+        const char * cnames[4]        = { "D_solo", "P_solo", "serial", "concurrent" };
+        for (int k = 0; k < 4 && !any_fail; ++k) { const int idx = (k + rep) % 4; ctrls[idx](); if (!check(cnames[idx])) break; }
+        if (!any_fail) { require_n(cDc, Nd, "concurrent_D"); require_n(cPc, Np, "concurrent_P"); }
+
+        const double sat_speedup      = wConc > 0 ? wSerial / wConc : 0.0;
+        const double sat_eff          = wConc > 0 ? (wD + wP) / wConc : 0.0;
+        const double conc_vs_maxsolo  = std::max(wD,wP) > 0 ? wConc / std::max(wD,wP) : 0.0;
+        const double conc_compute_vs_maxsolo = std::max(wD,wP) > 0 ? conc_compute / std::max(wD,wP) : 0.0;
+        const double slow_D           = sD.p95 > 0 ? sDc.p95 / sD.p95 : 0.0;
+        const double slow_P           = sP.p95 > 0 ? sPc.p95 / sP.p95 : 0.0;
+
+        // cross-backend + solo-vs-concurrent correctness of the decode output (only if we captured it)
+        const double xcorr_solo = cpu_ref_ok ? rel_l2_vs(solo_out, cpu_ref) : -1.0;
+        const double xcorr_conc = cpu_ref_ok ? rel_l2_vs(conc_out, cpu_ref) : -1.0;
+        const double self_sc    = (!solo_out.empty() && !conc_out.empty()) ? rel_l2_vs(conc_out, solo_out) : -1.0;
+        const char * xcorr = !head_less ? "n/a"
+                           : !cpu_ref_ok ? "blocked"
+                           : (xcorr_solo <= 5e-3 && xcorr_conc <= 5e-3 && self_sc >= 0 && self_sc <= 5e-3) ? "pass" : "fail";
+        if (!any_fail && head_less && cpu_ref_ok && strcmp(xcorr, "fail") == 0) {
+            fprintf(stderr, "error: cross-backend/concurrent correctness FAIL (solo=%.2e conc=%.2e self=%.2e)\n",
+                    xcorr_solo, xcorr_conc, self_sc);
+            fail_phase = "xcorr"; any_fail = true;
+        }
+
+        // ============ (II) FIXED-STATE PAIR: fixed pos=C decode + fixed prefill, repeated ============
+        // Both legs re-run the identical fixed-shape batch (decode never advances KV). This is a
+        // fixed-state contention probe, NOT request latency; the service microtrace below is the
+        // real per-request latency. Serial control runs on the SAME persistent workers.
+        int Npair = (int) (5000.0 / std::max(pprobe, 0.05)); if (Npair < 12) Npair = 12; if (Npair > 200) Npair = 200;
+        OLStat fpD, fpP, fpSer, fpCon, fpDcc, fpPcc;
+        std::vector<double> fpSerial, fpConc, fpDc, fpPc;
+        if (!any_fail) { run({&legD}, {Npair}); fpD = ol_stat(legD.times); check("fixedpairD"); }
+        if (!any_fail) { run({&legP}, {Npair}); fpP = ol_stat(legP.times); check("fixedpairP"); }
+        if (!any_fail) {
+            for (int i = 0; i < Npair && !any_fail; ++i) {   // serial pair on the SAME persistent workers
+                const double t0 = ol_now_ms();
+                run({&legD}, {1}); run({&legP}, {1});
+                fpSerial.push_back(ol_now_ms() - t0);
+                if (!check("fixedpairSerial")) break;
+            }
+        }
+        if (!any_fail) {
+            for (int i = 0; i < Npair && !any_fail; ++i) {   // concurrent pair via the barrier
+                fpConc.push_back(run({&legD, &legP}, {1, 1}));
+                if (!legD.times.empty()) fpDc.push_back(legD.times[0]);
+                if (!legP.times.empty()) fpPc.push_back(legP.times[0]);
+                if (!check("fixedpairConc")) break;
+            }
+        }
+        fpSer = ol_stat(fpSerial); fpCon = ol_stat(fpConc); fpDcc = ol_stat(fpDc); fpPcc = ol_stat(fpPc);
+        const double fp_speedup = fpCon.p50 > 0 ? fpSer.p50 / fpCon.p50 : 0.0;
+        const double fp_slow_D  = fpD.p95 > 0 ? fpDcc.p95 / fpD.p95 : 0.0;
+        const double fp_slow_P  = fpP.p95 > 0 ? fpPcc.p95 / fpP.p95 : 0.0;
+
+        // ============ (III) SERVICE MICROTRACE: real per-request latency ============
+        // Decode KV ADVANCES one token per step (attention grows with context); each prefill request
+        // is FRESH (distinct tokens on a cleared KV). Request completion = llama_decode returns with
+        // output ready. Measured solo and concurrent to expose contention-induced service slowdown.
+        OLStat svcD, svcP, svcDc, svcPc; double svc_slow_D = 0, svc_slow_P = 0;
+        if (!any_fail && head_less) {
+            const int n_svc = std::min(64, (int) dp.n_ctx - 8);
+            llama_batch d1 = llama_batch_init(1, is_head ? 0 : n_embd, 1);
+            if (is_head) d1.token = (llama_token *) malloc(sizeof(llama_token));
+            d1.n_tokens = 1; d1.n_seq_id[0] = 1; d1.seq_id[0][0] = 0; d1.logits[0] = 1;
+            if (is_head) d1.token[0] = toks[0]; else memcpy(d1.embd, resid.data(), (size_t) n_embd * sizeof(float));
+            int svc_dpos = 0, svc_preq = 0;
+            auto warm_decode = [&]{ llama_memory_clear(mem_dec, true); svc_dpos = 0; };
+            auto fresh_prefill_fill = [&]{
+                for (int i = 0; i < prefill_tokens; ++i) {
+                    if (is_head) pb.token[i] = toks[(i + svc_preq) % B];
+                    else memcpy((float *) pb.embd + (size_t) i * n_embd, resid.data() + (size_t) ((i + svc_preq) % B) * n_embd, (size_t) n_embd * sizeof(float));
+                    pb.pos[i] = i; pb.n_seq_id[i] = 1; pb.seq_id[i][0] = 0; pb.logits[i] = 1;
+                }
+            };
+            legD.grab = nullptr;
+            legD.step  = [&]{ d1.pos[0] = svc_dpos; const int r = llama_decode(ctx_dec, d1); if (r == 0) ++svc_dpos; return r; };
+            legD.reset = [&]{ if (svc_dpos >= n_svc) warm_decode(); };   // KV advances until it fills, then wraps
+            legP.step  = [&]{ return llama_decode(ctx_pre, pb); };
+            legP.reset = [&]{ llama_memory_clear(mem_pre, true); ++svc_preq; fresh_prefill_fill(); };
+            warm_decode(); fresh_prefill_fill();
+            run({&legD}, {std::max(warm,5)}); run({&legP}, {std::max(warm,5)}); check("svc_warm");
+            if (!any_fail) { warm_decode(); run({&legD}, {n_svc}); svcD = ol_stat(legD.times); check("svcD"); }
+            if (!any_fail) { run({&legP}, {n_svc}); svcP = ol_stat(legP.times); check("svcP"); }
+            if (!any_fail) { warm_decode(); run({&legD, &legP}, {n_svc, n_svc}); svcDc = ol_stat(legD.times); svcPc = ol_stat(legP.times); check("svc_conc"); }
+            svc_slow_D = svcD.p50 > 0 ? svcDc.p50 / svcD.p50 : 0.0;
+            svc_slow_P = svcP.p50 > 0 ? svcPc.p50 / svcP.p50 : 0.0;
+            if (is_head) free(d1.token);
+            llama_batch_free(d1);
+        }
+
+        legD.stop(); legP.stop();
+        llama_batch_free(db); llama_batch_free(pb);
+
+        const bool valid = !any_fail;
+        if (!valid) rc = rc ? rc : 2;
+
+        fprintf(stderr,
+            "[dualengine] decode=%s(B=%d,C=%d) prefill=%s(T=%d) rep=%d Nd=%d Np=%d Npair=%d valid=%d xcorr=%s fail=%s\n"
+            "  SATURATED  D p50=%.2f/p95=%.2f  P p50=%.2f/p95=%.2f  serial=%.1f conc=%.1f (compute=%.1f) ms\n"
+            "             speedup=%.2fx eff=%.2f conc/max=%.2f (compute %.2f) slowdown D=%.2f P=%.2f  CoV D=%.3f P=%.3f\n"
+            "  FIXEDPAIR  D=%.2f P=%.2f serial=%.2f conc=%.2f ms  speedup=%.2fx slowdown D=%.2f P=%.2f\n"
+            "  SERVICE    D solo=%.2f conc=%.2f (x%.2f)  P solo=%.2f conc=%.2f (x%.2f)\n",
+            dev_decode.c_str(), B, C, dev_prefill.c_str(), prefill_tokens, rep, Nd, Np, Npair,
+            (int) valid, xcorr, any_fail ? fail_phase.c_str() : "-",
+            sD.p50, sD.p95, sP.p50, sP.p95, wSerial, wConc, conc_compute,
+            sat_speedup, sat_eff, conc_vs_maxsolo, conc_compute_vs_maxsolo, slow_D, slow_P, sDc.cov, sPc.cov,
+            fpD.p50, fpP.p50, fpSer.p50, fpCon.p50, fp_speedup, fp_slow_D, fp_slow_P,
+            svcD.p50, svcDc.p50, svc_slow_D, svcP.p50, svcPc.p50, svc_slow_P);
+
+        // One JSON record per run. On failure only identity + status are emitted (NO gate metrics).
+        if (!valid) {
+            fprintf(stderr,
+                "DUALJSON {\"decode_dev\":\"%s\",\"prefill_dev\":\"%s\",\"B\":%d,\"C\":%d,\"T\":%d,\"rep\":%d,"
+                "\"valid\":0,\"status\":\"%s\",\"worker_failed\":1}\n",
+                dev_decode.c_str(), dev_prefill.c_str(), B, C, prefill_tokens, rep, fail_phase.c_str());
+        } else {
+            fprintf(stderr,
+                "DUALJSON {\"decode_dev\":\"%s\",\"prefill_dev\":\"%s\",\"B\":%d,\"C\":%d,\"T\":%d,\"rep\":%d,\"valid\":1,\"status\":\"ok\","
+                "\"Nd\":%d,\"Np\":%d,\"Npair\":%d,\"n_svc\":%d,"
+                "\"xcorr\":\"%s\",\"xcorr_solo\":%.3e,\"xcorr_conc\":%.3e,\"self_sc\":%.3e,"
+                "\"sat_D_solo_p50\":%.4f,\"sat_D_solo_p95\":%.4f,\"sat_P_solo_p50\":%.4f,\"sat_P_solo_p95\":%.4f,"
+                "\"sat_serial_wall\":%.2f,\"sat_conc_wall\":%.2f,\"sat_conc_compute\":%.2f,"
+                "\"sat_speedup\":%.4f,\"sat_eff\":%.4f,\"sat_conc_vs_maxsolo\":%.4f,\"sat_conc_compute_vs_maxsolo\":%.4f,"
+                "\"sat_slowdown_D\":%.4f,\"sat_slowdown_P\":%.4f,\"sat_D_conc_cov\":%.4f,\"sat_P_conc_cov\":%.4f,\"D_rounds\":%d,\"P_rounds\":%d,"
+                "\"fixedpair_D_p50\":%.4f,\"fixedpair_P_p50\":%.4f,\"fixedpair_serial_p50\":%.4f,\"fixedpair_conc_p50\":%.4f,"
+                "\"fixedpair_speedup\":%.4f,\"fixedpair_slowdown_D\":%.4f,\"fixedpair_slowdown_P\":%.4f,\"fixedpair_n\":%d,"
+                "\"svc_D_solo_p50\":%.4f,\"svc_D_solo_p95\":%.4f,\"svc_D_conc_p50\":%.4f,\"svc_D_conc_p95\":%.4f,\"svc_slowdown_D\":%.4f,"
+                "\"svc_P_solo_p50\":%.4f,\"svc_P_solo_p95\":%.4f,\"svc_P_conc_p50\":%.4f,\"svc_P_conc_p95\":%.4f,\"svc_slowdown_P\":%.4f,"
+                "\"worker_failed\":0}\n",
+                dev_decode.c_str(), dev_prefill.c_str(), B, C, prefill_tokens, rep,
+                Nd, Np, Npair, (int) std::min(64, (int) dp.n_ctx - 8),
+                xcorr, xcorr_solo, xcorr_conc, self_sc,
+                sD.p50, sD.p95, sP.p50, sP.p95, wSerial, wConc, conc_compute,
+                sat_speedup, sat_eff, conc_vs_maxsolo, conc_compute_vs_maxsolo,
+                slow_D, slow_P, sDc.cov, sPc.cov, cDc, cPc,
+                fpD.p50, fpP.p50, fpSer.p50, fpCon.p50, fp_speedup, fp_slow_D, fp_slow_P, (int) fpConc.size(),
+                svcD.p50, svcD.p95, svcDc.p50, svcDc.p95, svc_slow_D,
+                svcP.p50, svcP.p95, svcPc.p50, svcPc.p95, svc_slow_P);
+        }
     }
 
 cleanup:
     llama_batch_free(bb);
+    if (ctx_cpu) llama_free(ctx_cpu);
     llama_free(ctx_pre); llama_free(ctx_dec);
+    if (m_cpu) llama_model_free(m_cpu);
     llama_model_free(m_pre); llama_model_free(m_dec);
     return rc;
 }
@@ -1358,6 +1772,7 @@ int main(int argc, char ** argv) {
     int  n_streams = 1;      // tailbench batch size
     double gap_ms  = 0.0;    // tailbench: per-round head-wait (models cross-device relay gap)
     int  prompt_len = 16;    // kvsave/kvload: prefill length (KV positions to snapshot/ship)
+    int  decode_ctx = 512;   // dualengine: fixed decode-leg context length C
     std::string dev_csv;     // --devices HTP0,GPUOpenCL : split layers across these backends
     std::string tsplit_csv;  // --tsplit 24,24          : layers (or ratio) per device
     std::string dev_prefill; // dualengine: prefill-engine device (e.g. GPUOpenCL / CUDA0)
@@ -1367,6 +1782,8 @@ int main(int argc, char ** argv) {
     bool tok_set = false;
     bool chat_mode = false; // pipedriver --chat: apply the model's chat template to -p
     bool share_weights = false; // dualengine --share-weights: one rpcmem weight copy for both engines
+    int  rep = 0;               // dualengine --rep: rotates control order across processes (DVFS-fair)
+    bool cpu_ref = true;        // dualengine: CPU cross-backend reference; --no-cpu-ref to disable (RAM)
 
     for (int i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "-m") == 0 && i + 1 < argc) {
@@ -1407,8 +1824,14 @@ int main(int argc, char ** argv) {
             dev_decode = argv[++i];
         } else if (strcmp(argv[i], "--share-weights") == 0) {
             share_weights = true;
+        } else if (strcmp(argv[i], "--rep") == 0 && i + 1 < argc) {
+            rep = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--no-cpu-ref") == 0) {
+            cpu_ref = false;
         } else if (strcmp(argv[i], "--prompt-len") == 0 && i + 1 < argc) {
             prompt_len = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--decode-ctx") == 0 && i + 1 < argc) {
+            decode_ctx = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--gap-ms") == 0 && i + 1 < argc) {
             gap_ms = atof(argv[++i]);
         } else if (strcmp(argv[i], "-ngl") == 0 && i + 1 < argc) {
@@ -1485,7 +1908,7 @@ int main(int argc, char ** argv) {
         const int B       = std::max(n_streams, 1);              // -b : static decode batch
         const int rounds  = std::max(n_gen, 1);                  // -n : decode rounds
         const int pf_toks = std::max(prompt_len, 1);             // --prompt-len : tokens/prefill request
-        return run_dualengine(model_path, dp, dd, B, rounds, pf_toks, ngl, share_weights);
+        return run_dualengine(model_path, dp, dd, B, rounds, pf_toks, ngl, share_weights, decode_ctx, rep, cpu_ref);
     }
 
     llama_model_params model_params = llama_model_default_params();

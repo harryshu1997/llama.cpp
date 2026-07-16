@@ -1,0 +1,4 @@
+# Preserve byte-exact measurement evidence, including device-emitted whitespace.
+research_dev/spikes/s10_power_frontier/artifacts/** -whitespace
+research_dev/spikes/s9_pipelined_transport/artifacts/** -whitespace
+research_dev/spikes/s9_pipelined_transport/artifacts_r/** -whitespace

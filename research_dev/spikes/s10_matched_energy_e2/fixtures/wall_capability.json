@@ -1,0 +1,21 @@
+{
+  "capability_id": "cap.synthetic.wall",
+  "coverage_proof_artifact_id": "cov.synthetic",
+  "coverage_proof_artifact_path": "capability/wall.json",
+  "coverage_proof_sha256": "cad7993e55d3045aa8727b44ca9fc0c270048c1630b99cf85d34418b3716683d",
+  "covers_cpu": true,
+  "covers_dram": true,
+  "covers_fans": true,
+  "covers_gpu": true,
+  "covers_psu_losses": true,
+  "covers_storage": true,
+  "instrument_identity": "synthetic-wall-meter-0",
+  "instrument_kind": "EXTERNAL_WALL_METER",
+  "kind": "ServerWallCapability",
+  "provenance": "SYNTHETIC",
+  "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+  "record_sha256": "99dea418f34ac8c45c17623d179178d65c409e7d2603c86356d954d4f0280fbd",
+  "schema_version": 1,
+  "status": "OK",
+  "uncertainty_floor_mw": 1
+}

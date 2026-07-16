@@ -1,0 +1,117 @@
+[
+  {
+    "file": "valid/weight_segment.ok.json",
+    "kind": "weight_segment",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/weight_set.ok.json",
+    "kind": "weight_set",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/model_manifest.partial.json",
+    "kind": "model_manifest",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/model_manifest.full.json",
+    "kind": "model_manifest",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/prepared_image.ok.json",
+    "kind": "prepared_image",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/ready_certificate.ok.json",
+    "kind": "ready_certificate",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/device_inventory.ok.json",
+    "kind": "device_inventory",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/residency_lease.ok.json",
+    "kind": "residency_lease",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/transfer_ticket.ok.json",
+    "kind": "transfer_ticket",
+    "expect": "valid"
+  },
+  {
+    "file": "invalid/weight_segment.gap.json",
+    "kind": "weight_segment",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/weight_segment.sum.json",
+    "kind": "weight_segment",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/weight_segment.index.json",
+    "kind": "weight_segment",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/weight_set.bad_digest.json",
+    "kind": "weight_set",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/weight_set.bad_total.json",
+    "kind": "weight_set",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/model_manifest.full_multi.json",
+    "kind": "model_manifest",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/model_manifest.full_notfull.json",
+    "kind": "model_manifest",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/prepared_image.bad_derived.json",
+    "kind": "prepared_image",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/prepared_image.tensor_mismatch.json",
+    "kind": "prepared_image",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/ready_certificate.total.json",
+    "kind": "ready_certificate",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/device_inventory.ledger.json",
+    "kind": "device_inventory",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/device_inventory.over.json",
+    "kind": "device_inventory",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/residency_lease.horizon.json",
+    "kind": "residency_lease",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/transfer_ticket.chunk_range.json",
+    "kind": "transfer_ticket",
+    "expect": "invalid"
+  }
+]

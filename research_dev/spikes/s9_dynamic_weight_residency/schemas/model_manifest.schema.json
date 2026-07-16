@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s9/schemas/model_manifest.schema.json",
+  "title": "Residency model manifest (v1)",
+  "$comment": "Self-contained. The server-published, content-addressed description of a model and its atomic weight sets. partial_load_supported is the ARBITRARY-MODEL gate: a manifest with partial_load_supported=false may declare only one weight set spanning [0,n_layer_total) (a model whose backend does not honor a layer window cannot be sharded). That single-set rule is enforced by validate_manifests.py. A weight set with a missing/absent set_digest can make no island READY.",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": { "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" } },
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "model_id": { "type": "string", "minLength": 1 },
+    "model_version": { "$ref": "#/$defs/sha256", "description": "content identity of the model (source gguf digest)" },
+    "source_sha256": { "$ref": "#/$defs/sha256" },
+    "arch": { "type": "string", "minLength": 1 },
+    "n_layer_total": { "type": "integer", "minimum": 1, "maximum": 100000 },
+    "dtype": { "type": "string", "enum": ["f16", "f32", "bf16"] },
+    "layout_version": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+    "graph_hash": { "$ref": "#/$defs/sha256" },
+    "partial_load_supported": { "type": "boolean", "description": "true only if the backend honors a per-layer window (e.g. gemma4 LLAMA_LAYER_START/END). false => single full-range weight set only." },
+    "weight_sets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "weight_set_id": { "type": "string", "minLength": 1 },
+          "set_digest": { "$ref": "#/$defs/sha256" },
+          "total_bytes": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+          "layer_range": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "start": { "type": "integer", "minimum": 0, "maximum": 100000 },
+              "end": { "type": "integer", "minimum": 1, "maximum": 100000 },
+              "n_layer_total": { "type": "integer", "minimum": 1, "maximum": 100000 }
+            },
+            "required": ["start", "end", "n_layer_total"]
+          }
+        },
+        "required": ["weight_set_id", "set_digest", "total_bytes", "layer_range"]
+      }
+    },
+    "required_backends": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "backend": { "type": "string", "enum": ["htp", "gpu", "cpu"] },
+          "backend_build": { "$ref": "#/$defs/sha256", "description": "content identity of the compiled backend library / kernel set" },
+          "min_soc": { "type": "string", "enum": ["op12", "op15"] }
+        },
+        "required": ["backend", "backend_build"]
+      }
+    },
+    "compatible_soc": { "type": "array", "minItems": 1, "items": { "type": "string", "enum": ["op12", "op15"] } },
+    "resident_ram_estimate_bytes": { "type": ["integer", "null"], "minimum": 0, "maximum": 9007199254740991 },
+    "warmup_cmd": { "type": "string" }
+  },
+  "required": ["schema_version", "model_id", "model_version", "source_sha256", "arch", "n_layer_total", "dtype", "layout_version", "graph_hash", "partial_load_supported", "weight_sets", "required_backends", "compatible_soc"]
+}

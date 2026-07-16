@@ -1,0 +1,60 @@
+{
+  "board_uuids": [
+    "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f"
+  ],
+  "build_revision": "synthetic-e2-build-0",
+  "clock_epoch_id": "boot-synthetic-0000",
+  "completed_work": 1000,
+  "device_identity": "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f",
+  "energy_nj": 6000000000000,
+  "excluded_rails": [
+    "SERVER/USB_VBUS",
+    "PHONE/BATTERY"
+  ],
+  "execution_artifact_id": "execution.tl.control.0",
+  "execution_artifact_path": "execution/control.json",
+  "execution_artifact_sha256": "14eabb804eb816fa9cd8fb44ab46acdda302cbc1466b3b3bd58c7d889d07c7f8",
+  "included_rails": [
+    "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f/BOARD"
+  ],
+  "independent_updates": 199,
+  "instrument_identity": "synthetic-meter-0",
+  "instrument_kind": "SYNTHETIC",
+  "instrument_label": "synthetic mechanics meter",
+  "kind": "RealizedTimeline",
+  "marker_end_us": 20000000,
+  "marker_start_us": 0,
+  "max_gap_us": 100000,
+  "normalizer_digest": "4100d28c3b594518300d81a645eca7ddda04d43a3bd436ed801278e2b6b5142c",
+  "offered_work": 1000,
+  "outcomes": {
+    "canceled": 0,
+    "met": 1000,
+    "rejected": 0,
+    "tardy": 0
+  },
+  "paid_payload_sha256": "9cf154288be86e67022e7d7bf98782532241af198457db1b03bae4ecb3b5928d",
+  "policy_digest": "ded3a74d106b9aa02407a840d8d5d985260968fcaed3ca1d05c6f1ca5f287a4f",
+  "provenance": "SYNTHETIC",
+  "raw_artifact_id": "control.json",
+  "raw_artifact_path": "raw/control.json",
+  "raw_artifact_sha256": "fd6521df1198b123a43adf57e9c49ddcc6f8e6fee666bec388d58156057921ad",
+  "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+  "record_sha256": "d840ddafd3cd032aef72909eba36c6ed0f0e7fac6db7afcd04be0181501e94f2",
+  "role": "OPTIMIZED_SERVER_ONLY_CONTROL",
+  "route_schedule_digest": "59d2ba0263e815030fb6768e3846d84995983724405fce799a6dfa20877d5549",
+  "run_nonce": "run.tl.control.0",
+  "sample_count": 201,
+  "schema_version": 1,
+  "scope": "GPU_BOARD",
+  "slo_policy_digest": "45ef01d9dc807ce046717d2bd01b7b68b9bf82ca59594423d77afefb4ee7445b",
+  "source_revision": "933c722f6",
+  "status": "OK",
+  "synchronization": "MONOTONIC_SHARED",
+  "timeline_id": "tl.control.0",
+  "trace_digest": "a6aa04d47398e28c05937be9496074b02f90c3c60e8316636f2d6b8c636d0b86",
+  "uncertainty_nj": 100000000000,
+  "window_end_us": 20000000,
+  "window_start_us": 0,
+  "workload_digest": "014dcc789384cfcacf43acbce3c00fbc82fd973df7e2c723701ae3445de038e1"
+}

@@ -1,0 +1,114 @@
+{
+  "bom": "reject",
+  "config_version": "burstgpt-v2.0-cfg-1",
+  "csv": {
+    "blank_row": "reject",
+    "dialect": "rfc4180",
+    "field_trim": "none",
+    "header": [
+      "Timestamp",
+      "Session ID",
+      "Elapsed time",
+      "Model",
+      "Request tokens",
+      "Response tokens",
+      "Total tokens",
+      "Log Type"
+    ]
+  },
+  "encoding": "utf-8",
+  "format": "csv",
+  "gate_a": {
+    "audio_ms": 0,
+    "deadline_provenance": "none",
+    "deadline_us": null,
+    "images": 1,
+    "observed_latency_us": null,
+    "priority_class": null,
+    "priority_provenance": "none"
+  },
+  "mapping": {
+    "cache_keys": {
+      "const_empty": true
+    },
+    "input_tokens": {
+      "from": "Request tokens",
+      "grammar": "^[0-9]+$"
+    },
+    "model_class": {
+      "from": "Model",
+      "value_map": {
+        "ChatGPT": "large_text_generation",
+        "GPT-4": "large_text_generation"
+      }
+    },
+    "output_tokens": {
+      "from": "Response tokens",
+      "grammar": "^[0-9]+$"
+    },
+    "retrieved_chunks": {
+      "const": 0
+    },
+    "service": {
+      "from": "Log Type",
+      "value_map": {
+        "API log": "api_generation",
+        "Conversation log": "conversation_generation"
+      }
+    },
+    "session_id": {
+      "blank_to_null": true,
+      "from": "Session ID"
+    },
+    "source_fields": {
+      "burstgpt_failed": {
+        "from": "Response tokens",
+        "transform": "is_zero",
+        "type": "boolean"
+      },
+      "elapsed_time": {
+        "from": "Elapsed time",
+        "transform": "raw",
+        "type": "integer"
+      },
+      "log_type": {
+        "from": "Log Type",
+        "transform": "raw",
+        "type": "string"
+      },
+      "model": {
+        "from": "Model",
+        "transform": "raw",
+        "type": "string"
+      },
+      "total_tokens": {
+        "from": "Total tokens",
+        "transform": "raw",
+        "type": "integer"
+      }
+    },
+    "t_from": "Timestamp"
+  },
+  "newline": "lf_or_crlf",
+  "origin": {
+    "bytes": 231682327,
+    "filename": "BurstGPT_3.csv",
+    "license": "CC-BY-4.0",
+    "line_count": 5344022,
+    "record_count": 5344021,
+    "revision": "v2.0",
+    "sha256": "sha256:2299986a07388aa303ec2c41d1131e756db650a39ed6ef9dfe7cc3d7f9a43b8f",
+    "url": "https://github.com/HPMLL/BurstGPT/releases/download/v2.0/BurstGPT_3.csv"
+  },
+  "provenance": "real",
+  "schema_version": 1,
+  "source": "burstgpt-v2",
+  "timestamp": {
+    "field": "Timestamp",
+    "grammar": "^[0-9]+\\.[0-9]+$",
+    "overflow_max": 9007199254740991,
+    "policy": "require_nondecreasing",
+    "to_us": "decimal_round_half_up_1e6",
+    "unit": "seconds"
+  }
+}

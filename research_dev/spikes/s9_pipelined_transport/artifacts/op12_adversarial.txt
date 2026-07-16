@@ -1,0 +1,7 @@
+== adversarial windowing tests on 5ae7a43d ==
+T1 partial: chunks_sent=40 (expect 40)
+T1 PASS: resume_offset=167772160 (==167772160), "verdict":"DYNAMIC_FFN_PASS", sha ok
+T2 killed worker mid-flight (host exited non-zero: rc=4)
+T2 PASS: recovered from verified prefix rsum=163577856 (4MiB-aligned), "verdict":"DYNAMIC_FFN_PASS", sha ok
+T3 PASS: window=8 published SHA == window=1 canonical (5cfba18d2a47acc190f317d650895bcc53e914e9a0bc61631860be9591ed360d), rel_l2=0.000294724228
+== 5ae7a43d adversarial: PASS=3 FAIL=0 ==

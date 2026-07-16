@@ -1,0 +1,20 @@
+=== release phone-pim CTest (pre-edit) ===
+    Start 57: phone-pim-store
+2/3 Test #57: phone-pim-store ..................   Passed    1.04 sec
+    Start 58: phone-pim-stream
+3/3 Test #58: phone-pim-stream .................   Passed    0.08 sec
+
+100% tests passed, 0 tests failed out of 3
+
+Total Test time (real) =   1.15 sec
+release exit: 0
+=== ASan/UBSan phone-pim CTest (pre-edit) ===
+    Start 57: phone-pim-store
+2/3 Test #57: phone-pim-store ..................   Passed    1.06 sec
+    Start 58: phone-pim-stream
+3/3 Test #58: phone-pim-stream .................   Passed    0.11 sec
+
+100% tests passed, 0 tests failed out of 3
+
+Total Test time (real) =   1.22 sec
+asan exit: 0

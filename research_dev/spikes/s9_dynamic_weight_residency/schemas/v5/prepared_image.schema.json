@@ -1,0 +1,193 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s9/schemas/v5/prepared_image.schema.json",
+  "title": "Backend-derived prepared image (v5)",
+  "$comment": "Self-contained backend artifact derived from one canonical allocation. The v5 digest binds every schema-allowed content field, including IDs, source identity, backend build, format, payload digest, boot, generation, and physical byte charge.",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 5
+    },
+    "kind": {
+      "type": "string",
+      "const": "prepared_image"
+    },
+    "prepared_image_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "image_class": {
+      "type": "string",
+      "enum": [
+        "htp_linear",
+        "gpu_plain",
+        "gpu_xmem_prepacked"
+      ]
+    },
+    "backend": {
+      "type": "string",
+      "enum": [
+        "htp",
+        "gpu"
+      ]
+    },
+    "preparation_algorithm": {
+      "type": "string",
+      "enum": [
+        "htp_repack.v1",
+        "gpu_plain_import.v1",
+        "gpu_xmem_os8.v1"
+      ]
+    },
+    "model_version": {
+      "$ref": "#/$defs/sha256"
+    },
+    "tensor_digest": {
+      "$ref": "#/$defs/sha256",
+      "description": "content digest of the source weight set (== source_weight_set_digest)"
+    },
+    "graph_hash": {
+      "$ref": "#/$defs/sha256"
+    },
+    "backend_build": {
+      "$ref": "#/$defs/sha256"
+    },
+    "soc": {
+      "type": "string",
+      "enum": [
+        "op12",
+        "op15"
+      ]
+    },
+    "arch": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "layout_version": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000000
+    },
+    "boot_epoch": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "residency_generation": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "source_allocation_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "description": "the CanonicalAllocation this image aliases"
+    },
+    "source_weight_set_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "source_weight_set_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "derived_bytes": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "backend-derived RAM, DISTINCT from the canonical byte charge"
+    },
+    "sharing_mode": {
+      "type": "string",
+      "enum": [
+        "shared_canonical",
+        "private_derived"
+      ]
+    },
+    "derived_payload_sha256": {
+      "$ref": "#/$defs/sha256",
+      "description": "content hash of the derived image bytes (0-length hash for shared_canonical)"
+    },
+    "derived_image_digest": {
+      "$ref": "#/$defs/sha256",
+      "description": "domain-separated identity over the bound fields"
+    }
+  },
+  "required": [
+    "schema_version",
+    "kind",
+    "prepared_image_id",
+    "image_class",
+    "backend",
+    "preparation_algorithm",
+    "model_version",
+    "tensor_digest",
+    "graph_hash",
+    "backend_build",
+    "soc",
+    "arch",
+    "layout_version",
+    "boot_epoch",
+    "residency_generation",
+    "source_allocation_id",
+    "source_weight_set_id",
+    "source_weight_set_digest",
+    "derived_bytes",
+    "sharing_mode",
+    "derived_payload_sha256",
+    "derived_image_digest"
+  ],
+  "allOf": [
+    {
+      "$comment": "a shared canonical import re-charges nothing",
+      "if": {
+        "properties": {
+          "sharing_mode": {
+            "const": "shared_canonical"
+          }
+        },
+        "required": [
+          "sharing_mode"
+        ]
+      },
+      "then": {
+        "properties": {
+          "derived_bytes": {
+            "const": 0
+          }
+        }
+      }
+    },
+    {
+      "$comment": "a private derived buffer charges its own bytes",
+      "if": {
+        "properties": {
+          "sharing_mode": {
+            "const": "private_derived"
+          }
+        },
+        "required": [
+          "sharing_mode"
+        ]
+      },
+      "then": {
+        "properties": {
+          "derived_bytes": {
+            "minimum": 1
+          }
+        }
+      }
+    }
+  ]
+}

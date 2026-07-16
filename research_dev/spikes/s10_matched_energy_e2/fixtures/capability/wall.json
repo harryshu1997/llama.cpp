@@ -1,0 +1,15 @@
+{
+  "capability_id": "cap.synthetic.wall",
+  "coverage_proof_artifact_id": "cov.synthetic",
+  "covers_cpu": true,
+  "covers_dram": true,
+  "covers_fans": true,
+  "covers_gpu": true,
+  "covers_psu_losses": true,
+  "covers_storage": true,
+  "instrument_identity": "synthetic-wall-meter-0",
+  "instrument_kind": "EXTERNAL_WALL_METER",
+  "provenance": "SYNTHETIC",
+  "schema": "e2.wall-capability-proof.v1",
+  "uncertainty_floor_mw": 1
+}

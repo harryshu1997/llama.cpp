@@ -1,0 +1,1120 @@
+{
+  "artifacts": [
+    {
+      "artifact_id": "art.server.trace",
+      "backend_build": "synthetic-mechanics-build-0",
+      "build_revision": "synthetic-mechanics-build-0",
+      "command": "tests/make_evidence_fixtures.py --emit art.server.trace",
+      "device_id": "SERVER",
+      "kind": "JSON",
+      "path": "synthetic/art.server.trace.json",
+      "producing_tool": "s10_v0r_mechanics_generator",
+      "provenance": "SYNTHETIC",
+      "sha256": "eb3f7cc314d689cdaef89d8e581707e87fba01b0ba9fdd8e716131b58cd3887c",
+      "source_revision": "933c722f6",
+      "timestamp_utc": "20260715T000000Z",
+      "validity_us": 3600000000
+    },
+    {
+      "artifact_id": "art.server.power",
+      "backend_build": "synthetic-mechanics-build-0",
+      "build_revision": "synthetic-mechanics-build-0",
+      "command": "tests/make_evidence_fixtures.py --emit art.server.power",
+      "device_id": "SERVER",
+      "kind": "JSON",
+      "path": "synthetic/art.server.power.json",
+      "producing_tool": "s10_v0r_mechanics_generator",
+      "provenance": "SYNTHETIC",
+      "sha256": "3224481f110b009a42dbc4a7b921755dfc0c288be4b0bff13c5a867cbb15d5a8",
+      "source_revision": "933c722f6",
+      "timestamp_utc": "20260715T000000Z",
+      "validity_us": 3600000000
+    },
+    {
+      "artifact_id": "art.op15.trace",
+      "backend_build": "synthetic-mechanics-build-0",
+      "build_revision": "synthetic-mechanics-build-0",
+      "command": "tests/make_evidence_fixtures.py --emit art.op15.trace",
+      "device_id": "OP15",
+      "kind": "JSON",
+      "path": "synthetic/art.op15.trace.json",
+      "producing_tool": "s10_v0r_mechanics_generator",
+      "provenance": "SYNTHETIC",
+      "sha256": "d7b079ee9fcbdbbaf951d12380bef8ca4d888539b71c125e4155f5af8c5930ec",
+      "source_revision": "933c722f6",
+      "timestamp_utc": "20260715T000000Z",
+      "validity_us": 3600000000
+    },
+    {
+      "artifact_id": "art.op15.power",
+      "backend_build": "synthetic-mechanics-build-0",
+      "build_revision": "synthetic-mechanics-build-0",
+      "command": "tests/make_evidence_fixtures.py --emit art.op15.power",
+      "device_id": "OP15",
+      "kind": "JSON",
+      "path": "synthetic/art.op15.power.json",
+      "producing_tool": "s10_v0r_mechanics_generator",
+      "provenance": "SYNTHETIC",
+      "sha256": "7ca009be6869b8714e704cdbda6a5e48d43a934cffb87f7859a387ad69a0d988",
+      "source_revision": "933c722f6",
+      "timestamp_utc": "20260715T000000Z",
+      "validity_us": 3600000000
+    },
+    {
+      "artifact_id": "art.boundary",
+      "backend_build": "synthetic-mechanics-build-0",
+      "build_revision": "synthetic-mechanics-build-0",
+      "command": "tests/make_evidence_fixtures.py --emit art.boundary",
+      "device_id": "SERVER",
+      "kind": "JSON",
+      "path": "synthetic/art.boundary.json",
+      "producing_tool": "s10_v0r_mechanics_generator",
+      "provenance": "SYNTHETIC",
+      "sha256": "a5ddd14567d5edc2ddc1a1c44882bcb02cf73650a5a6f6f77e21345d78608c58",
+      "source_revision": "933c722f6",
+      "timestamp_utc": "20260715T000000Z",
+      "validity_us": 3600000000
+    },
+    {
+      "artifact_id": "art.boundary.op15",
+      "backend_build": "synthetic-mechanics-build-0",
+      "build_revision": "synthetic-mechanics-build-0",
+      "command": "tests/make_evidence_fixtures.py --emit art.boundary.op15",
+      "device_id": "OP15",
+      "kind": "JSON",
+      "path": "synthetic/art.boundary.op15.json",
+      "producing_tool": "s10_v0r_mechanics_generator",
+      "provenance": "SYNTHETIC",
+      "sha256": "2523dfd40dc72219ef5b9bd1c9e5fc0d308a306356c6bf3c0dd31dcc2fb63293",
+      "source_revision": "933c722f6",
+      "timestamp_utc": "20260715T000000Z",
+      "validity_us": 3600000000
+    },
+    {
+      "artifact_id": "art.reference.cpu",
+      "backend_build": "synthetic-mechanics-build-0",
+      "build_revision": "synthetic-mechanics-build-0",
+      "command": "tests/make_evidence_fixtures.py --emit art.reference.cpu",
+      "device_id": "REFERENCE_CPU",
+      "kind": "JSON",
+      "path": "synthetic/art.reference.cpu.json",
+      "producing_tool": "s10_v0r_mechanics_generator",
+      "provenance": "SYNTHETIC",
+      "sha256": "44474b9134876e863fdcaaa2d563cd68832d538ccf48f2e37d0b937413195ce9",
+      "source_revision": "933c722f6",
+      "timestamp_utc": "20260715T000000Z",
+      "validity_us": 3600000000
+    }
+  ],
+  "boundaries": [
+    {
+      "artifacts": [
+        "art.boundary"
+      ],
+      "backend_build": "synthetic-mechanics-build-0",
+      "boundary_wall_us": 0,
+      "contention_state": "ISOLATED",
+      "d2h_bytes": 0,
+      "device_id": "SERVER",
+      "direction": "INTRA_HOST",
+      "energy_nj": 0,
+      "energy_scope": "SERVER_WALL",
+      "graph_id": "graph.g0",
+      "h2d_bytes": 0,
+      "island_id": "island.ffn",
+      "kind": "BoundaryProfile",
+      "materialization_us": 0,
+      "model_id": "m0",
+      "output_bytes": 0,
+      "prepare_us": 0,
+      "process_count": 8,
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "record_id": "bnd.n0",
+      "record_sha256": "2a2026fb1e8fbeae9877e0cc642517cf48e18594304573902daa07e4f0a4b1ce",
+      "record_version": 3,
+      "sample_count": 64,
+      "status": "PASS",
+      "transfer_us": 0,
+      "transport_domain": "NONE",
+      "verification_us": 0,
+      "warmup_us": 0,
+      "weight_set_id": "w0"
+    },
+    {
+      "artifacts": [
+        "art.boundary"
+      ],
+      "backend_build": "synthetic-mechanics-build-0",
+      "boundary_wall_us": 0,
+      "contention_state": "ISOLATED",
+      "d2h_bytes": 0,
+      "device_id": "SERVER",
+      "direction": "INTRA_HOST",
+      "energy_nj": 0,
+      "energy_scope": "SERVER_WALL",
+      "graph_id": "graph.g1",
+      "h2d_bytes": 0,
+      "island_id": "island.ffn",
+      "kind": "BoundaryProfile",
+      "materialization_us": 0,
+      "model_id": "m1",
+      "output_bytes": 0,
+      "prepare_us": 0,
+      "process_count": 8,
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "record_id": "bnd.n1",
+      "record_sha256": "e3bd177f0b4249f4710694d434ada04b606639c51769f9a4dfed3098eb1f165b",
+      "record_version": 3,
+      "sample_count": 64,
+      "status": "PASS",
+      "transfer_us": 0,
+      "transport_domain": "NONE",
+      "verification_us": 0,
+      "warmup_us": 0,
+      "weight_set_id": "w1"
+    },
+    {
+      "artifacts": [
+        "art.boundary"
+      ],
+      "backend_build": "synthetic-mechanics-build-0",
+      "boundary_wall_us": 0,
+      "contention_state": "ISOLATED",
+      "d2h_bytes": 0,
+      "device_id": "SERVER",
+      "direction": "INTRA_HOST",
+      "energy_nj": 0,
+      "energy_scope": "SERVER_WALL",
+      "graph_id": "graph.cap",
+      "h2d_bytes": 0,
+      "island_id": "island.capacity",
+      "kind": "BoundaryProfile",
+      "materialization_us": 0,
+      "model_id": "mcap",
+      "output_bytes": 0,
+      "prepare_us": 0,
+      "process_count": 8,
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "record_id": "bnd.capacity",
+      "record_sha256": "e34a3818e8c2b68fef49d6265e6312e86fb80595d090866437f11b49dc871d64",
+      "record_version": 3,
+      "sample_count": 64,
+      "status": "PASS",
+      "transfer_us": 0,
+      "transport_domain": "NONE",
+      "verification_us": 0,
+      "warmup_us": 0,
+      "weight_set_id": "wcap"
+    },
+    {
+      "artifacts": [
+        "art.boundary"
+      ],
+      "backend_build": "synthetic-mechanics-build-0",
+      "boundary_wall_us": 0,
+      "contention_state": "ISOLATED",
+      "d2h_bytes": 0,
+      "device_id": "SERVER",
+      "direction": "INTRA_HOST",
+      "energy_nj": 0,
+      "energy_scope": "SERVER_WALL",
+      "graph_id": "graph.a",
+      "h2d_bytes": 0,
+      "island_id": "island.ffn",
+      "kind": "BoundaryProfile",
+      "materialization_us": 0,
+      "model_id": "m0",
+      "output_bytes": 100,
+      "prepare_us": 0,
+      "process_count": 8,
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "record_id": "bnd.a.p0",
+      "record_sha256": "7cfe1a58da2c2220cbefe66835ed566b0570ae94ee38690acae80ab489eb44d5",
+      "record_version": 3,
+      "sample_count": 64,
+      "status": "PASS",
+      "transfer_us": 0,
+      "transport_domain": "NONE",
+      "verification_us": 0,
+      "warmup_us": 0,
+      "weight_set_id": "wp"
+    },
+    {
+      "artifacts": [
+        "art.boundary"
+      ],
+      "backend_build": "synthetic-mechanics-build-0",
+      "boundary_wall_us": 0,
+      "contention_state": "ISOLATED",
+      "d2h_bytes": 0,
+      "device_id": "SERVER",
+      "direction": "INTRA_HOST",
+      "energy_nj": 0,
+      "energy_scope": "SERVER_WALL",
+      "graph_id": "graph.a",
+      "h2d_bytes": 0,
+      "island_id": "island.ffn",
+      "kind": "BoundaryProfile",
+      "materialization_us": 0,
+      "model_id": "m1",
+      "output_bytes": 100,
+      "prepare_us": 0,
+      "process_count": 8,
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "record_id": "bnd.a.p1",
+      "record_sha256": "7ec19d89209495633912c481409a2c79aed7dde23d891d9b2fbfb439b87b54d6",
+      "record_version": 3,
+      "sample_count": 64,
+      "status": "PASS",
+      "transfer_us": 0,
+      "transport_domain": "NONE",
+      "verification_us": 0,
+      "warmup_us": 0,
+      "weight_set_id": "wp"
+    },
+    {
+      "artifacts": [
+        "art.boundary.op15"
+      ],
+      "backend_build": "synthetic-mechanics-build-0",
+      "boundary_wall_us": 0,
+      "contention_state": "ISOLATED",
+      "d2h_bytes": 0,
+      "device_id": "OP15",
+      "direction": "HOST_TO_PHONE",
+      "energy_nj": 0,
+      "energy_scope": "SERVER_WALL",
+      "graph_id": "graph.a",
+      "h2d_bytes": 0,
+      "island_id": "island.ffn",
+      "kind": "BoundaryProfile",
+      "materialization_us": 0,
+      "model_id": "m0",
+      "output_bytes": 0,
+      "prepare_us": 0,
+      "process_count": 8,
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "record_id": "bnd.a.c0",
+      "record_sha256": "df2ef07576826b999c29c523320882862f42ec4096d2097f882f64fe52870d4f",
+      "record_version": 3,
+      "sample_count": 64,
+      "status": "PASS",
+      "transfer_us": 0,
+      "transport_domain": "USB3",
+      "verification_us": 0,
+      "warmup_us": 0,
+      "weight_set_id": "w0"
+    },
+    {
+      "artifacts": [
+        "art.boundary.op15"
+      ],
+      "backend_build": "synthetic-mechanics-build-0",
+      "boundary_wall_us": 0,
+      "contention_state": "ISOLATED",
+      "d2h_bytes": 0,
+      "device_id": "OP15",
+      "direction": "HOST_TO_PHONE",
+      "energy_nj": 0,
+      "energy_scope": "SERVER_WALL",
+      "graph_id": "graph.a",
+      "h2d_bytes": 0,
+      "island_id": "island.ffn",
+      "kind": "BoundaryProfile",
+      "materialization_us": 0,
+      "model_id": "m1",
+      "output_bytes": 0,
+      "prepare_us": 0,
+      "process_count": 8,
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "record_id": "bnd.a.c1",
+      "record_sha256": "75209a5716e7371c1f4ee2c46f532fab525ab75469d64ae2a3c5a5d624463893",
+      "record_version": 3,
+      "sample_count": 64,
+      "status": "PASS",
+      "transfer_us": 0,
+      "transport_domain": "USB3",
+      "verification_us": 0,
+      "warmup_us": 0,
+      "weight_set_id": "w1"
+    }
+  ],
+  "bundle_id": "s10_v0r_mechanics_only",
+  "bundle_sha256": "da7e57c1761a01b378a3f419edda6a2feec2ff6755ed8ea2c2d7339ab2585a76",
+  "correctness": [
+    {
+      "artifacts": [
+        "art.server.trace",
+        "art.reference.cpu"
+      ],
+      "backend_build": "synthetic-mechanics-build-0",
+      "device_id": "SERVER",
+      "graph_id": "graph.g0",
+      "island_id": "island.ffn",
+      "kernel_id": "synthetic_kernel_server",
+      "kind": "CorrectnessCertificate",
+      "metric": "REL_L2",
+      "model_id": "m0",
+      "no_fallback_proof": {
+        "artifact_id": "art.server.trace",
+        "fallback_ops_observed": 0,
+        "method": "OP_TRACE"
+      },
+      "observed_ppm": 291,
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "record_id": "corr.m0.server",
+      "record_sha256": "4199d12b2c9b45898ed72ac5addec122d8f20846c1fc6bdd510ac929bb652776",
+      "record_version": 3,
+      "reference_route": {
+        "artifact_id": "art.reference.cpu",
+        "backend_build": "synthetic-mechanics-build-0",
+        "device_id": "REFERENCE_CPU",
+        "kernel_id": "synthetic_reference_kernel",
+        "reference_kind": "CPU_FP32"
+      },
+      "route_kind": "ACCELERATED",
+      "shape_envelope": {
+        "kv_max": 4096,
+        "kv_min": 0,
+        "tokens_max": 8,
+        "tokens_min": 1
+      },
+      "status": "PASS",
+      "threshold_ppm": 5000,
+      "verdict": "PASS",
+      "weight_set_id": "w0"
+    },
+    {
+      "artifacts": [
+        "art.server.trace",
+        "art.reference.cpu"
+      ],
+      "backend_build": "synthetic-mechanics-build-0",
+      "device_id": "SERVER",
+      "graph_id": "graph.g1",
+      "island_id": "island.ffn",
+      "kernel_id": "synthetic_kernel_server",
+      "kind": "CorrectnessCertificate",
+      "metric": "REL_L2",
+      "model_id": "m1",
+      "no_fallback_proof": {
+        "artifact_id": "art.server.trace",
+        "fallback_ops_observed": 0,
+        "method": "OP_TRACE"
+      },
+      "observed_ppm": 291,
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "record_id": "corr.m1.server",
+      "record_sha256": "dac55c2b2e644865dab693b3271c8995a68efacdd00a7594808622edd21bde1c",
+      "record_version": 3,
+      "reference_route": {
+        "artifact_id": "art.reference.cpu",
+        "backend_build": "synthetic-mechanics-build-0",
+        "device_id": "REFERENCE_CPU",
+        "kernel_id": "synthetic_reference_kernel",
+        "reference_kind": "CPU_FP32"
+      },
+      "route_kind": "ACCELERATED",
+      "shape_envelope": {
+        "kv_max": 4096,
+        "kv_min": 0,
+        "tokens_max": 8,
+        "tokens_min": 1
+      },
+      "status": "PASS",
+      "threshold_ppm": 5000,
+      "verdict": "PASS",
+      "weight_set_id": "w1"
+    },
+    {
+      "artifacts": [
+        "art.server.trace",
+        "art.reference.cpu"
+      ],
+      "backend_build": "synthetic-mechanics-build-0",
+      "device_id": "SERVER",
+      "graph_id": "graph.cap",
+      "island_id": "island.capacity",
+      "kernel_id": "synthetic_kernel_server",
+      "kind": "CorrectnessCertificate",
+      "metric": "REL_L2",
+      "model_id": "mcap",
+      "no_fallback_proof": {
+        "artifact_id": "art.server.trace",
+        "fallback_ops_observed": 0,
+        "method": "OP_TRACE"
+      },
+      "observed_ppm": 291,
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "record_id": "corr.cap.server",
+      "record_sha256": "79dc6334873f2fbaa00a2439605e933e8f486066345dc0154b2c7ad515a6d91e",
+      "record_version": 3,
+      "reference_route": {
+        "artifact_id": "art.reference.cpu",
+        "backend_build": "synthetic-mechanics-build-0",
+        "device_id": "REFERENCE_CPU",
+        "kernel_id": "synthetic_reference_kernel",
+        "reference_kind": "CPU_FP32"
+      },
+      "route_kind": "ACCELERATED",
+      "shape_envelope": {
+        "kv_max": 4096,
+        "kv_min": 0,
+        "tokens_max": 8,
+        "tokens_min": 1
+      },
+      "status": "PASS",
+      "threshold_ppm": 5000,
+      "verdict": "PASS",
+      "weight_set_id": "wcap"
+    },
+    {
+      "artifacts": [
+        "art.server.trace",
+        "art.reference.cpu"
+      ],
+      "backend_build": "synthetic-mechanics-build-0",
+      "device_id": "SERVER",
+      "graph_id": "graph.a",
+      "island_id": "island.ffn",
+      "kernel_id": "synthetic_kernel_server",
+      "kind": "CorrectnessCertificate",
+      "metric": "REL_L2",
+      "model_id": "m0",
+      "no_fallback_proof": {
+        "artifact_id": "art.server.trace",
+        "fallback_ops_observed": 0,
+        "method": "OP_TRACE"
+      },
+      "observed_ppm": 291,
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "record_id": "corr.a.p0.server",
+      "record_sha256": "337373ab8b93ea5fd1a44adfa919eed5585a703ee8cdbb7f6f0aa9aa6ac62cd9",
+      "record_version": 3,
+      "reference_route": {
+        "artifact_id": "art.reference.cpu",
+        "backend_build": "synthetic-mechanics-build-0",
+        "device_id": "REFERENCE_CPU",
+        "kernel_id": "synthetic_reference_kernel",
+        "reference_kind": "CPU_FP32"
+      },
+      "route_kind": "ACCELERATED",
+      "shape_envelope": {
+        "kv_max": 4096,
+        "kv_min": 0,
+        "tokens_max": 8,
+        "tokens_min": 1
+      },
+      "status": "PASS",
+      "threshold_ppm": 5000,
+      "verdict": "PASS",
+      "weight_set_id": "wp"
+    },
+    {
+      "artifacts": [
+        "art.server.trace",
+        "art.reference.cpu"
+      ],
+      "backend_build": "synthetic-mechanics-build-0",
+      "device_id": "SERVER",
+      "graph_id": "graph.a",
+      "island_id": "island.ffn",
+      "kernel_id": "synthetic_kernel_server",
+      "kind": "CorrectnessCertificate",
+      "metric": "REL_L2",
+      "model_id": "m1",
+      "no_fallback_proof": {
+        "artifact_id": "art.server.trace",
+        "fallback_ops_observed": 0,
+        "method": "OP_TRACE"
+      },
+      "observed_ppm": 291,
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "record_id": "corr.a.p1.server",
+      "record_sha256": "b3906fc0e190501a7e993c2af59670d05ab46136bff6913377a13905df1d311b",
+      "record_version": 3,
+      "reference_route": {
+        "artifact_id": "art.reference.cpu",
+        "backend_build": "synthetic-mechanics-build-0",
+        "device_id": "REFERENCE_CPU",
+        "kernel_id": "synthetic_reference_kernel",
+        "reference_kind": "CPU_FP32"
+      },
+      "route_kind": "ACCELERATED",
+      "shape_envelope": {
+        "kv_max": 4096,
+        "kv_min": 0,
+        "tokens_max": 8,
+        "tokens_min": 1
+      },
+      "status": "PASS",
+      "threshold_ppm": 5000,
+      "verdict": "PASS",
+      "weight_set_id": "wp"
+    },
+    {
+      "artifacts": [
+        "art.op15.trace",
+        "art.reference.cpu"
+      ],
+      "backend_build": "synthetic-mechanics-build-0",
+      "device_id": "OP15",
+      "graph_id": "graph.a",
+      "island_id": "island.ffn",
+      "kernel_id": "synthetic_kernel_op15",
+      "kind": "CorrectnessCertificate",
+      "metric": "REL_L2",
+      "model_id": "m0",
+      "no_fallback_proof": {
+        "artifact_id": "art.op15.trace",
+        "fallback_ops_observed": 0,
+        "method": "OP_TRACE"
+      },
+      "observed_ppm": 291,
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "record_id": "corr.a.c0.op15",
+      "record_sha256": "84d537c1d76887b1280a56226cf41e305928c5247cb304b0dbee75e38d7a4596",
+      "record_version": 3,
+      "reference_route": {
+        "artifact_id": "art.reference.cpu",
+        "backend_build": "synthetic-mechanics-build-0",
+        "device_id": "REFERENCE_CPU",
+        "kernel_id": "synthetic_reference_kernel",
+        "reference_kind": "CPU_FP32"
+      },
+      "route_kind": "ACCELERATED",
+      "shape_envelope": {
+        "kv_max": 4096,
+        "kv_min": 0,
+        "tokens_max": 8,
+        "tokens_min": 1
+      },
+      "status": "PASS",
+      "threshold_ppm": 5000,
+      "verdict": "PASS",
+      "weight_set_id": "w0"
+    },
+    {
+      "artifacts": [
+        "art.op15.trace",
+        "art.reference.cpu"
+      ],
+      "backend_build": "synthetic-mechanics-build-0",
+      "device_id": "OP15",
+      "graph_id": "graph.a",
+      "island_id": "island.ffn",
+      "kernel_id": "synthetic_kernel_op15",
+      "kind": "CorrectnessCertificate",
+      "metric": "REL_L2",
+      "model_id": "m1",
+      "no_fallback_proof": {
+        "artifact_id": "art.op15.trace",
+        "fallback_ops_observed": 0,
+        "method": "OP_TRACE"
+      },
+      "observed_ppm": 291,
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "record_id": "corr.a.c1.op15",
+      "record_sha256": "b3f282a1735bf22bd7c4c950d5276466cfa0884bc5f45dd96728ed7d9cf92ebb",
+      "record_version": 3,
+      "reference_route": {
+        "artifact_id": "art.reference.cpu",
+        "backend_build": "synthetic-mechanics-build-0",
+        "device_id": "REFERENCE_CPU",
+        "kernel_id": "synthetic_reference_kernel",
+        "reference_kind": "CPU_FP32"
+      },
+      "route_kind": "ACCELERATED",
+      "shape_envelope": {
+        "kv_max": 4096,
+        "kv_min": 0,
+        "tokens_max": 8,
+        "tokens_min": 1
+      },
+      "status": "PASS",
+      "threshold_ppm": 5000,
+      "verdict": "PASS",
+      "weight_set_id": "w1"
+    }
+  ],
+  "evaluation_timestamp_utc": "20260715T000000Z",
+  "power": [
+    {
+      "accounting_model": "SERVER_PSTATE",
+      "active_mw": 300000,
+      "artifacts": [
+        "art.server.power"
+      ],
+      "device_id": "SERVER",
+      "excluded_rails": [
+        "SERVER/USB_VBUS"
+      ],
+      "idle_entry_us": 50,
+      "idle_mw": 25000,
+      "included_rails": [
+        "SERVER/CPU",
+        "SERVER/DRAM"
+      ],
+      "instrument": "synthetic_meter",
+      "instrument_kind": "SYNTHETIC",
+      "kind": "PowerProfile",
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "record_id": "pwr.server",
+      "record_sha256": "9c7ea04f01abe759fed4d44083a71a98e17898a43fc4285e37c5bdc5fe08e729",
+      "record_version": 3,
+      "sample_count": 4096,
+      "sample_rate_hz": 1000,
+      "scope": "SERVER_WALL",
+      "status": "PASS",
+      "synchronization": "SHARED_CLOCK",
+      "transition_nj": 1000000,
+      "uncertainty_mw": 0,
+      "validity_us": 3600000000,
+      "wake_us": 50
+    },
+    {
+      "accounting_model": "SERVER_PSTATE",
+      "active_mw": 300000,
+      "artifacts": [
+        "art.server.power"
+      ],
+      "device_id": "SERVER",
+      "excluded_rails": [
+        "SERVER/USB_VBUS"
+      ],
+      "idle_entry_us": 0,
+      "idle_mw": 25000,
+      "included_rails": [
+        "SERVER/CPU",
+        "SERVER/DRAM"
+      ],
+      "instrument": "synthetic_meter",
+      "instrument_kind": "SYNTHETIC",
+      "kind": "PowerProfile",
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "record_id": "pwr.server.zero",
+      "record_sha256": "35a0ad89702a4c127d380db527859a5e399894a891f22b9b5f5794c512785e90",
+      "record_version": 3,
+      "sample_count": 4096,
+      "sample_rate_hz": 1000,
+      "scope": "SERVER_WALL",
+      "status": "PASS",
+      "synchronization": "SHARED_CLOCK",
+      "transition_nj": 0,
+      "uncertainty_mw": 0,
+      "validity_us": 3600000000,
+      "wake_us": 0
+    },
+    {
+      "accounting_model": "ACTIVE_ONLY",
+      "active_mw": 2000,
+      "artifacts": [
+        "art.op15.power"
+      ],
+      "device_id": "OP15",
+      "excluded_rails": [
+        "SERVER/USB_VBUS"
+      ],
+      "idle_entry_us": 0,
+      "idle_mw": 0,
+      "included_rails": [
+        "OP15/SOC",
+        "OP15/DRAM"
+      ],
+      "instrument": "synthetic_meter",
+      "instrument_kind": "SYNTHETIC",
+      "kind": "PowerProfile",
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "record_id": "pwr.op15",
+      "record_sha256": "81983016018d72398b9dece33ff4ef23b4a5630ae138896457b1a9b7d842019b",
+      "record_version": 3,
+      "sample_count": 4096,
+      "sample_rate_hz": 1000,
+      "scope": "SERVER_WALL",
+      "status": "PASS",
+      "synchronization": "SHARED_CLOCK",
+      "transition_nj": 0,
+      "uncertainty_mw": 0,
+      "validity_us": 3600000000,
+      "wake_us": 0
+    }
+  ],
+  "provenance": "MECHANICS_ONLY",
+  "routes": [
+    {
+      "artifacts": [
+        "art.server.trace"
+      ],
+      "attention_class": "NONE",
+      "backend_build": "synthetic-mechanics-build-0",
+      "batch_size": 1,
+      "boundary_id": "bnd.n0",
+      "correctness_id": "corr.m0.server",
+      "d2h_bytes": 0,
+      "device_id": "SERVER",
+      "graph_id": "graph.g0",
+      "h2d_bytes": 0,
+      "island_id": "island.ffn",
+      "kernel_id": "synthetic_kernel_server",
+      "kind": "RouteProfile",
+      "latency": {
+        "max_us": 101,
+        "p50_us": 99,
+        "p95_us": 100
+      },
+      "latency_scope": "END_TO_END",
+      "layer_class": "FFN",
+      "memory_bytes": 1,
+      "model_id": "m0",
+      "process_count": 8,
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "record_id": "route.n0.server",
+      "record_sha256": "69b1b288476be3dee81a3dd7c290355560c67b06ceb515406ebf863e5e3aa89a",
+      "record_version": 3,
+      "sample_count": 64,
+      "shape_envelope": {
+        "kv_max": 4096,
+        "kv_min": 0,
+        "tokens_max": 8,
+        "tokens_min": 1
+      },
+      "status": "PASS",
+      "thermal_id": "thr.server",
+      "weight_set_id": "w0"
+    },
+    {
+      "artifacts": [
+        "art.server.trace"
+      ],
+      "attention_class": "NONE",
+      "backend_build": "synthetic-mechanics-build-0",
+      "batch_size": 1,
+      "boundary_id": "bnd.n1",
+      "correctness_id": "corr.m1.server",
+      "d2h_bytes": 0,
+      "device_id": "SERVER",
+      "graph_id": "graph.g1",
+      "h2d_bytes": 0,
+      "island_id": "island.ffn",
+      "kernel_id": "synthetic_kernel_server",
+      "kind": "RouteProfile",
+      "latency": {
+        "max_us": 101,
+        "p50_us": 99,
+        "p95_us": 100
+      },
+      "latency_scope": "END_TO_END",
+      "layer_class": "FFN",
+      "memory_bytes": 1,
+      "model_id": "m1",
+      "process_count": 8,
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "record_id": "route.n1.server",
+      "record_sha256": "8f39af9df052fc4432a8effbd2f4e8649070e78fc01df0de5cc6216354ba7eab",
+      "record_version": 3,
+      "sample_count": 64,
+      "shape_envelope": {
+        "kv_max": 4096,
+        "kv_min": 0,
+        "tokens_max": 8,
+        "tokens_min": 1
+      },
+      "status": "PASS",
+      "thermal_id": "thr.server",
+      "weight_set_id": "w1"
+    },
+    {
+      "artifacts": [
+        "art.server.trace"
+      ],
+      "attention_class": "NONE",
+      "backend_build": "synthetic-mechanics-build-0",
+      "batch_size": 1,
+      "boundary_id": "bnd.capacity",
+      "correctness_id": "corr.cap.server",
+      "d2h_bytes": 0,
+      "device_id": "SERVER",
+      "graph_id": "graph.cap",
+      "h2d_bytes": 0,
+      "island_id": "island.capacity",
+      "kernel_id": "synthetic_kernel_server",
+      "kind": "RouteProfile",
+      "latency": {
+        "max_us": 2,
+        "p50_us": 1,
+        "p95_us": 1
+      },
+      "latency_scope": "END_TO_END",
+      "layer_class": "CAPACITY_PROBE",
+      "memory_bytes": 1,
+      "model_id": "mcap",
+      "process_count": 8,
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "record_id": "route.capacity.1",
+      "record_sha256": "ed2c588ba9059004532dc4afbd701c1f6278f7a61048ce2cf9b088e4d96e4b90",
+      "record_version": 3,
+      "sample_count": 64,
+      "shape_envelope": {
+        "kv_max": 4096,
+        "kv_min": 0,
+        "tokens_max": 8,
+        "tokens_min": 1
+      },
+      "status": "PASS",
+      "thermal_id": "thr.server",
+      "weight_set_id": "wcap"
+    },
+    {
+      "artifacts": [
+        "art.server.trace"
+      ],
+      "attention_class": "NONE",
+      "backend_build": "synthetic-mechanics-build-0",
+      "batch_size": 1,
+      "boundary_id": "bnd.capacity",
+      "correctness_id": "corr.cap.server",
+      "d2h_bytes": 0,
+      "device_id": "SERVER",
+      "graph_id": "graph.cap",
+      "h2d_bytes": 0,
+      "island_id": "island.capacity",
+      "kernel_id": "synthetic_kernel_server",
+      "kind": "RouteProfile",
+      "latency": {
+        "max_us": 2,
+        "p50_us": 1,
+        "p95_us": 1
+      },
+      "latency_scope": "END_TO_END",
+      "layer_class": "CAPACITY_PROBE",
+      "memory_bytes": 150,
+      "model_id": "mcap",
+      "process_count": 8,
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "record_id": "route.capacity.150",
+      "record_sha256": "d49623f2a4a2ef8f223b5bc7d53ecb6d6849f2f5483f5270d4104653bd0887ba",
+      "record_version": 3,
+      "sample_count": 64,
+      "shape_envelope": {
+        "kv_max": 4096,
+        "kv_min": 0,
+        "tokens_max": 8,
+        "tokens_min": 1
+      },
+      "status": "PASS",
+      "thermal_id": "thr.server",
+      "weight_set_id": "wcap"
+    },
+    {
+      "artifacts": [
+        "art.server.trace"
+      ],
+      "attention_class": "NONE",
+      "backend_build": "synthetic-mechanics-build-0",
+      "batch_size": 1,
+      "boundary_id": "bnd.a.p0",
+      "correctness_id": "corr.a.p0.server",
+      "d2h_bytes": 0,
+      "device_id": "SERVER",
+      "graph_id": "graph.a",
+      "h2d_bytes": 0,
+      "island_id": "island.ffn",
+      "kernel_id": "synthetic_kernel_server",
+      "kind": "RouteProfile",
+      "latency": {
+        "max_us": 5,
+        "p50_us": 3,
+        "p95_us": 4
+      },
+      "latency_scope": "END_TO_END",
+      "layer_class": "FFN",
+      "memory_bytes": 1,
+      "model_id": "m0",
+      "process_count": 8,
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "record_id": "route.a.p0.server",
+      "record_sha256": "a83f4aa960b344d7bcdcade35f2421c5f845169d260b7740ad3102420435d1cd",
+      "record_version": 3,
+      "sample_count": 64,
+      "shape_envelope": {
+        "kv_max": 4096,
+        "kv_min": 0,
+        "tokens_max": 8,
+        "tokens_min": 1
+      },
+      "status": "PASS",
+      "thermal_id": "thr.server",
+      "weight_set_id": "wp"
+    },
+    {
+      "artifacts": [
+        "art.server.trace"
+      ],
+      "attention_class": "NONE",
+      "backend_build": "synthetic-mechanics-build-0",
+      "batch_size": 1,
+      "boundary_id": "bnd.a.p1",
+      "correctness_id": "corr.a.p1.server",
+      "d2h_bytes": 0,
+      "device_id": "SERVER",
+      "graph_id": "graph.a",
+      "h2d_bytes": 0,
+      "island_id": "island.ffn",
+      "kernel_id": "synthetic_kernel_server",
+      "kind": "RouteProfile",
+      "latency": {
+        "max_us": 5,
+        "p50_us": 3,
+        "p95_us": 4
+      },
+      "latency_scope": "END_TO_END",
+      "layer_class": "FFN",
+      "memory_bytes": 1,
+      "model_id": "m1",
+      "process_count": 8,
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "record_id": "route.a.p1.server",
+      "record_sha256": "bde9f7b550cd8c8fdb93ac9ac5a414aa13f5481ca0549327f966be0e98b5b983",
+      "record_version": 3,
+      "sample_count": 64,
+      "shape_envelope": {
+        "kv_max": 4096,
+        "kv_min": 0,
+        "tokens_max": 8,
+        "tokens_min": 1
+      },
+      "status": "PASS",
+      "thermal_id": "thr.server",
+      "weight_set_id": "wp"
+    },
+    {
+      "artifacts": [
+        "art.op15.trace"
+      ],
+      "attention_class": "NONE",
+      "backend_build": "synthetic-mechanics-build-0",
+      "batch_size": 1,
+      "boundary_id": "bnd.a.c0",
+      "correctness_id": "corr.a.c0.op15",
+      "d2h_bytes": 0,
+      "device_id": "OP15",
+      "graph_id": "graph.a",
+      "h2d_bytes": 0,
+      "island_id": "island.ffn",
+      "kernel_id": "synthetic_kernel_op15",
+      "kind": "RouteProfile",
+      "latency": {
+        "max_us": 7,
+        "p50_us": 5,
+        "p95_us": 6
+      },
+      "latency_scope": "END_TO_END",
+      "layer_class": "FFN",
+      "memory_bytes": 1,
+      "model_id": "m0",
+      "process_count": 8,
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "record_id": "route.a.c0.op15",
+      "record_sha256": "a7e4c7e759f17b59485d39e293affa5fec3eb7a37f71f7e10457db4d04b20354",
+      "record_version": 3,
+      "sample_count": 64,
+      "shape_envelope": {
+        "kv_max": 4096,
+        "kv_min": 0,
+        "tokens_max": 8,
+        "tokens_min": 1
+      },
+      "status": "PASS",
+      "thermal_id": "thr.op15",
+      "weight_set_id": "w0"
+    },
+    {
+      "artifacts": [
+        "art.op15.trace"
+      ],
+      "attention_class": "NONE",
+      "backend_build": "synthetic-mechanics-build-0",
+      "batch_size": 1,
+      "boundary_id": "bnd.a.c1",
+      "correctness_id": "corr.a.c1.op15",
+      "d2h_bytes": 0,
+      "device_id": "OP15",
+      "graph_id": "graph.a",
+      "h2d_bytes": 0,
+      "island_id": "island.ffn",
+      "kernel_id": "synthetic_kernel_op15",
+      "kind": "RouteProfile",
+      "latency": {
+        "max_us": 7,
+        "p50_us": 5,
+        "p95_us": 6
+      },
+      "latency_scope": "END_TO_END",
+      "layer_class": "FFN",
+      "memory_bytes": 1,
+      "model_id": "m1",
+      "process_count": 8,
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "record_id": "route.a.c1.op15",
+      "record_sha256": "77d03fcad8efb8a4b877158b42d7d81d06e47bc20d2fd32a593850b3ba1a794e",
+      "record_version": 3,
+      "sample_count": 64,
+      "shape_envelope": {
+        "kv_max": 4096,
+        "kv_min": 0,
+        "tokens_max": 8,
+        "tokens_min": 1
+      },
+      "status": "PASS",
+      "thermal_id": "thr.op15",
+      "weight_set_id": "w1"
+    }
+  ],
+  "schema_version": 3,
+  "thermal": [
+    {
+      "artifacts": [
+        "art.server.trace"
+      ],
+      "backend_build": "synthetic-mechanics-build-0",
+      "co_runners": [],
+      "device_id": "SERVER",
+      "duration_us": 60000000,
+      "envelope": {
+        "temp_max_c": 60,
+        "temp_min_c": 30
+      },
+      "kind": "ThermalInterferenceProfile",
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "record_id": "thr.server",
+      "record_sha256": "1c3bc9b966fe6b83ad5afa79c2a23072c18b293ca793200031c6c231a8e5009c",
+      "record_version": 3,
+      "slowdown_ppm": 0,
+      "status": "PASS",
+      "thermal_state": "STEADY",
+      "validity_us": 3600000000
+    },
+    {
+      "artifacts": [
+        "art.op15.trace"
+      ],
+      "backend_build": "synthetic-mechanics-build-0",
+      "co_runners": [],
+      "device_id": "OP15",
+      "duration_us": 60000000,
+      "envelope": {
+        "temp_max_c": 60,
+        "temp_min_c": 30
+      },
+      "kind": "ThermalInterferenceProfile",
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "record_id": "thr.op15",
+      "record_sha256": "57ed0bb8f877fca0e15d2f80f7b187916b87549086180a5da2e45bc4d9f6d4bd",
+      "record_version": 3,
+      "slowdown_ppm": 0,
+      "status": "PASS",
+      "thermal_state": "STEADY",
+      "validity_us": 3600000000
+    }
+  ]
+}

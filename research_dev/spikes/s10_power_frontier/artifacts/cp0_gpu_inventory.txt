@@ -1,0 +1,41 @@
+=== nvidia-smi driver/GPU ===
+index, name, uuid, driver_version, vbios_version, memory.total [MiB], persistence_mode, power.management, power.draw [W], power.limit [W], power.default_limit [W], power.min_limit [W], power.max_limit [W], pstate, clocks.current.graphics [MHz], clocks.current.memory [MHz], temperature.gpu
+0, NVIDIA RTX A6000, GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f, 580.159.03, 94.02.5C.00.07, 49140 MiB, Disabled, Enabled, 25.32 W, 300.00 W, 300.00 W, 100.00 W, 300.00 W, P8, 210 MHz, 405 MHz, 41
+1, NVIDIA RTX A6000, GPU-431a4567-fa90-7a73-625a-2ee6e7b5eaaf, 580.159.03, 94.02.5C.00.07, 49140 MiB, Disabled, Enabled, 21.62 W, 300.00 W, 300.00 W, 100.00 W, 300.00 W, P8, 210 MHz, 405 MHz, 39
+
+=== nvidia-smi -q POWER (GPU0) ===
+
+==============NVSMI LOG==============
+
+Timestamp                                              : Wed Jul 15 00:16:44 2026
+Driver Version                                         : 580.159.03
+CUDA Version                                           : 13.0
+
+Attached GPUs                                          : 2
+GPU 00000000:51:00.0
+    GPU Power Readings
+        Average Power Draw                             : 25.32 W
+        Instantaneous Power Draw                       : 24.92 W
+        Current Power Limit                            : 300.00 W
+        Requested Power Limit                          : 300.00 W
+        Default Power Limit                            : 300.00 W
+        Min Power Limit                                : 100.00 W
+        Max Power Limit                                : 300.00 W
+    Power Samples
+        Duration                                       : 80.87 sec
+        Number of Samples                              : 119
+        Max                                            : 35.88 W
+        Min                                            : 24.61 W
+        Avg                                            : 26.35 W
+    GPU Memory Power Readings 
+        Average Power Draw                             : N/A
+        Instantaneous Power Draw                       : N/A
+    Module Power Readings
+        Average Power Draw                             : N/A
+        Instantaneous Power Draw                       : N/A
+        Current Power Limit                            : N/A
+        Requested Power Limit                          : N/A
+        Default Power Limit                            : N/A
+        Min Power Limit                                : N/A
+        Max Power Limit                                : N/A
+

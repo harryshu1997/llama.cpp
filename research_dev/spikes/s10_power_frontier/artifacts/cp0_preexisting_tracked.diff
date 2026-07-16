@@ -1,0 +1,2309 @@
+diff --git a/examples/CMakeLists.txt b/examples/CMakeLists.txt
+index 12b48b3af..48c25ee52 100644
+--- a/examples/CMakeLists.txt
++++ b/examples/CMakeLists.txt
+@@ -27,6 +27,7 @@ else()
+     add_subdirectory(lookup)
+     add_subdirectory(parallel)
+     add_subdirectory(passkey)
++    add_subdirectory(phone-pim)
+     add_subdirectory(retrieval)
+     add_subdirectory(simple)
+     add_subdirectory(simple-chat)
+diff --git a/examples/layersplit/CMakeLists.txt b/examples/layersplit/CMakeLists.txt
+index 732af1e7c..efdc41dc4 100644
+--- a/examples/layersplit/CMakeLists.txt
++++ b/examples/layersplit/CMakeLists.txt
+@@ -3,3 +3,26 @@ add_executable(${TARGET} layersplit.cpp)
+ install(TARGETS ${TARGET} RUNTIME)
+ target_link_libraries(${TARGET} PRIVATE llama-common llama ${CMAKE_THREAD_LIBS_INIT})
+ target_compile_features(${TARGET} PRIVATE cxx_std_17)
++
++# S3-H1 standalone micro-op split screen. Bare ggml backends only (no llama/common).
++set(TARGET llama-phone-microop)
++add_executable(${TARGET} microop.cpp)
++install(TARGETS ${TARGET} RUNTIME)
++target_link_libraries(${TARGET} PRIVATE ggml ${CMAKE_THREAD_LIBS_INIT})
++target_compile_features(${TARGET} PRIVATE cxx_std_17)
++
++# S6-L complete-FFN merge screen. Bare ggml backends only (no llama/common).
++set(TARGET llama-phone-ffnmerge)
++add_executable(${TARGET} ffnmerge.cpp)
++install(TARGETS ${TARGET} RUNTIME)
++target_link_libraries(${TARGET} PRIVATE ggml ${CMAKE_THREAD_LIBS_INIT})
++target_compile_features(${TARGET} PRIVATE cxx_std_17)
++
++# S4-V0 per-operator layer profiler. Measurement-only: intact single-layer (B,C)
++# decode timer via the public llama API; per-op decomposition is parsed offline from
++# GGML_HEXAGON_PROFILE / GGML_OPENCL_PROFILING output. No graph/KV/scheduler edits.
++set(TARGET llama-phone-oplayerprof)
++add_executable(${TARGET} oplayerprof.cpp)
++install(TARGETS ${TARGET} RUNTIME)
++target_link_libraries(${TARGET} PRIVATE llama ${CMAKE_THREAD_LIBS_INIT})
++target_compile_features(${TARGET} PRIVATE cxx_std_17)
+diff --git a/examples/layersplit/layersplit.cpp b/examples/layersplit/layersplit.cpp
+index ef69686ae..2790bfbca 100644
+--- a/examples/layersplit/layersplit.cpp
++++ b/examples/layersplit/layersplit.cpp
+@@ -32,6 +32,7 @@
+ #include <cstring>
+ #include <clocale>
+ #include <fstream>
++#include <functional>
+ #include <mutex>
+ #include <string>
+ #include <thread>
+@@ -1136,9 +1137,105 @@ static void fill_batch_Bway(llama_batch & b, int n_embd, int B, int32_t pos, boo
+     }
+ }
+ 
++static inline double ol_now_ms() {
++    return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();
++}
++
++// Deadlines. A balanced phase is ~2.5 s of work, so these are generous; exceeding one means a real
++// stall (e.g. a hung DSP llama_decode), which the driver turns into a diagnosable process abort.
++static const double OL_BARRIER_MS = 30000.0;    // all legs must arrive at the start barrier within this
++static const double OL_PHASE_MS   = 180000.0;   // a launched leg must finish its rounds within this
++
++static inline std::chrono::duration<double, std::milli> ol_dur(double ms) {
++    return std::chrono::duration<double, std::milli>(ms);
++}
++
++// Shared start barrier for the concurrent legs: every launched leg arrives, the driver waits (with a
++// deadline) until all have arrived, then releases them together. All waits are timed so a stalled leg
++// becomes a diagnosable timeout instead of a silent spin.
++struct OverlapBarrier {
++    std::mutex m; std::condition_variable cv;
++    int target = 0, arrived = 0; bool release = false;
++    void arm(int t) { std::unique_lock<std::mutex> lk(m); target = t; arrived = 0; release = false; }
++    void arrive() { std::unique_lock<std::mutex> lk(m); ++arrived; cv.notify_all(); }
++    bool wait_all_arrived(double dl) { std::unique_lock<std::mutex> lk(m); return cv.wait_for(lk, ol_dur(dl), [&]{ return arrived >= target; }); }
++    bool wait_release(double dl)     { std::unique_lock<std::mutex> lk(m); return cv.wait_for(lk, ol_dur(dl), [&]{ return release; }); }
++    void go() { std::unique_lock<std::mutex> lk(m); release = true; cv.notify_all(); }
++};
++
++// Persistent per-leg worker for the overlap benchmark. Start state is an OWNED generation counter
++// (gen requested vs done_gen finished), not a raw pointer into the caller's stack, so every handshake
++// is unambiguous and detectable. On launch() it runs `rounds` fixed-shape decodes, timing ONLY
++// llama_decode (reset() runs between rounds, untimed), stamping compute_done_ms right after the last
++// decode (before the trailing reset) so a compute-only makespan is separable from the reset-inclusive
++// cycle, and optionally capturing the last output residual (for solo-vs-concurrent correctness).
++// Contexts/batches are preallocated and the thread is spawned once, so neither is inside a timed window.
++struct OverlapLeg {
++    std::string name;
++    std::function<int()>  step;    // one fixed-shape decode; 0 == ok
++    std::function<void()> reset;   // KV reset, outside the timed window
++    std::function<void(std::vector<float>&)> grab;   // optional: capture the last output residual
++    std::thread th;
++    std::mutex m; std::condition_variable cv;
++    uint64_t gen = 0, done_gen = 0;     // owned generation handshake (no caller-stack pointers)
++    bool quit = false;
++    int  rounds = 0;
++    OverlapBarrier * barrier = nullptr; // shared, owned by the driver; set per launch
++    bool capture = false;
++    std::vector<float> last_out;
++    int  completed = 0, failed_round = -1;
++    double compute_done_ms = 0.0;       // stamped right after the last decode, before reset()
++    std::vector<double> times;
++
++    void loop() {
++        for (;;) {
++            uint64_t g; OverlapBarrier * bar; int n; bool cap;
++            {
++                std::unique_lock<std::mutex> lk(m);
++                cv.wait(lk, [&]{ return gen != done_gen || quit; });
++                if (quit) return;
++                g = gen; bar = barrier; n = rounds; cap = capture;
++            }
++            times.clear(); completed = 0; failed_round = -1; compute_done_ms = 0.0;
++            if (bar) { bar->arrive(); bar->wait_release(OL_BARRIER_MS); }
++            for (int r = 0; r < n; ++r) {
++                const double t0 = ol_now_ms();
++                const int    rc = step();
++                const double dt = ol_now_ms() - t0;
++                if (rc != 0) { failed_round = r; break; }
++                times.push_back(dt); ++completed; compute_done_ms = ol_now_ms();
++                if (cap && r == n - 1 && grab) grab(last_out);
++                reset();
++            }
++            { std::unique_lock<std::mutex> lk2(m); done_gen = g; } cv.notify_all();
++        }
++    }
++    void start() { th = std::thread([this]{ loop(); }); }
++    void launch(int rounds_, OverlapBarrier * bar, bool cap = false) {
++        { std::unique_lock<std::mutex> lk(m); rounds = rounds_; barrier = bar; capture = cap; ++gen; }
++        cv.notify_all();
++    }
++    // timed completion wait; false == the leg did not finish its generation within `dl`
++    bool wait_done(double dl) { std::unique_lock<std::mutex> lk(m); return cv.wait_for(lk, ol_dur(dl), [&]{ return done_gen == gen; }); }
++    void stop() { { std::unique_lock<std::mutex> lk(m); quit = true; } cv.notify_all(); if (th.joinable()) th.join(); }
++};
++
++struct OLStat { double p50 = 0, p95 = 0, mean = 0, cov = 0; int n = 0; };
++static OLStat ol_stat(std::vector<double> v) {
++    OLStat s; s.n = (int) v.size();
++    if (v.empty()) return s;
++    std::sort(v.begin(), v.end());
++    s.p50 = v[(size_t)(0.50*(v.size()-1)+0.5)];
++    s.p95 = v[(size_t)(0.95*(v.size()-1)+0.5)];
++    double sum = 0; for (double x : v) sum += x; s.mean = sum / v.size();
++    double d2 = 0; for (double x : v) d2 += (x - s.mean)*(x - s.mean);
++    s.cov = s.mean > 0 ? std::sqrt(d2/v.size())/s.mean : 0.0;
++    return s;
++}
++
+ static int run_dualengine(const std::string & model_path, const std::string & dev_prefill,
+                           const std::string & dev_decode, int B, int rounds, int prefill_tokens, int ngl,
+-                          bool share_weights) {
++                          bool share_weights, int decode_ctx, int rep, bool cpu_ref) {
+     const char * e_ls = getenv("LLAMA_LAYER_START");
+     const char * e_le = getenv("LLAMA_LAYER_END");
+     const bool is_head = (e_ls == nullptr || atoi(e_ls) == 0);
+@@ -1161,26 +1258,45 @@ static int run_dualengine(const std::string & model_path, const std::string & de
+     if (share_weights) unsetenv("GGML_PHONE_SHARE_IMPORT");
+     if (!m_pre) { fprintf(stderr, "error: prefill-engine model load failed\n"); llama_model_free(m_dec); return 1; }
+ 
++    // Optional separate CPU reference model (device-independent ground truth for cross-backend
++    // correctness). Disable with --no-cpu-ref when RAM is tight; then only same-engine and
++    // solo-vs-concurrent self-consistency checks run.
++    llama_model * m_cpu = nullptr;
++    if (cpu_ref) {
++        m_cpu = load_shard_on_device(model_path, "CPU", 0);
++        if (!m_cpu) fprintf(stderr, "[dualengine] warning: CPU reference load failed; cross-backend check BLOCKED\n");
++    }
++
+     const int n_embd = llama_model_n_embd(m_dec);
+     const llama_vocab * vocab = llama_model_get_vocab(m_dec);
+     const int n_vocab = llama_vocab_n_tokens(vocab);
+     const llama_token bos = llama_vocab_bos(vocab);
+ 
+-    // decode context: B sequences, each advancing `rounds` positions.
++    // decode context: B sequences at a FIXED context length decode_ctx (C). The overlap loop
++    // decodes B tokens at pos=C then trims back to C, so the transient peak is B*(C+1) positions,
++    // independent of round count (min_secs/round count can never overrun the KV).
++    const int C = std::max(decode_ctx, 1);
+     llama_context_params dp = llama_context_default_params();
+     dp.n_seq_max = B;
+-    dp.n_ctx     = (uint32_t) (B * (rounds + 4) + 64);
+-    dp.n_batch   = (uint32_t) std::max(B, 8);
+-    dp.n_ubatch  = (uint32_t) std::max(B, 8);
++    dp.n_ctx     = (uint32_t) ((size_t) B * (C + 1) + 64);
++    dp.n_batch   = (uint32_t) std::max(C, std::max(B, 8));
++    dp.n_ubatch  = (uint32_t) std::max(C, std::max(B, 8));
+     dp.no_perf   = true;
+-    // [plan-a M5] Force flash-attn OFF on the NPU decode context so the KV cache is created with
+-    // v_trans=TRUE (V stored transposed). Hexagon has no flash_attn_ext kernel, so with the AUTO
+-    // default it initially stores V NON-transposed (v_trans=!flash_attn, evaluated before auto-FA
+-    // downgrades flash_attn to off on the HTP device) — then the explicit attention path transposes
+-    // the WHOLE V cache every step (the ~154 ms/layer `v_cont`). Disabling FA up front stores V in
+-    // the layout kqv wants, so the transpose becomes a cheap per-token write. (Prefill keeps AUTO —
+-    // flash-attn IS useful there and works on the Adreno GPU.)
+-    dp.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_DISABLED;
++    // [plan-a M5] Attention path for the NPU batched decode. Default (B): flash-attn ENABLED → the whole
++    // attention runs as ONE fused FLASH_ATTN_EXT op on the NPU (HMX kernel for gemma-4's head_dim=256);
++    // V is stored in its natural layout and the FA kernel reads it directly. This needs the Hexagon FA
++    // batch gate relaxed (done unconditionally in ggml_hexagon_supported_flash_attn_ext) so ne[3]=n_seqs>1
++    // stays on the DSP instead of falling back to CPU. Measured on op12 (B=32): attention block 6.9 ms/layer.
++    // Fallback (A, GGML_DECODE_NO_FA=1): flash-attn DISABLED → KV built with v_trans=TRUE (V transposed),
++    // attention = explicit kq/kqv on HVX + a cheap transposed V write; 15.8 ms/layer attention — kept only
++    // as an A/B reference (superseded by B). Either way the AUTO-default `v_cont` trap is avoided.
++    // (Prefill keeps AUTO — flash-attn IS useful there and works on the Adreno GPU.)
++    // Default AUTO so the per-arch FA support predicate decides: v81 keeps fused FA, v75 (broken FA)
++    // gets the explicit non-FA attention on the DSP instead of a CPU fallback. GGML_DECODE_NO_FA=1
++    // still forces DISABLED for A/B reference.
++    dp.flash_attn_type = getenv("GGML_DECODE_NO_FA")
++        ? LLAMA_FLASH_ATTN_TYPE_DISABLED
++        : LLAMA_FLASH_ATTN_TYPE_AUTO;
+     llama_context * ctx_dec = llama_init_from_model(m_dec, dp);
+ 
+     // prefill context: one request of up to prefill_tokens at a time.
+@@ -1203,6 +1319,14 @@ static int run_dualengine(const std::string & model_path, const std::string & de
+     const bool head_less = (e_le != nullptr && atoi(e_le) < (int) llama_model_n_layer(m_dec));
+     if (head_less) { llama_set_embeddings_nextn(ctx_dec, true, false); llama_set_embeddings_nextn(ctx_pre, true, false); }
+ 
++    // CPU reference decode context, sized like the decode engine so the fixed-C batch reproduces.
++    llama_context * ctx_cpu = nullptr;
++    if (m_cpu) {
++        ctx_cpu = llama_init_from_model(m_cpu, dp);
++        if (!ctx_cpu) fprintf(stderr, "[dualengine] warning: CPU reference ctx failed; cross-backend check BLOCKED\n");
++        else if (head_less) llama_set_embeddings_nextn(ctx_cpu, true, false);
++    }
++
+     // synthetic per-request inputs: distinct token id + distinct non-denormal residual per stream.
+     std::vector<llama_token> toks(B);
+     std::vector<float> resid((size_t) B * n_embd);
+@@ -1211,7 +1335,6 @@ static int run_dualengine(const std::string & model_path, const std::string & de
+         for (int i = 0; i < n_embd; ++i) resid[(size_t) j * n_embd + i] = 0.001f * (((i + j) % 17) - 8);
+     }
+ 
+-    auto now_ms = [] { return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count(); };
+     int rc = 0;
+ 
+     // ----------------------------- (A) CORRECTNESS -----------------------------
+@@ -1276,67 +1399,368 @@ static int run_dualengine(const std::string & model_path, const std::string & de
+             if (head_less) {
+                 const double rel_l2 = sum_r2 > 0 ? std::sqrt(sum_d2 / sum_r2) : 0.0;
+                 const bool pass = rel_l2 < 1e-2 && argmax_mismatch == 0;   // 1% L2 tolerates fp noise; bleed would blow past it
+-                fprintf(stderr, "[dualengine] CORRECTNESS: batched(B=%d) vs single  rel_L2=%.3e  max|Δ|=%.3e  argmax_mismatch=%d/%d => %s\n",
++                fprintf(stderr, "[dualengine] CORRECTNESS: batched(B=%d) vs single  rel_L2=%.3e  max|d|=%.3e  argmax_mismatch=%d/%d => %s\n",
+                         B, rel_l2, max_abs, argmax_mismatch, B, pass ? "PASS" : "FAIL (cross-seq bleed?)");
++                if (!pass) rc = 3;   // correctness failure is a hard nonzero exit
+             } else {
+                 fprintf(stderr, "[dualengine] CORRECTNESS: batched(B=%d) vs single argmax mismatches = %d/%d => %s\n",
+                         B, mismatches, B, (mismatches == 0) ? "PASS" : "FAIL");
++                if (mismatches != 0) rc = 3;
+             }
+         }
+     }
+     if (rc != 0) goto cleanup;
+ 
+-    // ----------------------------- (B) CONCURRENCY -----------------------------
++    // ----------------------------- (B) OVERLAP LATENCY (4 distinct cases) -----------------------------
++    // decode leg  : fixed C-context KV, B-way decode at pos=C, seq_rm reset (context fixed at C).
++    // prefill leg : clear KV + prefill_tokens-token empty-KV prefill.
++    // Round counts auto-balance so the two legs do comparable total work (~target_ms each), then
++    // we measure: (1) D solo, (2) P solo, (3) directly-measured D-then-P serial, (4) D||P concurrent
++    // (start barrier). Concurrent worker durations are reported as CONCURRENT, never "alone".
+     llama_memory_clear(llama_get_memory(ctx_dec), true);
+     {
+-        std::atomic<double> t_dec_ms{0}, t_pre_ms{0};
+-
+-        // DECODE thread: `rounds` static B-way batched forwards (all B streams advance 1 pos/round).
+-        auto decode_worker = [&]() {
+-            double t0 = now_ms();
+-            for (int r = 0; r < rounds; ++r) {
+-                fill_batch_Bway(bb, n_embd, B, /*pos*/r, is_head, toks, resid);
+-                if (llama_decode(ctx_dec, bb) != 0) { fprintf(stderr, "error: decode round %d\n", r); break; }
++        llama_memory_t mem_dec = llama_get_memory(ctx_dec);
++        llama_memory_t mem_pre = llama_get_memory(ctx_pre);
++
++        // establish the fixed C-context KV per decode stream (untimed)
++        bool pf_ok = true;
++        {
++            llama_batch pcb = llama_batch_init(std::max(C,1), is_head ? 0 : n_embd, 1);
++            if (is_head) pcb.token = (llama_token *) malloc((size_t) C * sizeof(llama_token));
++            for (int j = 0; j < B && pf_ok; ++j) {
++                pcb.n_tokens = C;
++                for (int i = 0; i < C; ++i) {
++                    if (is_head) pcb.token[i] = toks[j];
++                    else memcpy((float *) pcb.embd + (size_t) i * n_embd, resid.data() + (size_t) j * n_embd, (size_t) n_embd * sizeof(float));
++                    pcb.pos[i] = i; pcb.n_seq_id[i] = 1; pcb.seq_id[i][0] = j; pcb.logits[i] = 0;
++                }
++                if (llama_decode(ctx_dec, pcb) != 0) pf_ok = false;
++            }
++            if (is_head) free(pcb.token);
++            llama_batch_free(pcb);
++        }
++        if (!pf_ok) { fprintf(stderr, "error: decode-leg C-prefill failed\n"); rc = 2; goto cleanup; }
++
++        // preallocated fixed-shape batches (excluded from every timed window). fill_batch_Bway
++        // always writes token[], so db.token is allocated unconditionally (freed by llama_batch_free).
++        llama_batch db = llama_batch_init(B, is_head ? 0 : n_embd, 1);
++        db.token = (llama_token *) malloc((size_t) B * sizeof(llama_token));
++        fill_batch_Bway(db, n_embd, B, /*pos*/C, is_head, toks, resid);   // fixed shape: pos=C, all B rows output
++
++        llama_batch pb = llama_batch_init(prefill_tokens, is_head ? 0 : n_embd, 1);
++        if (is_head) pb.token = (llama_token *) malloc((size_t) prefill_tokens * sizeof(llama_token));
++        pb.n_tokens = prefill_tokens;
++        for (int i = 0; i < prefill_tokens; ++i) {
++            if (is_head) pb.token[i] = toks[i % B];
++            else memcpy((float *) pb.embd + (size_t) i * n_embd, resid.data() + (size_t) (i % B) * n_embd, (size_t) n_embd * sizeof(float));
++            pb.pos[i] = i; pb.n_seq_id[i] = 1; pb.seq_id[i][0] = 0; pb.logits[i] = 1;
++        }
++
++        // checked decode-KV reset: seq_rm must trim EVERY sequence back to C; else a checked
++        // reprefill fallback rebuilds the C-context. A hard reset failure is sticky.
++        std::atomic<bool> reset_failed{false};
++        auto reprefill_dec = [&]() -> bool {
++            llama_memory_clear(mem_dec, true);
++            llama_batch pcb = llama_batch_init(std::max(C,1), is_head ? 0 : n_embd, 1);
++            if (is_head) pcb.token = (llama_token *) malloc((size_t) C * sizeof(llama_token));
++            bool ok = true;
++            for (int j = 0; j < B && ok; ++j) {
++                pcb.n_tokens = C;
++                for (int i = 0; i < C; ++i) {
++                    if (is_head) pcb.token[i] = toks[j];
++                    else memcpy((float *) pcb.embd + (size_t) i * n_embd, resid.data() + (size_t) j * n_embd, (size_t) n_embd * sizeof(float));
++                    pcb.pos[i] = i; pcb.n_seq_id[i] = 1; pcb.seq_id[i][0] = j; pcb.logits[i] = 0;
++                }
++                if (llama_decode(ctx_dec, pcb) != 0) ok = false;
+             }
+-            t_dec_ms = now_ms() - t0;
++            if (is_head) free(pcb.token);
++            llama_batch_free(pcb);
++            return ok;
+         };
+-        // PREFILL thread: `rounds` prompts, one at a time (prefill_tokens each, single sequence).
+-        auto prefill_worker = [&]() {
+-            llama_batch pb = llama_batch_init(prefill_tokens, is_head ? 0 : n_embd, 1);
+-            if (is_head) pb.token = (llama_token *) malloc((size_t) prefill_tokens * sizeof(llama_token));
+-            double t0 = now_ms();
+-            for (int r = 0; r < rounds; ++r) {
+-                llama_memory_clear(llama_get_memory(ctx_pre), true);
+-                pb.n_tokens = prefill_tokens;
+-                for (int i = 0; i < prefill_tokens; ++i) {
+-                    if (is_head) pb.token[i] = (llama_token) ((bos + 1 + (r + i) * 97) % n_vocab);
+-                    else memcpy((float *) pb.embd + (size_t) i * n_embd, resid.data() + (size_t) (i % B) * n_embd, (size_t) n_embd * sizeof(float));
+-                    pb.pos[i] = i; pb.n_seq_id[i] = 1; pb.seq_id[i][0] = 0; pb.logits[i] = (i == prefill_tokens - 1);
++
++        // decode-leg output capture (head-less nextn residual for all B streams) for the
++        // solo-vs-concurrent and cross-backend correctness checks.
++        auto grab_dec = [&](std::vector<float> & out) {
++            out.assign((size_t) B * n_embd, 0.0f);
++            for (int j = 0; j < B; ++j) {
++                const float * h = llama_get_embeddings_nextn_ith(ctx_dec, j);
++                if (h) memcpy(out.data() + (size_t) j * n_embd, h, (size_t) n_embd * sizeof(float));
++            }
++        };
++
++        OverlapLeg legD, legP;
++        legD.name = "decode";  legP.name = "prefill";
++        legD.step  = [&]{ return llama_decode(ctx_dec, db); };
++        legD.reset = [&]{
++            bool ok = llama_memory_seq_rm(mem_dec, -1, C, -1);
++            if (ok) for (int j = 0; j < B; ++j) if (llama_memory_seq_pos_max(mem_dec, j) != C - 1) { ok = false; break; }
++            if (!ok && !reprefill_dec()) reset_failed.store(true);
++        };
++        legD.grab  = head_less ? std::function<void(std::vector<float>&)>(grab_dec) : nullptr;
++        legP.step  = [&]{ return llama_decode(ctx_pre, pb); };
++        legP.reset = [&]{ llama_memory_clear(mem_pre, true); };
++        legD.start(); legP.start();   // thread spawn OUTSIDE all timed windows
++
++        // Owned barrier + fail-closed run(): arm the barrier, launch, wait (timed) for all legs to
++        // arrive, release, then wait (timed) for completion. A blown deadline is a real stall (e.g. a
++        // hung DSP llama_decode) that we cannot join out of, so the watchdog dumps phase/generation
++        // diagnostics and aborts for a stack capture. `cap` marks one leg to record its last output.
++        OverlapBarrier bar;
++        double last_release_ms = 0.0;
++        auto dump_abort = [&](const char * where, const std::vector<OverlapLeg*> & legs) {
++            fprintf(stderr, "WATCHDOG: stall in %s; aborting for stack capture\n", where);
++            for (auto * L : legs) fprintf(stderr, "  leg=%s gen=%llu done_gen=%llu completed=%d failed_round=%d\n",
++                    L->name.c_str(), (unsigned long long) L->gen, (unsigned long long) L->done_gen, L->completed, L->failed_round);
++            fflush(stderr); std::abort();
++        };
++        auto run = [&](std::vector<OverlapLeg*> legs, std::vector<int> ns, OverlapLeg * cap = nullptr) -> double {
++            bar.arm((int) legs.size());
++            for (size_t i = 0; i < legs.size(); ++i) legs[i]->launch(ns[i], &bar, cap == legs[i]);
++            if (!bar.wait_all_arrived(OL_BARRIER_MS)) dump_abort("barrier-arrive", legs);
++            const double w0 = ol_now_ms(); last_release_ms = w0;
++            bar.go();
++            for (auto * L : legs) if (!L->wait_done(OL_PHASE_MS)) dump_abort("phase-complete", legs);
++            return ol_now_ms() - w0;
++        };
++
++        bool any_fail = false;
++        std::string fail_phase;
++        // returns true when the phase is clean; latches + names the first failing phase otherwise.
++        auto check = [&](const char * phase) -> bool {
++            if (legD.failed_round >= 0 || legP.failed_round >= 0 || reset_failed.load()) {
++                fprintf(stderr, "error: worker/reset failed in %s (D@%d P@%d reset=%d)\n",
++                        phase, legD.failed_round, legP.failed_round, (int) reset_failed.load());
++                if (!any_fail) fail_phase = phase;
++                any_fail = true;
++                return false;
++            }
++            return true;
++        };
++        auto require_n = [&](int got, int want, const char * phase) -> bool {
++            if (got != want) {
++                fprintf(stderr, "error: undersample in %s (%d of %d rounds)\n", phase, got, want);
++                if (!any_fail) fail_phase = std::string(phase) + "_undersample";
++                any_fail = true;
++                return false;
++            }
++            return true;
++        };
++
++        const int    warm      = std::max(rounds >= 1 ? 10 : 1, 1);   // matched warmups per leg
++        const double target_ms = 2500.0;                              // per-leg balanced work target
++
++        // warmups (absorb graph compile + one-time prepack); excluded from timing
++        run({&legD}, {warm}); run({&legP}, {warm}); check("warmup");
++
++        // probe per-round p50, then choose balanced round counts
++        double dprobe = 0.0, pprobe = 0.0;
++        int Np = 12, Nd = 20;
++        if (!any_fail) { run({&legD}, {std::max(warm,10)}); dprobe = ol_stat(legD.times).p50; check("probeD"); }
++        if (!any_fail) { run({&legP}, {std::max(warm,5)});  pprobe = ol_stat(legP.times).p50; check("probeP"); }
++        if (!any_fail) {
++            Np = (int) (target_ms / std::max(pprobe, 0.05)); if (Np < 12) Np = 12; if (Np > 200) Np = 200;
++            Nd = (int) (Np * pprobe / std::max(dprobe, 0.05)); if (Nd < 20) Nd = 20; if (Nd > 6000) Nd = 6000;
++        }
++
++        // CPU cross-backend reference for the decode fixed-C output at pos=C (device-independent).
++        std::vector<float> cpu_ref; bool cpu_ref_ok = false;
++        if (!any_fail && ctx_cpu && head_less) {
++            llama_memory_t mem_cpu = llama_get_memory(ctx_cpu);
++            llama_memory_clear(mem_cpu, true);
++            bool ok = true;
++            llama_batch pcb = llama_batch_init(std::max(C,1), is_head ? 0 : n_embd, 1);
++            if (is_head) pcb.token = (llama_token *) malloc((size_t) C * sizeof(llama_token));
++            for (int j = 0; j < B && ok; ++j) {
++                pcb.n_tokens = C;
++                for (int i = 0; i < C; ++i) {
++                    if (is_head) pcb.token[i] = toks[j];
++                    else memcpy((float *) pcb.embd + (size_t) i * n_embd, resid.data() + (size_t) j * n_embd, (size_t) n_embd * sizeof(float));
++                    pcb.pos[i] = i; pcb.n_seq_id[i] = 1; pcb.seq_id[i][0] = j; pcb.logits[i] = 0;
+                 }
+-                if (llama_decode(ctx_pre, pb) != 0) { fprintf(stderr, "error: prefill round %d\n", r); break; }
++                if (llama_decode(ctx_cpu, pcb) != 0) ok = false;
+             }
+-            t_pre_ms = now_ms() - t0;
+-            llama_batch_free(pb);
++            if (is_head) free(pcb.token);
++            llama_batch_free(pcb);
++            if (ok && llama_decode(ctx_cpu, db) == 0) {
++                cpu_ref.assign((size_t) B * n_embd, 0.0f);
++                cpu_ref_ok = true;
++                for (int j = 0; j < B && cpu_ref_ok; ++j) {
++                    const float * h = llama_get_embeddings_nextn_ith(ctx_cpu, j);
++                    if (!h) cpu_ref_ok = false; else memcpy(cpu_ref.data() + (size_t) j * n_embd, h, (size_t) n_embd * sizeof(float));
++                }
++            }
++        }
++        auto rel_l2_vs = [&](const std::vector<float> & v, const std::vector<float> & ref) -> double {
++            if (v.empty() || v.size() != ref.size()) return 1.0;
++            double d2 = 0, r2 = 0;
++            for (size_t k = 0; k < v.size(); ++k) {
++                if (!std::isfinite((double) v[k])) return 1.0;
++                const double d = (double) v[k] - (double) ref[k];
++                d2 += d * d; r2 += (double) ref[k] * (double) ref[k];
++            }
++            return r2 > 0 ? std::sqrt(d2 / r2) : (d2 == 0 ? 0.0 : 1.0);
++        };
++
++        // ============ (I) SATURATED THROUGHPUT: balanced backlogs, controls in rotated order ============
++        double wD = 0, wP = 0, wSerial = 0, wConc = 0, conc_compute = 0;
++        OLStat sD, sP, sDc, sPc; int cDc = 0, cPc = 0;
++        std::vector<float> solo_out, conc_out;
++        auto ctrl_Dsolo = [&]{ wD = run({&legD}, {Nd}, &legD); sD = ol_stat(legD.times); require_n(legD.completed, Nd, "D_solo"); solo_out = legD.last_out; };
++        auto ctrl_Psolo = [&]{ wP = run({&legP}, {Np}); sP = ol_stat(legP.times); require_n(legP.completed, Np, "P_solo"); };
++        auto ctrl_serial = [&]{ const double t0 = ol_now_ms(); run({&legD}, {Nd}); run({&legP}, {Np}); wSerial = ol_now_ms() - t0; };
++        auto ctrl_conc = [&]{
++            wConc = run({&legD, &legP}, {Nd, Np}, &legD);
++            sDc = ol_stat(legD.times); sPc = ol_stat(legP.times); cDc = legD.completed; cPc = legP.completed;
++            conc_compute = std::max(legD.compute_done_ms, legP.compute_done_ms) - last_release_ms;
++            conc_out = legD.last_out;
+         };
++        std::function<void()> ctrls[4] = { ctrl_Dsolo, ctrl_Psolo, ctrl_serial, ctrl_conc };
++        const char * cnames[4]        = { "D_solo", "P_solo", "serial", "concurrent" };
++        for (int k = 0; k < 4 && !any_fail; ++k) { const int idx = (k + rep) % 4; ctrls[idx](); if (!check(cnames[idx])) break; }
++        if (!any_fail) { require_n(cDc, Nd, "concurrent_D"); require_n(cPc, Np, "concurrent_P"); }
++
++        const double sat_speedup      = wConc > 0 ? wSerial / wConc : 0.0;
++        const double sat_eff          = wConc > 0 ? (wD + wP) / wConc : 0.0;
++        const double conc_vs_maxsolo  = std::max(wD,wP) > 0 ? wConc / std::max(wD,wP) : 0.0;
++        const double conc_compute_vs_maxsolo = std::max(wD,wP) > 0 ? conc_compute / std::max(wD,wP) : 0.0;
++        const double slow_D           = sD.p95 > 0 ? sDc.p95 / sD.p95 : 0.0;
++        const double slow_P           = sP.p95 > 0 ? sPc.p95 / sP.p95 : 0.0;
++
++        // cross-backend + solo-vs-concurrent correctness of the decode output (only if we captured it)
++        const double xcorr_solo = cpu_ref_ok ? rel_l2_vs(solo_out, cpu_ref) : -1.0;
++        const double xcorr_conc = cpu_ref_ok ? rel_l2_vs(conc_out, cpu_ref) : -1.0;
++        const double self_sc    = (!solo_out.empty() && !conc_out.empty()) ? rel_l2_vs(conc_out, solo_out) : -1.0;
++        const char * xcorr = !head_less ? "n/a"
++                           : !cpu_ref_ok ? "blocked"
++                           : (xcorr_solo <= 5e-3 && xcorr_conc <= 5e-3 && self_sc >= 0 && self_sc <= 5e-3) ? "pass" : "fail";
++        if (!any_fail && head_less && cpu_ref_ok && strcmp(xcorr, "fail") == 0) {
++            fprintf(stderr, "error: cross-backend/concurrent correctness FAIL (solo=%.2e conc=%.2e self=%.2e)\n",
++                    xcorr_solo, xcorr_conc, self_sc);
++            fail_phase = "xcorr"; any_fail = true;
++        }
++
++        // ============ (II) FIXED-STATE PAIR: fixed pos=C decode + fixed prefill, repeated ============
++        // Both legs re-run the identical fixed-shape batch (decode never advances KV). This is a
++        // fixed-state contention probe, NOT request latency; the service microtrace below is the
++        // real per-request latency. Serial control runs on the SAME persistent workers.
++        int Npair = (int) (5000.0 / std::max(pprobe, 0.05)); if (Npair < 12) Npair = 12; if (Npair > 200) Npair = 200;
++        OLStat fpD, fpP, fpSer, fpCon, fpDcc, fpPcc;
++        std::vector<double> fpSerial, fpConc, fpDc, fpPc;
++        if (!any_fail) { run({&legD}, {Npair}); fpD = ol_stat(legD.times); check("fixedpairD"); }
++        if (!any_fail) { run({&legP}, {Npair}); fpP = ol_stat(legP.times); check("fixedpairP"); }
++        if (!any_fail) {
++            for (int i = 0; i < Npair && !any_fail; ++i) {   // serial pair on the SAME persistent workers
++                const double t0 = ol_now_ms();
++                run({&legD}, {1}); run({&legP}, {1});
++                fpSerial.push_back(ol_now_ms() - t0);
++                if (!check("fixedpairSerial")) break;
++            }
++        }
++        if (!any_fail) {
++            for (int i = 0; i < Npair && !any_fail; ++i) {   // concurrent pair via the barrier
++                fpConc.push_back(run({&legD, &legP}, {1, 1}));
++                if (!legD.times.empty()) fpDc.push_back(legD.times[0]);
++                if (!legP.times.empty()) fpPc.push_back(legP.times[0]);
++                if (!check("fixedpairConc")) break;
++            }
++        }
++        fpSer = ol_stat(fpSerial); fpCon = ol_stat(fpConc); fpDcc = ol_stat(fpDc); fpPcc = ol_stat(fpPc);
++        const double fp_speedup = fpCon.p50 > 0 ? fpSer.p50 / fpCon.p50 : 0.0;
++        const double fp_slow_D  = fpD.p95 > 0 ? fpDcc.p95 / fpD.p95 : 0.0;
++        const double fp_slow_P  = fpP.p95 > 0 ? fpPcc.p95 / fpP.p95 : 0.0;
++
++        // ============ (III) SERVICE MICROTRACE: real per-request latency ============
++        // Decode KV ADVANCES one token per step (attention grows with context); each prefill request
++        // is FRESH (distinct tokens on a cleared KV). Request completion = llama_decode returns with
++        // output ready. Measured solo and concurrent to expose contention-induced service slowdown.
++        OLStat svcD, svcP, svcDc, svcPc; double svc_slow_D = 0, svc_slow_P = 0;
++        if (!any_fail && head_less) {
++            const int n_svc = std::min(64, (int) dp.n_ctx - 8);
++            llama_batch d1 = llama_batch_init(1, is_head ? 0 : n_embd, 1);
++            if (is_head) d1.token = (llama_token *) malloc(sizeof(llama_token));
++            d1.n_tokens = 1; d1.n_seq_id[0] = 1; d1.seq_id[0][0] = 0; d1.logits[0] = 1;
++            if (is_head) d1.token[0] = toks[0]; else memcpy(d1.embd, resid.data(), (size_t) n_embd * sizeof(float));
++            int svc_dpos = 0, svc_preq = 0;
++            auto warm_decode = [&]{ llama_memory_clear(mem_dec, true); svc_dpos = 0; };
++            auto fresh_prefill_fill = [&]{
++                for (int i = 0; i < prefill_tokens; ++i) {
++                    if (is_head) pb.token[i] = toks[(i + svc_preq) % B];
++                    else memcpy((float *) pb.embd + (size_t) i * n_embd, resid.data() + (size_t) ((i + svc_preq) % B) * n_embd, (size_t) n_embd * sizeof(float));
++                    pb.pos[i] = i; pb.n_seq_id[i] = 1; pb.seq_id[i][0] = 0; pb.logits[i] = 1;
++                }
++            };
++            legD.grab = nullptr;
++            legD.step  = [&]{ d1.pos[0] = svc_dpos; const int r = llama_decode(ctx_dec, d1); if (r == 0) ++svc_dpos; return r; };
++            legD.reset = [&]{ if (svc_dpos >= n_svc) warm_decode(); };   // KV advances until it fills, then wraps
++            legP.step  = [&]{ return llama_decode(ctx_pre, pb); };
++            legP.reset = [&]{ llama_memory_clear(mem_pre, true); ++svc_preq; fresh_prefill_fill(); };
++            warm_decode(); fresh_prefill_fill();
++            run({&legD}, {std::max(warm,5)}); run({&legP}, {std::max(warm,5)}); check("svc_warm");
++            if (!any_fail) { warm_decode(); run({&legD}, {n_svc}); svcD = ol_stat(legD.times); check("svcD"); }
++            if (!any_fail) { run({&legP}, {n_svc}); svcP = ol_stat(legP.times); check("svcP"); }
++            if (!any_fail) { warm_decode(); run({&legD, &legP}, {n_svc, n_svc}); svcDc = ol_stat(legD.times); svcPc = ol_stat(legP.times); check("svc_conc"); }
++            svc_slow_D = svcD.p50 > 0 ? svcDc.p50 / svcD.p50 : 0.0;
++            svc_slow_P = svcP.p50 > 0 ? svcPc.p50 / svcP.p50 : 0.0;
++            if (is_head) free(d1.token);
++            llama_batch_free(d1);
++        }
+ 
+-        double w0 = now_ms();
+-        std::thread td(decode_worker), tp(prefill_worker);
+-        td.join(); tp.join();
+-        double wall = now_ms() - w0;
+-        double sum  = t_dec_ms.load() + t_pre_ms.load();
+-        fprintf(stderr, "[dualengine] CONCURRENCY over %d rounds:\n"
+-                        "    decode  engine (%s, B=%d) alone = %.1f ms  (%.2f ms/round)\n"
+-                        "    prefill engine (%s, T=%d) alone = %.1f ms  (%.2f ms/round)\n"
+-                        "    wall (overlapped)               = %.1f ms\n"
+-                        "    serial sum                      = %.1f ms  => overlap saved %.1f ms (%.0f%%), speedup %.2fx\n",
+-                rounds, dev_decode.c_str(), B, t_dec_ms.load(), t_dec_ms.load() / rounds,
+-                dev_prefill.c_str(), prefill_tokens, t_pre_ms.load(), t_pre_ms.load() / rounds,
+-                wall, sum, sum - wall, sum > 0 ? 100.0 * (sum - wall) / sum : 0.0, wall > 0 ? sum / wall : 0.0);
++        legD.stop(); legP.stop();
++        llama_batch_free(db); llama_batch_free(pb);
++
++        const bool valid = !any_fail;
++        if (!valid) rc = rc ? rc : 2;
++
++        fprintf(stderr,
++            "[dualengine] decode=%s(B=%d,C=%d) prefill=%s(T=%d) rep=%d Nd=%d Np=%d Npair=%d valid=%d xcorr=%s fail=%s\n"
++            "  SATURATED  D p50=%.2f/p95=%.2f  P p50=%.2f/p95=%.2f  serial=%.1f conc=%.1f (compute=%.1f) ms\n"
++            "             speedup=%.2fx eff=%.2f conc/max=%.2f (compute %.2f) slowdown D=%.2f P=%.2f  CoV D=%.3f P=%.3f\n"
++            "  FIXEDPAIR  D=%.2f P=%.2f serial=%.2f conc=%.2f ms  speedup=%.2fx slowdown D=%.2f P=%.2f\n"
++            "  SERVICE    D solo=%.2f conc=%.2f (x%.2f)  P solo=%.2f conc=%.2f (x%.2f)\n",
++            dev_decode.c_str(), B, C, dev_prefill.c_str(), prefill_tokens, rep, Nd, Np, Npair,
++            (int) valid, xcorr, any_fail ? fail_phase.c_str() : "-",
++            sD.p50, sD.p95, sP.p50, sP.p95, wSerial, wConc, conc_compute,
++            sat_speedup, sat_eff, conc_vs_maxsolo, conc_compute_vs_maxsolo, slow_D, slow_P, sDc.cov, sPc.cov,
++            fpD.p50, fpP.p50, fpSer.p50, fpCon.p50, fp_speedup, fp_slow_D, fp_slow_P,
++            svcD.p50, svcDc.p50, svc_slow_D, svcP.p50, svcPc.p50, svc_slow_P);
++
++        // One JSON record per run. On failure only identity + status are emitted (NO gate metrics).
++        if (!valid) {
++            fprintf(stderr,
++                "DUALJSON {\"decode_dev\":\"%s\",\"prefill_dev\":\"%s\",\"B\":%d,\"C\":%d,\"T\":%d,\"rep\":%d,"
++                "\"valid\":0,\"status\":\"%s\",\"worker_failed\":1}\n",
++                dev_decode.c_str(), dev_prefill.c_str(), B, C, prefill_tokens, rep, fail_phase.c_str());
++        } else {
++            fprintf(stderr,
++                "DUALJSON {\"decode_dev\":\"%s\",\"prefill_dev\":\"%s\",\"B\":%d,\"C\":%d,\"T\":%d,\"rep\":%d,\"valid\":1,\"status\":\"ok\","
++                "\"Nd\":%d,\"Np\":%d,\"Npair\":%d,\"n_svc\":%d,"
++                "\"xcorr\":\"%s\",\"xcorr_solo\":%.3e,\"xcorr_conc\":%.3e,\"self_sc\":%.3e,"
++                "\"sat_D_solo_p50\":%.4f,\"sat_D_solo_p95\":%.4f,\"sat_P_solo_p50\":%.4f,\"sat_P_solo_p95\":%.4f,"
++                "\"sat_serial_wall\":%.2f,\"sat_conc_wall\":%.2f,\"sat_conc_compute\":%.2f,"
++                "\"sat_speedup\":%.4f,\"sat_eff\":%.4f,\"sat_conc_vs_maxsolo\":%.4f,\"sat_conc_compute_vs_maxsolo\":%.4f,"
++                "\"sat_slowdown_D\":%.4f,\"sat_slowdown_P\":%.4f,\"sat_D_conc_cov\":%.4f,\"sat_P_conc_cov\":%.4f,\"D_rounds\":%d,\"P_rounds\":%d,"
++                "\"fixedpair_D_p50\":%.4f,\"fixedpair_P_p50\":%.4f,\"fixedpair_serial_p50\":%.4f,\"fixedpair_conc_p50\":%.4f,"
++                "\"fixedpair_speedup\":%.4f,\"fixedpair_slowdown_D\":%.4f,\"fixedpair_slowdown_P\":%.4f,\"fixedpair_n\":%d,"
++                "\"svc_D_solo_p50\":%.4f,\"svc_D_solo_p95\":%.4f,\"svc_D_conc_p50\":%.4f,\"svc_D_conc_p95\":%.4f,\"svc_slowdown_D\":%.4f,"
++                "\"svc_P_solo_p50\":%.4f,\"svc_P_solo_p95\":%.4f,\"svc_P_conc_p50\":%.4f,\"svc_P_conc_p95\":%.4f,\"svc_slowdown_P\":%.4f,"
++                "\"worker_failed\":0}\n",
++                dev_decode.c_str(), dev_prefill.c_str(), B, C, prefill_tokens, rep,
++                Nd, Np, Npair, (int) std::min(64, (int) dp.n_ctx - 8),
++                xcorr, xcorr_solo, xcorr_conc, self_sc,
++                sD.p50, sD.p95, sP.p50, sP.p95, wSerial, wConc, conc_compute,
++                sat_speedup, sat_eff, conc_vs_maxsolo, conc_compute_vs_maxsolo,
++                slow_D, slow_P, sDc.cov, sPc.cov, cDc, cPc,
++                fpD.p50, fpP.p50, fpSer.p50, fpCon.p50, fp_speedup, fp_slow_D, fp_slow_P, (int) fpConc.size(),
++                svcD.p50, svcD.p95, svcDc.p50, svcDc.p95, svc_slow_D,
++                svcP.p50, svcP.p95, svcPc.p50, svcPc.p95, svc_slow_P);
++        }
+     }
+ 
+ cleanup:
+     llama_batch_free(bb);
++    if (ctx_cpu) llama_free(ctx_cpu);
+     llama_free(ctx_pre); llama_free(ctx_dec);
++    if (m_cpu) llama_model_free(m_cpu);
+     llama_model_free(m_pre); llama_model_free(m_dec);
+     return rc;
+ }
+@@ -1358,6 +1782,7 @@ int main(int argc, char ** argv) {
+     int  n_streams = 1;      // tailbench batch size
+     double gap_ms  = 0.0;    // tailbench: per-round head-wait (models cross-device relay gap)
+     int  prompt_len = 16;    // kvsave/kvload: prefill length (KV positions to snapshot/ship)
++    int  decode_ctx = 512;   // dualengine: fixed decode-leg context length C
+     std::string dev_csv;     // --devices HTP0,GPUOpenCL : split layers across these backends
+     std::string tsplit_csv;  // --tsplit 24,24          : layers (or ratio) per device
+     std::string dev_prefill; // dualengine: prefill-engine device (e.g. GPUOpenCL / CUDA0)
+@@ -1367,6 +1792,8 @@ int main(int argc, char ** argv) {
+     bool tok_set = false;
+     bool chat_mode = false; // pipedriver --chat: apply the model's chat template to -p
+     bool share_weights = false; // dualengine --share-weights: one rpcmem weight copy for both engines
++    int  rep = 0;               // dualengine --rep: rotates control order across processes (DVFS-fair)
++    bool cpu_ref = true;        // dualengine: CPU cross-backend reference; --no-cpu-ref to disable (RAM)
+ 
+     for (int i = 1; i < argc; ++i) {
+         if (strcmp(argv[i], "-m") == 0 && i + 1 < argc) {
+@@ -1407,8 +1834,14 @@ int main(int argc, char ** argv) {
+             dev_decode = argv[++i];
+         } else if (strcmp(argv[i], "--share-weights") == 0) {
+             share_weights = true;
++        } else if (strcmp(argv[i], "--rep") == 0 && i + 1 < argc) {
++            rep = atoi(argv[++i]);
++        } else if (strcmp(argv[i], "--no-cpu-ref") == 0) {
++            cpu_ref = false;
+         } else if (strcmp(argv[i], "--prompt-len") == 0 && i + 1 < argc) {
+             prompt_len = atoi(argv[++i]);
++        } else if (strcmp(argv[i], "--decode-ctx") == 0 && i + 1 < argc) {
++            decode_ctx = atoi(argv[++i]);
+         } else if (strcmp(argv[i], "--gap-ms") == 0 && i + 1 < argc) {
+             gap_ms = atof(argv[++i]);
+         } else if (strcmp(argv[i], "-ngl") == 0 && i + 1 < argc) {
+@@ -1485,7 +1918,7 @@ int main(int argc, char ** argv) {
+         const int B       = std::max(n_streams, 1);              // -b : static decode batch
+         const int rounds  = std::max(n_gen, 1);                  // -n : decode rounds
+         const int pf_toks = std::max(prompt_len, 1);             // --prompt-len : tokens/prefill request
+-        return run_dualengine(model_path, dp, dd, B, rounds, pf_toks, ngl, share_weights);
++        return run_dualengine(model_path, dp, dd, B, rounds, pf_toks, ngl, share_weights, decode_ctx, rep, cpu_ref);
+     }
+ 
+     llama_model_params model_params = llama_model_default_params();
+diff --git a/ggml/src/ggml-hexagon/ggml-hexagon.cpp b/ggml/src/ggml-hexagon/ggml-hexagon.cpp
+index cddf5d618..30fce7223 100644
+--- a/ggml/src/ggml-hexagon/ggml-hexagon.cpp
++++ b/ggml/src/ggml-hexagon/ggml-hexagon.cpp
+@@ -60,6 +60,7 @@ static int    opt_etm     = 0;
+ static int    opt_verbose = 0;
+ static int    opt_profile = 0; // profiling mode (0-disabled, 1-basic, 2-pmu)
+ static int    opt_hostbuf = 1; // hostbuf ON by default
++static int    opt_fa_skip_masked = 0;
+ 
+ static int    opt_mm_select = 3; // 3 = HMX -> Tiled -> Flat -> CPU, 2 = Tiled -> Flat -> CPU, 1 = Flat -> CPU
+ 
+@@ -1370,6 +1371,9 @@ struct ggml_hexagon_opbatch {
+         if (!(opt_opstage & HTP_OPSTAGE_COMPUTE)) {
+             o.flags |= HTP_OPFLAGS_SKIP_COMPUTE;
+         }
++        if (node.opcode == HTP_OP_FLASH_ATTN_EXT && opt_fa_skip_masked) {
++            o.flags |= HTP_OPFLAGS_FA_SKIP_MASKED;
++        }
+ 
+         ggml_hexagon_dump_op_exec(sess->c_name(), ops[n], o.flags);
+ 
+@@ -1995,10 +1999,24 @@ static bool ggml_hexagon_supported_flash_attn_ext(const struct ggml_hexagon_sess
+         return false;
+     }
+ 
+-    if (dst->ne[3] != 1) {
++    // Hexagon v75 FLASH_ATTN_EXT is numerically incorrect: measured rel_L2 ~0.5-0.8 vs a CPU
++    // reference on a gemma-4 SWA layer, while the non-FA attention path on the same engine matches
++    // CPU (~3e-3). Disable fused FA only on this tested-broken arch so the explicit attention is
++    // built instead; no claim is made about other archs. Use flash_attn_type=AUTO so the non-FA
++    // graph is selected rather than a CPU fallback.
++    if (opt_arch == 75) {
+         return false;
+     }
+ 
++    // [plan-a] NOTE: intentionally no ne[3] (n_seqs) gate. Batched decode packs npl sequences into ne[3],
++    // each with neq1=1. Both FA kernels iterate this dimension -- HMX via `for (ib3=0; ib3<neq3; ++ib3)`
++    // (hmx-flash-attn-ops.c) and HVX via qrows=neq1*neq2*neq3 with per-row iq3 decode + GQA broadcast
++    // (flash-attn-ops.c) -- so ne[3]>1 is supported. A previous `if (dst->ne[3] != 1) return false`
++    // here was over-conservative: it forced batched-decode FA off the NPU to CPU (an NPU<->CPU round-trip),
++    // and the AUTO-default downgrade that followed left V stored non-transposed -> the ~15 ms/layer `v_cont`
++    // V-repack. Measured on op12 (B=32): keeping the fused FA on the NPU cuts the attention block
++    // 15.8 -> 6.9 ms/layer (2.3x) vs the v_trans/explicit-attention workaround.
++
+     return true;
+ }
+ 
+@@ -4179,6 +4197,7 @@ static void ggml_hexagon_init(ggml_backend_reg * reg) {
+     const char * str_vmem     = getenv("GGML_HEXAGON_VMEM");
+     const char * str_mbuf     = getenv("GGML_HEXAGON_MBUF");
+     const char * str_optrace  = getenv("GGML_HEXAGON_OPTRACE");
++    const char * str_fa_skip_masked = getenv("GGML_HEXAGON_FA_SKIP_MASKED");
+ 
+     // Init Arch first since it affects other defaults
+     if (!str_arch) {
+@@ -4219,6 +4238,7 @@ static void ggml_hexagon_init(ggml_backend_reg * reg) {
+     opt_hostbuf   = str_hostbuf  ? atoi(str_hostbuf)                      : opt_hostbuf;
+     opt_mbuf      = str_mbuf     ? strtoul(str_mbuf, NULL, 0) * MiB       : opt_mbuf;
+     opt_vmem      = str_vmem     ? strtoul(str_vmem, NULL, 0) * MiB       : opt_vmem;
++    opt_fa_skip_masked = str_fa_skip_masked ? atoi(str_fa_skip_masked)    : opt_fa_skip_masked;
+ 
+     if (opt_ndev > GGML_HEXAGON_MAX_SESSIONS) {
+         opt_ndev = GGML_HEXAGON_MAX_SESSIONS;
+diff --git a/ggml/src/ggml-hexagon/htp/hmx-flash-attn-ops.c b/ggml/src/ggml-hexagon/htp/hmx-flash-attn-ops.c
+index 996fd5975..649e45a7d 100644
+--- a/ggml/src/ggml-hexagon/htp/hmx-flash-attn-ops.c
++++ b/ggml/src/ggml-hexagon/htp/hmx-flash-attn-ops.c
+@@ -1258,6 +1258,30 @@ static __attribute__((noinline)) void fa_compute_slopes(
+     hvx_copy_f16_aa((uint8_t *)slopes, (const uint8_t *)local_slopes, n_rows_g);
+ }
+ 
++static bool fa_mask_block_all_neg_inf(const struct htp_tensor * mask,
++                                      uint32_t                  ib3,
++                                      uint32_t                  q_start,
++                                      uint32_t                  n_q_rows,
++                                      uint32_t                  kv_start,
++                                      uint32_t                  kv_rows) {
++    const uint32_t im3 = ib3 % mask->ne[3];
++
++    for (uint32_t iq = 0; iq < n_q_rows; ++iq) {
++        const uint8_t * row_bytes = (const uint8_t *) mask->data +
++                                    (q_start + iq) * mask->nb[1] +
++                                    im3 * mask->nb[3] + kv_start * mask->nb[0];
++        const uint16_t * row = (const uint16_t *) row_bytes;
++
++        for (uint32_t ik = 0; ik < kv_rows; ++ik) {
++            if (row[ik] != UINT16_C(0xfc00)) {
++                return false;
++            }
++        }
++    }
++
++    return true;
++}
++
+ // ============================================================================
+ // Core HMX flash attention algorithm (GQA-merged)
+ // ============================================================================
+@@ -1313,6 +1337,9 @@ int hmx_flash_attn_ext(struct htp_ops_context * octx) {
+ 
+     const uint32_t n_kv_blocks  = (nek1 + Bc - 1) / Bc;
+     const bool     pipeline = (n_kv_blocks >= FA_MIN_KV_BLOCKS && n_threads_init >= 2);
++    const bool     skip_masked_blocks =
++        (octx->flags & HTP_OPFLAGS_FA_SKIP_MASKED) && neq1 == 1 && mask != NULL &&
++        mask->type == HTP_TYPE_F16 && mask->ne[2] == 1 && mask->nb[0] == sizeof(__fp16);
+ 
+     // Bypass thread pool dispatch for small prompts/non-pipelined prefill by setting n_threads = 1
+     const uint32_t n_threads = pipeline ? n_threads_init : 1;
+@@ -1465,8 +1492,31 @@ int hmx_flash_attn_ext(struct htp_ops_context * octx) {
+     hmx_fa_o_update_job_t ou_job;
+     hmx_fa_o_norm_job_t   on_job;
+ 
++    uint32_t active_kv_blocks[skip_masked_blocks && n_kv_blocks > 0 ? n_kv_blocks : 1];
++    uint32_t profile_rect_blocks = 0;
++    uint32_t profile_exec_blocks = 0;
++
+     // ======== Main loop: per batch, per KV head, per Q block ========
+     for (uint32_t ib3 = 0; ib3 < neq3; ++ib3) {
++        uint32_t n_active_kv_blocks = 0;
++        bool     use_active_kv_blocks = false;
++
++        if (skip_masked_blocks) {
++            for (uint32_t kv_blk = 0; kv_blk < n_kv_blocks; ++kv_blk) {
++                const uint32_t kv_start = kv_blk * Bc;
++                const uint32_t kv_rows  = hex_smin(Bc, nek1 - kv_start);
++                if (!fa_mask_block_all_neg_inf(mask, ib3, 0, 1, kv_start, kv_rows)) {
++                    active_kv_blocks[n_active_kv_blocks++] = kv_blk;
++                }
++            }
++
++            // Preserve the existing behavior for an entirely masked sequence.
++            use_active_kv_blocks = n_active_kv_blocks > 0 && n_active_kv_blocks < n_kv_blocks;
++            const uint32_t n_exec_blocks = use_active_kv_blocks ? n_active_kv_blocks : n_kv_blocks;
++            profile_rect_blocks += n_kv_blocks * n_kv_heads;
++            profile_exec_blocks += n_exec_blocks * n_kv_heads;
++        }
++
+         for (uint32_t kv_head = 0; kv_head < n_kv_heads; ++kv_head) {
+             const uint32_t ik2 = kv_head;
+             const uint32_t ik3 = ib3 / (neq3 / k->ne[3]);
+@@ -1496,18 +1546,21 @@ int hmx_flash_attn_ext(struct htp_ops_context * octx) {
+ 
+                 // ---- KV block loop with DMA double-buffering ----
+                 size_t buf_idx = 0;
++                const uint32_t n_work_blocks = use_active_kv_blocks ? n_active_kv_blocks : factx.n_kv_blocks;
+ 
+                 fa_compute_slopes(&factx, kv_head, n_rows_g);
+ 
+                 // Prefetch first KV block
+-                if (factx.n_kv_blocks > 0) {
+-                    const uint32_t kv_rows0 = hex_smin(Bc, nek1);
++                if (n_work_blocks > 0) {
++                    const uint32_t first_kv_blk = use_active_kv_blocks ? active_kv_blocks[0] : 0;
++                    const uint32_t kv_start0    = first_kv_blk * Bc;
++                    const uint32_t kv_rows0     = hex_smin(Bc, nek1 - kv_start0);
+ 
+-                    const uint8_t * k_src = (const uint8_t *) k->data + ik2 * k->nb[2] + ik3 * k->nb[3];
++                    const uint8_t * k_src = (const uint8_t *) k->data + kv_start0 * k->nb[1] + ik2 * k->nb[2] + ik3 * k->nb[3];
+                     dma_queue_push(dma, dma_make_ptr(factx.vtcm_k_fp16[0], k_src), size_k_row_padded, k->nb[1],
+                                    size_k_row, kv_rows0);
+ 
+-                    const uint8_t * v_src = (const uint8_t *) v->data + iv2 * v->nb[2] + iv3 * v->nb[3];
++                    const uint8_t * v_src = (const uint8_t *) v->data + kv_start0 * v->nb[1] + iv2 * v->nb[2] + iv3 * v->nb[3];
+                     dma_queue_push(dma, dma_make_ptr(factx.vtcm_v_fp16[0], v_src), size_v_row_padded, v->nb[1],
+                                    size_v_row, kv_rows0);
+                 }
+@@ -1556,7 +1609,8 @@ int hmx_flash_attn_ext(struct htp_ops_context * octx) {
+                     // ==================================================================
+                     struct hmx_queue * hmx_q = ctx->hmx_queue;
+ 
+-                    for (uint32_t kv_blk = 0; kv_blk < factx.n_kv_blocks; ++kv_blk) {
++                    for (uint32_t work_idx = 0; work_idx < n_work_blocks; ++work_idx) {
++                        const uint32_t kv_blk      = use_active_kv_blocks ? active_kv_blocks[work_idx] : work_idx;
+                         const uint32_t kv_start    = kv_blk * Bc;
+                         const uint32_t kv_rows     = hex_smin(Bc, nek1 - kv_start);
+                         const size_t   n_col_tiles = hmx_ceil_div(kv_rows, HMX_FP16_TILE_N_COLS);
+@@ -1570,7 +1624,8 @@ int hmx_flash_attn_ext(struct htp_ops_context * octx) {
+                         MASK_DMA_PUSH(kv_start, kv_rows, has_mask_dma);
+ 
+                         // ---- Phase 1: K_int(blk) ‖ O_update(blk-1) ----
+-                        if (kv_blk > 0) {
++                        if (work_idx > 0) {
++                            const uint32_t prev_kv_blk = use_active_kv_blocks ? active_kv_blocks[work_idx - 1] : work_idx - 1;
+                             // Submit O_update for previous block (HMX worker)
+                             ou_job.o_curr           = o_tile_curr;
+                             ou_job.o_prev           = o_tile_prev;
+@@ -1579,7 +1634,7 @@ int hmx_flash_attn_ext(struct htp_ops_context * octx) {
+                             ou_job.d_tiles          = factx.vtcm_d_tiles;
+                             ou_job.hmx_scales       = factx.vtcm_hmx_scales_id;
+                             ou_job.n_row_tiles      = n_row_tiles;
+-                            ou_job.n_col_tiles      = hmx_ceil_div(hex_smin(Bc, nek1 - (kv_blk - 1) * Bc), HMX_FP16_TILE_N_COLS);
++                            ou_job.n_col_tiles      = hmx_ceil_div(hex_smin(Bc, nek1 - prev_kv_blk * Bc), HMX_FP16_TILE_N_COLS);
+                             ou_job.n_row_tiles_g_br = n_row_tiles_g_br;
+                             ou_job.n_tiles_per_bc   = n_tiles_per_bc;
+                             ou_job.DV               = DV;
+@@ -1599,11 +1654,13 @@ int hmx_flash_attn_ext(struct htp_ops_context * octx) {
+                         hmx_queue_push(hmx_q, hmx_queue_make_desc(hmx_fa_qk_dot_worker, &qk_job));
+ 
+                         // DMA push next block (non-blocking, before worker_pool)
+-                        DMA_PREFETCH_KV(kv_blk + 1);
++                        const uint32_t next_kv_blk = work_idx + 1 < n_work_blocks ?
++                            (use_active_kv_blocks ? active_kv_blocks[work_idx + 1] : work_idx + 1) : factx.n_kv_blocks;
++                        DMA_PREFETCH_KV(next_kv_blk);
+                         fa_phase_v_interleave(&factx, kv_rows, v_src_stride, buf_idx, n_tiles_per_bc);
+ 
+                         // Pop and swap previous block's output update (deferred HMX pop)
+-                        if (kv_blk > 0) {
++                        if (work_idx > 0) {
+                             hmx_queue_pop(hmx_q);
+                             hex_swap_ptr((void **) &o_tile_curr, (void **) &o_tile_prev);
+                         }
+@@ -1641,8 +1698,8 @@ int hmx_flash_attn_ext(struct htp_ops_context * octx) {
+                     }  // end KV block loop (pipeline)
+ 
+                     // Epilogue: O_update for last block
+-                    if (factx.n_kv_blocks > 0) {
+-                        const uint32_t last_blk = factx.n_kv_blocks - 1;
++                    if (n_work_blocks > 0) {
++                        const uint32_t last_blk = use_active_kv_blocks ? active_kv_blocks[n_work_blocks - 1] : n_work_blocks - 1;
+                         const size_t last_cols  = hmx_ceil_div(hex_smin(Bc, nek1 - last_blk * Bc), HMX_FP16_TILE_N_COLS);
+                         ou_job.o_curr           = o_tile_curr;
+                         ou_job.o_prev           = o_tile_prev;
+@@ -1667,7 +1724,8 @@ int hmx_flash_attn_ext(struct htp_ops_context * octx) {
+                     // Main thread holds HMX lock, runs HMX inline.
+                     // ==================================================================
+ 
+-                    for (uint32_t kv_blk = 0; kv_blk < factx.n_kv_blocks; ++kv_blk) {
++                    for (uint32_t work_idx = 0; work_idx < n_work_blocks; ++work_idx) {
++                        const uint32_t kv_blk      = use_active_kv_blocks ? active_kv_blocks[work_idx] : work_idx;
+                         const uint32_t kv_start    = kv_blk * Bc;
+                         const uint32_t kv_rows     = hex_smin(Bc, nek1 - kv_start);
+                         const size_t   n_col_tiles = hmx_ceil_div(kv_rows, HMX_FP16_TILE_N_COLS);
+@@ -1676,7 +1734,9 @@ int hmx_flash_attn_ext(struct htp_ops_context * octx) {
+ 
+                         bool has_mask_dma = false;
+                         MASK_DMA_PUSH(kv_start, kv_rows, has_mask_dma);
+-                        DMA_PREFETCH_KV(kv_blk + 1);
++                        const uint32_t next_kv_blk = work_idx + 1 < n_work_blocks ?
++                            (use_active_kv_blocks ? active_kv_blocks[work_idx + 1] : work_idx + 1) : factx.n_kv_blocks;
++                        DMA_PREFETCH_KV(next_kv_blk);
+                         fa_phase_k_interleave(&factx, kv_rows, k_src_stride, buf_idx);
+ 
+                         {
+@@ -1826,6 +1886,10 @@ int hmx_flash_attn_ext(struct htp_ops_context * octx) {
+         }  // end KV head loop
+     }  // end batch loop
+ 
++    if (skip_masked_blocks && ctx->profiler) {
++        FARF(HIGH, "hmx-fa-mask-skip: executed=%u rectangular=%u", profile_exec_blocks, profile_rect_blocks);
++    }
++
+     if (factx.pipeline) {
+         hmx_queue_suspend(ctx->hmx_queue);
+     } else {
+diff --git a/ggml/src/ggml-hexagon/htp/htp-ops.h b/ggml/src/ggml-hexagon/htp/htp-ops.h
+index d04090135..699b72f4c 100644
+--- a/ggml/src/ggml-hexagon/htp/htp-ops.h
++++ b/ggml/src/ggml-hexagon/htp/htp-ops.h
+@@ -140,6 +140,7 @@ struct htp_buf_desc {
+ 
+ enum htp_op_flags {
+     HTP_OPFLAGS_SKIP_COMPUTE  = (1U << 0), // Skip actual computation (used for profiling)
++    HTP_OPFLAGS_FA_SKIP_MASKED = (1U << 1),
+ };
+ 
+ // Op descriptor
+diff --git a/research_dev/talks.md b/research_dev/talks.md
+index 2955693b1..b5c23d081 100644
+--- a/research_dev/talks.md
++++ b/research_dev/talks.md
+@@ -1,12 +1,700 @@
+-# 📓 Project Log — Phone-Offload LLM Serving
++# Project Log - Q-PIM Power-Frontier Scheduling
+ 
+ > Running progress record. **Current status** is at the top and kept up to date.
+ > The **log** below is newest-first; every entry is timestamped.
+-> Goal: offload LLM work from an A6000 server to phones (OP15, OP12) to save energy.
++> Goal: reshape concurrent multi-model DAG execution with READY phone-resident
++> islands so the A6000 batches denser or enters measured lower-power intervals,
++> reducing total wall energy or improving iso-power SLO-valid work.
+ 
+ ---
+ 
+-## 📍 Current status — `2026-07-09 EDT`
++## Current status - `2026-07-15 EDT`
++
++**Authoritative direction: Q-PIM POWER-FRONTIER SCHEDULING.** The server owns a
++virtual union of admitted multi-model DAGs. The slow loop places and prepares
++phone-resident weights and publishes certified mirrored/exclusive execution and
++power envelopes. The fast loop uses bounded dependency lookahead to prioritize
++topologically legal unlockers, expose phone-resident descendants early, and
++select sleep, batch-shaping, power-cap, or memory trigger bundles. Remaining
++A6000 work is compressed into native batches or contiguous active bursts, with
++latest SLO-safe claims and measured server power transitions. Phones are
++PIM-style active far-memory accelerators, not coherent server memory.
++
++Skipped GPU-us receives no energy credit. The baseline is an optimized
++server-only policy with the same DAG reordering, lazy batching, and DVFS/power
++controls. A Q-PIM claim requires at least 10 percent lower synchronized total
++wall J/work at equal SLO, or 10 percent more SLO-valid work at equal wall power.
++Mirrored phone weights can save compute but not HBM; exclusive ownership can
++release HBM but has no hidden immediate server copy. Per-GEMM network splitting
++and token-prefix KV ownership are excluded.
++
++**NEXT: S10-V0 SMALL FALSIFICATION SCREEN ONLY.** Freeze a tiny controlled
++multi-DAG instance, measure the minimum A6000/phone/link/power atlas, implement
++an independent exhaustive oracle plus standalone checker, compare a causal
++bounded frontier policy against the perfect-future opportunity, and reproduce
++the smallest winning bundle on A6000+OP12+OP15. No llama-server, model graph,
++KV, ggml scheduler, protocol-v4, SHA-dedup, or kernel work is authorized. A full
++runtime remains blocked unless the perfect oracle clears 15 percent, the causal
++policy and physical run clear 10 percent, SLOs hold, and a measured batch/power
++change explains the benefit. See `MIXED_WORKLOAD_DESIGN.md`,
++`TWO_LEVEL_SCHEDULER.md`, `NEXT_PLAN.md`, and
++`spikes/s10_power_frontier/PLAN.md`.
++
++**Direction reset - 2026-07-15: Q-PIM POWER-FRONTIER DESIGN FROZEN; S10-V0 NOT
++RUN.** Replaced the prior capacity-first MW0-MW7 order with PF0-PF5. The new
++mechanism jointly schedules topological DAG order, phone active-weight
++residency, complete-island placement, A6000 lazy claims/batches/power states,
++and phone pacing. Offload value is evaluated as a counterfactual power-trigger
++bundle at the complete wall boundary rather than a sum of skipped GPU work.
++S9-V1A-R is preserved as completed bounded transport substrate. The first test
++is deliberately small and fail-closed: two/three frozen DAG templates, measured
++server/phone power surfaces, exact tiny enumeration, independent checker,
++bounded causal beam search, and one controlled real replay. Possible verdicts
++are PASS, MECHANISM_PASS_ENERGY_BLOCKED, or FAIL; only PASS authorizes PF1.
++No code was implemented for this direction reset.
++
++**Phase: S9-V1A-R PIPELINED-TRANSPORT EVIDENCE REPAIR - DONE (ASCII).** Repaired the V1A
++profiling and re-grounded the evidence. Profiling is now opt-in (worker --profile-recv, host
++--profile-transport; default OFF), stage-scoped/per-opcode (excludes HELLO/PREPARE/EXECUTE/
++RELEASE/SHUTDOWN and oracle gaps), splits host outer-frame SHA (envelope+data) from the actual
++socket write (only ~75 ms), measures worker prefix-hash separately, labels hash domains, and NEVER
++sums host-CPU and phone-CPU timers as a wall fraction. WITHDRAWN V1A claims: "61%/69% SHA of wall"
++(illegal cross-CPU sum), "four hashes over identical bytes" (really six passes, differing domains),
++"26%/33% RTT" (process-lifetime, contaminated). Repaired window=1 accounting: HOST-side serial
++timeline 99.86% (OP12) / 99.96% (OP15) of wall, single-CPU valid; phone-side timers reported
++separately. Profiling overhead ~1.00x (measured ON vs OFF). Fail-closed analyzer (analyze_sweep.py,
++18 mutation self-tests) validates device/worker-SHA/model-SHA/bytes/chunks/verdict/source/rel-L2/
++accepted/duplicate/wasted and the UNROUNDED speedup. adversarial_tests.py: structural JSON, nonzero
++exit on any fail, persists host stdout/stderr/exit + recovery records, computes retry/waste from
++persisted first+resumed runs. Added: byte accounting (attempted/written/durable/wasted/retried),
++FAIL_PROVISION record on disconnect, envelope-inclusive checked 64 MiB bound, --stage-window frozen
++to {1,2,4,8}, bench sequence/summary/agreement validation, and an ASan/UBSan test of the real host
++window>1 path (windows 1/2/4/8 + resume, zero diagnostics). Counterbalanced matrix (Latin square),
++full provenance, thermal/frequency snapshots (NOT energy). Full-shard gate (5 reps/window, 0 errors,
++0 duplicate/wasted bytes): OP12 2.61x median / 1.89x conservative (best w4); OP15 2.28x / 1.27x
++(best w8) - OVERALL GATE PASS on both median and conservative min(best)/max(w1). 64 MiB 2.21x
++(OP12) / 1.66x (OP15); 256 MiB stable at w8; simultaneous both phones on separate USB buses with no
++cross-interference (OP12 37.45, OP15 22.86 MiB/s). Adversarial T1/T2/T3 PASS both phones (T2 recovers
++from the worker verified prefix, which on OP15 exceeded the host-acked prefix by one chunk, proving
++no in-flight guessing). Honest labels: gate PASS but partly a DVFS effect (OP15 throttled to 95 C /
++<=1.3 GHz); contract INCOMPLETE; capacity UNPROVEN; energy DEFERRED. SHA de-dup, protocol v4,
++scheduler, llama-server - reported, NOT implemented. No commit/push. See
++`spikes/s9_pipelined_transport/{RESULTS_R,PLAN,MANIFEST}.md` + `artifacts_r/`.
++
++**Phase (superseded by S9-V1A-R): S9-V1A PIPELINED TRANSPORT - PROFILED +
++GATED, PASS.** The stop-and-wait
++dynamic-provisioning path was profiled to 99.85% (OP12) / 99.80% (OP15) of the
++window=1 wall using measurement-only host timers plus an opt-in worker `recv_profile`
++(no v3 wire change; certified worker `0a50ca72…` untouched). Finding: SHA-256 is
++**61% (OP12) / 69% (OP15)** of the wall and mostly **redundant** — each 4 MiB chunk is
++hashed 4× (host verify + host rolling-prefix; worker frame-SHA + worker store-hash) plus
++a full re-verify at commit; round-trip idle is 26%/33%; the wire is NOT the bottleneck
++(a standalone memory-sink bench moves 64 MiB at 120/105 MiB/s, ~8× the full-stage rate).
++A bounded `--stage-window N` (FIFO, ≤64 MiB outstanding, per-request durable-prefix digest
++retained until its ACK, window=1 byte-identical) was added on the HOST only. Gate: median
++provisioning goodput **2.44× (OP12) / 6.71× (OP15)** at window 8 (window 4 recommended),
++both ≥1.20×, **0 correctness failures / 0 wasted bytes over 40 runs**, bit-identical
++published SHA `5cfba18d…` and rel-L2 < 5e-3. Windowing adversarial T1 (resume-after-partial),
++T2 (SIGKILL mid-flight → recover from the worker's verified prefix, resumed @163.6/138.4 MB),
++T3 (window-8 durable identity) all PASS on both phones; ASan/UBSan + release CTest 3/3. Honest
++caveat: part of the win is DVFS (a busy window keeps the CPU clocked up, so the dominant SHA
++runs faster). Bigger levers — **SHA de-dup** (61–69%) and **batched ACKs** (protocol v4) —
++are profiled and reported, NOT implemented (need review). No commit/push. See
++`spikes/s9_pipelined_transport/{RESULTS,PLAN,MANIFEST}.md`.
++
++**Phase: S9-V0-R3 STATIC REPAIR COMPLETE; SEQUENTIAL DYNAMIC PHONE RUNTIME
++MECHANICS PASS; LIVE SCHEDULER BLOCKED.** Append-only schema/bundle v5 closes the static v4
++holes reproduced for complete digest binding, exact manifest/segment membership,
++layer and correctness I/O envelopes, SoC floors, snapshot causality, ticket/chunk
++ranges, duplicates, and ReadyCertificate physical claims. Final v5 evidence is
++24 schema fixtures, 28 bundle fixtures, and 34 red-v4/green-v5 checks, all green.
++This remains immutable-snapshot coherence, not atomic live scheduling. Separately,
++`examples/phone-pim/` now provides the first real trusted-localhost command path:
++the phone accepts one ticketed sequential model stream, ACKs durable verified
++prefixes, resumes after disconnect/restart, atomically publishes a content-addressed
++read-only shard, loads and warms one complete dense FFN, executes HTP0 on bounded
++activation commands, and returns results to an independent production Gemma4
++oracle. Exact-final clean uploads pass on OP15 v81 and OP12 v75 at M=16 (rel-L2
++2.92e-4 / 2.95e-4). Host suites are 22 protocol, 45 storage, and 45 real-process
++integration checks; Android protocol/storage suites pass on both phones. This is
++mechanics, not capacity: the stop-and-wait ADB-forwarded path is only 4.7-14.9
++MiB/s versus separately measured `adb push` at about 216-262 MiB/s. Multi-model
++residency, native pipelined transport, llama-server integration, live leases/
++credits, capacity, and energy remain unimplemented. See
++`spikes/s9_dynamic_weight_residency/V0R3_REPAIR.md` and
++`spikes/s9_phone_pim_runtime/DYNAMIC_RESULTS.md`.
++
++**Phase: S9-V0-R1 targeted suite closure COMPLETE; scheduler dispatch
++certification BLOCKED.** An independent adversarial pass
++found the official V0-R suites PASSED while the mechanics were STILL fail-OPEN, so V0-R
++is relabeled `SUITES PASS; MECHANICS CERTIFICATION BLOCKED; CAPACITY UNPROVEN`. R1 freezes
++V0-R as RED evidence (golden/v0r_historical/, replay af1501b6...), introduces a VERSIONED
++R1/v3 contract (schemas/v3; v1+v2 untouched), and closes its targeted SIXTEEN cases with
++red-before/green-after evidence (each imports the frozen V0-R code AND the R1 code and
++shows V0-R has the hole, R1 closes it; 17/17). Validator (bundle_version 3): PRIVATE
++per-call temp files (race-free), the dispatch island must exist, each satisfied tuple must
++form one coherent chain WeightSet->CanonicalAllocation->PreparedImage->ReadyCertificate->
++ResidencyLease matched on device/backend/boot/generation/ids/digests, DispatchDecision
++must match the island, sticky/rebuildable needs a matching StateLease (stateless needs
++null), and alias/live-lease sets are DERIVED from records with exact set equality +
++refcounts + reclaimable (5 new stable codes, 26 total). Simulator: backend/generation-
++qualified readiness (no HTP residency dispatched to GPU), stale_epoch -> DRAINING +
++non-dispatchable, stale pipeline rolls back once + releases the contention domain + wakes
++the queue, full epoch stack rechecked after D2H, per-request/session sticky state with
++DEFERRED reset while pinned, bounded lane admission (rejected terminal on overflow),
++horizon-bounded event loop, explicit verified-offset partial failures, link_drop
++resumable(bulk)/terminal(activation/compute/d2h), server relief credited only after a
++valid completion, and measured interference REJECTED as unsupported. Suites: 100 schema
++fixtures (53 v1 + 33 v2 + 14 v3, both validators) + v2/v3 bundle selftests + 23 semantic +
++26 PRESERVED frozen-V0-R behavior + 17 R1 red/green + 10 golden/preservation, all green.
++R1 golden replay 9a69a7f6...; V0/V0-R goldens preserved and still reproducible. THEN a
++SECOND independent adversarial pass found further validator and simulator holes. The
++DRAINING lease now rejects, and the 2026-07-14 review also binds StateLease residency and
++ReadyCertificate correctness to the exact dispatched chain. Six simulator defects were
++repaired: shared-domain transfer ownership, phone-scoped bulk faults, deferred eviction,
++single-owner sticky mutation, horizon cleanup, and admitted-only server GPU accounting;
++per-event lane/ledger/pin conservation is asserted. `test_r1_holes.py` is now 16/16 and the
++v3 bundle index is 18/18. This is not closure of the contract: eleven new mutation probes
++still pass across DeviceInventory/expiry authority, executable identity, transport epochs,
++and state-to-ledger binding. Freeze v3 and repair these in v4 before any dispatch claim.
++S9 remains contract/simulator evidence with CAPACITY UNPROVEN. HEAD 933c722f6, nothing
++committed. See `spikes/s9_dynamic_weight_residency/V0R1_REPAIR.md`.
++
++**Phase (superseded): S9-V0-R (contract + simulator closure) COMPLETE.** Repaired the fail-OPEN
++contracts and simulator mechanics the review found in S9-V0, under a VERSIONED v2
++schema bundle (schema_version 2; the v1 schemas stay frozen). Record model: a NEW
++CanonicalAllocation separates the one canonical byte-charge from backend prepared
++images that ALIAS it (refcounted, drain-gated); PreparedImage identity now binds
++preparation algorithm + source allocation + derived_payload_sha256 + sharing mode;
++dispatch is an EXACT tuple set (required == satisfied); domain-separated digests for
++island/cert/leases/allocation; a NEW CorrectnessCertificate binds island + kernel
++route + backend build + profile-row + exact shape envelope; partial ranges get an
++explicit contiguous/disjoint/overlap coverage policy; bulk frames bind
++ticket/segment/chunk/offset/length/digest and a nonzero resume needs a verified prefix
++digest. ONE strict bundle validator always runs JSON Schema + semantic + cross-record
++with 21 stable error codes (rejects unknown kind/version, duplicate JSON keys, missing
++records, mismatched digests). Simulator rewritten: every request reaches exactly one
++terminal outcome (completed_phone/completed_server/fallback/rejected/timed_out, sum
++asserted); pipelines/dispatches/completions are epoch-bound (boot/generation/route/
++state) with stale drops + fail-closed stale-completion rejects; horizon + bounded
++prefetch/server/lane queues; real multi-device selection over PER-DOMAIN links
++(separate USB buses additive -- replaces V0's controller/phone-count division);
++reserve-on-acquire + rollback for UFS/LPDDR/derived/scratch/state with persistent
++sticky state; resume re-sends only the remaining range while retaining link ownership
++and counting retry bytes; the dimensionally-invalid causal score is replaced by a
++documented LEXICOGRAPHIC integer objective; interference applies ONLY over the actual
++overlap window; D2H is an explicit completion blocker. Every repair has red-before/
++green-after evidence: sim/test_regressions.py imports the FROZEN V0 module and the
++repaired one and shows V0 has the bug and V0-R is correct on the same scenario (14/14).
++Suites all green: 86 schema fixtures (53 v1 + 33 v2, both validators) + 15 bundle + 23
++semantic + 26 sim + 14 red/green + 6 cross-process golden-replay (+mutation). V0-R
++golden replay `af1501b6...`; frozen V0 replay `64fcad3b...` preserved as regression
++evidence. Relabel: V0 = SUITES PASS / MECHANICS NOT YET CERTIFIED / CAPACITY UNPROVEN;
++V0-R = SUITES PASS / MECHANICS CERTIFIED / CAPACITY UNPROVEN (device rates symbolic;
++directional H2D/D2H decomposition is the S9-V1 blocker; no real-trace claim until S8
++Gate A). Nothing committed; HEAD 933c722f6. See
++`spikes/s9_dynamic_weight_residency/V0R_REPAIR.md`.
++
++**Phase (superseded): S9-V0 (dynamic weight residency for a PIM-style phone accelerator --
++contracts + schemas + deterministic simulator + tests) COMPLETE.** A separate
++research track from S8: a HOST-MANAGED phone accelerator where weights are
++prefetched to UFS, promoted to LPDDR, prepared for HTP/OpenCL, leased, and executed
++under server commands (PIM-STYLE, not cache-coherent PIM; the host transfers weights
+++ boundary tensors). A 7-agent read-only substrate audit (file/line-cited) found the
++crux: the current tree has NO SHA-256 of any weight payload -- the only content hash
++is FNV-1a 64-bit in ggml-rpc, served on a cache hit WITHOUT re-comparing bytes -- so
++VERIFYING, the derived-image identity, durable atomic publish, and
++generation-qualified share/prepack teardown are all NET-NEW around reusable byte
++plumbing. Froze 15 self-contained JSON Schemas (ModelManifest, WeightSegment+chunks,
++atomic WeightSet, backend PreparedImage binding 9 identity fields, IslandExecutable,
++TransferTicket, fail-closed ReadyCertificate + DispatchDecision, ResidencyLease,
++StateLease, DeviceInventory ledger, bounded TransportFrame, sim config/manifest),
++two linked state machines, and four contracts (residency/transport/prefetch/sim).
++Built a deterministic integer-us simulator: 8 baselines, a 40-550 MiB/s goodput sweep,
++the causal residency score, and the never-wait candidate; byte-identical replay
++(64fcad3b...). Tests: 53 schema fixtures + 23 semantic (both validators, 0 fail) and
++28 sim checks (all ten required behaviors: hash/partial recovery, dup/stale/reorder
++rejection, lease-safe eviction + exact byte ledger, no dispatch from on-disk, no
++live-state eviction, activation-preempts-bulk, unknown-profile/unsupported-backend
++fail-closed). Both phones now negotiate USB 3.2 Gen 1 (5 Gbps) on separate root
++buses. Verified 1 GiB ADB staging measured H2D medians 215.9/261.9 MiB/s
++(OP12/OP15) and D2H 189.8/226.8 MiB/s; concurrent fleet makespan rates were
++409.4/392.6 MiB/s. These include filesystem ingestion effects and are not raw
++transport rates. S9-V1 must add per-device directionality, contention domains,
++no-double-count staged paths, and D2H result transfer. MECHANICS VALIDATED;
++capacity + energy UNPROVEN (remaining
++rates symbolic; V0 link topology incomplete; no real-trace claim until S8 Gate A).
++Nothing committed; HEAD 933c722f6. See
++`spikes/s9_dynamic_weight_residency/`.
++
++**Phase (superseded): S8-V0b-P0 (source pinning + final Gate-A input contract) COMPLETE; the
++normalizer + server-only replay are NOT started.** Both real sources are now
++fetched OUTSIDE git, inspected by a full pass, and pinned: BurstGPT v2.0
++`BurstGPT_3.csv` (231682327 B, sha256 2299986a..., 5344021 rows, CC-BY-4.0,
++387963/7.26% zero-response failures KEPT) and RAGPulse `data/0_trace.jsonl`
++@ commit 99a62769... (1923473 B, sha256 cd371571..., 7106 records, MIT). Exact
++parsing/mappings are frozen in `configs/{burstgpt,ragpulse}.config.json` (validated
++by `schemas/source_config.schema.json` under both validators), with a per-source
++timestamp policy discovered by inspection (BurstGPT require_nondecreasing / 0
++inversions; RAGPulse sort_stable / 1 inversion). Quantiles are rational-integer,
++the mix formula + hash preimages + server-only replay are frozen, and a semantic
++manifest validator was added. MW1 atlas and the oracle stay BLOCKED until Gate A
++passes.
++
++**Phase (superseded): S8-V0a-R2 (executable machine-validated schema contract)
++COMPLETE.** The V0a-R draft was machine-hardened into an executable Gate-A
++contract: 15 self-contained JSON Schemas that validate standalone under both
++`jsonschema` 4.10.3 and `ajv-cli@5` (no preloaded refs), a fail-closed request /
++trace-manifest / profile-row / route-action schema set, 43 fixtures (19 valid +
++24 adversarial) and a `run_schema_tests.py` runner that exercises BOTH validators
++(0 failures, exit 0). Gate-A normalization is frozen (aligned load windows, source
++parsing, explicit mix offsets, canonical bytes, full hash binding, deadlines kept
++null). The DECISION_CONTRACT + decision/action/lease schemas are explicitly
++DRAFT-BLOCKED-BEFORE-V0c. MW1 atlas and the oracle stay BLOCKED until Gate A
++passes.
++
++**Phase (superseded by the line above): S8-V0a-R (contract repair after review)
++COMPLETE.** A review returned 10 blocking findings on the V0a draft (S6
++over-certified, prose-not-schemas, underspecified determinism, "where" not
++"what", non-deterministic objective, one-layer overgeneralization, second service
++not executable, unsafe REUSE, BurstGPT metadata, unbounded admission). All 10 are
++repaired as documentation (versioned JSON Schemas, `NORMALIZATION_SPEC.md`,
++DAG-cover + compound-action schemas, frozen objective + p95 formula + tie-break,
++downgraded S6/substrate evidence, `EMBEDDING_MODEL_FUNNEL.md`, corrected trace
++metadata, finite admission credits). MW1 atlas and the oracle stay BLOCKED until
++Gate A passes.
++
++**Phase (superseded by the line above): S8-V0a (inspect + contract) COMPLETE.**
++The primary target is mixed-workload reverse offload, not a fixed Gemma
++partition. Phones first download, verify, load, and warm model shards, then
++advertise READY operator islands on HTP and/or GPU. The host decides what, how,
++and when to offload using server resource pressure, SLO risk, weight/state
++residency, measured interference, thermal/link state, and later total-system
++energy.
++
++**V0a froze the contracts and audited the substrate (no code ported, no gates
++run):** six documents under `spikes/s8_operator_island_affinity/` --
++`S6_EVIDENCE_AUDIT.md` (which S6/S7 results may enter the atlas), file/line-cited
++`SUBSTRATE_AUDIT.md`, `TRACE_SOURCE_AUDIT.md`, `SCHEMA_CONTRACT.md` (v1 frozen),
++`DECISION_CONTRACT.md` (slow/fast loops), and `ATLAS_MATRIX.md`. Gate B is NOT
++met yet: a certified-correct decode island exists on both phones (FA-off path)
++but has no 7-process latency row, and no RAG embed/rerank or vision-encoder
++island is profiled -- a second eligible service class is the top MW1 gap.
++
++**Primary systems hypothesis:** cross-workload slack pooling can move a
++coordinated set of deadline-flexible islands to phones, improve server batch
++formation, release GPU-ms/HBM, and eventually create a real server low-power
++window. Scattering isolated operators while the A6000 remains in the same power
++state is not an energy saving. Capacity and energy are separate claims.
++
++**New sources of truth:** `MIXED_WORKLOAD_DESIGN.md`, `WORKLOAD_TRACES.md`, and
++`NEXT_PLAN.md`. The first bounded experiment is
++`spikes/s8_operator_island_affinity/PLAN.md`: normalize real traces, build a
++resident-island profile atlas, and run an offline capacity oracle before any
++live scheduler or VQ port.
++
++**Reusable substrate:** route `A0` is the live 12B OP15 -> OP12 -> A6000
++pipeline with local KV; GGUF sharding and per-tensor HTP/OpenCL weight sharing
++work; static HTP batching works at tested shapes; raw TCP stages and dual HTP/GPU
++workers exist. The old fork also contains a process-local VQ byte table,
++CONWIP, co-execution harnesses, and an experimental HEFT queue. These are audit
++inputs, not a distributed scheduler.
++
++**Evidence constraining the new design:** S3 row split failed; S4 GPU attention
++failed at realistic context; S5 isolated phone operators did not add useful
++A6000 throughput; S6 overlap is only saturated evidence and its FFN result is
++incomplete; S7 ragged HMX is only an isolated kernel pass. Candidate islands
++must amortize transport/state and use certified kernels.
++
++**Trace decision:** no one public trace contains real arrivals, all modalities,
++true priority, and true deadlines. Use unchanged real scenarios (BurstGPT/Azure
++LLM, Azure LMM, RAGPulse) plus a clearly labeled deterministic superposition.
++Never use observed completion latency as a deadline.
++
++**Energy remains BLOCKED.** No phone/server/link energy claim is authorized
++until MW5 validates synchronized physical boundaries and the A6000 power-state
++break-even interval.
++
++---
++
++## S9-V0-R2 v4 static bundle-coherence closure - `2026-07-14 EDT`
++
++The 2026-07-14 review proved v3 still VALIDATES static bundles that disagree with authoritative
++device state, executable identity, transport epochs, or physical reservations (11 fail-open
++blockers). R2 freezes v1/v2/v3 byte-for-byte, adds a versioned **v4** contract (schema_version 4,
++bundle_version 4) with a v4-only domain-separated digest family (`s9:<kind>:v4`) that additionally
++binds `PreparedImage.source_weight_set_id`, `TransferTicket.issued_boot/gen`, and the three
++`StateLease` reservation fields. `cross_record_v4` binds each DISPATCH to exactly one DeviceInventory
++snapshot (present, boot/status_seq pinned, accepting/not-draining/not-stale/thermal-eligible, backend
++supported), rejects expired leases at a decision timestamp, derives epoch/credit gates from records
++(booleans are not authority), binds full executable identity, binds BULK/EXECUTE/RESULT frame epoch
++stacks, and DERIVES the physical ledger single-copy from live records. All 11 blockers close with
++red-v3/green-v4 fixtures (frozen v3 accepts each; v4 rejects with an exact code). Label:
++`STATIC_SNAPSHOT_COHERENT` only -- NOT live dispatch certification.
++
++**Same meta-lesson as R1: the first v4 pass was INCOMPLETE.** An 8-lens adversarial hole-hunt
++workflow + skeptical verify found 6 more fail-open holes it missed (RESULT frames unbound; identity
++fail-open when the manifest is absent; arch/soc/layout_version never cross-checked; DI-less devices
++escaping the ledger; a cert attesting a footprint > device LPDDR; duplicate dispatch decisions per
++request), plus 2 that the record-derived ledger already covered. All closed with 10 more red-v3/
++green-v4 fixtures. Suites green: 116 schema + (v2 15 + v3 18 + v4 27) bundle + 23 semantic + 26/17/16/13
++sim (untouched) + 33 v4 regression/effectiveness. 35 stable codes (9 new v4). Report:
++`spikes/s9_dynamic_weight_residency/V0R2_REPAIR.md`. NOT a completeness proof; live dispatch =
++V0c. Nothing committed.
++
++---
++
++## Two-level design adversarial correction - `2026-07-13 EDT`
++
++Three independent read-only reviews found and corrected load-bearing gaps in the
++first two-level draft. The causal oracle now has explicit non-anticipativity and
++envelope publication times; future arrivals, output lengths, failures, thermal
++state, and link rates are clairvoyant-only. Request end-to-end p95 may not be
++formed by adding stage p95 values; V0c must freeze request/DAG SLO milestones and
++a calibrated integer scenario method before the oracle runs.
++
++The execution envelope now binds exact plan digests, server and phone weight
++identity, physical tile ownership, expiry, fallback, and split correctness.
++Dispatch atomically pins every residency/prepared-image tuple; DRAINING rejects
++new pins. Compound state uses explicit disjoint state partitions or is ineligible.
++Phone-exclusive HBM relief requires an already READY alternate; a reload restores
++future capacity and never blocks the current request. Any fallback reservation is
++subtracted from relief.
++
++The capacity comparison now uses one closed cohort with terminal conservation.
++Resource relief requires equal completed work and no worse rejection/SLO;
++throughput requires at least 10 percent more completed work. A clairvoyant or
++exact bound cannot authorize runtime integration: the deployable causal policy
++must pass Gate C. The new v3 DRAINING-lease validator probe is recorded as an S9
++dispatch-certification blocker. Documentation only; no runtime/schema/code fix.
++
++---
++
++## Two-level scheduler design decision - `2026-07-13 EDT`
++
++The system scheduler is now explicitly split at the weight-readiness boundary.
++The slow residency/envelope planner sees forecast operator demand, atlas rows,
++server HBM/GPU pressure, phone inventories, and measured link/load costs. It
++chooses whole or partial weight placement, prepared HTP/GPU images, ownership
++mode, minimum-hold leases, background transfer, drain/evict, and an elastic set
++of certified discrete split ratios. A planned placement is not READY; observed
++verify, prepare, warm, correctness, ledger, and lease completion must publish it.
++
++The fast execution scheduler owns the bounded virtual operator queue. For each
++concrete DAG-ready island it chooses admission, bounded batch wait, committed
++cover, READY whole-island/stage/split plan, and atomic lane/link/state/fallback
++credits. It cannot fetch weights or invent a graph cut/split. Split shares balance
++predicted completion including queues and boundary transfer, not equal bytes; an
++HBM-relief policy may choose the largest certified phone share that still meets
++the SLO.
++
++The offline problem is modeled as finite candidate-plan selection plus residency,
++precedence, memory, state, lane, link, batch, and deadline constraints. It is
++NP-hard. The evaluation sequence is exhaustive tiny ground truth, independent
++solution validation, pinned CP-SAT exact agreement, causal rolling-horizon oracle,
++then a separately labeled clairvoyant upper bound. Solver use alone is not the
++novelty; the hypothesis is joint future-demand-driven partial residency, elastic
++execution envelopes, online batching/split selection, and measured server HBM or
++capacity relief from command-driven phone memory.
++
++Updated `MIXED_WORKLOAD_DESIGN.md`, added `TWO_LEVEL_SCHEDULER.md`, revised
++`NEXT_PLAN.md`, and refreshed `README.md`. No runtime, model, backend, kernel, or
++schema was changed. Capacity and energy remain unproven.
++
++---
++
++## S9-L0 dual-phone USB baseline and V1 plan update - `2026-07-13 EDT`
++
++Replaced both phone cables and measured the resulting path without disrupting the
++other user's ADB server (dedicated server on port 5038). OP12 path 6-2/Bus 006 and
++OP15 path 8-3/Bus 008 each negotiate 5000M on separate SuperSpeed roots. A 1 GiB
++incompressible payload, `adb -Z`, three solo reps, and SHA-256 verification produced:
++
++| path | OP12 | OP15 | concurrent fleet makespan |
++|---|---:|---:|---:|
++| host -> phone file | 215.9 MiB/s | 261.9 MiB/s | 409.4 MiB/s |
++| phone file -> host | 189.8 MiB/s | 226.8 MiB/s | 392.6 MiB/s |
++
++This makes background residency useful on a seconds-ahead horizon (900 MiB is
++about 4.2 s on OP12 and 3.4 s on OP15), but does not authorize request-critical
++weight fetch. ADB push already includes file-ingestion effects, so inserting it as
++V0 raw link goodput would double-count part of V0's UFS stage.
++
++Plan updated for S9-V1: freeze V0 replay/results; version the schema to per-device
++H2D/D2H evidence-bound profiles and contention domains; dynamically share only
++active same-domain streams; add D2H result transfer; distinguish staged-file from
++decomposed native-buffer paths; add a measured two-phone scenario; then measure
++native transport, UFS, durable publish, hash, materialize, prepare, warmup, and
++transfer/compute interference. Future 800/1000 MiB/s USB 10 Gbps points remain
++unmeasured sensitivity only. Capacity and energy remain unproven.
++
++Full evidence and exact elapsed samples:
++`spikes/s9_dynamic_weight_residency/CURRENT_SLOW_LINK.md`. No runtime or simulator
++code changed in this plan update.
++
++---
++
++## S9-V0 dynamic weight residency (PIM-style phone accelerator) - `2026-07-13 EDT`
++
++New research track, separate from S8's mixed-workload atlas: a host-managed phone
++accelerator that prefetches weights to UFS, promotes to LPDDR, prepares for
++HTP/OpenCL, leases, and executes under server commands. PIM-STYLE (host transfers
++weights + boundary tensors; the phone cannot read server memory). Contracts +
++schemas + a deterministic simulator + tests -- no daemon/kernel/scheduler, no
++energy/novelty/PIM-hardware claim, nothing committed.
++
++Substrate audit (7 read-only agents, file/line-cited; 12 citations re-verified by
++hand). The crux finding: NO weight payload is cryptographically verified anywhere.
++
++| substrate | class | why |
++|---|---|---|
++| loader offsets / load_data_for | REUSE/ADAPT | locator good; mmap-alias + no hash + not transactional |
++| GGUF split + shard_gguf.py | ADAPT | count-only completeness; no per-shard sha256/manifest/coverage KV |
++| downloader (resume/rename) | ADAPT | zero fsync, zero payload sha256 (grep-confirmed), delete-before-redownload |
++| ggml-rpc SET_TENSOR_HASH | REF-ONLY | FNV-1a 64-bit (not SHA), served on hit WITHOUT re-compare |
++| per-tensor HTP<->OpenCL share | REF-ONLY/ADAPT | name-keyed, first-insert-wins, NO teardown -> stale-alias + leaks |
++| OpenCL xmem prepack cache | REJECT | pointer-keyed, no eviction, deliberate leak, f16-accum ~1.86% rel_L2 |
++| partial load (LLAMA_LAYER_*) | REJECT-arbitrary | gemma4-ONLY (load + graph); a hard eligibility gate |
++
++Froze 15 self-contained JSON Schemas (validate under BOTH jsonschema 4.10.3 +
++ajv-cli 5): ModelManifest, WeightSegment+chunks, atomic WeightSet, backend
++PreparedImage (derived-image digest binds 9 fields), IslandExecutable,
++TransferTicket, fail-closed ReadyCertificate + DispatchDecision, ResidencyLease,
++StateLease, DeviceInventory ledger, bounded TransportFrame, sim config/manifest.
++Two linked state machines (ABSENT..READY..EVICTING) + the dispatch eligibility
++rule. Four contracts: residency / transport (bounded versioned LE frames, chunk
++hashes, resumable verified ranges, fsync+dir-fsync+atomic publish, credits,
++activation-preempts-bulk, epochs, drain-before-evict; does NOT reuse LayerSplit/
++ggml-rpc framing) / prefetch (8 baselines + causal score + never-wait) / simulator.
++
++Deterministic simulator (integer-us, stable order): server GPU queue+HBM, shared
++USB controller + per-phone links, UFS/verify/LPDDR/prepare, bounded HTP+GPU lanes,
++canonical vs backend-derived RAM ledger, activation/state/thermal/deterministic
++failures, interference only-when-measured. Sweep 40/100/250/400/550 MiB/s; the
++never-wait candidate keeps p95 ~5-13 ms and gains relief with goodput, while the
++waiting diagnostic pays 3.5-23.7 s p95. Byte-identical replay 64fcad3b...
++
++Tests: schema 53 (0 fail, both validators) + semantic 23 (0 fail) + missing-fixture
++guard (exit 1) + sim 28 (all ten required behaviors: hash/partial recovery,
++dup/stale/reorder rejection, lease-safe eviction + exact ledger, no on-disk
++dispatch, no live-state eviction, activation-preempts-bulk, unknown-profile/
++unsupported-backend fail-closed). Initial link capture showed both phones on USB
++3.2 Gen 1 (5 Gbps); the newer S9-L0 entry above supersedes the deferred-goodput
++status with measured ADB staging evidence. MECHANICS VALIDATED; capacity/energy
++UNPROVEN (V0 rates/topology are not a measured capacity model; no real-trace claim). See
++`spikes/s9_dynamic_weight_residency/`.
++
++---
++
++## S8-V0b-P0 source pinning + final Gate-A input contract - `2026-07-13 EDT`
++
++**Sources pinned + inspected (outside git); contract frozen; nothing committed.**
++Stopped before the normalizer / server-only replay.
++
++- Task 1 -- real sources fetched to `/home/myid/zs89458/Documents/s8_sources/`
++  (outside the worktree) and characterized by a FULL pass. BurstGPT v2.0
++  `BurstGPT_3.csv`: 231682327 B, sha256 `2299986a...a43b8f`, 5344021 rows,
++  CC-BY-4.0; services {Conversation log 233617, API log 5110404}; models {GPT-4,
++  ChatGPT}; 387963 zero-response failures (7.26%, KEPT as burstgpt_failed);
++  timestamps float-seconds, 0 inversions; API-log rows have blank Session ID ->
++  null. RAGPulse `data/0_trace.jsonl` @ immutable commit `99a62769...` : 1923473
++  B, sha256 `cd371571...801e65`, 7106 records, MIT; hash_ids keys
++  [sys_prompt, passages_ids, history, web_search, user_input]; timestamps integer
++  seconds, **1 non-monotonic pair**. -> `SOURCE_PINS.md`.
++- Task 2/3 -- `schemas/source_config.schema.json` + validated
++  `configs/{burstgpt,ragpulse}.config.json` freeze exact header/keys, column/value
++  maps, session-blank->null, retrieved_chunks=len(passages_ids), namespaced
++  cache_keys order, modality defaults, source_fields, and a const `gate_a` block
++  (deadline/priority always null, provenance none). One authoritative contract
++  (schemas+configs > NORMALIZATION_SPEC > SCHEMA_CONTRACT > informative prose); the
++  "WORKLOAD_TRACES.md wins" cycle removed. Decimal quantiles -> rational-integer.
++- Per-source timestamp policy: BurstGPT `require_nondecreasing`; RAGPulse
++  `sort_stable` (the 1 inversion means a single global strict rule would wrongly
++  reject it).
++- Task 4 -- mix frozen: `t_mix=floor(t*scale_num/scale_den)+offset_us`, checked
++  arithmetic, stretch vs compress stated, unique ranks, streams serialized by
++  rank, provenance rewriting to semi_synthetic, rank-namespaced event IDs,
++  duplicate-ID rejection.
++- Task 5 -- hash preimages frozen (source/output/config/normalizer-code-bundle/
++  component/sidecar/replay), each stating exactly which bytes it covers;
++  artifact `kind=normalize` requires nonempty outputs + sidecar binding.
++- Task 7 -- `validate_manifests.py` semantic validator + 15 fixtures (bin
++  arithmetic, first<=last, quantile bounds, nonmonotonic<->policy, mix unique/
++  sorted ranks + component binding, safe-integer bounds, normalize binding); fixed
++  the previously impossible bin-index fixture (t_start = bin_index*W).
++- Task 8 -- server-only replay DEFINED as a strictly structural reader/order/DAG
++  pass (schema+hash validation, arrival-order preservation, service->DAG mapping,
++  demand accounting); explicitly NOT inference, no synthetic text/profile/deadline/
++  perf.
++- Task 6 -- `run_schema_tests.py` hardened: pins+verifies jsonschema 4.10.3 +
++  ajv-cli 5.0.0, prechecks existence/regular-file/JSON-parse/index-completeness,
++  `--index` override PROVES a missing expected-invalid fixture fails (exit 1).
++
++Test outputs: schema suite 51 fixtures (21 valid + 30 invalid) 0 failures exit 0;
++semantic 15 fixtures (3+12) 0 failures exit 0; missing-fixture proof exit 1; both
++configs valid under both validators. `RESULTS.md` updated. Datasets held outside
++git. No runtime/model/graph/KV/scheduler/backend/kernel/S6/S7 edit; no commit.
++
++---
++
++## S8-V0a-R2 executable Gate-A contract repair - `2026-07-12 EDT`
++
++**Documentation + schema/test only; nothing measured, nothing committed.**
++Review-2 said V0a-R was a useful draft but not yet a frozen executable contract
++(10 blocking findings). All repaired:
++
++- Checkpoint 1 (schema bundle): all 15 schemas made self-contained (local
++  `#/$defs` only) so each validates from its own path under `jsonschema` 4.10.3
++  AND `ajv-cli@5 --spec=draft2020` with no `-r` preload. `request.schema.json` is
++  fail-closed (all canonical keys required; bidirectional deadline/priority-vs-
++  provenance; integer upper bounds; scalar-only `source_fields`; no unknown
++  fields). `trace_manifest.schema.json` splits real (rejects `streams`) vs
++  `semi_synthetic` mix (requires `streams[]`, each binding component trace +
++  sidecar hashes, rank, rational scale, explicit integer offset).
++  `profile_row.schema.json` makes `verdict:PASS` fail-closed (requires
++  correctness=pass, fallback=none, n_proc>=7, non-null timing/memory/boundary,
++  server_control, server_relief, post_transfer_slo_feasible, non-empty
++  artifacts). Added `fixtures/` (19 valid + 24 adversarial) and
++  `run_schema_tests.py` running BOTH validators: 15/15 schemas compile+load, 43
++  fixtures 0 failures, exit 0 (nonzero on any unexpected result).
++- Checkpoint 2 (Gate-A normalization frozen): single authority `schema_version` +
++  provenance `semi_synthetic` across all live docs (WORKLOAD_TRACES,
++  TRACE_SOURCE_AUDIT, SCHEMA_CONTRACT, schemas); row-index quantiles replaced by
++  aligned 15-minute offered-token load windows (nearest-rank + full tie-break);
++  frozen BurstGPT/RAGPulse parsing (encoding/BOM/newline/dialect/columns/grammar/
++  monotonicity/exclusions, header verified vs pinned revision); mix offsets are
++  explicit committed integers (SplitMix64 removed); canonical bytes forbid float/
++  NaN/empty in trace records with checked integer arithmetic; Gate-A v1 keeps
++  deadline/priority null (synthetic SLO deferred -- no MW1 dependency); full hash
++  binding (source+revision+config+code+output+sidecar; mix binds every component).
++- Checkpoint 3 (consistency): DECISION_CONTRACT + decision/action/lease schemas
++  marked DRAFT-BLOCKED-BEFORE-V0c with 6 unresolved items; embedding funnel
++  corrected (CLS+L2 pooling, HF-FP32->CPU reference chain, cosine + retrieval
++  top-k, rerank score + ranking agreement, RAGPulse-no-text synthetic payloads,
++  truncation coverage); Gemma atlas rows split into homogeneous SWA/global
++  islands or an exact per-layer attention vector; stale audit fixed -- NO OP15
++  decode artifact exists (dumps are device-ambiguous/OP12-consistent),
++  oplayerprof/resdiff/dualengine/ffnmerge are component tools PENDING repairs, FFN
++  boundary equality separated from weight-copy count, SUBSTRATE summaries match
++  the downgraded detail, per-tensor sharing noted existing/works-single-load but
++  unsafe across reloads.
++
++`RESULTS.md` updated to V0a-R2. Next is V0b / Gate A ONLY. MW1 and the oracle stay
++blocked until Gate A passes; DECISION_CONTRACT stays DRAFT-BLOCKED until V0c. No
++graph/KV/scheduler/kernel edits; no commit or push.
++
++---
++
++## S8-V0a-R contract repair after review - `2026-07-12 EDT`
++
++**Documentation-only repair of the V0a draft; nothing measured, nothing
++committed.** A review found V0a was a useful draft but not a frozen executable
++contract and returned 10 blocking findings. All repaired:
++
++- Prose "schemas" replaced by 15 versioned JSON Schema files under
++  `spikes/s8_operator_island_affinity/schemas/` (draft 2020-12, all valid, all
++  `$ref`s resolve). Records SPLIT into immutable island descriptor,
++  model-residency lease (slow loop), request-state lease (fast loop), and
++  telemetry. `schema_version` is the single authority (no `trace_version`);
++  provenance value is `semi_synthetic`.
++- `NORMALIZATION_SPEC.md` (new): exact deterministic rules -- window selection,
++  integer time scaling, total-order sort key, splitmix64 mix offsets, no-PRNG
++  rule, canonical JSONL bytes, source+output hash binding, negative tests.
++- `DECISION_CONTRACT.md` rewritten: added the DAG-cover partition rule (the
++  "what"), compound `route_action`s (chain_a0 / corun_pair / merged_batch) with
++  all-or-nothing multi-lane reservation, a frozen lexicographic capacity
++  objective with explicit committed shadow prices, an exact predicted-p95
++  finish-time formula, a total-order tie-break, and finite host+lane admission
++  credits with explicit terminal outcomes (no unbounded wait).
++- S6 evidence DOWNGRADED: the cited raw v2 records are absent; SERVICE is a
++  single-stream (B=1) decode over positions 0-63 with no correctness check; FFN
++  merge is an unequal-boundary mechanism signal; only a narrow blk.2 B1/C512
++  causal_local_swa correctness POINT survives (does NOT certify a 48-layer
++  island).
++- Substrate classifications DOWNGRADED: socket helpers REUSE->ADAPT
++  (SIGPIPE/deadline/typed-error); OverlapLeg/OverlapBarrier ADAPT->REFERENCE_ONLY
++  (ignored-failure-reports-done + diagnostic data race); VQ ring
++  REUSE->ADAPT-concept/REFERENCE_ONLY-code (publish-before-write +
++  overwrite-live-slot).
++- `EMBEDDING_MODEL_FUNNEL.md` (new): exact `bge-small-en-v1.5` embed +
++  `bge-reranker-base`; support-first funnel (CPU ref -> op-support/no-fallback ->
++  correctness -> latency) with the HTP-BERT-op-support risk stated up front; a
++  new `embprof` harness spec (oplayerprof cannot measure RAG/vision).
++- `TRACE_SOURCE_AUDIT.md`: BurstGPT_3 corrected to ~220 MB / ~5.34M rows,
++  failures = zero response tokens; normalized traces bound to source+sidecar
++  hashes.
++- Atlas rows now scoped by exact layer_range + attention_class + graph_hash +
++  shape_envelope; Gate B amended to require a matched A6000 control,
++  post-transfer SLO feasibility, and measured server GPU/HBM relief. Gate B is
++  NOT met.
++
++`RESULTS.md` updated to V0a-R. Next step is V0b / Gate A ONLY (fetch pinned
++sources, deterministic normalization, negative tests, server-only replay, compute
++Gate A, then stop). MW1 profiling and the oracle stay blocked until Gate A
++passes. No graph/KV/scheduler/kernel edits; no commit or push.
++
++---
++
++## S8-V0a inspect + contract checkpoint - `2026-07-12 EDT`
++
++**Documentation and contract work only; nothing measured, nothing committed.**
++Delivered six frozen documents under `spikes/s8_operator_island_affinity/`:
++
++- `S6_EVIDENCE_AUDIT.md`: maps S6/S7 results onto atlas eligibility. INELIGIBLE
++  as passing rows: SERVICE latency (FAIL +19%), FFN merge (LOWER_BOUND, 2 weight
++  copies), v81 fused-FA (5.02e-3 marginal FAIL), all energy (DEFERRED). Preserved
++  as correctness certificates: OP15 FA-off decode 2.95e-3 and OP12 v75 AUTO
++  explicit-attention decode 3.61e-3 (both still need 7-process latency rows).
++  Negative evidence (S3/S4/S5 fails, v75 broken FA) retained.
++- `SUBSTRATE_AUDIT.md`: file/line-cited audit of current + historical mechanisms,
++  each classed REUSE/ADAPT/REFERENCE_ONLY/REJECT. Four parallel read-only
++  investigations covered llama-server queue/slot/cancel, layersplit TCP +
++  dualengine workers, ggml-rpc + weight readiness (download verify/fsync/rollback
++  ABSENT; per-tensor share has no version qualifier -> stale-alias across
++  reloads), and the route2 VQ/CONWIP + Unifer 16-byte telemetry. Enforced the
++  local-occupancy vs distributed-readiness split: neither prototype provides a
++  reliable readiness/lease/manifest plane -- that is net-new.
++- `TRACE_SOURCE_AUDIT.md`: BurstGPT v2.0 + Azure LLM24 (generation), RAGPulse
++  (RAG DAG), Azure LMM25 (vision encoder). URL/release/license/fields/checksum
++  procedure recorded; no dataset downloaded; observed vs synthetic
++  (deadline/priority) fields classified.
++- `SCHEMA_CONTRACT.md`: v1 schemas for request, service DAG, island, model
++  manifest, phone capability, READY lease, profile row, route decision, artifact
++  manifest. Rule: any null measurement makes a route ineligible; no silent
++  estimation into a PASS.
++- `DECISION_CONTRACT.md`: slow loop (placement/download/verify/warm/READY/RAM
++  admission/lease horizon/eviction) and fast loop (admission/batching wait/island
++  selection/credits/state affinity/fallback/reason codes). HTP and GPU are
++  separate bounded lanes; co-run eligible only for a measured compatible pair;
++  `energy_gain` reason code reserved and unusable until MW5.
++- `ATLAS_MATRIX.md`: first experiment matrix (generation, RAG, encoder x
++  controls C1-C7). Gate B NOT met; second service class is the top gap.
++
++`RESULTS.md` updated to V0a-complete / Gates A-C NOT RUN. Stop for human review
++before V0b (normalizer) / MW1 (atlas) / V0c (oracle). No graph/KV/scheduler/
++kernel edits; no commit or push.
++
++---
++
++## Historical Design A/S7 status snapshot - `2026-07-11 EDT` (superseded as current direction)
++
++**Phase: S7-V0 - ragged HMX decode tile skipping passes the isolated operator gate.** On OP15,
++the default-off kernel prototype passes CPU-reference correctness and reduces C=512 attention by
++1.49x for the deterministic ragged-prefix batch at both B=16 and B=32. Dense overhead stays below
++1%. The next gate is a real Gemma layer driven by a real arrival/output-length trace; no scheduler,
++end-to-end, or energy claim is authorized yet.
++
++**Claim boundary corrected.** PowerInfer-2 already demonstrates mobile concurrent batched decode,
++heterogeneous attention/FFN partitioning, and phone J/token. NanoFlow already pipelines decode
++attention with projections across operation nano-batches, and variable-length attention is not a
++new primitive. The open system question is whether trace-driven ragged HMX work elimination on
++phone stages increases useful server capacity and reduces total service energy under latency SLOs.
++Do not use "first" language.
++
++**Worktree status.** S7 adds deterministic ragged cases to `test-backend-ops` and a default-off HMX
++KV-block worklist. The pre-existing `layersplit.cpp` decode-FA toggle and
++`ggml-hexagon.cpp` fused-FA/per-tensor-sharing edits remain uncommitted. No Gemma graph, KV, backend
++scheduler, or production runtime has been changed.
+ 
+ **Phase: M2/M3 streaming pipeline LIVE on 12B + per-tensor sharing shipped; M5 energy still gated on a physical enabler.** Two wins today: (1) **the 3-device streaming pipeline runs the 12B end-to-end** — `op15[0,2) → op12[2,3) → A6000[3,48)`, persistent KV, incremental O(N) decode over TCP/USB, answered *"…capital of France?"* → **"Paris"** at ~10.5 tok/s (log below). (2) **per-tensor weight sharing** replaces the fragile whole-buffer size-match so a phone can hold **many layers at true 1× weight** (validated op15 L=8, log below). Below: the M5 crossover findings (energy blocked remotely).
+ 
+@@ -16,7 +704,7 @@
+ - **Req-3 one-copy sharing L-scaling limit — ✅ FIXED (per-tensor sharing):** the old whole-buffer size-match only worked for a one-buffer shard (Hexagon ~1 GB cap → 4 buffers vs OpenCL ~1.9 GB cap → 2 buffers diverge → 2nd-copy fallback → L=16 OOM). Now sharing is keyed by **tensor NAME**: Hexagon publishes each weight's `{fd,offset,size}`, OpenCL imports each distinct fd once and aliases every weight by name (zero own weight bytes; `set_tensor` skipped for aliases; name-miss lazily promotes one real buffer for compute/KV/token_embd). xmem untouched. **VALIDATED op15 L=8 [2,10): all 4 fds imported once, 0 promotions (100% aliased), correctness bit-identical to no-share.** Designed by a 17-agent workflow.
+ - **The L=8 correctness "FAIL" is fp accumulation, NOT a sharing bug (rigorously confirmed):** the harness compares batched(B=16) vs B-single **on the decode engine only** (never touches the shared prefill weights). rel_L2 = **2.755e-3** (< 1e-2 → passes L2); only **1/16** argmax-of-residual flips (a near-tie), tripping the strict `argmax==0` gate. **Identical rel_L2 whether import succeeded OR fell back to a 2nd copy** → the discrepancy is inherent 16-wide-GEMM vs 1-wide-GEMV fp over 8 layers; no cross-seq bleed, no sharing corruption.
+ 
+-*(prior M4)* **DUAL-ENGINE (one session, two backends) live on BOTH real phones.** ✅ `dualengine` mode in `llama-layersplit`: ONE process loads the shard on TWO devices, runs **NPU decode (HTP0) ∥ GPU prefill (GPUOpenCL)** on two threads. Wall == the *longer* single-engine leg → **zero-interference overlap** (op12 **1.76×**, op15 **1.92×**). Static **B=16 batched decode** bit-correct (rel_L2 ~5e-4, 0/16) — **op15 S1 hang did NOT reproduce**. Delivers reqs **(1)** one session/two backends + **(2)** static batch decode ∥ one-by-one prefill. **(3) one weight copy — BUILT** (`--share-weights`, commit 48d54403e), bit-exact *within the single-buffer regime above*.
++*(prior M4)* **DUAL-ENGINE (one session, two backends) live on BOTH real phones.** `dualengine` mode in `llama-layersplit` loads the shard on two devices and runs **NPU decode (HTP0) concurrently with GPU prefill (GPUOpenCL)** on two threads. Its concurrent wall equals the longer co-running leg (op12 **1.76x**, op15 **1.92x** versus serialized leg sums), proving full wall overlap. The harness did not measure equivalent solo leg times, so it does not yet prove zero interference. Static **B=16 batched decode** is bit-correct (rel_L2 ~5e-4, 0/16), and the op15 S1 hang did not reproduce. One-copy weights are built via `--share-weights`.
+ 
+ *(prior)* **M2 done — gemma-4 12B fp16 live on the actual phones over USB.** `op15[0,2) → op12[2,3) → A6000[3,48)` answers *"…capital of France?"* → **"The capital of France is Paris."** Each phone stores ONLY its shard (op15 2.72 GB, op12 0.43 GB) via partial-load (`c615983dd`) + `shard_gguf.py`. Single-engine pipeline: **NPU 194 / CPU 219 / GPU 264 ms/tok**.
+ 
+@@ -33,34 +721,40 @@
+ | Design (`research_dev/`) | ✅ done | DESIGN.md + MILESTONES.md + README.md |
+ | **M0 — ground truth + vetoes** | 🔵 partial | `gguf_dump` 12B ✅; **S1** localized (HTP bug, not deadlock); **S2** shared-weights ✅ |
+ | **M1 — static pipeline correct** | ✅ done | 3-way head→mid→tail (cuts 2,3) **bit-exact** vs mono; k≤13 ceiling N-invariant |
+-| M2 — interconnect + overlap | ✅ done | dualengine wall == max(leg) — zero-interference overlap on both phones |
++| M2 — interconnect + overlap | ✅ done | dualengine wall == max(co-running leg); solo/co-run interference still needs H0 |
+ | M3 — batched continuous decode | 🔵 partial | static B=16 lockstep bit-correct, no hang; continuous `n_parallel` still HTP-bugged (S1) |
+-| M4 — dual-engine + one-copy | ✅ done | reqs (1)(2)(3) built + validated; sharing bit-exact in single-buffer regime |
+-| M5 — rebalance to a real win | 🔵 measured | linear throughput scaling ✅; **defensible J/tok blocked remotely** (needs unplug); RAM + per-buffer sharing cap layers |
++| M4 — dual-engine + one-copy | ✅ done | reqs (1)(2)(3) built + validated; per-tensor sharing validated through op15 L=8 |
++| M5 — rebalance to a real win | 🔵 measured | linear throughput scaling ✅; **defensible J/tok blocked remotely**; serving capacity still needs KV/scratch/thermal budgets |
+ 
+-**⛔ Next:** (1) ✅ **Dual-engine + one-copy share** — done. (2) **Clean energy number** needs op15 **physically unplugged** + WiFi-adb + battery-discharge slope — the remote USB rail can't resolve it. This is the gating action for the M5 crossover verdict. (3) **Scale one-copy sharing past one buffer** — move publish/import to **per-tensor** granularity (or equalize Hexagon `max_bufsize` ↔ OpenCL `max_alloc_size`) so many-layer shards share instead of falling back to 2× RAM. (4) Still open: **S1** continuous-batch HTP bug (`n_parallel=2` hang) — static batch sidesteps it but continuous decode would amortize NPU dispatch further. (5) op12 GPU split flash-attn kernel fails to compile (`sub_group_shuffle_xor` on Adreno v75) — runs via fallback; revisit if op12 GPU becomes load-bearing.
++**Next execution plan:** replay a public request trace into dynamic batches, preserve each stream's
++actual KV length, and run one real Gemma SWA layer at B=16/32. Compare rectangular HMX, ragged HMX
++with the same admitted batch, and compacted smaller batches including compaction cost. Proceed to
++continuous-pipeline integration only if correctness holds and the ragged path remains at least
++1.10x faster on useful trace windows without hurting dense windows by more than 5%. The fleet
++energy verdict still needs matched physical power boundaries and sustained thermal runs.
+ 
+ ---
+ 
+-## 🧭 Decisions locked
++## Historical Design A decisions
+ 
+ - **Build Design A** (server→OP15→OP12→server pipeline) per direction. *(A review preferred hub-spoke B; we build A and mitigate its costs.)*
+ - **Phones own the FIRST layers, A6000 is the terminal stage** (llama.cpp pins `lm_head`+sampler to the last device). Baseline: OP15 = layers 0–1, OP12 = layer 2, A6000 = embed + 3–47 + head + sampler.
+-- **Baseline phone decode = GPU-only, NPU = prefill-only** (batched NPU decode unproven).
++- **Backend assignment is measurement-driven.** Static HTP batched decode works. Sequence-affine HTP/OpenCL routes remain the coarse control; S4 tests GPU-owned attention/KV inside an HTP layer only after per-phone vetoes pass.
+ - **Weights: pre-downloaded mmap shards**, one copy shared by NPU (fastRPC/dmabuf) + GPU (OpenCL import). No runtime weight RPC.
+ - **Only the residual `[n_embd, n_tokens]` crosses the wire; KV stays on each stage.**
+ 
+-## 🏗️ Architecture at a glance
++## Historical Design A architecture at a glance
+ 
+ ```
+- 8 fps in ─► [A6000] embed + layers 3..47 ─residual─► [OP15] L0-1 ─►(via host)─► [OP12] L2
+-                     ▲                                                                │
+-                     │  next-token ids                                     residual   │
+-                     └──────────── [A6000] norm + lm_head + SAMPLE ◄───────────────────┘
+-   PREFILL → phone NPU/HMX   |   DECODE → phone GPU/Adreno   |   KV: local to each stage
++ 8 fps -> [A6000 embed] -> [OP15 L0-1] -> [OP12 L2]
++            ^                                  |
++            | next-token IDs                   v residual
++            +-- [A6000 L3-47 + norm + head + sample]
++
++   CURRENT PHONE DECODE: intact HTP   |   S4 CANDIDATE: HTP-A -> GPU-B/KV -> HTP-C
+ ```
+ 
+-## 📊 Key numbers so far
++## Historical measured numbers
+ 
+ | Thing | Value | Source |
+ |---|---|---|
+@@ -74,7 +768,459 @@
+ 
+ ---
+ 
+-## 🗒️ Log
++## Log
++
++### 2026-07-14 EDT - Sequential dynamic phone provisioning mechanics pass
++
++Extended `examples/phone-pim/` from a pre-staged-only command path to protocol v3
++sequential provisioning. The host binds a ticket, manifest, object digest, ordered
++chunk map, route epoch, and generation. The worker reserves the complete object,
++ACKs only a synced verified prefix, reconstructs that prefix after disconnect or
++process restart, verifies the full file, publishes with no-replace rename plus
++directory sync, and exposes only the mode-0400 content-addressed final. PREPARE
++explicitly selects `published_store`; it cannot silently fall back to a pre-staged
++path. A verified descriptor cache removes the duplicate hash between lookup and
++PREPARE without trusting a mutable path.
++
++Final host suites pass: protocol 22, store 45, and a real worker/socket lifecycle
++suite 45. Android protocol/store suites pass on both phones. Exact-final clean
++464,114,176-byte uploads and production-oracle HTP execution pass on OP15 v81 and
++OP12 v75 with rel-L2 2.92e-4 and 2.95e-4. The important negative result is
++transport efficiency: useful goodput is only 4.7 and 14.9 MiB/s in the final
++clean runs, so this is
++`DYNAMIC_PROVISIONING_MECHANICS_PASS; CAPACITY_UNPROVEN`. The next gate is a
++bounded native/pipelined bulk path with decomposed H2D, UFS, hash, materialize,
++warmup, D2H, and two-domain measurements. No scheduler or energy claim was made.
++See `spikes/s9_phone_pim_runtime/DYNAMIC_RESULTS.md`. Nothing committed or pushed.
++
++### 2026-07-14 EDT - S9 v5 static closure and first real phone FFN runtime
++
++Reviewed the worker's S9 contracts and simulator instead of accepting the green
++suites as certification. A new mutation pass reproduced additional v4 fail-open
++records. Added append-only v5: shape-first validation, all-field content digests,
++exact dispatch/manifest/segment/range/I/O/SoC/causality/transfer/duplicate and
++ReadyCertificate-ledger checks. Final evidence: 24 v5 schema fixtures, 28 v5
++bundle fixtures, and 34 red-v4/green-v5 checks, all pass. Historical simulator,
++bundle, semantic, and golden suites remain preserved. Label stays static snapshot
++coherence only; live atomic dispatch is blocked.
++
++Implemented `examples/phone-pim/` as the smallest actual PIM-style command path.
++The trusted-localhost worker verifies one pre-staged Gemma4 shard by bytes and
++SHA-256, loads a complete dense FFN into one persistent backend graph, warms it,
++and accepts bounded epoch-guarded activation commands. The host oracle captures
++the real Gemma4 FFN boundary through `llama_decode`; it does not reuse the worker
++builder. Replay after reconnect/restart, stale generation, corrupt file, backend
++failure, oracle failure, non-loopback binding, and terminal generation all fail
++closed. Host/Android protocol tests pass; OP15 v81 and OP12 v75 HTP0 both pass
++M=16 correctness. The result is `PRESTAGED_FFN_MECHANICS_PASS`, not dynamic
++streaming, scheduler, capacity, or energy. Full reports are in
++`spikes/s9_phone_pim_runtime/` and `spikes/s9_dynamic_weight_residency/
++V0R3_REPAIR.md`. Nothing committed or pushed.
++
++### `2026-07-12 EDT` - S6-L repair v2: fail-closed harnesses re-run on real devices, honest verdicts
++
++Repaired the S6 measurement infrastructure to be fail-closed (Phases 1-4) and re-ran the smallest
++decisive tests on both phones. Corrected verdicts (full detail in
++[spikes/s6_latency_scheduler/RESULTS.md](spikes/s6_latency_scheduler/RESULTS.md)):
++
++- **Profiler + oracle (Phase 1):** oplayerprof now proves graph placement via `cb_eval` (fails on any
++  CPU-compute fallback), reset returns {ok,method}, correctness/dump are fatal with checked I/O + IEEE
++  finite, and a canonical `resdiff.py` rejects empty/truncated/mismatched/non-finite files. Device:
++  OP15 HTP vs CPU **2.95e-3 PASS**, placement `[HTP0]`.
++- **Dualengine (Phase 2):** owned generation handshake + timed waits + a process watchdog replace the
++  raw-pointer barrier (the prior intermittent hang did NOT reproduce); errors latch and a bad phase
++  emits NO gate metrics; compute-only makespan is separated from the reset-inclusive cycle; a real
++  CPU cross-backend check and an advancing-KV SERVICE microtrace were added. Device (OP15, B16/C512):
++  **SATURATED 1.93x but decode CoV 0.060 -> PROVISIONAL**; **SERVICE decode +19% under contention ->
++  FAIL** (the honest request-latency result). Host: 10k-epoch worker stress + 50ms-reset invariant +
++  parser negative tests all pass.
++- **FFN merge (Phase 3):** verdict ladder now makes a false PASS impossible (UNSUPPORTED without a GPU,
++  SYNTHETIC_UNCERTIFIED without real residuals, LOWER_BOUND without a proven single copy). Real
++  post-attention residuals are captured by oplayerprof `--dump-attn-out` (gemma4 `attn_out`, via
++  `cb_eval`, no model edit). Device (OP15, real residual 16+48): all controls correct 2.18e-3, merged
++  1.91x vs serial-HTP, mem 354/354MB -> **LOWER_BOUND**.
++- **Hexagon FA:** OP12 **v75 AUTO revalidated** - placement `[HTP0]` no CPU fallback, v75 vs OP12 CPU
++  **3.61e-3 PASS**. OP15 **v81 strict-gate result for review**: FA-ON B16/C512 vs CPU **5.02e-3**
++  (marginally over 5e-3), FA-OFF explicit **2.98e-3 PASS**; v81 support policy left UNCHANGED pending
++  human review. Old same-engine batched-vs-single check (5e-4) is blind to this; the CPU cross-backend
++  check is what catches it.
++- **Energy (Phase 4):** `run_energy.sh` refuses (DEFERRED, exit 3); `energy_align.py` gates hardened
++  (bracketing, max-gap, real-sample count, zero-USB, coulomb-when-unplugged, both paths); 16/16
++  synthetic cases pass. NO physical J claimed.
++
++Remaining (set up, not fully run): 7-process OP15 sweep, v81 FA at more B/C, OP12 dualengine (RAM),
++FFN 32+96/32+480, S7-V1 trace. Protected files (gemma4.cpp / llama-graph.cpp / ggml_backend_sched)
++untouched. Nothing committed. Raw data under `scratchpad/s6_latency_repair_v2/`.
++
++### `2026-07-12 EDT` - Direction decision: mixed-workload resident operator islands
++
++The project target changed from one fixed Gemma pipeline to a mixed-service
++server-to-phone accelerator pool. Design A is retained as route `A0` and proven
++substrate. The active design introduces resident operator islands, versioned
++phone weight readiness, a host virtual queue with bounded per-backend credits,
++device/backend status plus cache readiness, rolling residency leases, and
++separate capacity and energy objectives.
++
++S8-V0 is the first gate: public real-trace normalization, existing-code audit,
++resident-island profile atlas, and an offline capacity oracle. No scheduler,
++backend VQ port, graph/KV change, or energy claim starts before that gate.
++
++### `2026-07-12 EDT` - 🔧 S6-L REPAIR: corrected verdicts (the prior "both PASS" was wrong)
++
++A review flagged the earlier S6-L "both hypotheses PASS" as untrustworthy. Repaired the harnesses and
++reran; **corrected verdicts** (`spikes/s6_latency_scheduler/RESULTS.md` sec 0, artifacts
++`scratchpad/s6_latency_repair/`):
++
++| hypothesis | corrected verdict |
++|---|---|
++| overlap **saturated throughput** | **PROVISIONAL** ~1.9x (near-zero interference), but stock-GPU prefill CoV 4-8% trips the 5% gate on 2/6 configs; only 3 procs/config (shared device) |
++| overlap **pair (request) latency** | **FAIL** 1.03-1.38x; 5/6 fail -- decode leg slowed 13-19% by a concurrent prefill, or speedup ~1.03x once prefill dominates |
++| complete-FFN merge | **LOWER_BOUND** -- correct now (rel_L2 2e-3, HMX x3), merged beats best control 1.26-1.81x, but the route-affine control needs a 2nd weight copy (no per-tensor sharing) |
++| Hexagon FA | **v75 FIXED (gate `opt_arch==75`)**, v81 fine -- op12 on/off/auto now 3.3e-3, AUTO stays on HTP |
++| energy | **DEFERRED** -- offline math synth-validated (8 cases), no physical J |
++
++**What was wrong before:** (1) the "1.9x request-latency overlap" was actually *saturated throughput*
++(balanced backlogs); real per-request pair latency is 1.03-1.38x and fails the gate. (2) the FFN
++"PASS 1.35-1.92x" hid non-finite output behind a fast-math `std::isfinite` (a bit check exposed it;
++this gemma's ffn_norm gain mean~25/max~139 overflows F32 for arbitrary synthetic input), used no
++post-FFN norm, and had no GPU-resident boundary -> now LOWER_BOUND. (3) the FA gate `opt_arch<81`
++blessed all future archs -> narrowed to `==75`. Also: dualengine decode default AUTO; correctness now
++returns nonzero; ffnmerge builds on host (missing `<ctime>`); energy adds interpolation/prefill-denom/
++coulomb/battery-only/missing-ilim/non-monotonic/status cases. **Known bug:** the overlap harness
++intermittently hangs (worker futex race) -- fix before a wider run. Nothing committed; stopped for review.
++
++### `2026-07-11 EDT` - S7-V0 ragged HMX decode tile skip passes isolated operator gate
++
++Built a default-off HMX flash-attention prototype and tested it with deterministic, model-free
++Gemma-4 SWA tensors in `test-backend-ops`. The kernel builds a per-sequence active KV-block list
++before K/V DMA and skips only blocks whose broadcast fp16 mask is exactly all negative infinity.
++Partially valid blocks and the original flag-off path are retained.
++
++On OP15 v81, flag off and on both pass all CPU-reference cases at B=8/16. At C=512, ragged-prefix
++attention improves by **1.489x at B=16** and **1.492x at B=32** (five-process CoV below 0.5%). An
++interior masked hole improves by 1.280x/1.274x. The all-valid control changes by +0.2%/-0.7%, within
++the 5% overhead gate. This is an isolated kernel PASS only; no real-layer, trace, end-to-end, or
++energy claim is made. See [S7-V0 results](spikes/s7_ragged_attention/RESULTS.md).
++
++### `2026-07-11 EDT` - 🛠️ S6-L: measurement infra repaired (A-E), both latency hypotheses PASS, real OP12 FA bug found+fixed (SUPERSEDED by the 2026-07-12 repair above -- the "both PASS" verdict did not hold)
++
++Repaired the S6 harnesses, then ran a **latency-only** operator-overlap screen (energy stays
++DEFERRED). Spike: `spikes/s6_latency_scheduler/`. Nothing committed.
++
++**Infra repairs.** `oplayerprof` now has explicit **decode/prefill modes** timing only
++`llama_decode` (KV-clear/build/compile/xmem-prepack excluded), fixed graph shape, `seq_rm` fixed-C
++reset outside the timed window, `--min-samples` gating, CPU-force, status+exit propagation,
++truncate-by-default (CoV now 0.3-4%). Correctness is now **cross-backend vs CPU** at real context
++(not pos 0): stock OpenCL 2.9e-3 PASS, **xmem os8 1.88e-2 -> PERF_ONLY** (excluded). `run_dualengine`
++rewritten to **4 genuine cases** (D solo, P solo, directly-measured serial, D||P barrier-concurrent)
++with persistent workers -- concurrent legs are no longer mislabelled "alone".
++
++**S6-L results (OP15).**
++
++| hypothesis | result |
++|---|---|
++| HTP-decode \|\| stock-GPU-prefill overlap | **PASS** -- 1.91-1.97x speedup, conc/max_solo ~1.01, per-leg slowdown <=1.03, CoV <3.5%, all B={16,32} x T={64,256,512} |
++| complete-FFN merge (16+48, 32+96, 32+480) | **PASS** -- 1.35-1.92x, merged p95 0.52-0.75x sep, xfer <9%, rel_L2=0, all 3 GEMMs HMX |
++
++**Real bug found (OP12 v75).** Cross-backend-vs-CPU exposed that **OP12 Hexagon v75
++FLASH_ATTN_EXT is numerically broken** (rel_L2 ~0.5-0.8) while the non-FA path on the same v75
++engine is correct (3.3e-3); v81/OP15 FA is fine. The old same-engine batched-vs-serial check could
++not see it (both legs share the broken kernel). **Fix:** FA support predicate restricted to
++`opt_arch >= 81`; validated -- OP12 + `--fa auto` now decodes at 3.3e-3. Use `flash_attn_type=AUTO`
++on v75. Flagged for review (changes the op12 decode path).
++
++**Energy still DEFERRED.** Offline scripts repaired (trapezoid + charge-counter/coulomb, gross vs
++incremental J/layer-token, strict validity gates, `set -euo pipefail`, EXIT cleanup) and
++**synthetically validated** (`synth_validate.py` recovers gross=50 J / incr=40 J / coulomb=40 J).
++No physical J/token is claimed. `xmem` cache left disabled for S6-L; a lifetime-safe design is
++proposed for review, not implemented.
++
++---
++
++### `2026-07-11 EDT` - ⚡ Energy measurement: plugged-in whole-device wattmeter is viable; harness built + pipeline validated
++
++**Question:** can we measure per-op / whole-device energy on the phones, and without unplugging?
++
++**Per-op directly: no.** No retail-phone sensor is both fast enough (PMIC updates ~2-6 Hz) and per-rail enough to catch a µs-ms op. The HTP/GPU rails (CX/MX, GFX) are not exposed to userspace on retail OnePlus. The tractable method is the **amortized differential**: average power of a steady loop of one layer on one backend, minus idle.
++
++**Whole-device without unplug: yes, with a caveat -- and it refines the m5 dead-end.** Probed op15 (root; op12 CPH2583 has `no su`). `usb/current_now` is a **live, load-tracking node**, not a fixed ceiling:
++
++| state | usb V x I | note |
++|---|---|---|
++| idle | 5.08 V x ~130 mA ~= **0.66-0.71 W** | tracks load |
++| all 8 cores | 5.04 V x ~496 mA ~= **2.50 W** | **pinned at `input_current_limit` (5 V/500 mA SDP)** |
++
++So the m5 "1.7-1.8 W near-constant ceiling" was **not a broken sensor** -- it was the input-current cap clipping a live reading (dP idle->cap = **1.78 W**, exactly the m5 number). Real blocker = **negotiated input power < workload draw**, not "plugged in." Fix: **Full battery + high-wattage PD/SUPERVOOC charger + WiFi-adb** -> `usb V x I ~= system power`, `pin -> 0`, no unplug/discharge needed (easier than the m5-mandated unplug+coulomb path). Battery-coulomb path still works too (sampler logs `bat_*`), but needs unplug + battery off Full.
++
++**Built the harness (`research_dev/energy/`), ready to drop on either path:**
++- `oplayerprof.cpp` energy mode: `--idle-secs` (idle baseline window per (B,C)) + every `OPLAYERPROF_MARK` now carries `mono=<sec>` from `/proc/uptime`. Harness stays normal-shell (root would break HTP/OpenCL SELinux domain). Android binary rebuilt.
++- `pwr_sampler.sh` (root) -> usb+battery rails @ ~6-10 Hz, `/proc/uptime`-stamped. `energy_align.py` -> `dP = P_compute - P_idle`, E/round + E/tok, and a **validity gate** (`usb_pinned_frac > 5% -> valid=false <usb_capped>` = the "is the charger big enough?" check). `run_energy.sh` orchestrates.
++
++**Pipeline validated end-to-end (op15, dev-port):** against a known idle->all-core-load pattern it recovered **P_idle=0.71 / P_compute=2.50 / dP=1.78 W** and correctly flagged **`usb_pinned_frac=1.0 -> <usb_capped>`**. Sensor + clock-alignment + gate all confirmed. Awaiting a high-wattage charger for an unclipped inference number; op12 needs rooting to participate.
++
++### `2026-07-11 EDT` - S4-V0 offline schedule bound: FAIL (op15 SWA) -> STOP before implementation
++
++Built a measurement-only harness `examples/layersplit/oplayerprof.cpp` (intact
++single-layer (B,C) decode via public llama API; per-op HTP times from
++GGML_HEXAGON_PROFILE, per-op GPU times from a GGML_OPENCL_PROFILING build; no
++graph/KV/scheduler edits). Measured H_A/A_H/H_C (HTP) and G_B = GPU KV-store+fused-FA
++(Adreno) for blk.2 SWA on op15. Ideal speedup = wall / max(H_A+H_C, G_B).
++
++| B | C | wall ms | attn% | H_A+H_C | G_B (Adreno FA) | ideal | verdict |
++|---:|---:|---:|---:|---:|---:|---:|---|
++| 16 | 32 | 20.0 | 22.8% | 15.5 | 7.7 | 1.30 | pass (empty KV) |
++| 16 | 512 | 20.7 | 23.3% | 15.9 | 25.4 | 0.82 | FAIL |
++| 16 | 1024 | 23.3 | 32.2% | 15.8 | 44.2 | 0.53 | FAIL |
++| 32 | 512 | 26.5 | 37.8% | 16.5 | 56.7 | 0.47 | FAIL |
++
++**Verdict: FAIL at realistic context.** The split clears >=1.20x only at C=32
++(near-empty KV). Root cause: the Adreno OpenCL decode flash-attention kernel is slow
++and scales ~linearly with KV (G_B 7.7->25.4->44.2 ms as C 32->512->1024 at B=16),
++while Hexagon HMX FA scales ~1.6x (A_H 4.6->7.5 ms) and HTP does the whole rest of the
++layer in ~15-16 ms flat. Moving attention off HMX onto Adreno replaces a cheap,
++well-scaling op with an expensive, poorly-scaling one -> GPU attention becomes the
++bottleneck and the pipeline is SLOWER than intact HTP (down to 0.47x) at any C real
++decode runs in. Both required batches (16, 32) fail at C>=512.
++
++op15 is the FASTER GPU (Adreno 840); op12/Adreno 750 expected no better (older GPU +
++FA split-variant won't compile). FULL class can't run GPU attention at all (head_dim
++512 fallback). So S4 operator-type split is non-viable on both classes. Per PLAN stop
++rule (S>=2 below 1.20x ideal at B=16/32 for same class+C -> stop before implementation):
++**STOP; do not proceed to V1/V2 or graph integration.** Device runs hit repeated adb
++dropoffs from MEMORY PRESSURE (usable RAM ceiling ~6 GB op12 / ~10 GB op15): running
++HTP-prof and OpenCL-G_B processes concurrently (two shard maps + OpenCL image/xmem) and
++the OpenCL backend accumulating per-shape prepack buffers across the B×C sweep exceeded
++the ceiling -> OOM. Handled via one-process-at-a-time detached nohup runs + adb-server
++restarts. The failing gate points (B=16/32 at C>=512) are tiny-memory (KV <=140 MB) and
++reliable; op12's full grid still pending but moot given the solo bound fails. NOTE the
++6/10 GB ceiling is itself a standing serving constraint (batch x context x layers per
++phone).
++Full table + raw artifacts in
++[spikes/s4_streamed_batch_decode/RESULTS.md](spikes/s4_streamed_batch_decode/RESULTS.md).
++
++### `2026-07-11 EDT` - S4-V0 GPU fused-attention veto: BOTH phones PASS (SWA decode); OP12 veto was STALE
++
++Ran the one authorized device slice (existing `llama-layersplit`, no new code):
++force the batched decode of the SWA shard blk.2 (head_dim 256) onto the Adreno GPU
++with FA enabled, `GGML_SCHED_DEBUG=2`, watch OpenCL compile + op placement.
++`--mode dualengine --dev-decode GPUOpenCL --dev-prefill CPU -m 12b-f16-mid-2-3.gguf -b 8 -n 2`.
++
++| Phone | FA compile | Placement | splits | Correctness | Verdict |
++|---|---|---|---|---|---|
++| OP12 / Adreno 750 | non-split OK; **split fails** (sub_group_shuffle_xor, NON-FATAL) | FLASH_ATTN on `[OpenC]`, no CPU node | 1 | PASS rel_L2 1.8e-5, argmax 0/8 | **PASS (SWA decode)** |
++| OP15 / Adreno 840 | both variants OK | FLASH_ATTN on `[OpenC]` | 1 | PASS rel_L2 1.8e-5, argmax 0/8 | **PASS (clean)** |
++
++**The historical OP12 flash-attn veto (this log:168, AGENT_HANDOFF:132-134) is STALE
++for the decode path.** In-tree non-fatal FA compile skips the failing split variant;
++the non-split f32_f16 kernel runs the whole SWA decode attention on the Adreno 750
++with no CPU fallback, correct. Neither phone is vetoed for the SWA class.
++
++Caveats carried forward: (1) RESOLVED to 512-ctx — a follow-up probe put a 512-token
++GPU prefill + 100-round decode on OP12's Adreno 750 (both contexts GPUOpenCL): 880
++FLASH_ATTN ops all on-GPU, 0 CPU, splits=1, correct. The failing split variant is
++never actually required; the non-split kernel serves prefill (n_q=512) and decode.
++Only C=1024 (SWA-window top) unconfirmed, no cliff expected. (2) FULL/global class (head_dim 512)
++not runtime-tested (no blk.5 shard on device) but source-conclusive: absent from the
++OpenCL supported_dims table -> GPU-B CPU-falls-back on all 8 global layers on BOTH
++phones. S4 GPU-owned attention covers at most the 40 SWA layers. Raw logs +
++gate table in [spikes/s4_streamed_batch_decode/RESULTS.md](spikes/s4_streamed_batch_decode/RESULTS.md).
++
++### `2026-07-11 EDT` - S4-V0 Checkpoint 1: graph-cut + capability inventory (inspect-only, source-verified)
++
++Completed the pre-code inventory (PLAN.md checkpoint 1). Nothing edited. Two
++load-bearing claims verified directly in source.
++
++**Graph cut (dense gemma-4 12B).** HTP-A ends at gemma4.cpp:344 (post-RoPE Q/K,
++post-rms V, retained residual). GPU-B is the interior of the single
++build_attn(iswa) overload (llama-graph.cpp:2869): KV store cpy_k/cpy_v
++(:2919/:2925) + fused ggml_flash_attn_ext (:2426), ending at the kqv_out marker
++(:2935). HTP-C = wo + post-norms + residual + FFN. The single straddle PLAN.md
++warned about is CONFIRMED: `wo` is fused inside build_attn at :2941-2942, one line
++past the kqv_out marker — the cut must return kqv_out and relocate wo to HTP-C.
++Mask + KV indices are built HOST-side (set_input).
++
++**Metadata.** 48 layers, PLAIN dense (no per-layer-embd, no shared-KV, no MoE),
++5 SWA : 1 FULL repeat. SWA class (40 layers): GQA 16:8, head_dim 256, window 1024,
++seed blk.2. FULL class (8 layers): MQA 16:1, head_dim 512, V-LESS "alternative
++attention" (V = reused K-proj, weightless rms_norm, no V-RoPE), seed blk.5.
++
++**NEW constraint — S4 attention offload covers at most 40/48 layers.** The OpenCL
++FA supported_dims table (ggml-opencl.cpp:5836-5840, VERIFIED) tops out at 256;
++head_dim 512 is absent -> GPU-B fused attention silently CPU-falls-back on all 8
++global layers on BOTH phones. So GPU-owned attention is viable only for the 40 SWA
++layers; the 8 global layers stay intact-HTP, and throughput/energy accounting must
++reflect that. Independent of the OP12 shuffle issue.
++
++**Veto calls (confirm at Checkpoint 2 with device build logs).** OP12 (Adreno-750):
++predicted veto — historical sub_group_shuffle_xor FA compile failure (in-tree
++mitigations may now let gemma-F16 FA compile, but a missing variant HARD-ABORTS at
++GGML_ASSERT(kernel!=NULL) ggml-opencl.cpp:12785), plus the head_dim-512 FULL-class
++fallback. OP15 (Adreno-840): proceeds, SWA-only.
++
++**Gate deliverability.** Ideal compute-only >=1.20x replay is fully deliverable at
++Checkpoint 2 (needs only H_A/H_C/G_B/A_H). Bounded >=1.15x is BLOCKED on handoff
++(X_AG/X_GC) + metadata (X_META) TIMES, each needing a reviewed measurement-only
++edit (X_META one touches llama-graph.cpp set_input -> propose-and-stop). Details in
++[spikes/s4_streamed_batch_decode/RESULTS.md](spikes/s4_streamed_batch_decode/RESULTS.md).
++STOP here for review; no code, no device runs, no edits.
++
++### `2026-07-11 EDT` - S4 pivot: operator-type multi-stream decode, veto before implementation
++
++The output-row result does not support continuing with column or row splits of
++one dense weight. More importantly, that mechanism is not the research claim:
++PowerInfer-2 already covers heterogeneous mobile batched decode and phone
++J/token, while NanoFlow directly covers attention/projection overlap across
++operation nano-batches. S4 therefore asks a narrower systems question: can an
++HTP-Adreno inter-operator pipeline improve real continuous batch decode and
++gross fleet J/completed-token in the existing server -> OP15 -> OP12 -> server
++layer pipeline?
++
++The initial phone-local DAG for request group `s` and layer `l` is:
++
++```text
++HTP-A(s,l): norm + Q/K/V projections + Q/K/V norm + RoPE
++GPU-B(s,l): GPU-exclusive KV update + fused attention
++HTP-C(s,l): output projection + residual/norm + complete FFN
++
++HTP-A(s,l) -> GPU-B(s,l) -> HTP-C(s,l) -> HTP-A(s,l+1)
++```
++
++There is one serial HTP worker, one serial GPU worker, and multiple disjoint
++request groups occupying the cross-backend pipeline. GPU owns each participating
++sequence's attention KV from allocation through eviction. HTP never mirrors or
++mutates that KV. An S4 request must take this route from admission so GPU-B also
++populates its KV during prefill; decode cannot inherit an HTP-built cache. The
++primary control is an intact full-B HTP decode, not serial microbatches that
++reread weights.
++
++The first agent assignment is V0 only. It must first label the real SWA/full
++attention and KV-sharing layer classes, reproduce correct GPU fused attention,
++profile real B=4/5/8/16/32 and context=32/256/512/1024 task costs, and
++offline-replay S=1/2/4 schedules including HMX fragmentation, repeated weight
++reads, handoff, fill/drain, and co-run interference. OP12 is `UNSUPPORTED` if
++the known OpenCL flash-attention compile failure reproduces; no slow fallback is
++allowed. No integration code starts unless the same S>=2 schedule at B=16 and
++B=32 for the same layer class and context logs real HMX execution and reaches
++1.20x ideal and 1.15x handoff-bounded predicted layer-throughput. Full contracts are
++in [S4 PLAN](spikes/s4_streamed_batch_decode/PLAN.md), [RELATED_WORK](spikes/s4_streamed_batch_decode/RELATED_WORK.md), and [RESULTS](spikes/s4_streamed_batch_decode/RESULTS.md). The executable handoff is [AGENT_HANDOFF.md](AGENT_HANDOFF.md).
++
++This entry also supersedes the H1 wording immediately below. OP15 is a valid
++failure and OP12 xmem-off loses. OP12 xmem-on is `INVALID`, not a platform
++failure, because the static xmem prepack cache was keyed only by the recycled
++OpenCL allocation handle and offset. Its merged split output is wrong, so its
++timing cannot support either a win or a loss. S3 remains archived because the
++research direction changed, not because every heterogeneous operator pipeline
++was disproved. No commits were made.
++
++### `2026-07-11 EDT` - S3-H1: output-row split FAILS on both phones -> STOP (GPU too slow to complement HTP)
++Built the standalone `llama-phone-microop` (new `examples/layersplit/microop.cpp` + CMake target + `sweep.sh`; bare HTP0+GPUOpenCL ggml backends, no llama/sched) and ran the HeteroInfer-style output-row split screen on the real `blk.2.ffn_gate.weight` [3840,15360] F16: HTP computes rows [0:n_h], GPU rows [n_h:N], host merge, no reduction. Host CPU smoke bit-exact (projL2=0), Android build via snapdragon docker, device runs on both phones.
++
++Full matrix (M=1,2,4,5,8,16,32,64 x split 0/25/50/75/100 x {xmem off,on} x 2 phones = 160 rows):
++
++```
++best interior split is 75% HTP / 25% GPU at every useful M (GPU is 2-3x slower).
++                   complete-op speedup vs best intact backend
++        M=5   M=8   M=16  M=32  M=64      (>=1.10x at 2 adjacent useful B REQUIRED)
++op12 off 0.94  0.95  0.89  0.82  0.68
++op12 on  0.96  0.90  1.03* 0.98  0.82    (*M=16 1.03x but projL2=9e-3 > 5e-3 -> correctness FAIL)
++op15 off 0.93  0.73  0.69  0.64  0.39
++op15 on  0.93  0.73  0.88  0.81  0.64
++```
++
++- **H1 gate = FAIL on both OP12 and OP15.** Max complete-op speedup at any useful B over all 160 rows = **1.03x** (needs >=1.10x), and that single point violates the projection rel-L2 <= 5e-3 gate. Everywhere else the split is SLOWER than the best single backend. Correctness otherwise clean (projL2 ~2e-4 xmem-off, split rel-L2 <=2.8e-4, repeat=0, sentinel PASS).
++- Root cause: the OpenCL GPU F16 GEMV is 2-3x slower than the Hexagon HTP for this projection (GPU-only ~20 ms xmem-off / ~10-14 ms xmem-on at M>=16 vs HTP ~6-8 ms). The completion-balanced 75/25 split makes the concurrent wall ~= HTP's 75%-share time -- barely below HTP alone -- and fanout+merge overhead erases it. xmem halves GPU time at M>=16 but still misses 10% AND its prepack GEMM pushes cross-backend rel-L2 to ~9e-3.
++- Per PLAN + handoff ("if Gate A fails everywhere, stop; whole-request/layer-stage scheduling is the better granularity"): **STOPPED.** No H2/H3, no FFN branch split, no mutable activations, no graph integration. Micro-op output-row splitting is not viable on these phones for this workload. Verdict + 160-row data + eff-GBps in [RESULTS.md](spikes/s3_microop_schedule/RESULTS.md). No commits. Directional takeaway: keep HTP as the decode engine and use the GPU for a *different phase* (prefill), not for co-splitting one memory-bound GEMV.
++
++### `2026-07-11 EDT` - S3-H0: real B-way batch-decode baseline measured (HTP >> GPU), gate PASS
++Ran H0 (no code edits) via existing `dualengine` on the identical 1-layer shard `12b-f16-mid-2-3.gguf` (blk.2, head-less/nextn), B=1,2,4,5,8,16,32,64, 30 rounds, distinct seq_id[j]=j. One llama_decode/round; correctness = batched vs serial replay on the same engine.
++
++```
++mean ms/round   B=1   B=2   B=4   B=5   B=8  B=16  B=32  B=64    (ALL correctness PASS)
++op12 HTP0(FA)   10.7  11.3  17.2  25.6  27.6  31.8  39.6   OOM    rel_L2 ~5e-4
++op12 GPU(noFA)  18.8  86.7  87.5  88.6  89.3  94.3 102.5 111.6    rel_L2 ~1-2e-5
++op15 HTP0(FA)   11.1  10.3  12.2  26.5  24.8  35.8  34.3  49.1    rel_L2 ~5e-4
++op15 GPU(noFA)  16.9  83.8  85.0  84.0  88.3  96.2 111.4 132.2    rel_L2 ~1-2e-5
++A6000 CUDA0      1.3   1.5   1.5   1.5   1.5   1.6   1.8   2.1     per-layer ref
++```
++
++- HTP dominates GPU decode 2.6-8x on both phones (GPU is attention-bound; B=1->2 GPU cliff = kernel-path switch). HMX boundary at B=5 confirmed on both. Phones 8-23x slower/layer than A6000 (near-flat over batch) -> phones can only win on energy.
++- Correctness PASS everywhere; rel_L2 FLAT across B=1..64 => no cross-seq bleed, KV isolation holds; 0/B argmax mismatch.
++- On the reviewer's "dualengine labels co-run legs as alone" caveat: tested, not assumed. op12 HTP0 B=8 decode = 26.2 ms @ prefill-1tok vs 24.9 ms @ prefill-64tok (4x heavier) -> decode leg load-insensitive => co-run leg == solo for NPU-decode||GPU-prefill (zero interference). A true single-worker solo intact-decode over a head-less shard is not available without editing layersplit.cpp (flagged).
++- op12 HTP B=64 OOM (2GB HTP buf map; KV over-allocates all 48 layers). op12 Adreno-750 GPU flash-attn kernel fails to compile (sub_group_shuffle_xor) -> GPU decode FA-off.
++- Measured tables written to [RESULTS.md](spikes/s3_microop_schedule/RESULTS.md); raw JSONL in scratchpad. H0 gate PASS. Next = build standalone `llama-phone-microop` for the H1 output-row split screen on `blk.2.ffn_gate`, pending review. No commits.
++
++### `2026-07-10 EDT` - S3 corrected to test real batch decode first
++
++The target workload is static B-way decode, so a synthetic GEMM `M` sweep alone
++is insufficient. H0 now runs one real `llama_decode` per round with B distinct
++sequences, one token per sequence, private KV histories, and advancing positions
++on each phone backend. It compares B-way output with serial replay and records KV
++length, correctness, hangs, fallback, and backend failures.
++
++H1 keeps the bounded output-row experiment, but uses `M_kernel=B` and the same
++batch occupancies as the real decode control, including B=5 at the HMX boundary.
++Its result is explicitly a batch-shaped operator screen. A batch-decode claim
++requires a separately reviewed one-layer integration that runs the split inside
++a real B-way graph. No runtime code was changed for this correction.
++
++### `2026-07-10 EDT` - S3 corrected from related work: bandwidth provenance + output-row split first
++
++Reviewed the primary HeteroInfer and llm.npu papers plus the llm.npu artifact. The important correction is that HeteroInfer's decode result splits one `MUL_MAT` weight along output rows and runs complementary GPU/NPU slices; it does not demonstrate two request streams. It reports GPU-only 43.3 GB/s versus GPU+NPU 59.5 GB/s on Snapdragon 8 Gen 3, but does not disclose the DDR counter/tool or byte-accounting formula, so those numbers are not a reproducible method for this tree. llm.npu reports NPU bubble/critical-path utilization, not DRAM bandwidth; its transferable idea is offline subgraph profiling plus input-ready task ordering.
++
++The revised [related-work note](spikes/s3_microop_schedule/RELATED_WORK.md), [S3 plan](spikes/s3_microop_schedule/PLAN.md), [results template](spikes/s3_microop_schedule/RESULTS.md), and [agent handoff](AGENT_HANDOFF.md) define H0-H3. H0 first measures true solo and co-running legs because current `dualengine` labels co-running leg times as `alone` and gives prefill no equivalent warmup. OP15 exposes an aggregate `dcvs/bw_hwmon_meas` tracepoint; comparable OP12 trace access is denied, so OP12 uses a documented profiler capture or explicitly reports no direct DDR result. The portable fallback is named `effective_min_weight_read_GBps`, never physical bandwidth.
++
++H1 then splits `[K,N]` along ggml `ne1=N`, sweeps HTP shares 0/25/50/75/100 percent, concatenates disjoint output channels, and tests private slices, one-copy parent views, and a full-copy control. H2 compares row split, FFN gate/up, independent streams, and single-backend execution at equal total M. H3 is only a bounded ready-task trace replay. Full-layer 15 percent and whole-phone J/token 10 percent gates remain mandatory. No code was written for this revision.
++
++### `2026-07-10 EDT` — 🔬 S3 checkpoint 1: micro-op FFN harness sketch + full API recon (design only, no code, awaiting review) ⏸️
++Started the bounded **S3 micro-operator spike** ([PLAN](spikes/s3_microop_schedule/PLAN.md)) — the one question before any generic scheduler: *can gemma-4-12B's independent FFN `gate` and `up` projections run concurrently on **HTP ∥ OpenCL** with enough full-FFN win to justify mutable-activation sharing?* This is **Gate A** (concurrent projections ≥10% vs best serial) + **Gate B** (complete FFN ≥15% vs best intact backend) **only**. Per the plan I stopped at **checkpoint 1 = file/interface sketch**; **nothing was built or committed**, and the uncommitted Fused-FA change + `gemma4.cpp` + `layersplit.cpp` + `ggml_backend_sched` were **not touched**.
++
++**Deliverable = a standalone `examples/layersplit/microop.cpp` → `llama-phone-microop`** that makes ONE bare `HTP0` and ONE `GPUOpenCL` `ggml_backend_t` (no llama, no sched), preads the 3 real `blk.2` FFN weights, and hand-builds direct graphs. Faithful span (verified against the model graph, *not* assumed): `up=mul_mat(x)`, `gate=mul_mat(x)` (same `x`), `h=geglu_split(gate,up)`, `out=mul_mat(down,h)`.
++
++**A 6-agent recon workflow mapped the exact current APIs and surfaced 10 plan-vs-reality corrections** the reviewer should know — the plan is feasible, but the wording was off in load-bearing places:
++```
++· activation is ONE fused ggml_geglu_split(gate,up) — tanh-GELU on arg-1(gate) × up — NOT gelu+mul
++· both HTP0 AND GPUOpenCL report device-type GPU → must select by NAME, never by type
++· env latches at first REGISTRY access (not dev_init) → "xmem off" vs "xmem on+cache" = 2 processes (mandatory)
++· must build via ggml_build_forward_expand or graph_compute SILENTLY skips nodes (repo-specific COMPUTE-flag gate)
++· HTP join needs the remote projection copied into an HTP-buffer MIRROR (every HTP operand must live on the HTP session buffer) — cross-backend copy is host-staged, one ggml_backend_tensor_copy call
++· xmem GEMM only FIRES at token N>=16 & M>=64 & K%8==0 → decode M<16 silently uses the l4_lm buffer kernel even with xmem on (log the ACTUAL path)
++· op-refuse knob is GGML_HEXAGON_OPFILTER, not the plan's GGML_HEXAGON_OPMASK
++· HTP run needs ADSP_LIBRARY_PATH=. (for libggml-htp-vNN.so) — the CPU pipeline scripts omit it
++· F16 weights need NO repack/prepack: plain [K,N] F16 into the default buft feeds both standard + xmem paths
++· link ggml ALONE (pulls ggml-base+gguf, cpu, hexagon, opencl; self-registers HTP0/GPUOpenCL) — no llama/llama-common
++```
++
++**Ground truth confirmed on disk + devices:** `blk.2.ffn_{gate,up}.weight` = `[3840,15360]` F16, `ffn_down` = `[15360,3840]` F16, **112.5 MiB each** (matches plan). Read by `pread(data_offset + tensor_offset, nbytes)` — metadata-only gguf open, blob never touched; verified bit-exact. A **layer-2 shard already exists** (`12b-f16-mid-2-3.gguf` on op12; host has `mid-2-{6,10,18}`). Both phones online (op12 `5ae7a43d`, op15 `3C15AU002CL00000`, 18 `.so` staged each).
++
++**Experiment matrix** (per M in `1,2,4,5,8,16,32,64,128,256,512`, x {xmem off, xmem on+cache}, x {op12, op15}):
++```
++1 HTP-only FFN   2 OCL-only FFN   (intact references)
++3 gate=HTP up=OCL join=HTP    4 gate=HTP up=OCL join=OCL
++5 gate=OCL up=HTP join=HTP    6 gate=OCL up=HTP join=OCL
++```
++Correctness before performance (proj rel_L2 <= 5e-3, FFN rel_L2 <= 1e-2, repeat <= 1e-7, no CPU fallback), then p50/p95/mean/sd/min/max for fanout · gate · up · concurrent-wall · remote-transfer · join · down · full-FFN → one JSONL record per config.
++
++**Status: ⏸️ stopped for review.** Two decisions requested before checkpoint 2 (host build + CPU smoke): (1) link `ggml`-only *(recommended)* vs `llama` to match the sibling target; (2) generate a fresh `[2,3)` shard vs reuse `mid-2-6`. On approval → write `microop.cpp` + the 5-line CMake target + `sweep.sh`, host-smoke on the CPU backend, return the checkpoint-2 report (diff, build output, run cmd, smoke log). Gate C (mutable shared activations) stays unbuilt unless Gate A passes, Gate B loses on copy cost, **and** a reviewer approves.
++
++### `2026-07-09 EDT` — ⚡ Attention 2.3× more: run FLASH_ATTN on the NPU for batched decode (root-cause fix) ✅
++The v_trans fix below killed the `v_cont` but left attention as explicit `kq`/`kqv` score matmuls on **HVX (15.8 ms/layer at B=32)**. Tried the *other* lever — the user's insight — and it wins: **keep flash-attn ON the NPU**.
++
++**Root cause (correcting the entry below):** Hexagon *does* have a working `flash_attn_ext` kernel (`flash-attn-ops.c` HVX + `hmx-flash-attn-ops.c` HMX). The only thing blocking it for batched decode was one over-conservative host gate — `ggml_hexagon_supported_flash_attn_ext`: `if (dst->ne[3] != 1) return false`. Batched decode packs the `npl` sequences into `ne[3]` (n_seqs), so that gate rejected exactly the B>1 case → auto-FA saw a device mismatch → downgraded flash off → the `v_cont`. **Single-token decode (B=1, ne[3]=1) always passed the gate** — so stagenet never actually had a v_cont problem (the "no FA kernel" claim below was wrong).
++
++**Fix:** delete the gate (both FA kernels already iterate `ne[3]` — HMX `for (ib3=0; ib3<neq3; ++ib3)`, HVX `qrows=neq1*neq2*neq3` with per-row `iq3` + GQA broadcast), and set the NPU decode context to `flash_attn = ENABLED`. Now the whole attention is **one fused `FLASH_ATTN_EXT` op on HMX**, V stays in its natural layout (no transposed 65536-row scatter write).
++
++**A/B on op12 (gemma-4-12B, B=32 batched decode, one layer), all bit-identical (rel_L2 5.23e-4, 0/32 PASS):**
++```
++                        (A) v_trans/explicit     (B) NPU fused FA
++attention block            15.8 ms/layer            6.9 ms/layer   ← 2.3×
++  · kq (HVX)                7.30 ms                  ─┐
++  · kqv (HVX)              6.30 ms                   ├ one HMX FA op
++  · softmax + kqv_out CONT  1.22 ms                  ─┘
++  · V write                0.98 ms (65536×1)        0.03 ms (32×2048, natural)
++full layer (+21 ms weights) ~37 ms                  ~29 ms          ← ~22%
++CPU fallback                0                        0  (gate relaxed → all 35 FA ops on DSP)
++```
++Control run (`Bcpu`: FA on, gate NOT relaxed) proved the gate is load-bearing — 3 batched FA ops dropped off the DSP (35→32, i.e. to CPU). The advantage **grows with context**: `kq`/`kqv` (config A, HVX) scale with `n_kv`; the fused HMX FA streams it. **Adopted B as the default** (`GGML_DECODE_NO_FA=1` still selects the v_trans path for A/B). Bonus: the gate deletion means AUTO now resolves to FA-on-NPU everywhere, so any Hexagon-decode mode (stagenet/tail/…) is fixed for free. Full chain from the original bug: **193 → 37 → 29 ms/layer**.
+ 
+ ### `2026-07-09 EDT` — ⚡ Decode 5.2× faster: kill the attention V-repack by storing V transposed ✅
+ Per-op profiling (`GGML_HEXAGON_PROFILE`) of the B=32 NPU decode on op12 exposed a shocker: one op, **`v_cont` (the attention V materialization), was 154 ms/layer — 80% of a 193 ms layer** — while the weight matmuls (q/k/v/o/ffn) were already fast on **HMX (~21 ms total)**.
+diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
+index f624dabf7..e38daba2c 100644
+--- a/tests/test-backend-ops.cpp
++++ b/tests/test-backend-ops.cpp
+@@ -6678,6 +6678,13 @@ struct test_leaky_relu : public test_case {
+ 
+ // GGML_OP_FLASH_ATTN_EXT
+ struct test_flash_attn_ext : public test_case {
++    enum mask_profile_type {
++        MASK_RANDOM,
++        MASK_ALL_VALID,
++        MASK_RAGGED_PREFIX,
++        MASK_RAGGED_HOLES,
++    };
++
+     const int64_t hsk; // K head size
+     const int64_t hsv; // V head size
+     const int64_t nh; // num heads
+@@ -6695,9 +6702,14 @@ struct test_flash_attn_ext : public test_case {
+     const ggml_type type_K;
+     const ggml_type type_V;
+     std::array<int32_t, 4> permute;
++    const mask_profile_type mask_profile;
+ 
+     std::string vars() override {
+-        return VARS_TO_STR14(hsk, hsv, nh, nr23, kv, nb, mask, sinks, max_bias, logit_softcap, prec, type_K, type_V, permute);
++        return VARS_TO_STR15(hsk, hsv, nh, nr23, kv, nb, mask, sinks, max_bias, logit_softcap, prec, type_K, type_V, permute, mask_profile);
++    }
++
++    std::string op_desc(ggml_tensor * t) override {
++        return mask_profile == MASK_RANDOM ? test_case::op_desc(t) : "FLASH_ATTN_EXT_RAGGED";
+     }
+ 
+     double max_nmse_err() override {
+@@ -6713,9 +6725,10 @@ struct test_flash_attn_ext : public test_case {
+ 
+     test_flash_attn_ext(int64_t hsk = 128, int64_t hsv = 128, int64_t nh = 32, std::array<int64_t, 2> nr23 = {1, 1}, int64_t kv = 96, int64_t nb = 8,
+                         bool mask = true, bool sinks = false, float max_bias = 0.0f, float logit_softcap = 0.0f, ggml_prec prec = GGML_PREC_F32,
+-                        ggml_type type_K = GGML_TYPE_F16, ggml_type type_V = GGML_TYPE_F16, std::array<int32_t, 4> permute = {0, 1, 2, 3})
++                        ggml_type type_K = GGML_TYPE_F16, ggml_type type_V = GGML_TYPE_F16, std::array<int32_t, 4> permute = {0, 1, 2, 3},
++                        mask_profile_type mask_profile = MASK_RANDOM)
+         : hsk(hsk), hsv(hsv), nh(nh), nr23(nr23), kv(kv), nb(nb), mask(mask), sinks(sinks), max_bias(max_bias), logit_softcap(logit_softcap), prec(prec),
+-          type_K(type_K), type_V(type_V), permute(permute) {}
++          type_K(type_K), type_V(type_V), permute(permute), mask_profile(mask_profile) {}
+ 
+     ggml_tensor * build_graph(ggml_context * ctx) override {
+         const int64_t hsk_padded = GGML_PAD(hsk, ggml_blck_size(type_K));
+@@ -6787,7 +6800,34 @@ struct test_flash_attn_ext : public test_case {
+                 // make the sink values more noticeable in order to trigger a test failure when the implementation is wrong
+                 init_tensor_uniform(t, -10.0f, 10.0f);
+             } else if (strcmp(t->name, "m") == 0) {
+-                init_tensor_kq_mask(t);
++                if (mask_profile == MASK_RANDOM) {
++                    init_tensor_kq_mask(t);
++                    continue;
++                }
++
++                GGML_ASSERT(t->type == GGML_TYPE_F16);
++                GGML_ASSERT(t->ne[1] == 1 && t->ne[2] == 1);
++
++                std::vector<ggml_fp16_t> data(ggml_nelements(t), ggml_fp32_to_fp16(0.0f));
++                const ggml_fp16_t masked = ggml_fp32_to_fp16(-INFINITY);
++
++                for (int64_t seq = 0; seq < t->ne[3]; ++seq) {
++                    if (mask_profile == MASK_RAGGED_PREFIX) {
++                        const int64_t dense_valid = kv * (4 - seq % 4) / 4;
++                        const int64_t valid = seq % 4 == 0 ? dense_valid : std::max<int64_t>(1, dense_valid - 17);
++                        for (int64_t pos = valid; pos < kv; ++pos) {
++                            data[seq * kv + pos] = masked;
++                        }
++                    } else if (mask_profile == MASK_RAGGED_HOLES) {
++                        const int64_t begin = (seq % 2 == 0) ? kv / 4 : kv / 2;
++                        const int64_t end   = begin + kv / 4;
++                        for (int64_t pos = begin; pos < end; ++pos) {
++                            data[seq * kv + pos] = masked;
++                        }
++                    }
++                }
++
++                ggml_backend_tensor_set(t, data.data(), 0, data.size() * sizeof(data[0]));
+             } else {
+                 init_tensor_uniform(t);
+             }
+@@ -9450,6 +9490,16 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+         }
+     }
+ 
++    for (int64_t nseq : {8, 16}) {
++        for (auto profile : {test_flash_attn_ext::MASK_ALL_VALID,
++                             test_flash_attn_ext::MASK_RAGGED_PREFIX,
++                             test_flash_attn_ext::MASK_RAGGED_HOLES}) {
++            test_cases.emplace_back(new test_flash_attn_ext(
++                256, 256, 8, {2, nseq}, 512, 1, true, false, 0.0f, 0.0f,
++                GGML_PREC_F32, GGML_TYPE_F16, GGML_TYPE_F16, {0, 1, 2, 3}, profile));
++        }
++    }
++
+     return test_cases;
+ }
+ #ifdef _MSC_VER
+@@ -9719,6 +9769,17 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_perf() {
+         }
+     }
+ 
++
++    for (int64_t nseq : {8, 16, 32}) {
++        for (auto profile : {test_flash_attn_ext::MASK_ALL_VALID,
++                             test_flash_attn_ext::MASK_RAGGED_PREFIX,
++                             test_flash_attn_ext::MASK_RAGGED_HOLES}) {
++            test_cases.emplace_back(new test_flash_attn_ext(
++                256, 256, 8, {2, nseq}, 512, 1, true, false, 0.0f, 0.0f,
++                GGML_PREC_F32, GGML_TYPE_F16, GGML_TYPE_F16, {0, 1, 2, 3}, profile));
++        }
++    }
++
+     for (int col : {8192, 16384, 32768, 65536, 131072, 262144, 524288}) {
+         for (int rows : {1, 4, 16}){
+             test_cases.emplace_back(new test_soft_max(GGML_TYPE_F32, {col, rows, 1, 1}, false,  false,  GGML_TYPE_F32, {1, 1}, 1.0f, 0.0f));

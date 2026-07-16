@@ -1,0 +1,9 @@
+{
+  "first_attempted": 50331648,
+  "first_written": 50331648,
+  "first_durable": 16777216,
+  "waste_bytes": 33554432,
+  "resume_offset": 20971520,
+  "retry_bytes": 33554432,
+  "resumed_attempted": 443142656
+}

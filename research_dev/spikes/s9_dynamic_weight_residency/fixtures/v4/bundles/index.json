@@ -1,0 +1,261 @@
+[
+  {
+    "file": "valid/dispatchable.json",
+    "expect": "valid",
+    "expected_codes": []
+  },
+  {
+    "file": "invalid/device_absent.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_DEVICE_ABSENT",
+      "E_GATE_UNDERIVED",
+      "E_LEDGER_DERIVED"
+    ]
+  },
+  {
+    "file": "invalid/device_boot_mismatch.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_DEVICE_STALE",
+      "E_GATE_UNDERIVED"
+    ]
+  },
+  {
+    "file": "invalid/device_status_seq_mismatch.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_DEVICE_STALE",
+      "E_GATE_UNDERIVED"
+    ]
+  },
+  {
+    "file": "invalid/device_draining.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_DEVICE_INELIGIBLE"
+    ]
+  },
+  {
+    "file": "invalid/device_thermal_ineligible.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_DEVICE_INELIGIBLE"
+    ]
+  },
+  {
+    "file": "invalid/device_backend_unsupported.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_DEVICE_INELIGIBLE"
+    ]
+  },
+  {
+    "file": "invalid/lease_expired.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_LEASE_EXPIRED"
+    ]
+  },
+  {
+    "file": "invalid/backend_build_mismatch.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_IDENTITY_MISMATCH"
+    ]
+  },
+  {
+    "file": "invalid/island_graph_mismatch.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_IDENTITY_MISMATCH"
+    ]
+  },
+  {
+    "file": "invalid/pi_source_foreign.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_PI_SOURCE"
+    ]
+  },
+  {
+    "file": "invalid/bulk_frame_stale_epoch.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_FRAME_EPOCH"
+    ]
+  },
+  {
+    "file": "invalid/exec_frame_stale_route.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_FRAME_EPOCH"
+    ]
+  },
+  {
+    "file": "invalid/ticket_issued_boot_unbound.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_DIGEST_MISMATCH",
+      "E_FRAME_EPOCH"
+    ]
+  },
+  {
+    "file": "invalid/state_mutation_seq_unbound.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_DIGEST_MISMATCH"
+    ]
+  },
+  {
+    "file": "invalid/state_reservation_exceeds_ledger.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_GATE_UNDERIVED",
+      "E_LEDGER_DERIVED"
+    ]
+  },
+  {
+    "file": "invalid/ledger_zero_live.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_GATE_UNDERIVED",
+      "E_LEDGER_DERIVED"
+    ]
+  },
+  {
+    "file": "invalid/result_frame_stale.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_FRAME_EPOCH"
+    ]
+  },
+  {
+    "file": "invalid/island_no_manifest.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_IDENTITY_MISMATCH"
+    ]
+  },
+  {
+    "file": "invalid/ledger_diless_device.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_LEDGER_DERIVED"
+    ]
+  },
+  {
+    "file": "invalid/rc_footprint_exceeds_lpddr.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_LEDGER_DERIVED"
+    ]
+  },
+  {
+    "file": "invalid/rl_weights_mismatch.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_LEDGER_DERIVED"
+    ]
+  },
+  {
+    "file": "invalid/pi_arch_foreign.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_IDENTITY_MISMATCH"
+    ]
+  },
+  {
+    "file": "invalid/pi_layout_foreign.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_IDENTITY_MISMATCH"
+    ]
+  },
+  {
+    "file": "invalid/pi_soc_foreign.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_IDENTITY_MISMATCH"
+    ]
+  },
+  {
+    "file": "invalid/di_soc_mismatch.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_IDENTITY_MISMATCH"
+    ]
+  },
+  {
+    "file": "invalid/duplicate_dispatch_request.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_DISPATCH_MISMATCH"
+    ]
+  },
+  {
+    "file": "invalid/manifest_compatible_soc.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_IDENTITY_MISMATCH"
+    ]
+  },
+  {
+    "file": "invalid/image_class_backend.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_IDENTITY_MISMATCH"
+    ]
+  },
+  {
+    "file": "invalid/backend_build_not_in_manifest.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_IDENTITY_MISMATCH"
+    ]
+  },
+  {
+    "file": "invalid/rl_derived_phantom.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_LEDGER_DERIVED"
+    ]
+  },
+  {
+    "file": "invalid/alloc_underreservation.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_GATE_UNDERIVED",
+      "E_LEDGER_DERIVED"
+    ]
+  },
+  {
+    "file": "invalid/duplicate_allocation.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_GATE_UNDERIVED",
+      "E_LEDGER_DERIVED"
+    ]
+  },
+  {
+    "file": "invalid/dtype_mismatch.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_IDENTITY_MISMATCH"
+    ]
+  },
+  {
+    "file": "invalid/cert_metric_mismatch.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_CORRECTNESS_BINDING"
+    ]
+  },
+  {
+    "file": "invalid/ticket_issued_boot_device.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_FRAME_EPOCH"
+    ]
+  }
+]

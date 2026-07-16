@@ -1,0 +1,48 @@
+{
+  "attention_class": "mixed",
+  "attention_class_by_layer": [
+    "causal_local_swa",
+    "causal_local_swa",
+    "causal_local_swa",
+    "causal_global"
+  ],
+  "boundary_in": {
+    "tensors": [
+      {
+        "dtype": "f16",
+        "max_bytes": 100,
+        "name": "x"
+      }
+    ]
+  },
+  "boundary_out": {
+    "tensors": [
+      {
+        "dtype": "f32",
+        "max_bytes": 100,
+        "name": "y"
+      }
+    ]
+  },
+  "default_state_policy": "sticky",
+  "descriptor_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "graph_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "island_id": "i",
+  "layer_range": {
+    "end": 4,
+    "n_layer_total": 48,
+    "start": 0
+  },
+  "model_id": "gemma-4-12b",
+  "model_version": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "op_classes": [
+    "llm_decode"
+  ],
+  "replay_boundary": "token_history",
+  "schema_version": 1,
+  "service_class": "generation",
+  "supported_routes": [
+    "OP15/HTP0"
+  ],
+  "weight_set_id": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+}

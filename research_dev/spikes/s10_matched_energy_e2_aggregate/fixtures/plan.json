@@ -1,0 +1,204 @@
+{
+  "aggregate_method": "SUM_ALL_PAIRS_V1",
+  "board_uuids": [
+    "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f"
+  ],
+  "build_revision": "synthetic-e2a-build-0",
+  "chain_id": "chain.s10.e2a.synthetic",
+  "declared_order": [
+    "OPTIMIZED_SERVER_ONLY_CONTROL",
+    "Q_PIM_TREATMENT",
+    "Q_PIM_TREATMENT",
+    "OPTIMIZED_SERVER_ONLY_CONTROL",
+    "OPTIMIZED_SERVER_ONLY_CONTROL",
+    "Q_PIM_TREATMENT",
+    "Q_PIM_TREATMENT",
+    "OPTIMIZED_SERVER_ONLY_CONTROL",
+    "OPTIMIZED_SERVER_ONLY_CONTROL",
+    "Q_PIM_TREATMENT",
+    "Q_PIM_TREATMENT",
+    "OPTIMIZED_SERVER_ONLY_CONTROL",
+    "OPTIMIZED_SERVER_ONLY_CONTROL",
+    "Q_PIM_TREATMENT",
+    "Q_PIM_TREATMENT",
+    "OPTIMIZED_SERVER_ONLY_CONTROL"
+  ],
+  "device_identity": "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f",
+  "excluded_rails": [
+    "SERVER/USB_VBUS",
+    "PHONE/BATTERY"
+  ],
+  "experiment_identity": "s10.e2a.mechanics",
+  "gate_constants_digest": "331ab6bd4a9dfcbe1526d7d59622e749582998c3fbabb51dbea4b636c811eb91",
+  "included_rails": [
+    "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f/BOARD"
+  ],
+  "instrument_identity": "synthetic-meter-0",
+  "instrument_kind": "SYNTHETIC",
+  "kind": "PreRunPlan",
+  "max_attempts_per_slot": 1,
+  "model_digest": "24f2b6068e47caa3df21ed535e26c8d299b4e933367a2ece137e710f31739dc8",
+  "n_pairs": 8,
+  "order_digest": "a820622cb59b956243fdbf5c31984107172784f63d462e9dd96fcec6619507ca",
+  "plan_id": "plan.s10.e2a.synthetic",
+  "policy_digest_control": "ded3a74d106b9aa02407a840d8d5d985260968fcaed3ca1d05c6f1ca5f287a4f",
+  "policy_digest_treatment": "5f2695d6035857bf89327b912bbb04864ebfa4f478c1ae527097c6a77a91909c",
+  "record_sha256": "f24fe286edf9a8d458dbe5fd6d5dff6cf14072596f731331231d7917e8161d40",
+  "request_set_manifest_sha256": "0c748f658f1c8db04f1c392e2429be7b1703df466cfe88312f37f968b80834fc",
+  "sampler_digest": "55dc7d0db9bb2df80997c13b264881a5e1a5d738b2b03acf1b20bdcdfb1620a0",
+  "schema_version": 2,
+  "scope": "GPU_BOARD",
+  "set_id": "set.s10.e2a.synthetic",
+  "slo_policy_digest": "17972eecf35e4c0bf8b8238c232753dd60adc68e112c0d9b40a7813cefd4a192",
+  "slots": [
+    {
+      "expected_entry_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "expected_exit_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "ordinal_in_pair": 0,
+      "pair_index": 0,
+      "role": "OPTIMIZED_SERVER_ONLY_CONTROL",
+      "run_nonce": "run.tl.slot00",
+      "slot_index": 0
+    },
+    {
+      "expected_entry_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "expected_exit_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "ordinal_in_pair": 1,
+      "pair_index": 0,
+      "role": "Q_PIM_TREATMENT",
+      "run_nonce": "run.tl.slot01",
+      "slot_index": 1
+    },
+    {
+      "expected_entry_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "expected_exit_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "ordinal_in_pair": 0,
+      "pair_index": 1,
+      "role": "Q_PIM_TREATMENT",
+      "run_nonce": "run.tl.slot02",
+      "slot_index": 2
+    },
+    {
+      "expected_entry_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "expected_exit_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "ordinal_in_pair": 1,
+      "pair_index": 1,
+      "role": "OPTIMIZED_SERVER_ONLY_CONTROL",
+      "run_nonce": "run.tl.slot03",
+      "slot_index": 3
+    },
+    {
+      "expected_entry_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "expected_exit_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "ordinal_in_pair": 0,
+      "pair_index": 2,
+      "role": "OPTIMIZED_SERVER_ONLY_CONTROL",
+      "run_nonce": "run.tl.slot04",
+      "slot_index": 4
+    },
+    {
+      "expected_entry_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "expected_exit_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "ordinal_in_pair": 1,
+      "pair_index": 2,
+      "role": "Q_PIM_TREATMENT",
+      "run_nonce": "run.tl.slot05",
+      "slot_index": 5
+    },
+    {
+      "expected_entry_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "expected_exit_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "ordinal_in_pair": 0,
+      "pair_index": 3,
+      "role": "Q_PIM_TREATMENT",
+      "run_nonce": "run.tl.slot06",
+      "slot_index": 6
+    },
+    {
+      "expected_entry_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "expected_exit_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "ordinal_in_pair": 1,
+      "pair_index": 3,
+      "role": "OPTIMIZED_SERVER_ONLY_CONTROL",
+      "run_nonce": "run.tl.slot07",
+      "slot_index": 7
+    },
+    {
+      "expected_entry_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "expected_exit_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "ordinal_in_pair": 0,
+      "pair_index": 4,
+      "role": "OPTIMIZED_SERVER_ONLY_CONTROL",
+      "run_nonce": "run.tl.slot08",
+      "slot_index": 8
+    },
+    {
+      "expected_entry_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "expected_exit_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "ordinal_in_pair": 1,
+      "pair_index": 4,
+      "role": "Q_PIM_TREATMENT",
+      "run_nonce": "run.tl.slot09",
+      "slot_index": 9
+    },
+    {
+      "expected_entry_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "expected_exit_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "ordinal_in_pair": 0,
+      "pair_index": 5,
+      "role": "Q_PIM_TREATMENT",
+      "run_nonce": "run.tl.slot10",
+      "slot_index": 10
+    },
+    {
+      "expected_entry_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "expected_exit_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "ordinal_in_pair": 1,
+      "pair_index": 5,
+      "role": "OPTIMIZED_SERVER_ONLY_CONTROL",
+      "run_nonce": "run.tl.slot11",
+      "slot_index": 11
+    },
+    {
+      "expected_entry_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "expected_exit_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "ordinal_in_pair": 0,
+      "pair_index": 6,
+      "role": "OPTIMIZED_SERVER_ONLY_CONTROL",
+      "run_nonce": "run.tl.slot12",
+      "slot_index": 12
+    },
+    {
+      "expected_entry_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "expected_exit_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "ordinal_in_pair": 1,
+      "pair_index": 6,
+      "role": "Q_PIM_TREATMENT",
+      "run_nonce": "run.tl.slot13",
+      "slot_index": 13
+    },
+    {
+      "expected_entry_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "expected_exit_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "ordinal_in_pair": 0,
+      "pair_index": 7,
+      "role": "Q_PIM_TREATMENT",
+      "run_nonce": "run.tl.slot14",
+      "slot_index": 14
+    },
+    {
+      "expected_entry_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "expected_exit_state_digest": "19d5be7967e39c79d7e3a117176cc2b51c1b1871499aa11e4eacb0678c744973",
+      "ordinal_in_pair": 1,
+      "pair_index": 7,
+      "role": "OPTIMIZED_SERVER_ONLY_CONTROL",
+      "run_nonce": "run.tl.slot15",
+      "slot_index": 15
+    }
+  ],
+  "source_revision": "933c722f6",
+  "tokenizer_digest": "506b9430fcaca1f74ff6232b9658164b8957e604ebb5a9b906a4a4123f077ee0",
+  "trace_digest": "edbc9fb8c78b14b155f3f81b5fb02fd95b24f8f00a6c51001e6a593bbeb38b83",
+  "warmup_count": 0,
+  "workload_digest": "d5fc40efce7c5d511d2cdc724f2e2857e21bea8dd3bab648916b81e63c86f7f8"
+}

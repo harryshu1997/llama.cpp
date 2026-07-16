@@ -1,0 +1,26 @@
+{
+  "actual_finish_us": null,
+  "actual_queue_us": null,
+  "actual_start_us": null,
+  "candidate_actions": [
+    "a1"
+  ],
+  "fallback_taken": false,
+  "hard_gate_failures": {
+    "a1": [
+      "not_resident"
+    ]
+  },
+  "island_id": "i",
+  "objective_score": null,
+  "predicted_finish_us": null,
+  "prediction_error": null,
+  "request_id": "req1",
+  "schema_version": 1,
+  "selected_action_id": null,
+  "selected_reason": "server_cheaper",
+  "status": "DRAFT_BLOCKED_BEFORE_V0C",
+  "t_us": 0,
+  "tie_break_key": null,
+  "transfer_us": null
+}

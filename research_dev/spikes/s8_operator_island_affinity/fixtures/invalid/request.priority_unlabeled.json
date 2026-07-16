@@ -1,0 +1,24 @@
+{
+  "audio_ms": 0,
+  "cache_keys": [],
+  "deadline_provenance": "none",
+  "deadline_us": null,
+  "event_id": "burstgpt-v2:1",
+  "images": 0,
+  "input_tokens": 512,
+  "model_class": "large_text_generation",
+  "observed_latency_us": null,
+  "output_tokens": 96,
+  "priority_class": "x",
+  "priority_provenance": "none",
+  "provenance": "real",
+  "retrieved_chunks": 0,
+  "schema_version": 1,
+  "service": "conversation_generation",
+  "session_id": null,
+  "source": "burstgpt-v2",
+  "source_fields": {
+    "burstgpt_failed": false
+  },
+  "t_us": 0
+}

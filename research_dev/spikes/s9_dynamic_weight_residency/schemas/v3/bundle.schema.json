@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s9/schemas/v3/bundle.schema.json",
+  "title": "S9-V0-R record bundle envelope (v3)",
+  "$comment": "Self-contained ENVELOPE only. A bundle is a versioned collection of content-addressed records describing one dispatchable configuration. This schema checks the envelope shape and that every record is an object carrying a string kind + integer schema_version; the strict bundle validator (bundle_validate.py) then routes each record to its (kind, schema_version) schema, recomputes digests, checks cross-record links + dispatch tuples, and rejects unknown kinds/versions, duplicate JSON keys, missing records, and mismatched digests with stable error codes. bundle_version is const 2 so a v1 record set can never be reinterpreted under v2 rules.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "integer", "const": 3 },
+    "kind": { "type": "string", "const": "bundle" },
+    "bundle_version": { "type": "integer", "const": 3 },
+    "bundle_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "records": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100000,
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "schema_version": { "type": "integer", "minimum": 1, "maximum": 1000000 }
+        },
+        "required": ["kind", "schema_version"]
+      }
+    }
+  },
+  "required": ["schema_version", "kind", "bundle_version", "bundle_id", "records"]
+}

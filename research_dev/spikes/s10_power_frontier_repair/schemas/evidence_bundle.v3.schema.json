@@ -1,0 +1,362 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "s10-v0r-evidence-bundle-v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "bundle_id",
+    "provenance",
+    "evaluation_timestamp_utc",
+    "artifacts",
+    "correctness",
+    "routes",
+    "boundaries",
+    "thermal",
+    "power",
+    "bundle_sha256"
+  ],
+  "$defs": {
+    "ident": {"type": "string", "minLength": 1, "maxLength": 256},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "rail_id": {"type": "string", "pattern": "^[A-Z0-9_.-]+/[A-Z0-9_.-]+$",
+                "maxLength": 256},
+    "uint": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+    "positive_uint": {"type": "integer", "minimum": 1,
+                      "maximum": 9007199254740991},
+    "status": {"enum": ["PASS", "FAIL", "UNKNOWN", "INELIGIBLE"]},
+    "artifact_ids": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/ident"}
+    },
+    "shape_envelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tokens_min", "tokens_max", "kv_min", "kv_max"],
+      "properties": {
+        "tokens_min": {"$ref": "#/$defs/uint"},
+        "tokens_max": {"$ref": "#/$defs/uint"},
+        "kv_min": {"$ref": "#/$defs/uint"},
+        "kv_max": {"$ref": "#/$defs/uint"}
+      }
+    }
+  },
+  "properties": {
+    "schema_version": {"const": 3},
+    "bundle_id": {"$ref": "#/$defs/ident"},
+    "provenance": {"enum": ["MEASURED", "MECHANICS_ONLY"]},
+    "evaluation_timestamp_utc": {
+      "type": "string",
+      "pattern": "^[0-9]{8}T[0-9]{6}Z$"
+    },
+    "bundle_sha256": {"$ref": "#/$defs/sha256"},
+    "artifacts": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "artifact_id", "kind", "path", "sha256", "producing_tool", "command",
+          "source_revision", "build_revision", "device_id", "backend_build",
+          "timestamp_utc", "validity_us", "provenance"
+        ],
+        "properties": {
+          "artifact_id": {"$ref": "#/$defs/ident"},
+          "kind": {"enum": ["LOG", "JSON", "CSV", "SQLITE", "BINARY", "NOTE"]},
+          "path": {"$ref": "#/$defs/ident"},
+          "sha256": {"$ref": "#/$defs/sha256"},
+          "producing_tool": {"$ref": "#/$defs/ident"},
+          "command": {"type": "string", "minLength": 1, "maxLength": 1024},
+          "source_revision": {"$ref": "#/$defs/ident"},
+          "build_revision": {"$ref": "#/$defs/ident"},
+          "device_id": {"$ref": "#/$defs/ident"},
+          "backend_build": {"$ref": "#/$defs/ident"},
+          "timestamp_utc": {"type": "string", "pattern": "^[0-9]{8}T[0-9]{6}Z$"},
+          "validity_us": {"$ref": "#/$defs/positive_uint"},
+          "provenance": {"enum": ["MEASURED", "SYNTHETIC", "DERIVED"]}
+        }
+      }
+    },
+    "correctness": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "record_id", "kind", "record_version", "island_id", "graph_id",
+          "model_id", "weight_set_id", "shape_envelope", "device_id",
+          "backend_build", "kernel_id", "route_kind", "reference_route",
+          "metric", "threshold_ppm", "observed_ppm", "no_fallback_proof",
+          "verdict", "artifacts", "status", "reason_code", "record_sha256"
+        ],
+        "properties": {
+          "record_id": {"$ref": "#/$defs/ident"},
+          "kind": {"const": "CorrectnessCertificate"},
+          "record_version": {"const": 3},
+          "island_id": {"$ref": "#/$defs/ident"},
+          "graph_id": {"$ref": "#/$defs/ident"},
+          "model_id": {"$ref": "#/$defs/ident"},
+          "weight_set_id": {"$ref": "#/$defs/ident"},
+          "shape_envelope": {"$ref": "#/$defs/shape_envelope"},
+          "device_id": {"$ref": "#/$defs/ident"},
+          "backend_build": {"$ref": "#/$defs/ident"},
+          "kernel_id": {"$ref": "#/$defs/ident"},
+          "route_kind": {"enum": ["ACCELERATED", "REFERENCE"]},
+          "reference_route": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["reference_kind", "device_id", "backend_build",
+                         "kernel_id", "artifact_id"],
+            "properties": {
+              "reference_kind": {"const": "CPU_FP32"},
+              "device_id": {"const": "REFERENCE_CPU"},
+              "backend_build": {"$ref": "#/$defs/ident"},
+              "kernel_id": {"$ref": "#/$defs/ident"},
+              "artifact_id": {"$ref": "#/$defs/ident"}
+            }
+          },
+          "metric": {"enum": ["REL_L2", "MAX_ABS", "EXACT"]},
+          "threshold_ppm": {"$ref": "#/$defs/uint"},
+          "observed_ppm": {"$ref": "#/$defs/uint"},
+          "no_fallback_proof": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["method", "artifact_id", "fallback_ops_observed"],
+            "properties": {
+              "method": {"enum": ["OP_TRACE", "BACKEND_ASSERT", "NONE"]},
+              "artifact_id": {"$ref": "#/$defs/ident"},
+              "fallback_ops_observed": {"$ref": "#/$defs/uint"}
+            }
+          },
+          "verdict": {"enum": ["PASS", "FAIL", "UNKNOWN"]},
+          "artifacts": {"$ref": "#/$defs/artifact_ids"},
+          "status": {"$ref": "#/$defs/status"},
+          "reason_code": {"$ref": "#/$defs/ident"},
+          "record_sha256": {"$ref": "#/$defs/sha256"}
+        },
+        "allOf": [
+          {
+            "if": {"properties": {"metric": {"const": "EXACT"}}},
+            "then": {
+              "properties": {
+                "threshold_ppm": {"const": 0},
+                "observed_ppm": {"const": 0}
+              }
+            }
+          }
+        ]
+      }
+    },
+    "routes": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "record_id", "kind", "record_version", "island_id", "model_id",
+          "weight_set_id", "graph_id", "layer_class", "attention_class",
+          "device_id", "backend_build", "kernel_id", "boundary_id",
+          "shape_envelope",
+          "batch_size", "latency_scope", "latency", "process_count", "sample_count",
+          "memory_bytes", "h2d_bytes", "d2h_bytes", "correctness_id",
+          "thermal_id", "artifacts", "status", "reason_code", "record_sha256"
+        ],
+        "properties": {
+          "record_id": {"$ref": "#/$defs/ident"},
+          "kind": {"const": "RouteProfile"},
+          "record_version": {"const": 3},
+          "island_id": {"$ref": "#/$defs/ident"},
+          "model_id": {"$ref": "#/$defs/ident"},
+          "weight_set_id": {"$ref": "#/$defs/ident"},
+          "graph_id": {"$ref": "#/$defs/ident"},
+          "layer_class": {"$ref": "#/$defs/ident"},
+          "attention_class": {"$ref": "#/$defs/ident"},
+          "device_id": {"$ref": "#/$defs/ident"},
+          "backend_build": {"$ref": "#/$defs/ident"},
+          "kernel_id": {"$ref": "#/$defs/ident"},
+          "boundary_id": {"$ref": "#/$defs/ident"},
+          "shape_envelope": {"$ref": "#/$defs/shape_envelope"},
+          "batch_size": {"type": "integer", "minimum": 1, "maximum": 4096},
+          "latency_scope": {"const": "END_TO_END"},
+          "latency": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["p50_us", "p95_us", "max_us"],
+            "properties": {
+              "p50_us": {"type": "integer", "minimum": 1},
+              "p95_us": {"type": "integer", "minimum": 1},
+              "max_us": {"type": "integer", "minimum": 1}
+            }
+          },
+          "process_count": {"$ref": "#/$defs/uint"},
+          "sample_count": {"$ref": "#/$defs/uint"},
+          "memory_bytes": {"$ref": "#/$defs/uint"},
+          "h2d_bytes": {"$ref": "#/$defs/uint"},
+          "d2h_bytes": {"$ref": "#/$defs/uint"},
+          "correctness_id": {"$ref": "#/$defs/ident"},
+          "thermal_id": {"$ref": "#/$defs/ident"},
+          "artifacts": {"$ref": "#/$defs/artifact_ids"},
+          "status": {"$ref": "#/$defs/status"},
+          "reason_code": {"$ref": "#/$defs/ident"},
+          "record_sha256": {"$ref": "#/$defs/sha256"}
+        }
+      }
+    },
+    "boundaries": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "record_id", "kind", "record_version", "island_id", "model_id",
+          "weight_set_id", "graph_id", "device_id", "backend_build", "direction",
+          "transport_domain", "h2d_bytes", "d2h_bytes", "output_bytes", "transfer_us",
+          "verification_us", "materialization_us", "prepare_us", "warmup_us",
+          "boundary_wall_us", "contention_state", "energy_nj", "energy_scope", "process_count",
+          "sample_count", "artifacts", "status", "reason_code", "record_sha256"
+        ],
+        "properties": {
+          "record_id": {"$ref": "#/$defs/ident"},
+          "kind": {"const": "BoundaryProfile"},
+          "record_version": {"const": 3},
+          "island_id": {"$ref": "#/$defs/ident"},
+          "model_id": {"$ref": "#/$defs/ident"},
+          "weight_set_id": {"$ref": "#/$defs/ident"},
+          "graph_id": {"$ref": "#/$defs/ident"},
+          "device_id": {"$ref": "#/$defs/ident"},
+          "backend_build": {"$ref": "#/$defs/ident"},
+          "direction": {
+            "enum": ["HOST_TO_PHONE", "PHONE_TO_HOST", "HOST_TO_GPU",
+                     "GPU_TO_HOST", "INTRA_HOST"]
+          },
+          "transport_domain": {"enum": ["USB3", "PCIE", "SHARED_MEMORY", "NONE"]},
+          "h2d_bytes": {"$ref": "#/$defs/uint"},
+          "d2h_bytes": {"$ref": "#/$defs/uint"},
+          "output_bytes": {"$ref": "#/$defs/uint"},
+          "transfer_us": {"$ref": "#/$defs/uint"},
+          "verification_us": {"$ref": "#/$defs/uint"},
+          "materialization_us": {"$ref": "#/$defs/uint"},
+          "prepare_us": {"$ref": "#/$defs/uint"},
+          "warmup_us": {"$ref": "#/$defs/uint"},
+          "boundary_wall_us": {"$ref": "#/$defs/uint"},
+          "contention_state": {"enum": ["ISOLATED", "CONTENDED"]},
+          "energy_nj": {"$ref": "#/$defs/uint"},
+          "energy_scope": {"enum": ["GPU_BOARD", "SERVER_WALL", "TOTAL_WALL", "NONE"]},
+          "process_count": {"$ref": "#/$defs/uint"},
+          "sample_count": {"$ref": "#/$defs/uint"},
+          "artifacts": {"$ref": "#/$defs/artifact_ids"},
+          "status": {"$ref": "#/$defs/status"},
+          "reason_code": {"$ref": "#/$defs/ident"},
+          "record_sha256": {"$ref": "#/$defs/sha256"}
+        }
+      }
+    },
+    "thermal": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "record_id", "kind", "record_version", "device_id", "backend_build",
+          "thermal_state",
+          "envelope", "duration_us", "co_runners", "slowdown_ppm", "validity_us",
+          "artifacts", "status", "reason_code", "record_sha256"
+        ],
+        "properties": {
+          "record_id": {"$ref": "#/$defs/ident"},
+          "kind": {"const": "ThermalInterferenceProfile"},
+          "record_version": {"const": 3},
+          "device_id": {"$ref": "#/$defs/ident"},
+          "backend_build": {"$ref": "#/$defs/ident"},
+          "thermal_state": {"enum": ["COLD", "STEADY", "THROTTLED", "UNKNOWN"]},
+          "envelope": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["temp_min_c", "temp_max_c"],
+            "properties": {
+              "temp_min_c": {"type": "integer", "minimum": -50, "maximum": 150},
+              "temp_max_c": {"type": "integer", "minimum": -50, "maximum": 150}
+            }
+          },
+          "duration_us": {"$ref": "#/$defs/positive_uint"},
+          "co_runners": {
+            "type": "array",
+            "maxItems": 16,
+            "uniqueItems": true,
+            "items": {"$ref": "#/$defs/rail_id"}
+          },
+          "slowdown_ppm": {"$ref": "#/$defs/uint"},
+          "validity_us": {"$ref": "#/$defs/uint"},
+          "artifacts": {"$ref": "#/$defs/artifact_ids"},
+          "status": {"$ref": "#/$defs/status"},
+          "reason_code": {"$ref": "#/$defs/ident"},
+          "record_sha256": {"$ref": "#/$defs/sha256"}
+        }
+      }
+    },
+    "power": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "record_id", "kind", "record_version", "scope", "accounting_model", "device_id",
+          "instrument_kind", "instrument", "synchronization", "sample_rate_hz",
+          "sample_count",
+          "idle_mw", "active_mw", "wake_us", "idle_entry_us", "transition_nj",
+          "uncertainty_mw", "included_rails", "excluded_rails", "validity_us",
+          "artifacts", "status", "reason_code", "record_sha256"
+        ],
+        "properties": {
+          "record_id": {"$ref": "#/$defs/ident"},
+          "kind": {"const": "PowerProfile"},
+          "record_version": {"const": 3},
+          "scope": {"enum": ["GPU_BOARD", "SERVER_WALL", "TOTAL_WALL"]},
+          "accounting_model": {"enum": ["SERVER_PSTATE", "ACTIVE_ONLY"]},
+          "device_id": {"$ref": "#/$defs/ident"},
+          "instrument_kind": {
+            "enum": ["SYNTHETIC", "NVML", "EXTERNAL_SERVER_METER",
+                     "EXTERNAL_TOTAL_METER", "COMPONENT_RAIL_METER"]
+          },
+          "instrument": {"$ref": "#/$defs/ident"},
+          "synchronization": {"enum": ["NTP", "PTP", "SHARED_CLOCK", "NONE"]},
+          "sample_rate_hz": {"$ref": "#/$defs/uint"},
+          "sample_count": {"$ref": "#/$defs/uint"},
+          "idle_mw": {"$ref": "#/$defs/uint"},
+          "active_mw": {"$ref": "#/$defs/uint"},
+          "wake_us": {"$ref": "#/$defs/uint"},
+          "idle_entry_us": {"$ref": "#/$defs/uint"},
+          "transition_nj": {"$ref": "#/$defs/uint"},
+          "uncertainty_mw": {"$ref": "#/$defs/uint"},
+          "included_rails": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 32,
+            "uniqueItems": true,
+            "items": {"$ref": "#/$defs/rail_id"}
+          },
+          "excluded_rails": {
+            "type": "array",
+            "maxItems": 32,
+            "uniqueItems": true,
+            "items": {"$ref": "#/$defs/rail_id"}
+          },
+          "validity_us": {"$ref": "#/$defs/uint"},
+          "artifacts": {"$ref": "#/$defs/artifact_ids"},
+          "status": {"$ref": "#/$defs/status"},
+          "reason_code": {"$ref": "#/$defs/ident"},
+          "record_sha256": {"$ref": "#/$defs/sha256"}
+        }
+      }
+    }
+  }
+}

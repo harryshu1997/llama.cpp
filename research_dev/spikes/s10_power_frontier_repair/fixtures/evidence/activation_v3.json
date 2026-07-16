@@ -1,0 +1,273 @@
+{
+  "activation_mem_bound_bytes": 150,
+  "batch_profiles": {},
+  "devices": {
+    "OP15": {
+      "active_mw": 2000,
+      "kind": "phone"
+    },
+    "SERVER": {
+      "active_mw": 300000,
+      "kind": "server"
+    }
+  },
+  "evidence": {
+    "bindings": [
+      {
+        "field": "memory_bytes",
+        "record_id": "route.capacity.150",
+        "record_sha256": "d49623f2a4a2ef8f223b5bc7d53ecb6d6849f2f5483f5270d4104653bd0887ba",
+        "target": "activation_mem_bound_bytes",
+        "value": 150
+      },
+      {
+        "field": "idle_mw",
+        "record_id": "pwr.server.zero",
+        "record_sha256": "35a0ad89702a4c127d380db527859a5e399894a891f22b9b5f5794c512785e90",
+        "target": "server_power.p8_mw",
+        "value": 25000
+      },
+      {
+        "field": "active_mw",
+        "record_id": "pwr.server.zero",
+        "record_sha256": "35a0ad89702a4c127d380db527859a5e399894a891f22b9b5f5794c512785e90",
+        "target": "server_power.p0_mw",
+        "value": 300000
+      },
+      {
+        "field": "wake_us",
+        "record_id": "pwr.server.zero",
+        "record_sha256": "35a0ad89702a4c127d380db527859a5e399894a891f22b9b5f5794c512785e90",
+        "target": "server_power.wake_us",
+        "value": 0
+      },
+      {
+        "field": "idle_entry_us",
+        "record_id": "pwr.server.zero",
+        "record_sha256": "35a0ad89702a4c127d380db527859a5e399894a891f22b9b5f5794c512785e90",
+        "target": "server_power.idle_entry_us",
+        "value": 0
+      },
+      {
+        "field": "transition_nj",
+        "record_id": "pwr.server.zero",
+        "record_sha256": "35a0ad89702a4c127d380db527859a5e399894a891f22b9b5f5794c512785e90",
+        "target": "server_power.transition_nj",
+        "value": 0
+      },
+      {
+        "field": "active_mw",
+        "record_id": "pwr.server.zero",
+        "record_sha256": "35a0ad89702a4c127d380db527859a5e399894a891f22b9b5f5794c512785e90",
+        "target": "devices.SERVER.active_mw",
+        "value": 300000
+      },
+      {
+        "field": "active_mw",
+        "record_id": "pwr.op15",
+        "record_sha256": "81983016018d72398b9dece33ff4ef23b4a5630ae138896457b1a9b7d842019b",
+        "target": "devices.OP15.active_mw",
+        "value": 2000
+      },
+      {
+        "field": "output_bytes",
+        "record_id": "bnd.a.p0",
+        "record_sha256": "7cfe1a58da2c2220cbefe66835ed566b0570ae94ee38690acae80ab489eb44d5",
+        "target": "nodes.p0.output_bytes",
+        "value": 100
+      },
+      {
+        "field": "latency.p95_us",
+        "record_id": "route.a.p0.server",
+        "record_sha256": "a83f4aa960b344d7bcdcade35f2421c5f845169d260b7740ad3102420435d1cd",
+        "target": "nodes.p0.routes.SERVER.duration_us",
+        "value": 4
+      },
+      {
+        "field": "energy_nj",
+        "record_id": "bnd.a.p0",
+        "record_sha256": "7cfe1a58da2c2220cbefe66835ed566b0570ae94ee38690acae80ab489eb44d5",
+        "target": "nodes.p0.routes.SERVER.extra_energy_nj",
+        "value": 0
+      },
+      {
+        "field": "output_bytes",
+        "record_id": "bnd.a.c0",
+        "record_sha256": "df2ef07576826b999c29c523320882862f42ec4096d2097f882f64fe52870d4f",
+        "target": "nodes.c0.output_bytes",
+        "value": 0
+      },
+      {
+        "field": "latency.p95_us",
+        "record_id": "route.a.c0.op15",
+        "record_sha256": "a7e4c7e759f17b59485d39e293affa5fec3eb7a37f71f7e10457db4d04b20354",
+        "target": "nodes.c0.routes.OP15.duration_us",
+        "value": 6
+      },
+      {
+        "field": "energy_nj",
+        "record_id": "bnd.a.c0",
+        "record_sha256": "df2ef07576826b999c29c523320882862f42ec4096d2097f882f64fe52870d4f",
+        "target": "nodes.c0.routes.OP15.extra_energy_nj",
+        "value": 0
+      },
+      {
+        "field": "output_bytes",
+        "record_id": "bnd.a.p1",
+        "record_sha256": "7ec19d89209495633912c481409a2c79aed7dde23d891d9b2fbfb439b87b54d6",
+        "target": "nodes.p1.output_bytes",
+        "value": 100
+      },
+      {
+        "field": "latency.p95_us",
+        "record_id": "route.a.p1.server",
+        "record_sha256": "bde9f7b550cd8c8fdb93ac9ac5a414aa13f5481ca0549327f966be0e98b5b983",
+        "target": "nodes.p1.routes.SERVER.duration_us",
+        "value": 4
+      },
+      {
+        "field": "energy_nj",
+        "record_id": "bnd.a.p1",
+        "record_sha256": "7ec19d89209495633912c481409a2c79aed7dde23d891d9b2fbfb439b87b54d6",
+        "target": "nodes.p1.routes.SERVER.extra_energy_nj",
+        "value": 0
+      },
+      {
+        "field": "output_bytes",
+        "record_id": "bnd.a.c1",
+        "record_sha256": "75209a5716e7371c1f4ee2c46f532fab525ab75469d64ae2a3c5a5d624463893",
+        "target": "nodes.c1.output_bytes",
+        "value": 0
+      },
+      {
+        "field": "latency.p95_us",
+        "record_id": "route.a.c1.op15",
+        "record_sha256": "77d03fcad8efb8a4b877158b42d7d81d06e47bc20d2fd32a593850b3ba1a794e",
+        "target": "nodes.c1.routes.OP15.duration_us",
+        "value": 6
+      },
+      {
+        "field": "energy_nj",
+        "record_id": "bnd.a.c1",
+        "record_sha256": "75209a5716e7371c1f4ee2c46f532fab525ab75469d64ae2a3c5a5d624463893",
+        "target": "nodes.c1.routes.OP15.extra_energy_nj",
+        "value": 0
+      }
+    ],
+    "bundle_sha256": "da7e57c1761a01b378a3f419edda6a2feec2ff6755ed8ea2c2d7339ab2585a76",
+    "schema_version": 3,
+    "scope": "MECHANICS_ONLY"
+  },
+  "horizon_us": 30,
+  "instance_id": "activation_delay_counterexample_v3",
+  "nodes": [
+    {
+      "batch_key": null,
+      "graph_id": "graph.a",
+      "id": "p0",
+      "island_id": "island.ffn",
+      "kv_tokens": 0,
+      "model_id": "m0",
+      "output_bytes": 100,
+      "predecessors": [],
+      "release_us": 0,
+      "request_id": "r0",
+      "routes": {
+        "SERVER": {
+          "duration_us": 4,
+          "extra_energy_nj": 0
+        }
+      },
+      "tokens": 1,
+      "weight_set_id": "wp"
+    },
+    {
+      "batch_key": null,
+      "graph_id": "graph.a",
+      "id": "c0",
+      "island_id": "island.ffn",
+      "kv_tokens": 0,
+      "model_id": "m0",
+      "output_bytes": 0,
+      "predecessors": [
+        "p0"
+      ],
+      "release_us": 0,
+      "request_id": "r0",
+      "routes": {
+        "OP15": {
+          "duration_us": 6,
+          "extra_energy_nj": 0
+        }
+      },
+      "tokens": 1,
+      "weight_set_id": "w0"
+    },
+    {
+      "batch_key": null,
+      "graph_id": "graph.a",
+      "id": "p1",
+      "island_id": "island.ffn",
+      "kv_tokens": 0,
+      "model_id": "m1",
+      "output_bytes": 100,
+      "predecessors": [],
+      "release_us": 0,
+      "request_id": "r1",
+      "routes": {
+        "SERVER": {
+          "duration_us": 4,
+          "extra_energy_nj": 0
+        }
+      },
+      "tokens": 1,
+      "weight_set_id": "wp"
+    },
+    {
+      "batch_key": null,
+      "graph_id": "graph.a",
+      "id": "c1",
+      "island_id": "island.ffn",
+      "kv_tokens": 0,
+      "model_id": "m1",
+      "output_bytes": 0,
+      "predecessors": [
+        "p1"
+      ],
+      "release_us": 0,
+      "request_id": "r1",
+      "routes": {
+        "OP15": {
+          "duration_us": 6,
+          "extra_energy_nj": 0
+        }
+      },
+      "tokens": 1,
+      "weight_set_id": "w1"
+    }
+  ],
+  "requests": [
+    {
+      "arrival_us": 0,
+      "deadline_us": 16,
+      "id": "r0",
+      "priority": 0,
+      "terminal_node": "c0"
+    },
+    {
+      "arrival_us": 0,
+      "deadline_us": 24,
+      "id": "r1",
+      "priority": 0,
+      "terminal_node": "c1"
+    }
+  ],
+  "schema_version": 3,
+  "server_power": {
+    "idle_entry_us": 0,
+    "p0_mw": 300000,
+    "p8_mw": 25000,
+    "transition_nj": 0,
+    "wake_us": 0
+  }
+}

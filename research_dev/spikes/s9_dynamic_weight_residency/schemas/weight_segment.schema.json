@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s9/schemas/weight_segment.schema.json",
+  "title": "Weight segment + transfer chunks (v1)",
+  "$comment": "Self-contained. A contiguous unit of CANONICAL (backend-neutral) weight bytes with a content digest and an ordered chunk list. Chunk digests are what make a partial transfer resumable and VERIFIED: a resumed transfer re-hashes each already-received chunk before trusting it. The chunk list must tile [0,bytes) exactly with ascending contiguous offsets and indices 0..n-1 -- that arithmetic is enforced by validate_manifests.py (a JSON Schema cannot sum sibling fields).",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": { "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" } },
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "segment_id": { "type": "string", "minLength": 1 },
+    "model_id": { "type": "string", "minLength": 1 },
+    "model_version": { "$ref": "#/$defs/sha256" },
+    "logical_name": { "type": "string", "minLength": 1, "description": "shard file basename or tensor-group name; stable across re-fetch" },
+    "file": { "type": "string", "minLength": 1 },
+    "bytes": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "sha256": { "$ref": "#/$defs/sha256", "description": "SHA-256 over the segment's raw canonical bytes" },
+    "layer_range": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "start": { "type": "integer", "minimum": 0, "maximum": 100000 },
+        "end": { "type": "integer", "minimum": 1, "maximum": 100000 },
+        "n_layer_total": { "type": "integer", "minimum": 1, "maximum": 100000 }
+      },
+      "required": ["start", "end", "n_layer_total"]
+    },
+    "chunk_bytes": { "type": "integer", "minimum": 1, "maximum": 9007199254740991, "description": "nominal chunk size; the last chunk may be smaller" },
+    "chunks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "index": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "offset": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "bytes": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+          "sha256": { "$ref": "#/$defs/sha256" }
+        },
+        "required": ["index", "offset", "bytes", "sha256"]
+      }
+    }
+  },
+  "required": ["schema_version", "segment_id", "model_id", "model_version", "logical_name", "file", "bytes", "sha256", "chunk_bytes", "chunks"]
+}

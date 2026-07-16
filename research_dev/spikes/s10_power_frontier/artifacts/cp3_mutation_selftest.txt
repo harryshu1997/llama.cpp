@@ -1,0 +1,15 @@
+  [CAUGHT] removed_dependency_suf_before_mid: r00: SUF starts before MID result (D2H) done
+  [CAUGHT] execution_before_ready_mid_before_pre: r03: MID starts before PRE done (not READY)
+  [CAUGHT] omitted_d2h_transfer_time: r03: phone MID latency != measured e2e 27142
+  [CAUGHT] phone_energy_double_counted: phone energy 217136001 != recomputed 108568000
+  [CAUGHT] hbm_credit_in_mirrored_mode: HBM relief 353925120 exceeds legitimate exclusive-only relief 0 (mirrored/server weights earn no HBM credit)
+  [CAUGHT] free_instant_server_state_transition: server energy 370800000 != recomputed 741600000
+  [CAUGHT] server_claim_after_latest_start: r00: outcome MET but recomputed TIMEOUT (finish=80686, deadline=60000, horizon=80000)
+  [CAUGHT] activation_memory_overflow: activation memory peak 1228800 on SERVER exceeds bound 100
+  [CAUGHT] duplicate_completion: duplicate/stale completion for request r00
+  [CAUGHT] unfinished_work_omitted_at_horizon: request r11 omitted from schedule (no terminal outcome)
+  [CAUGHT] timeout_relabeled_met: r00: outcome MET but recomputed TIMEOUT (finish=90000, deadline=60000, horizon=80000)
+  [CAUGHT] integrity_body_tamper_without_reseal: certificate_sha256 mismatch (certificate body altered)
+  [CAUGHT] integrity_instance_binding_tamper: instance_sha256 mismatch (certificate not bound to this instance)
+
+mutation self-test: 13/13 caught, 0 slipped

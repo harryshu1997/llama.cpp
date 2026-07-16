@@ -1,0 +1,288 @@
+{
+  "certificate_sha256": "b2ebdbe35bf532669351d37c1b3eb093d34a22a2bf104ca7f08fdb5b0cde5572",
+  "certificate_version": 1,
+  "energy_nj": 2911872000,
+  "energy_phone_nj": 0,
+  "energy_server_nj": 2911872000,
+  "hbm": {
+    "mode": {
+      "w0": "server",
+      "w1": "server"
+    },
+    "relief_bytes": 0
+  },
+  "instance_id": "primary_conservative",
+  "instance_sha256": "c80f1e2449eb11bfe8e3fb8e2e3cb17cf3d58a72b46d881bf8604eaa01a754b8",
+  "label": "C4_oracle",
+  "met": 12,
+  "objective_key": [
+    0,
+    0,
+    -12,
+    2911872000
+  ],
+  "phone_busy_us": {
+    "OP12": 0,
+    "OP15": 0
+  },
+  "phone_islands": {
+    "OP12": [],
+    "OP15": []
+  },
+  "power_model": {
+    "count_phone_idle": false,
+    "count_server_idle": true,
+    "gpu_active_mw": 281000,
+    "gpu_idle_mw": 25000,
+    "name": "conservative",
+    "note": "conservative: GPU 281W measured mean, phone 6W, USB/host 8W, server idle counted",
+    "phone_mw": {
+      "OP12": 6000,
+      "OP15": 6000
+    },
+    "usb_host_mw": 8000
+  },
+  "schedule": [
+    {
+      "deadline": 60000,
+      "mid_device": "SERVER",
+      "mid_finish": 1481,
+      "mid_start": 845,
+      "mid_tokens": 16,
+      "model_id": "m0",
+      "outcome": "MET",
+      "pre_finish": 50,
+      "pre_start": 0,
+      "request": "r00",
+      "suf_finish": 1531,
+      "suf_start": 1481,
+      "weight_set": "w0"
+    },
+    {
+      "deadline": 60000,
+      "mid_device": "SERVER",
+      "mid_finish": 1481,
+      "mid_start": 845,
+      "mid_tokens": 16,
+      "model_id": "m0",
+      "outcome": "MET",
+      "pre_finish": 100,
+      "pre_start": 50,
+      "request": "r01",
+      "suf_finish": 1581,
+      "suf_start": 1531,
+      "weight_set": "w0"
+    },
+    {
+      "deadline": 60000,
+      "mid_device": "SERVER",
+      "mid_finish": 1481,
+      "mid_start": 845,
+      "mid_tokens": 16,
+      "model_id": "m0",
+      "outcome": "MET",
+      "pre_finish": 150,
+      "pre_start": 100,
+      "request": "r02",
+      "suf_finish": 1631,
+      "suf_start": 1581,
+      "weight_set": "w0"
+    },
+    {
+      "deadline": 60000,
+      "mid_device": "SERVER",
+      "mid_finish": 745,
+      "mid_start": 200,
+      "mid_tokens": 16,
+      "model_id": "m1",
+      "outcome": "MET",
+      "pre_finish": 200,
+      "pre_start": 150,
+      "request": "r03",
+      "suf_finish": 1681,
+      "suf_start": 1631,
+      "weight_set": "w1"
+    },
+    {
+      "deadline": 60000,
+      "mid_device": "SERVER",
+      "mid_finish": 1481,
+      "mid_start": 845,
+      "mid_tokens": 16,
+      "model_id": "m0",
+      "outcome": "MET",
+      "pre_finish": 795,
+      "pre_start": 745,
+      "request": "r04",
+      "suf_finish": 1731,
+      "suf_start": 1681,
+      "weight_set": "w0"
+    },
+    {
+      "deadline": 60000,
+      "mid_device": "SERVER",
+      "mid_finish": 1481,
+      "mid_start": 845,
+      "mid_tokens": 16,
+      "model_id": "m0",
+      "outcome": "MET",
+      "pre_finish": 845,
+      "pre_start": 795,
+      "request": "r05",
+      "suf_finish": 1781,
+      "suf_start": 1731,
+      "weight_set": "w0"
+    },
+    {
+      "deadline": 68000,
+      "mid_device": "SERVER",
+      "mid_finish": 9481,
+      "mid_start": 8845,
+      "mid_tokens": 16,
+      "model_id": "m0",
+      "outcome": "MET",
+      "pre_finish": 8050,
+      "pre_start": 8000,
+      "request": "r06",
+      "suf_finish": 9531,
+      "suf_start": 9481,
+      "weight_set": "w0"
+    },
+    {
+      "deadline": 68000,
+      "mid_device": "SERVER",
+      "mid_finish": 9481,
+      "mid_start": 8845,
+      "mid_tokens": 16,
+      "model_id": "m0",
+      "outcome": "MET",
+      "pre_finish": 8100,
+      "pre_start": 8050,
+      "request": "r07",
+      "suf_finish": 9581,
+      "suf_start": 9531,
+      "weight_set": "w0"
+    },
+    {
+      "deadline": 68000,
+      "mid_device": "SERVER",
+      "mid_finish": 9481,
+      "mid_start": 8845,
+      "mid_tokens": 16,
+      "model_id": "m0",
+      "outcome": "MET",
+      "pre_finish": 8150,
+      "pre_start": 8100,
+      "request": "r08",
+      "suf_finish": 9631,
+      "suf_start": 9581,
+      "weight_set": "w0"
+    },
+    {
+      "deadline": 68000,
+      "mid_device": "SERVER",
+      "mid_finish": 8745,
+      "mid_start": 8200,
+      "mid_tokens": 16,
+      "model_id": "m1",
+      "outcome": "MET",
+      "pre_finish": 8200,
+      "pre_start": 8150,
+      "request": "r09",
+      "suf_finish": 9681,
+      "suf_start": 9631,
+      "weight_set": "w1"
+    },
+    {
+      "deadline": 68000,
+      "mid_device": "SERVER",
+      "mid_finish": 9481,
+      "mid_start": 8845,
+      "mid_tokens": 16,
+      "model_id": "m0",
+      "outcome": "MET",
+      "pre_finish": 8795,
+      "pre_start": 8745,
+      "request": "r10",
+      "suf_finish": 9731,
+      "suf_start": 9681,
+      "weight_set": "w0"
+    },
+    {
+      "deadline": 68000,
+      "mid_device": "SERVER",
+      "mid_finish": 9481,
+      "mid_start": 8845,
+      "mid_tokens": 16,
+      "model_id": "m0",
+      "outcome": "MET",
+      "pre_finish": 8845,
+      "pre_start": 8795,
+      "request": "r11",
+      "suf_finish": 9781,
+      "suf_start": 9731,
+      "weight_set": "w0"
+    }
+  ],
+  "server_batches": [
+    {
+      "batch_id": 0,
+      "finish": 1481,
+      "latency_us": 636,
+      "members": [
+        "r00",
+        "r01",
+        "r02",
+        "r04",
+        "r05"
+      ],
+      "start": 845,
+      "tokens": 80,
+      "wave": 0,
+      "weight_set": "w0"
+    },
+    {
+      "batch_id": 1,
+      "finish": 745,
+      "latency_us": 545,
+      "members": [
+        "r03"
+      ],
+      "start": 200,
+      "tokens": 16,
+      "wave": 0,
+      "weight_set": "w1"
+    },
+    {
+      "batch_id": 2,
+      "finish": 9481,
+      "latency_us": 636,
+      "members": [
+        "r06",
+        "r07",
+        "r08",
+        "r10",
+        "r11"
+      ],
+      "start": 8845,
+      "tokens": 80,
+      "wave": 1,
+      "weight_set": "w0"
+    },
+    {
+      "batch_id": 3,
+      "finish": 8745,
+      "latency_us": 545,
+      "members": [
+        "r09"
+      ],
+      "start": 8200,
+      "tokens": 16,
+      "wave": 1,
+      "weight_set": "w1"
+    }
+  ],
+  "server_busy_us": 3562,
+  "tardy": 0,
+  "timeout": 0
+}

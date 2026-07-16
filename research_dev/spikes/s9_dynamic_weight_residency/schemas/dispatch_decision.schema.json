@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s9/schemas/dispatch_decision.schema.json",
+  "title": "Dispatch decision (v1)",
+  "$comment": "Self-contained and FAIL-CLOSED. Encodes the single dispatch rule: a route is dispatchable ONLY when every required weight set is READY, all epochs match, correctness passed, and credits cover weights + derived images + scratch + activations + mutable state. verdict==DISPATCH is only representable when EVERY gate is satisfied (all epoch_match true, all credits true, correctness pass, ready_certificate_ids non-empty, residency_lease_id present, hard_gate_failures empty, reason_code dispatch_ok). Any missing certificate, stale epoch, failed credit, or non-empty hard gate forces verdict==FALLBACK_SERVER with a non-dispatch reason. There is NO path from an unknown/partial input to DISPATCH.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "request_id": { "type": "string", "minLength": 1 },
+    "island_id": { "type": "string", "minLength": 1 },
+    "device_id": { "type": "string", "minLength": 1 },
+    "backend": { "type": "string", "enum": ["htp", "gpu", "cpu"] },
+    "route_epoch": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "required_weight_set_ids": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+    "ready_certificate_ids": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "residency_lease_id": { "type": ["string", "null"] },
+    "state_lease_id": { "type": ["string", "null"] },
+    "epoch_match": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "boot": { "type": "boolean" },
+        "residency": { "type": "boolean" },
+        "route": { "type": "boolean" },
+        "state": { "type": "boolean" }
+      },
+      "required": ["boot", "residency", "route", "state"]
+    },
+    "credits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "weights_ok": { "type": "boolean" },
+        "derived_ok": { "type": "boolean" },
+        "scratch_ok": { "type": "boolean" },
+        "activations_ok": { "type": "boolean" },
+        "state_ok": { "type": "boolean" }
+      },
+      "required": ["weights_ok", "derived_ok", "scratch_ok", "activations_ok", "state_ok"]
+    },
+    "correctness_verdict": { "type": "string", "enum": ["pass", "fail", "blocked", "unknown"] },
+    "hard_gate_failures": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["unsupported_backend", "not_resident", "partial_on_disk", "state_pinned", "no_slack", "transfer_dominated", "thermal", "stale_epoch", "insufficient_ram", "interference", "credits_exhausted", "hash_mismatch", "unknown_profile", "lease_expired", "quarantined"] }
+    },
+    "verdict": { "type": "string", "enum": ["DISPATCH", "FALLBACK_SERVER"] },
+    "reason_code": { "type": "string", "enum": ["dispatch_ok", "unsupported_backend", "not_resident", "partial_on_disk", "state_pinned", "no_slack", "transfer_dominated", "thermal", "stale_epoch", "insufficient_ram", "interference", "credits_exhausted", "server_cheaper", "capacity_relief", "hash_mismatch", "unknown_profile", "duplicate_message", "reordered_message", "lease_expired", "quarantined"] }
+  },
+  "required": ["schema_version", "request_id", "island_id", "device_id", "backend", "route_epoch", "required_weight_set_ids", "ready_certificate_ids", "residency_lease_id", "state_lease_id", "epoch_match", "credits", "correctness_verdict", "hard_gate_failures", "verdict", "reason_code"],
+  "allOf": [
+    {
+      "$comment": "DISPATCH requires every gate satisfied and is otherwise unrepresentable",
+      "if": { "properties": { "verdict": { "const": "DISPATCH" } }, "required": ["verdict"] },
+      "then": {
+        "properties": {
+          "ready_certificate_ids": { "type": "array", "minItems": 1 },
+          "residency_lease_id": { "type": "string", "minLength": 1 },
+          "correctness_verdict": { "const": "pass" },
+          "reason_code": { "const": "dispatch_ok" },
+          "hard_gate_failures": { "type": "array", "maxItems": 0 },
+          "epoch_match": {
+            "properties": {
+              "boot": { "const": true },
+              "residency": { "const": true },
+              "route": { "const": true },
+              "state": { "const": true }
+            }
+          },
+          "credits": {
+            "properties": {
+              "weights_ok": { "const": true },
+              "derived_ok": { "const": true },
+              "scratch_ok": { "const": true },
+              "activations_ok": { "const": true },
+              "state_ok": { "const": true }
+            }
+          }
+        }
+      }
+    },
+    {
+      "$comment": "a server fallback must NOT claim the dispatch_ok reason",
+      "if": { "properties": { "verdict": { "const": "FALLBACK_SERVER" } }, "required": ["verdict"] },
+      "then": { "properties": { "reason_code": { "not": { "const": "dispatch_ok" } } } }
+    }
+  ]
+}

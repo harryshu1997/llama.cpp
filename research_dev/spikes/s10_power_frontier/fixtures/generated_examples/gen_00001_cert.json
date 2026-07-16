@@ -1,0 +1,109 @@
+{
+  "certificate_sha256": "826d3f09115bef5028bd4ae9c574bab7163615a2334f115c3d4886dbefd8fd8c",
+  "certificate_version": 1,
+  "energy_nj": 1997552000,
+  "energy_phone_nj": 0,
+  "energy_server_nj": 1997552000,
+  "hbm": {
+    "mode": {
+      "w0": "server"
+    },
+    "relief_bytes": 0
+  },
+  "instance_id": "gen_00001",
+  "instance_sha256": "90003df4bab3d2d341ede2648c604a7f7a85252a2008524d726dd26ddfeb70f4",
+  "label": "C4_oracle",
+  "met": 3,
+  "objective_key": [
+    0,
+    0,
+    -3,
+    1997552000
+  ],
+  "phone_busy_us": {
+    "OP12": 0,
+    "OP15": 0
+  },
+  "phone_islands": {
+    "OP12": [],
+    "OP15": []
+  },
+  "power_model": {
+    "count_phone_idle": false,
+    "count_server_idle": true,
+    "gpu_active_mw": 281000,
+    "gpu_idle_mw": 25000,
+    "name": "conservative",
+    "phone_mw": {
+      "OP12": 6000,
+      "OP15": 6000
+    },
+    "usb_host_mw": 8000
+  },
+  "schedule": [
+    {
+      "deadline": 30000,
+      "mid_device": "SERVER",
+      "mid_finish": 847,
+      "mid_start": 240,
+      "mid_tokens": 16,
+      "model_id": "m_w0",
+      "outcome": "MET",
+      "pre_finish": 80,
+      "pre_start": 0,
+      "request": "r00",
+      "suf_finish": 887,
+      "suf_start": 847,
+      "weight_set": "w0"
+    },
+    {
+      "deadline": 30000,
+      "mid_device": "SERVER",
+      "mid_finish": 847,
+      "mid_start": 240,
+      "mid_tokens": 16,
+      "model_id": "m_w0",
+      "outcome": "MET",
+      "pre_finish": 160,
+      "pre_start": 80,
+      "request": "r01",
+      "suf_finish": 927,
+      "suf_start": 887,
+      "weight_set": "w0"
+    },
+    {
+      "deadline": 30000,
+      "mid_device": "SERVER",
+      "mid_finish": 847,
+      "mid_start": 240,
+      "mid_tokens": 16,
+      "model_id": "m_w0",
+      "outcome": "MET",
+      "pre_finish": 240,
+      "pre_start": 160,
+      "request": "r02",
+      "suf_finish": 967,
+      "suf_start": 927,
+      "weight_set": "w0"
+    }
+  ],
+  "server_batches": [
+    {
+      "batch_id": 0,
+      "finish": 847,
+      "latency_us": 607,
+      "members": [
+        "r00",
+        "r01",
+        "r02"
+      ],
+      "start": 240,
+      "tokens": 48,
+      "wave": 0,
+      "weight_set": "w0"
+    }
+  ],
+  "server_busy_us": 967,
+  "tardy": 0,
+  "timeout": 0
+}

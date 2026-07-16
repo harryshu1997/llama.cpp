@@ -1,0 +1,135 @@
+* File is LITTLE endian, script is running on a LITTLE endian host.
+* Dumping 54 key/value pair(s)
+      1: UINT32     |        1 | GGUF.version = 3
+      2: UINT64     |        1 | GGUF.tensor_count = 667
+      3: UINT64     |        1 | GGUF.kv_count = 51
+      4: STRING     |        1 | general.architecture = 'gemma4'
+      5: STRING     |        1 | general.type = 'model'
+      6: INT32      |        1 | general.sampling.top_k = 64
+      7: FLOAT32    |        1 | general.sampling.top_p = 0.949999988079071
+      8: FLOAT32    |        1 | general.sampling.temp = 1.0
+      9: STRING     |        1 | general.name = '5926caa4ec0cac5cbfadaf4077420520de1d5205'
+     10: STRING     |        1 | general.finetune = '5926caa4ec0cac5cbfadaf4077420520de1d5205'
+     11: STRING     |        1 | general.size_label = '12B'
+     12: STRING     |        1 | general.license = 'apache-2.0'
+     13: STRING     |        1 | general.license.link = 'https://ai.google.dev/gemma/docs/gemma_4_license'
+     14: UINT32     |        1 | general.base_model.count = 1
+     15: STRING     |        1 | general.base_model.0.name = 'Gemma 4 12B'
+     16: STRING     |        1 | general.base_model.0.organization = 'Google'
+     17: STRING     |        1 | general.base_model.0.repo_url = 'https://huggingface.co/google/gemma-4-12B'
+     18: [STRING]   |        1 | general.tags = ['any-to-any']
+     19: UINT32     |        1 | gemma4.block_count = 48
+     20: UINT32     |        1 | gemma4.context_length = 262144
+     21: UINT32     |        1 | gemma4.embedding_length = 3840
+     22: UINT32     |        1 | gemma4.feed_forward_length = 15360
+     23: UINT32     |        1 | gemma4.attention.head_count = 16
+     24: [INT32]    |       48 | gemma4.attention.head_count_kv = [8, 8, 8, 8, 8, 1, ...]
+     25: FLOAT32    |        1 | gemma4.rope.freq_base = 1000000.0
+     26: FLOAT32    |        1 | gemma4.rope.freq_base_swa = 10000.0
+     27: FLOAT32    |        1 | gemma4.attention.layer_norm_rms_epsilon = 9.999999974752427e-07
+     28: UINT32     |        1 | gemma4.attention.key_length = 512
+     29: UINT32     |        1 | gemma4.attention.value_length = 512
+     30: FLOAT32    |        1 | gemma4.final_logit_softcapping = 30.0
+     31: UINT32     |        1 | gemma4.attention.sliding_window = 1024
+     32: UINT32     |        1 | gemma4.attention.shared_kv_layers = 0
+     33: UINT32     |        1 | gemma4.embedding_length_per_layer_input = 0
+     34: [BOOL]     |       48 | gemma4.attention.sliding_window_pattern = [True, True, True, True, True, False, ...]
+     35: UINT32     |        1 | gemma4.attention.key_length_swa = 256
+     36: UINT32     |        1 | gemma4.attention.value_length_swa = 256
+     37: UINT32     |        1 | gemma4.rope.dimension_count = 512
+     38: UINT32     |        1 | gemma4.rope.dimension_count_swa = 256
+     39: [INT32]    |        2 | tokenizer.ggml.suppress_tokens = [258883, 258882]
+     40: STRING     |        1 | tokenizer.ggml.model = 'gemma4'
+     41: [STRING]   |   262144 | tokenizer.ggml.tokens = ['<pad>', '<eos>', '<bos>', '<unk>', '<mask>', '[multimodal]', ...]
+     42: [FLOAT32]  |   262144 | tokenizer.ggml.scores = [-1000.0, -1000.0, -1000.0, -1000.0, -1000.0, -1000.0, ...]
+     43: [INT32]    |   262144 | tokenizer.ggml.token_type = [3, 3, 3, 3, 3, 1, ...]
+     44: [STRING]   |   514906 | tokenizer.ggml.merges = ['\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n \n', '▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁ ▁', '\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t \t', '\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n \n\n', '▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁ ▁▁', '\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t \t\t', ...]
+     45: UINT32     |        1 | tokenizer.ggml.bos_token_id = 2
+     46: UINT32     |        1 | tokenizer.ggml.eos_token_id = 1
+     47: UINT32     |        1 | tokenizer.ggml.unknown_token_id = 3
+     48: UINT32     |        1 | tokenizer.ggml.padding_token_id = 0
+     49: UINT32     |        1 | tokenizer.ggml.mask_token_id = 4
+     50: STRING     |        1 | tokenizer.chat_template = '{%- macro format_parameters(properties, required, filter_...'
+     51: BOOL       |        1 | tokenizer.ggml.add_space_prefix = False
+     52: BOOL       |        1 | tokenizer.ggml.add_bos_token = True
+     53: UINT32     |        1 | general.quantization_version = 2
+     54: UINT32     |        1 | general.file_type = 1
+
+================================================================================
+APPENDED BY S4-V0 CKPT1 (inspect-only) — full per-layer arrays + tensor shapes
+extracted via gguf.GGUFReader (the --no-tensors dump above truncates arrays to 6)
+================================================================================
+
+--- gemma4.attention.head_count_kv (len 48) ---
+[8, 8, 8, 8, 8, 1, 8, 8, 8, 8, 8, 1, 8, 8, 8, 8, 8, 1, 8, 8, 8, 8, 8, 1,
+ 8, 8, 8, 8, 8, 1, 8, 8, 8, 8, 8, 1, 8, 8, 8, 8, 8, 1, 8, 8, 8, 8, 8, 1]
+  -> SWA layers n_head_kv=8 (GQA 2:1); FULL layers n_head_kv=1 (MQA)
+
+--- gemma4.attention.sliding_window_pattern (len 48; True=SWA, False=full) ---
+[T,T,T,T,T,F, T,T,T,T,T,F, T,T,T,T,T,F, T,T,T,T,T,F,
+ T,T,T,T,T,F, T,T,T,T,T,F, T,T,T,T,T,F, T,T,T,T,T,F]
+  -> FULL (dense) layer indices = 5,11,17,23,29,35,41,47  (8 layers, every 6th)
+  -> SWA layer indices        = all others                (40 layers)
+  -> pattern: 5 SWA : 1 FULL repeating
+
+--- scalar KV metadata ---
+block_count(n_layer)                = 48
+embedding_length(n_embd)            = 3840
+feed_forward_length(n_ff)           = 15360
+attention.head_count(n_head)        = 16 (all layers)
+attention.key_length / value_length = 512 / 512   (FULL layers head_dim=512)
+attention.key_length_swa / val_swa  = 256 / 256   (SWA  layers head_dim=256)
+rope.dimension_count / _swa         = 512 / 256
+rope.freq_base / _swa               = 1e6 / 1e4
+attention.sliding_window            = 1024 (LLAMA_SWA_TYPE_STANDARD)
+attention.shared_kv_layers          = 0     -> n_layer_kv_from_start=48 -> has_kv(il)=true ALL il
+embedding_length_per_layer_input    = 0     -> NO per-layer input embeddings (unlike E2B)
+final_logit_softcapping             = 30.0
+context_length                      = 262144
+
+--- non-block tensors ---
+token_embd.weight   [3840, 262144] F16   (tied lm_head; no separate output.weight)
+output_norm.weight  [3840] F32
+rope_freqs.weight   [256]  F32           (global, duplicated to FULL layers for proportional rope)
+
+--- per-block tensor templates (2 distinct) ---
+TEMPLATE A (40 blocks = all SWA layers): has attn_v.weight
+  blk.N.attn_norm            [3840] F32
+  blk.N.attn_q.weight        [3840, 4096] F16   (16 heads x 256)
+  blk.N.attn_q_norm.weight   [256]  F32
+  blk.N.attn_k.weight        [3840, 2048] F16   (8 heads x 256)
+  blk.N.attn_k_norm.weight   [256]  F32
+  blk.N.attn_v.weight        [3840, 2048] F16   (8 heads x 256)
+  blk.N.attn_output.weight   [4096, 3840] F16
+  blk.N.post_attention_norm  [3840] F32
+  blk.N.ffn_norm             [3840] F32
+  blk.N.ffn_gate             [3840, 15360] F16
+  blk.N.ffn_up               [3840, 15360] F16
+  blk.N.ffn_down             [15360, 3840] F16
+  blk.N.post_ffw_norm        [3840] F32
+  blk.N.layer_output_scale   [1] F32
+
+TEMPLATE B (8 blocks = FULL layers 5,11,17,23,29,35,41,47): NO attn_v.weight
+  blk.N.attn_norm            [3840] F32
+  blk.N.attn_q.weight        [3840, 8192] F16   (16 heads x 512)
+  blk.N.attn_q_norm.weight   [512]  F32
+  blk.N.attn_k.weight        [3840, 512]  F16   (1 head x 512)
+  blk.N.attn_k_norm.weight   [512]  F32
+  (attn_v.weight ABSENT -> "alternative attention": Vcur = Kcur projection reused)
+  blk.N.attn_output.weight   [8192, 3840] F16
+  blk.N.post_attention_norm  [3840] F32
+  blk.N.ffn_* / post_ffw_norm / layer_output_scale : identical to TEMPLATE A
+
+--- graph facts (src/models/gemma4.cpp) ---
+- V-less FULL layers: gemma4.cpp:330-332  Vcur = wv ? mm(wv) : Kcur (K proj output reused)
+    K path: reshape -> attn_k_norm (learned) -> RoPE   (gemma4.cpp:335,338,344)
+    V path: reshape -> ggml_rms_norm (WEIGHTLESS)       -> (NO RoPE)  (gemma4.cpp:336,339)
+- KV store + FLASH_ATTN_EXT + wo are FUSED inside build_attn (gemma4.cpp:349-351);
+  kqv_out is not separately materialized before wo in the current graph.
+- No MoE: ffn_gate_inp absent -> dense GELU parallel FFN (gemma4.cpp:130-131,428-440)
+- has_kv(il)=true for all 48 (llama-hparams.cpp:259-270, n_layer_kv_from_start=48);
+  no layer reuses another layer's KV.
+
+--- V0 minimal has_kv profiling set (one per attention class) ---
+  blk.2  (SWA class, is_swa=true,  n_head_kv=8, head_dim=256; == existing seed shard)
+  blk.5  (FULL class, is_swa=false, n_head_kv=1, head_dim=512, V-less; first full layer)

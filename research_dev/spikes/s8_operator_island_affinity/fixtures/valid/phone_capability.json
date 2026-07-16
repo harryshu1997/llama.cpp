@@ -1,0 +1,13 @@
+{
+  "backend_id": "HTP0",
+  "cache_digest": null,
+  "device_id": "OP15",
+  "disk_free_bytes": null,
+  "opt_arch": 81,
+  "ram_usable_ceiling_bytes": 10000000000,
+  "ready_manifest_epoch": null,
+  "schema_version": 1,
+  "serial": "3C15AU002CL00000",
+  "soc": "SM8850",
+  "supported_op_classes": []
+}

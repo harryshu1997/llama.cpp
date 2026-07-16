@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s8/schemas/profile_row.schema.json",
+  "title": "Profile atlas row (v1)",
+  "$comment": "Self-contained. A row certifies ONLY its layer_range + attention_class(+by-layer vector) + graph_hash + shape_envelope. verdict=PASS is fail-closed: it REQUIRES correctness=pass, fallback=none, n_proc>=7, non-null timing/memory/boundary, present server_control + server_relief, post_transfer_slo_feasible=true, and non-empty artifacts. A homogeneous island uses a single attention_class; a heterogeneous island MUST provide attention_class_by_layer with one entry per layer and set attention_class=mixed.",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "attn": { "type": "string", "enum": ["causal_local_swa", "causal_global", "bidirectional_none", "cross", "not_applicable", "mixed"] },
+    "nint": { "type": ["integer", "null"], "minimum": 0, "maximum": 9007199254740991 },
+    "nnum": { "type": ["number", "null"] }
+  },
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "island_id": { "type": "string", "minLength": 1 },
+    "island_descriptor_ref": { "$ref": "#/$defs/sha256" },
+    "model_version": { "$ref": "#/$defs/sha256" },
+    "graph_hash": { "$ref": "#/$defs/sha256" },
+    "layer_range": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "start": { "type": "integer", "minimum": 0, "maximum": 100000 },
+        "end": { "type": "integer", "minimum": 1, "maximum": 100000 },
+        "n_layer_total": { "type": "integer", "minimum": 1, "maximum": 100000 }
+      },
+      "required": ["start", "end", "n_layer_total"]
+    },
+    "attention_class": { "$ref": "#/$defs/attn" },
+    "attention_class_by_layer": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100000,
+      "items": { "type": "string", "enum": ["causal_local_swa", "causal_global", "bidirectional_none", "cross", "not_applicable"] },
+      "description": "required when attention_class=mixed; one entry per layer in [start,end)"
+    },
+    "device_backend_id": { "type": "string", "pattern": "^[A-Za-z0-9_]+/[A-Za-z0-9_]+$" },
+    "opt_arch": { "type": ["integer", "null"] },
+    "shape_envelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "batch_min": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+        "batch_max": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+        "context_min": { "type": "integer", "minimum": 0, "maximum": 100000000 },
+        "context_max": { "type": "integer", "minimum": 0, "maximum": 100000000 },
+        "prompt_min": { "type": "integer", "minimum": 0, "maximum": 100000000 },
+        "prompt_max": { "type": "integer", "minimum": 0, "maximum": 100000000 },
+        "dtype": { "type": "string", "enum": ["f16", "f32", "q4_0", "q8_0", "bf16"] }
+      },
+      "required": ["batch_min", "batch_max", "context_min", "context_max", "dtype"]
+    },
+    "state_class": { "type": "string", "enum": ["stateless", "sticky", "rebuildable"] },
+    "supported": { "type": ["boolean", "null"] },
+    "fallback": { "type": "string", "enum": ["none", "cpu", "host_copy", "unknown"] },
+    "kernel_provenance": { "type": "string", "enum": ["explicit_attention", "fused_flash_attn_ext", "hmx_gemm", "hvx_gemv", "xmem_gemm", "opencl_l4lm", "cpu", "unknown"] },
+    "correctness": { "type": "string", "enum": ["pass", "fail", "blocked", "unknown"] },
+    "correctness_metric": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string" },
+        "value": { "type": "number" },
+        "reference": { "type": "string" }
+      },
+      "required": ["kind", "value", "reference"]
+    },
+    "resident_bytes": { "$ref": "#/$defs/nint" },
+    "scratch_bytes": { "$ref": "#/$defs/nint" },
+    "state_bytes": { "$ref": "#/$defs/nint" },
+    "boundary_in_bytes": { "$ref": "#/$defs/nint" },
+    "boundary_out_bytes": { "$ref": "#/$defs/nint" },
+    "transfer_measured_us": { "$ref": "#/$defs/nint" },
+    "warmup_load_us": { "$ref": "#/$defs/nint" },
+    "p50_us": { "$ref": "#/$defs/nint" },
+    "p95_us": { "$ref": "#/$defs/nint" },
+    "p99_us": { "$ref": "#/$defs/nint" },
+    "cov": { "$ref": "#/$defs/nnum" },
+    "n_proc": { "type": "integer", "minimum": 0, "maximum": 100000 },
+    "corun_partner": { "type": ["string", "null"] },
+    "corun_slowdown": { "$ref": "#/$defs/nnum" },
+    "server_control": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "device_backend_id": { "type": "string", "pattern": "^[A-Za-z0-9_]+/[A-Za-z0-9_]+$" },
+        "p50_us": { "$ref": "#/$defs/nint" },
+        "gpu_ms": { "$ref": "#/$defs/nnum" },
+        "hbm_peak_bytes": { "$ref": "#/$defs/nint" }
+      },
+      "required": ["device_backend_id", "p50_us", "gpu_ms", "hbm_peak_bytes"]
+    },
+    "post_transfer_slo_feasible": { "type": ["boolean", "null"] },
+    "server_relief": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "gpu_ms_freed": { "$ref": "#/$defs/nnum" },
+        "hbm_bytes_freed": { "$ref": "#/$defs/nint" },
+        "hbm_bw_freed": { "$ref": "#/$defs/nnum" }
+      },
+      "required": ["gpu_ms_freed", "hbm_bytes_freed", "hbm_bw_freed"]
+    },
+    "temperature_c": { "$ref": "#/$defs/nnum" },
+    "build_hash": { "$ref": "#/$defs/sha256" },
+    "device_binary_hash": { "$ref": "#/$defs/sha256" },
+    "artifact_paths": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "artifact_hashes": { "type": "array", "items": { "$ref": "#/$defs/sha256" } },
+    "verdict": { "type": "string", "enum": ["PASS", "LOWER_BOUND", "UNSUPPORTED", "SYNTHETIC_UNCERTIFIED", "FAIL", "UNKNOWN"] }
+  },
+  "required": [
+    "schema_version", "island_id", "island_descriptor_ref", "model_version",
+    "graph_hash", "layer_range", "attention_class", "device_backend_id",
+    "shape_envelope", "state_class", "fallback", "kernel_provenance",
+    "correctness", "n_proc", "build_hash", "device_binary_hash",
+    "artifact_paths", "verdict"
+  ],
+  "allOf": [
+    {
+      "$comment": "heterogeneous islands must carry a per-layer vector",
+      "if": { "properties": { "attention_class": { "const": "mixed" } }, "required": ["attention_class"] },
+      "then": { "required": ["attention_class_by_layer"] }
+    },
+    {
+      "$comment": "PASS is fail-closed",
+      "if": { "properties": { "verdict": { "const": "PASS" } }, "required": ["verdict"] },
+      "then": {
+        "properties": {
+          "correctness": { "const": "pass" },
+          "fallback": { "const": "none" },
+          "supported": { "const": true },
+          "n_proc": { "type": "integer", "minimum": 7 },
+          "post_transfer_slo_feasible": { "const": true },
+          "p50_us": { "type": "integer" },
+          "p95_us": { "type": "integer" },
+          "p99_us": { "type": "integer" },
+          "cov": { "type": "number" },
+          "resident_bytes": { "type": "integer" },
+          "boundary_in_bytes": { "type": "integer" },
+          "boundary_out_bytes": { "type": "integer" },
+          "transfer_measured_us": { "type": "integer" },
+          "correctness_metric": { "type": "object" },
+          "server_control": { "type": "object" },
+          "server_relief": { "type": "object" },
+          "artifact_paths": { "type": "array", "minItems": 1 }
+        },
+        "required": [
+          "supported", "post_transfer_slo_feasible", "p50_us", "p95_us",
+          "p99_us", "cov", "resident_bytes", "boundary_in_bytes",
+          "boundary_out_bytes", "transfer_measured_us", "correctness_metric",
+          "server_control", "server_relief"
+        ]
+      }
+    }
+  ]
+}

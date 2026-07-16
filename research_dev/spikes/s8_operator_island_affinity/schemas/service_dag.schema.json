@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s8/schemas/service_dag.schema.json",
+  "title": "Service DAG (v1)",
+  "$comment": "Self-contained. Static operator DAG for a service; islands cover these nodes (dag_cover).",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "service": { "type": "string", "minLength": 1 },
+    "provenance": { "type": "string", "enum": ["real", "real_decomposed", "semi_synthetic", "synthetic"] },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "node_id": { "type": "string", "minLength": 1 },
+          "op_class": { "type": "string", "enum": ["tokenize", "llm_prefill", "llm_decode", "sample", "query_embed", "retrieval_cpu", "rerank", "context_asm_cpu", "image_preprocess", "vision_encode", "projection", "tool_wait", "detokenize"] },
+          "depends_on": { "type": "array", "items": { "type": "string" } },
+          "state_policy": { "type": "string", "enum": ["stateless", "sticky", "rebuildable"] },
+          "phone_candidate": { "type": "boolean" }
+        },
+        "required": ["node_id", "op_class", "depends_on", "state_policy", "phone_candidate"]
+      }
+    }
+  },
+  "required": ["schema_version", "service", "provenance", "nodes"]
+}

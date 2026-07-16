@@ -1,0 +1,30 @@
+{
+  "normalization_config_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "normalizer_version": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "output_row_count": 200,
+  "output_sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "provenance": "semi_synthetic",
+  "schema_version": 1,
+  "streams": [
+    {
+      "input_manifest_sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "input_output_sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "offset_us": 0,
+      "rank": 0,
+      "scale_den": 1,
+      "scale_num": 1,
+      "source": "burstgpt-v2",
+      "source_revision": "v2.0"
+    },
+    {
+      "input_manifest_sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "input_output_sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "offset_us": 5000,
+      "rank": 1,
+      "scale_den": 2,
+      "scale_num": 3,
+      "source": "ragpulse",
+      "source_revision": "main@abc123"
+    }
+  ]
+}

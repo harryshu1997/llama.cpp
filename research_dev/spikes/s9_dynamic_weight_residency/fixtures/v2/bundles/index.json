@@ -1,0 +1,62 @@
+[
+  {
+    "file": "valid/dispatchable.json",
+    "expect": "valid"
+  },
+  {
+    "file": "invalid/unknown_kind.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/unknown_version.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/prepared_image_relabel.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/prepared_image_corrupt.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/two_sets_one_cert.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/missing_residency_lease.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/ledger_mismatch.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/range_overlap.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/total_mismatch.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/alloc_refcount_mismatch.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/resume_offset_mismatch.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/bulk_binding_mismatch.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/correctness_relabel.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/dup_key.json",
+    "expect": "invalid"
+  }
+]

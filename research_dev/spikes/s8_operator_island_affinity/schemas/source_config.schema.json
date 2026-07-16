@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s8/schemas/source_config.schema.json",
+  "title": "Versioned normalization source config (v1)",
+  "$comment": "Self-contained. Freezes one real source: pinned origin+hash, exact format (csv header / jsonl keys), timestamp grammar+policy, canonical->source mapping, and the Gate-A invariant. gate_a is a const block: deadline/priority are always null with provenance none, observed_latency null, images/audio 0. A csv config must carry `csv`; a jsonl config must carry `jsonl`.",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "map_from": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "from": { "type": "string", "minLength": 1 },
+        "grammar": { "type": "string" }
+      },
+      "required": ["from"]
+    }
+  },
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "config_version": { "type": "string", "minLength": 1 },
+    "source": { "type": "string", "minLength": 1 },
+    "provenance": { "type": "string", "enum": ["real", "real_decomposed"] },
+    "origin": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "url": { "type": "string", "minLength": 1 },
+        "revision": { "type": "string", "minLength": 1 },
+        "filename": { "type": "string", "minLength": 1 },
+        "bytes": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "line_count": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "record_count": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "license": { "type": "string", "minLength": 1 }
+      },
+      "required": ["url", "revision", "filename", "bytes", "sha256", "line_count", "record_count", "license"]
+    },
+    "format": { "type": "string", "enum": ["csv", "jsonl"] },
+    "encoding": { "type": "string", "const": "utf-8" },
+    "bom": { "type": "string", "const": "reject" },
+    "newline": { "type": "string", "const": "lf_or_crlf" },
+    "csv": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "header": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "dialect": { "type": "string", "const": "rfc4180" },
+        "blank_row": { "type": "string", "const": "reject" },
+        "field_trim": { "type": "string", "const": "none" }
+      },
+      "required": ["header", "dialect", "blank_row", "field_trim"]
+    },
+    "jsonl": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "required_keys": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "key_types": { "type": "object", "additionalProperties": { "type": "string", "enum": ["string", "integer", "number", "boolean", "object", "array"] } },
+        "nested_hash_ids": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "required_keys": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+            "value_type": { "type": "string", "const": "list_of_int" },
+            "empty_allowed": { "type": "array", "items": { "type": "string" } }
+          },
+          "required": ["required_keys", "value_type", "empty_allowed"]
+        },
+        "duplicate_key": { "type": "string", "const": "reject" }
+      },
+      "required": ["required_keys", "key_types", "duplicate_key"]
+    },
+    "timestamp": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "field": { "type": "string", "minLength": 1 },
+        "grammar": { "type": "string", "minLength": 1 },
+        "unit": { "type": "string", "const": "seconds" },
+        "to_us": { "type": "string", "const": "decimal_round_half_up_1e6" },
+        "policy": { "type": "string", "enum": ["require_nondecreasing", "sort_stable"] },
+        "overflow_max": { "type": "integer", "const": 9007199254740991 }
+      },
+      "required": ["field", "grammar", "unit", "to_us", "policy", "overflow_max"]
+    },
+    "gate_a": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "frozen Gate-A invariant; all const",
+      "properties": {
+        "deadline_us": { "type": "null" },
+        "deadline_provenance": { "type": "string", "const": "none" },
+        "priority_class": { "type": "null" },
+        "priority_provenance": { "type": "string", "const": "none" },
+        "observed_latency_us": { "type": "null" },
+        "images": { "type": "integer", "const": 0 },
+        "audio_ms": { "type": "integer", "const": 0 }
+      },
+      "required": ["deadline_us", "deadline_provenance", "priority_class", "priority_provenance", "observed_latency_us", "images", "audio_ms"]
+    },
+    "mapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "t_from": { "type": "string", "minLength": 1 },
+        "input_tokens": { "$ref": "#/$defs/map_from" },
+        "output_tokens": { "$ref": "#/$defs/map_from" },
+        "session_id": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "from": { "type": "string" }, "blank_to_null": { "type": "boolean" } },
+          "required": ["from", "blank_to_null"]
+        },
+        "service": {
+          "oneOf": [
+            { "type": "object", "additionalProperties": false, "properties": { "const": { "type": "string" } }, "required": ["const"] },
+            { "type": "object", "additionalProperties": false, "properties": { "from": { "type": "string" }, "value_map": { "type": "object", "minProperties": 1, "additionalProperties": { "type": "string" } } }, "required": ["from", "value_map"] }
+          ]
+        },
+        "model_class": {
+          "oneOf": [
+            { "type": "object", "additionalProperties": false, "properties": { "const": { "type": "string" } }, "required": ["const"] },
+            { "type": "object", "additionalProperties": false, "properties": { "from": { "type": "string" }, "value_map": { "type": "object", "minProperties": 1, "additionalProperties": { "type": "string" } } }, "required": ["from", "value_map"] }
+          ]
+        },
+        "retrieved_chunks": {
+          "oneOf": [
+            { "type": "object", "additionalProperties": false, "properties": { "const": { "type": "integer", "minimum": 0 } }, "required": ["const"] },
+            { "type": "object", "additionalProperties": false, "properties": { "derive": { "type": "string", "const": "len" }, "from": { "type": "string" } }, "required": ["derive", "from"] }
+          ]
+        },
+        "cache_keys": {
+          "oneOf": [
+            { "type": "object", "additionalProperties": false, "properties": { "const_empty": { "type": "boolean", "const": true } }, "required": ["const_empty"] },
+            { "type": "object", "additionalProperties": false, "properties": { "derive": { "type": "string", "const": "namespaced" }, "order": { "type": "array", "minItems": 1, "items": { "type": "string" } }, "separator": { "type": "string" } }, "required": ["derive", "order", "separator"] }
+          ]
+        },
+        "source_fields": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "from": { "type": "string" },
+              "type": { "type": "string", "enum": ["string", "integer", "boolean"] },
+              "transform": { "type": "string", "enum": ["raw", "is_zero"] }
+            },
+            "required": ["from", "type", "transform"]
+          }
+        }
+      },
+      "required": ["t_from", "input_tokens", "output_tokens", "session_id", "service", "model_class", "retrieved_chunks", "cache_keys", "source_fields"]
+    }
+  },
+  "required": ["schema_version", "config_version", "source", "provenance", "origin", "format", "encoding", "bom", "newline", "timestamp", "gate_a", "mapping"],
+  "allOf": [
+    { "if": { "properties": { "format": { "const": "csv" } }, "required": ["format"] }, "then": { "required": ["csv"], "properties": { "jsonl": false } } },
+    { "if": { "properties": { "format": { "const": "jsonl" } }, "required": ["format"] }, "then": { "required": ["jsonl"], "properties": { "csv": false } } }
+  ]
+}

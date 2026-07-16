@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "s10-v0r-certificate-v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "instance_id",
+    "instance_sha256",
+    "actions",
+    "request_outcomes",
+    "activation_peak_bytes",
+    "energy",
+    "objective",
+    "search",
+    "certificate_sha256"
+  ],
+  "properties": {
+    "schema_version": {"const": 2},
+    "instance_id": {"type": "string", "minLength": 1},
+    "instance_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "actions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "device", "members", "start_us", "finish_us"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "device": {"type": "string", "minLength": 1},
+          "members": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "start_us": {"type": "integer", "minimum": 0},
+          "finish_us": {"type": "integer", "minimum": 1}
+        }
+      }
+    },
+    "request_outcomes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["request_id", "terminal_finish_us", "outcome", "lateness_us"],
+        "properties": {
+          "request_id": {"type": "string", "minLength": 1},
+          "terminal_finish_us": {"type": "integer", "minimum": 1},
+          "outcome": {"enum": ["MET", "TARDY"]},
+          "lateness_us": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "activation_peak_bytes": {"type": "integer", "minimum": 0},
+    "energy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "server_nj",
+        "phone_nj",
+        "phone_by_device_nj",
+        "total_nj",
+        "server_p0_intervals"
+      ],
+      "properties": {
+        "server_nj": {"type": "integer", "minimum": 0},
+        "phone_nj": {"type": "integer", "minimum": 0},
+        "phone_by_device_nj": {
+          "type": "object",
+          "additionalProperties": {"type": "integer", "minimum": 0}
+        },
+        "total_nj": {"type": "integer", "minimum": 0},
+        "server_p0_intervals": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {"type": "integer", "minimum": 0},
+              {"type": "integer", "minimum": 0}
+            ],
+            "items": false,
+            "minItems": 2,
+            "maxItems": 2
+          }
+        }
+      }
+    },
+    "objective": {
+      "type": "array",
+      "prefixItems": [
+        {"type": "integer", "minimum": 0},
+        {"type": "integer", "minimum": 0},
+        {"type": "integer", "maximum": 0},
+        {"type": "integer", "minimum": 0}
+      ],
+      "items": false,
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "search": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["complete"],
+      "properties": {
+        "complete": {"const": true}
+      }
+    },
+    "certificate_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

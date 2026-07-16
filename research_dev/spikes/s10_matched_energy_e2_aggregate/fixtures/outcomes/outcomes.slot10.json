@@ -1,0 +1,83 @@
+{
+  "kind": "RequestOutcomeRecord",
+  "manifest_sha256": "0c748f658f1c8db04f1c392e2429be7b1703df466cfe88312f37f968b80834fc",
+  "outcome_set_id": "outcomes.slot10",
+  "outcomes": [
+    {
+      "arrival_us": 275920000,
+      "certificate": {
+        "certificate_kind": "GREEDY_PREFIX_AGREEMENT",
+        "first_divergence_index": -1,
+        "prefix_agreement_tokens": 48,
+        "referee_verdict": "AGREE"
+      },
+      "dispatched_us": 276000000,
+      "last_token_us": 276500000,
+      "manifest_entry_sha256": "e3e697bd41501cbaaa98c5727db036719edab95ecc13443a4ebafccefc0a3511",
+      "output_artifact_path": "outputs/slot10/req.0.json",
+      "output_artifact_sha256": "05243f419e70f4dd59c16d15ea040880b9458f5b12bf616fcd88226565d0a022",
+      "output_token_ids_sha256": "2de3df23a95183649c4c2ea34146e9f65276aaf45a855761f7dde11d70f7d0ec",
+      "realized_model_digest": "24f2b6068e47caa3df21ed535e26c8d299b4e933367a2ece137e710f31739dc8",
+      "realized_output_tokens": 48,
+      "realized_sampling_mode": "GREEDY",
+      "realized_seed": 1234,
+      "request_id": "req.0",
+      "stop_reason": "EOS",
+      "terminal_outcome": "met",
+      "weights_transform_id": "IDENTITY"
+    },
+    {
+      "arrival_us": 275930000,
+      "certificate": {
+        "certificate_kind": "GREEDY_PREFIX_AGREEMENT",
+        "first_divergence_index": -1,
+        "prefix_agreement_tokens": 48,
+        "referee_verdict": "AGREE"
+      },
+      "dispatched_us": 277000000,
+      "last_token_us": 277500000,
+      "manifest_entry_sha256": "520b4385b3f8cf0b276fef18b30edb3aeacb6b0301cab00911e7d0dfafc4e727",
+      "output_artifact_path": "outputs/slot10/req.1.json",
+      "output_artifact_sha256": "48c2d1c98a680e9674daaf230183fe7a3df23d0f544aea68de8136fd2caa45ec",
+      "output_token_ids_sha256": "845bab05730c75fb1a595d9cf3c4838a6049f7877247cd5853d8e1dcbc53081d",
+      "realized_model_digest": "24f2b6068e47caa3df21ed535e26c8d299b4e933367a2ece137e710f31739dc8",
+      "realized_output_tokens": 48,
+      "realized_sampling_mode": "GREEDY",
+      "realized_seed": 1234,
+      "request_id": "req.1",
+      "stop_reason": "EOS",
+      "terminal_outcome": "met",
+      "weights_transform_id": "IDENTITY"
+    },
+    {
+      "arrival_us": 275940000,
+      "certificate": {
+        "certificate_kind": "GREEDY_PREFIX_AGREEMENT",
+        "first_divergence_index": -1,
+        "prefix_agreement_tokens": 48,
+        "referee_verdict": "AGREE"
+      },
+      "dispatched_us": 278000000,
+      "last_token_us": 278500000,
+      "manifest_entry_sha256": "2c83e40574d6a42f29256d7e46ea2402b35968db50f281114100813d40312ea0",
+      "output_artifact_path": "outputs/slot10/req.2.json",
+      "output_artifact_sha256": "8b6d4f87dd9e012dbffbf5603f6d8343d8bb3baa834ba0f6db5b1abc45ec2943",
+      "output_token_ids_sha256": "f663fb12de8a01ce3a34100965959777a7f9f865c82da7399af6cf9ce8b8aea2",
+      "realized_model_digest": "24f2b6068e47caa3df21ed535e26c8d299b4e933367a2ece137e710f31739dc8",
+      "realized_output_tokens": 48,
+      "realized_sampling_mode": "GREEDY",
+      "realized_seed": 1234,
+      "request_id": "req.2",
+      "stop_reason": "EOS",
+      "terminal_outcome": "met",
+      "weights_transform_id": "IDENTITY"
+    }
+  ],
+  "pair_index": 5,
+  "record_sha256": "2da5c932f048027b2d5975dc7abd22b77c601fab7ef908a78beab9228ac35a5d",
+  "role": "Q_PIM_TREATMENT",
+  "run_nonce": "run.tl.slot10",
+  "schema_version": 2,
+  "set_id": "set.s10.e2a.synthetic",
+  "timeline_id": "tl.slot10"
+}

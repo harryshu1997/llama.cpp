@@ -1,0 +1,16 @@
+{
+  "device_backend_id": "OP15/HTP0",
+  "expiry_us": 900000000,
+  "granted_us": 0,
+  "min_horizon_us": 300000000,
+  "model_id": "gemma-4-12b",
+  "model_version": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "ready_state": "READY",
+  "reserved_weight_bytes": 1000,
+  "residency_epoch": 1,
+  "residency_lease_id": "r1",
+  "schema_version": 1,
+  "share_registry_generation": 2,
+  "status": "DRAFT_BLOCKED_BEFORE_V0C",
+  "weight_set_id": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+}

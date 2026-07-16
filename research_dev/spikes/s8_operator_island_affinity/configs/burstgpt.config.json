@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "config_version": "burstgpt-v2.0-cfg-1",
+  "source": "burstgpt-v2",
+  "provenance": "real",
+  "origin": {
+    "url": "https://github.com/HPMLL/BurstGPT/releases/download/v2.0/BurstGPT_3.csv",
+    "revision": "v2.0",
+    "filename": "BurstGPT_3.csv",
+    "bytes": 231682327,
+    "sha256": "sha256:2299986a07388aa303ec2c41d1131e756db650a39ed6ef9dfe7cc3d7f9a43b8f",
+    "line_count": 5344022,
+    "record_count": 5344021,
+    "license": "CC-BY-4.0"
+  },
+  "format": "csv",
+  "encoding": "utf-8",
+  "bom": "reject",
+  "newline": "lf_or_crlf",
+  "csv": {
+    "header": ["Timestamp", "Session ID", "Elapsed time", "Model", "Request tokens", "Response tokens", "Total tokens", "Log Type"],
+    "dialect": "rfc4180",
+    "blank_row": "reject",
+    "field_trim": "none"
+  },
+  "timestamp": {
+    "field": "Timestamp",
+    "grammar": "^[0-9]+\\.[0-9]+$",
+    "unit": "seconds",
+    "to_us": "decimal_round_half_up_1e6",
+    "policy": "require_nondecreasing",
+    "overflow_max": 9007199254740991
+  },
+  "gate_a": {
+    "deadline_us": null,
+    "deadline_provenance": "none",
+    "priority_class": null,
+    "priority_provenance": "none",
+    "observed_latency_us": null,
+    "images": 0,
+    "audio_ms": 0
+  },
+  "mapping": {
+    "t_from": "Timestamp",
+    "input_tokens": { "from": "Request tokens", "grammar": "^[0-9]+$" },
+    "output_tokens": { "from": "Response tokens", "grammar": "^[0-9]+$" },
+    "session_id": { "from": "Session ID", "blank_to_null": true },
+    "service": { "from": "Log Type", "value_map": { "Conversation log": "conversation_generation", "API log": "api_generation" } },
+    "model_class": { "from": "Model", "value_map": { "GPT-4": "large_text_generation", "ChatGPT": "large_text_generation" } },
+    "retrieved_chunks": { "const": 0 },
+    "cache_keys": { "const_empty": true },
+    "source_fields": {
+      "burstgpt_failed": { "from": "Response tokens", "type": "boolean", "transform": "is_zero" },
+      "elapsed_time": { "from": "Elapsed time", "type": "integer", "transform": "raw" },
+      "total_tokens": { "from": "Total tokens", "type": "integer", "transform": "raw" },
+      "model": { "from": "Model", "type": "string", "transform": "raw" },
+      "log_type": { "from": "Log Type", "type": "string", "transform": "raw" }
+    }
+  }
+}

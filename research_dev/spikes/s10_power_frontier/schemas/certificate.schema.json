@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "S10-V0 solution certificate",
+  "description": "Explicit schedule emitted by a policy/oracle and validated by the independent checker. Contains every per-node start/finish, server batches, phone island assignment, energy decomposition, terminal outcomes, and two integrity hashes. The checker re-derives feasibility and energy from this record alone (plus the instance) and fails closed.",
+  "type": "object",
+  "required": ["certificate_version", "label", "instance_id", "instance_sha256",
+               "power_model", "schedule", "server_batches", "phone_islands", "hbm",
+               "energy_nj", "energy_server_nj", "energy_phone_nj", "server_busy_us",
+               "phone_busy_us", "tardy", "timeout", "met", "objective_key",
+               "certificate_sha256"],
+  "properties": {
+    "certificate_version": {"const": 1},
+    "label": {"type": "string"},
+    "instance_id": {"type": "string"},
+    "instance_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "power_model": {"type": "object"},
+    "schedule": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["request", "model_id", "weight_set", "mid_tokens", "mid_device",
+                     "pre_start", "pre_finish", "mid_start", "mid_finish",
+                     "suf_start", "suf_finish", "deadline", "outcome"],
+        "properties": {
+          "request": {"type": "string"},
+          "mid_device": {"enum": ["SERVER", "OP15", "OP12"]},
+          "pre_start": {"type": "integer"}, "pre_finish": {"type": "integer"},
+          "mid_start": {"type": "integer"}, "mid_finish": {"type": "integer"},
+          "suf_start": {"type": "integer"}, "suf_finish": {"type": "integer"},
+          "deadline": {"type": "integer"},
+          "outcome": {"enum": ["MET", "TARDY", "TIMEOUT"]}
+        }
+      }
+    },
+    "server_batches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["batch_id", "wave", "weight_set", "members", "tokens",
+                     "latency_us", "start", "finish"],
+        "properties": {
+          "members": {"type": "array", "items": {"type": "string"}},
+          "tokens": {"type": "integer"}, "latency_us": {"type": "integer"},
+          "start": {"type": "integer"}, "finish": {"type": "integer"}
+        }
+      }
+    },
+    "phone_islands": {"type": "object", "additionalProperties": {"type": "array"}},
+    "hbm": {
+      "type": "object",
+      "required": ["mode", "relief_bytes"],
+      "properties": {
+        "mode": {"type": "object",
+                 "additionalProperties": {"enum": ["server", "mirrored", "exclusive"]}},
+        "relief_bytes": {"type": "integer", "minimum": 0}
+      }
+    },
+    "energy_nj": {"type": "integer"}, "energy_server_nj": {"type": "integer"},
+    "energy_phone_nj": {"type": "integer"},
+    "server_busy_us": {"type": "integer"},
+    "phone_busy_us": {"type": "object"},
+    "tardy": {"type": "integer"}, "timeout": {"type": "integer"}, "met": {"type": "integer"},
+    "objective_key": {"type": "array"},
+    "certificate_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

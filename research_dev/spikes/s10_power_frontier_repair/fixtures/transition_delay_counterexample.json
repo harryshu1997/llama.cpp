@@ -1,0 +1,76 @@
+{
+  "activation_mem_bound_bytes": 1,
+  "batch_profiles": {},
+  "devices": {
+    "SERVER": {
+      "active_mw": 300000,
+      "kind": "server"
+    }
+  },
+  "evidence": {
+    "purpose": "earliest-start schedule is not energy-optimal",
+    "scope": "MECHANICS_ONLY"
+  },
+  "horizon_us": 2000,
+  "instance_id": "transition_delay_counterexample",
+  "nodes": [
+    {
+      "batch_key": null,
+      "id": "n0",
+      "model_id": "m0",
+      "output_bytes": 0,
+      "predecessors": [],
+      "release_us": 0,
+      "request_id": "r0",
+      "routes": {
+        "SERVER": {
+          "duration_us": 100,
+          "extra_energy_nj": 0
+        }
+      },
+      "tokens": 1,
+      "weight_set_id": "w0"
+    },
+    {
+      "batch_key": null,
+      "id": "n1",
+      "model_id": "m1",
+      "output_bytes": 0,
+      "predecessors": [],
+      "release_us": 1000,
+      "request_id": "r1",
+      "routes": {
+        "SERVER": {
+          "duration_us": 100,
+          "extra_energy_nj": 0
+        }
+      },
+      "tokens": 1,
+      "weight_set_id": "w1"
+    }
+  ],
+  "requests": [
+    {
+      "arrival_us": 0,
+      "deadline_us": 950,
+      "id": "r0",
+      "priority": 0,
+      "terminal_node": "n0"
+    },
+    {
+      "arrival_us": 0,
+      "deadline_us": 1500,
+      "id": "r1",
+      "priority": 0,
+      "terminal_node": "n1"
+    }
+  ],
+  "schema_version": 2,
+  "server_power": {
+    "idle_entry_us": 50,
+    "p0_mw": 300000,
+    "p8_mw": 25000,
+    "transition_nj": 1000000,
+    "wake_us": 50
+  }
+}

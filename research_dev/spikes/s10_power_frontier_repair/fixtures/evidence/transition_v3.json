@@ -1,0 +1,176 @@
+{
+  "activation_mem_bound_bytes": 1,
+  "batch_profiles": {},
+  "devices": {
+    "SERVER": {
+      "active_mw": 300000,
+      "kind": "server"
+    }
+  },
+  "evidence": {
+    "bindings": [
+      {
+        "field": "memory_bytes",
+        "record_id": "route.capacity.1",
+        "record_sha256": "ed2c588ba9059004532dc4afbd701c1f6278f7a61048ce2cf9b088e4d96e4b90",
+        "target": "activation_mem_bound_bytes",
+        "value": 1
+      },
+      {
+        "field": "idle_mw",
+        "record_id": "pwr.server",
+        "record_sha256": "9c7ea04f01abe759fed4d44083a71a98e17898a43fc4285e37c5bdc5fe08e729",
+        "target": "server_power.p8_mw",
+        "value": 25000
+      },
+      {
+        "field": "active_mw",
+        "record_id": "pwr.server",
+        "record_sha256": "9c7ea04f01abe759fed4d44083a71a98e17898a43fc4285e37c5bdc5fe08e729",
+        "target": "server_power.p0_mw",
+        "value": 300000
+      },
+      {
+        "field": "wake_us",
+        "record_id": "pwr.server",
+        "record_sha256": "9c7ea04f01abe759fed4d44083a71a98e17898a43fc4285e37c5bdc5fe08e729",
+        "target": "server_power.wake_us",
+        "value": 50
+      },
+      {
+        "field": "idle_entry_us",
+        "record_id": "pwr.server",
+        "record_sha256": "9c7ea04f01abe759fed4d44083a71a98e17898a43fc4285e37c5bdc5fe08e729",
+        "target": "server_power.idle_entry_us",
+        "value": 50
+      },
+      {
+        "field": "transition_nj",
+        "record_id": "pwr.server",
+        "record_sha256": "9c7ea04f01abe759fed4d44083a71a98e17898a43fc4285e37c5bdc5fe08e729",
+        "target": "server_power.transition_nj",
+        "value": 1000000
+      },
+      {
+        "field": "active_mw",
+        "record_id": "pwr.server",
+        "record_sha256": "9c7ea04f01abe759fed4d44083a71a98e17898a43fc4285e37c5bdc5fe08e729",
+        "target": "devices.SERVER.active_mw",
+        "value": 300000
+      },
+      {
+        "field": "output_bytes",
+        "record_id": "bnd.n0",
+        "record_sha256": "2a2026fb1e8fbeae9877e0cc642517cf48e18594304573902daa07e4f0a4b1ce",
+        "target": "nodes.n0.output_bytes",
+        "value": 0
+      },
+      {
+        "field": "latency.p95_us",
+        "record_id": "route.n0.server",
+        "record_sha256": "69b1b288476be3dee81a3dd7c290355560c67b06ceb515406ebf863e5e3aa89a",
+        "target": "nodes.n0.routes.SERVER.duration_us",
+        "value": 100
+      },
+      {
+        "field": "energy_nj",
+        "record_id": "bnd.n0",
+        "record_sha256": "2a2026fb1e8fbeae9877e0cc642517cf48e18594304573902daa07e4f0a4b1ce",
+        "target": "nodes.n0.routes.SERVER.extra_energy_nj",
+        "value": 0
+      },
+      {
+        "field": "output_bytes",
+        "record_id": "bnd.n1",
+        "record_sha256": "e3bd177f0b4249f4710694d434ada04b606639c51769f9a4dfed3098eb1f165b",
+        "target": "nodes.n1.output_bytes",
+        "value": 0
+      },
+      {
+        "field": "latency.p95_us",
+        "record_id": "route.n1.server",
+        "record_sha256": "8f39af9df052fc4432a8effbd2f4e8649070e78fc01df0de5cc6216354ba7eab",
+        "target": "nodes.n1.routes.SERVER.duration_us",
+        "value": 100
+      },
+      {
+        "field": "energy_nj",
+        "record_id": "bnd.n1",
+        "record_sha256": "e3bd177f0b4249f4710694d434ada04b606639c51769f9a4dfed3098eb1f165b",
+        "target": "nodes.n1.routes.SERVER.extra_energy_nj",
+        "value": 0
+      }
+    ],
+    "bundle_sha256": "da7e57c1761a01b378a3f419edda6a2feec2ff6755ed8ea2c2d7339ab2585a76",
+    "schema_version": 3,
+    "scope": "MECHANICS_ONLY"
+  },
+  "horizon_us": 2000,
+  "instance_id": "transition_delay_counterexample_v3",
+  "nodes": [
+    {
+      "batch_key": null,
+      "graph_id": "graph.g0",
+      "id": "n0",
+      "island_id": "island.ffn",
+      "kv_tokens": 0,
+      "model_id": "m0",
+      "output_bytes": 0,
+      "predecessors": [],
+      "release_us": 0,
+      "request_id": "r0",
+      "routes": {
+        "SERVER": {
+          "duration_us": 100,
+          "extra_energy_nj": 0
+        }
+      },
+      "tokens": 1,
+      "weight_set_id": "w0"
+    },
+    {
+      "batch_key": null,
+      "graph_id": "graph.g1",
+      "id": "n1",
+      "island_id": "island.ffn",
+      "kv_tokens": 0,
+      "model_id": "m1",
+      "output_bytes": 0,
+      "predecessors": [],
+      "release_us": 1000,
+      "request_id": "r1",
+      "routes": {
+        "SERVER": {
+          "duration_us": 100,
+          "extra_energy_nj": 0
+        }
+      },
+      "tokens": 1,
+      "weight_set_id": "w1"
+    }
+  ],
+  "requests": [
+    {
+      "arrival_us": 0,
+      "deadline_us": 950,
+      "id": "r0",
+      "priority": 0,
+      "terminal_node": "n0"
+    },
+    {
+      "arrival_us": 0,
+      "deadline_us": 1500,
+      "id": "r1",
+      "priority": 0,
+      "terminal_node": "n1"
+    }
+  ],
+  "schema_version": 3,
+  "server_power": {
+    "idle_entry_us": 50,
+    "p0_mw": 300000,
+    "p8_mw": 25000,
+    "transition_nj": 1000000,
+    "wake_us": 50
+  }
+}

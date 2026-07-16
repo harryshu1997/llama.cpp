@@ -1,0 +1,16 @@
+{
+  "accepting": true,
+  "boot_epoch": 1,
+  "busy": false,
+  "device_backend_id": "OP15/HTP0",
+  "draining": false,
+  "gpu_busy_pct": null,
+  "last_receiver_ts_us": 123,
+  "link_rtt_us": null,
+  "queue_depth": 0,
+  "ram_free_bytes": null,
+  "schema_version": 1,
+  "status_seq": 42,
+  "temperature_c": null,
+  "thermal_slope": null
+}

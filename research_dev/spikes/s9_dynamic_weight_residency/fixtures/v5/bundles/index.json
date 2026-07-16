@@ -1,0 +1,198 @@
+[
+  {
+    "file": "valid/dispatchable.json",
+    "expect": "valid",
+    "expected_codes": []
+  },
+  {
+    "file": "invalid/rl_horizon_digest.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_DIGEST_MISMATCH"
+    ]
+  },
+  {
+    "file": "invalid/rc_free_ram_digest.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_DIGEST_MISMATCH",
+      "E_LEDGER_DERIVED"
+    ]
+  },
+  {
+    "file": "invalid/rc_weight_digest_foreign.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_CHAIN_BROKEN"
+    ]
+  },
+  {
+    "file": "invalid/rl_model_foreign.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_CHAIN_BROKEN"
+    ]
+  },
+  {
+    "file": "invalid/island_range_uncovered.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_IDENTITY_MISMATCH"
+    ]
+  },
+  {
+    "file": "invalid/weight_set_foreign_model.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_FRAME_BINDING",
+      "E_IDENTITY_MISMATCH"
+    ]
+  },
+  {
+    "file": "invalid/min_soc_violation.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_DEVICE_INELIGIBLE"
+    ]
+  },
+  {
+    "file": "invalid/device_snapshot_from_future.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_SNAPSHOT_CAUSAL"
+    ]
+  },
+  {
+    "file": "invalid/ready_certificate_from_future.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_SNAPSHOT_CAUSAL"
+    ]
+  },
+  {
+    "file": "invalid/lease_predates_ready.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_SNAPSHOT_CAUSAL"
+    ]
+  },
+  {
+    "file": "invalid/ticket_foreign_model.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_FRAME_BINDING"
+    ]
+  },
+  {
+    "file": "invalid/ticket_unknown_device.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_FRAME_BINDING"
+    ]
+  },
+  {
+    "file": "invalid/ticket_weight_set_mismatch.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_FRAME_BINDING"
+    ]
+  },
+  {
+    "file": "invalid/ticket_missing_segment.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_FRAME_BINDING"
+    ]
+  },
+  {
+    "file": "invalid/ticket_unlisted_segment.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_FRAME_BINDING"
+    ]
+  },
+  {
+    "file": "invalid/ticket_range_mismatch.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_FRAME_BINDING"
+    ]
+  },
+  {
+    "file": "invalid/frame_chunk_outside_ticket.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_FRAME_BINDING"
+    ]
+  },
+  {
+    "file": "invalid/frame_payload_length_mismatch.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_FRAME_BINDING"
+    ]
+  },
+  {
+    "file": "invalid/duplicate_execute.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_FRAME_DUPLICATE"
+    ]
+  },
+  {
+    "file": "invalid/duplicate_bulk.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_FRAME_DUPLICATE"
+    ]
+  },
+  {
+    "file": "invalid/island_total_mismatch.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_IDENTITY_MISMATCH"
+    ]
+  },
+  {
+    "file": "invalid/island_io_exceeds_certificate.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_IDENTITY_MISMATCH"
+    ]
+  },
+  {
+    "file": "invalid/duplicate_requirements.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_SCHEMA"
+    ]
+  },
+  {
+    "file": "invalid/rc_false_physical_partition.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_LEDGER_DERIVED"
+    ]
+  },
+  {
+    "file": "invalid/rc_false_free_ram.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_LEDGER_DERIVED"
+    ]
+  },
+  {
+    "file": "invalid/duplicate_backend_identity.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_IDENTITY_MISMATCH"
+    ]
+  },
+  {
+    "file": "invalid/schema_invalid_tuple.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_SCHEMA"
+    ]
+  }
+]

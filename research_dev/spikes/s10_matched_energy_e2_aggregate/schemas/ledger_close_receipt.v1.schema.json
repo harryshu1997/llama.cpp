@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "s10-e2a-ledger-close-receipt-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "close_id",
+    "anchor_kind",
+    "chain_id",
+    "set_id",
+    "plan_anchor_id",
+    "plan_anchor_record_sha256",
+    "attempt_ledger_sha256",
+    "ledger_head_sha256",
+    "anchored_digest",
+    "message_imprint_sha256",
+    "token_hash_algorithm",
+    "token_der_path",
+    "token_der_sha256",
+    "anchor_time_utc_us",
+    "serial_number_hex",
+    "tsa_subject_dn",
+    "tsa_leaf_cert_sha256",
+    "tsa_policy_oid",
+    "trust_root_id",
+    "trust_root_sha256",
+    "trust_root_pin_location",
+    "trust_root_custodian",
+    "verifier_kind",
+    "provenance",
+    "status",
+    "reason_code",
+    "record_sha256"
+  ],
+  "$defs": {
+    "ident": {"type": "string", "minLength": 1, "maxLength": 256,
+              "pattern": "^[\\x21-\\x7e]+$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "uint": {"type": "integer", "minimum": 0, "maximum": 9007199254740991}
+  },
+  "properties": {
+    "schema_version": {"const": 1},
+    "kind": {"const": "LedgerCloseReceipt"},
+    "close_id": {"$ref": "#/$defs/ident"},
+    "anchor_kind": {
+      "enum": ["RFC3161_TSA", "TRANSPARENCY_LOG_INCLUSION", "TPM_NV_QUOTE",
+               "SELF_SIGNED_TSA", "LOCAL_HMAC", "LOCAL_GPG_SIGNATURE",
+               "GIT_COMMIT_LOCAL", "LOCAL_CLOCK_ASSERTION", "BMC_EVENT_LOG",
+               "SYNTHETIC_ANCHOR"]
+    },
+    "chain_id": {"$ref": "#/$defs/ident"},
+    "set_id": {"$ref": "#/$defs/ident"},
+    "plan_anchor_id": {"$ref": "#/$defs/ident"},
+    "plan_anchor_record_sha256": {"$ref": "#/$defs/sha256"},
+    "attempt_ledger_sha256": {"$ref": "#/$defs/sha256"},
+    "ledger_head_sha256": {"$ref": "#/$defs/sha256"},
+    "anchored_digest": {"$ref": "#/$defs/sha256"},
+    "message_imprint_sha256": {"$ref": "#/$defs/sha256"},
+    "token_hash_algorithm": {"enum": ["sha256", "sha384", "sha512"]},
+    "token_der_path": {"type": "string", "minLength": 1, "maxLength": 512},
+    "token_der_sha256": {"$ref": "#/$defs/sha256"},
+    "anchor_time_utc_us": {"$ref": "#/$defs/uint"},
+    "serial_number_hex": {"type": "string", "minLength": 1, "maxLength": 128,
+                          "pattern": "^[0-9a-fA-Fx]+$"},
+    "tsa_subject_dn": {"type": "string", "minLength": 1, "maxLength": 512},
+    "tsa_leaf_cert_sha256": {"$ref": "#/$defs/sha256"},
+    "tsa_policy_oid": {"type": "string", "minLength": 1, "maxLength": 128,
+                       "pattern": "^[0-9]+(\\.[0-9]+)*$"},
+    "trust_root_id": {"$ref": "#/$defs/ident"},
+    "trust_root_sha256": {"$ref": "#/$defs/sha256"},
+    "trust_root_pin_location": {
+      "enum": ["E2A_FROZEN_CONSTANT", "CALLER_SUPPLIED", "CONFIG_FILE",
+               "FIXTURE", "UNKNOWN"]
+    },
+    "trust_root_custodian": {
+      "enum": ["THIRD_PARTY_CA", "EXPERIMENT_USER", "HOST_ROOT", "UNKNOWN"]
+    },
+    "verifier_kind": {
+      "enum": ["OPENSSL_TS_VERIFY", "TRANSPARENCY_LOG_PROOF", "NONE"]
+    },
+    "provenance": {"enum": ["MEASURED", "SYNTHETIC"]},
+    "status": {"enum": ["OK", "FAILED", "INELIGIBLE"]},
+    "reason_code": {"$ref": "#/$defs/ident"},
+    "record_sha256": {"$ref": "#/$defs/sha256"}
+  }
+}

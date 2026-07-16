@@ -1,0 +1,257 @@
+[
+  {
+    "file": "valid/request.real.json",
+    "schema": "schemas/request.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/request.synthetic.json",
+    "schema": "schemas/request.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "invalid/request.missing_field.json",
+    "schema": "schemas/request.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/request.deadline_unlabeled.json",
+    "schema": "schemas/request.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/request.priority_unlabeled.json",
+    "schema": "schemas/request.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/request.synthetic_null_deadline.json",
+    "schema": "schemas/request.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/request.overflow_timestamp.json",
+    "schema": "schemas/request.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/request.negative_tokens.json",
+    "schema": "schemas/request.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/request.unknown_field.json",
+    "schema": "schemas/request.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/request.float_source_field.json",
+    "schema": "schemas/request.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "valid/trace_manifest.real.json",
+    "schema": "schemas/trace_manifest.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/trace_manifest.mix.json",
+    "schema": "schemas/trace_manifest.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "invalid/trace_manifest.mix_no_streams.json",
+    "schema": "schemas/trace_manifest.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/trace_manifest.real_with_streams.json",
+    "schema": "schemas/trace_manifest.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/trace_manifest.zero_scale.json",
+    "schema": "schemas/trace_manifest.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "valid/profile_row.pass.json",
+    "schema": "schemas/profile_row.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/profile_row.unknown.json",
+    "schema": "schemas/profile_row.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "invalid/profile_row.pass_unknown_correctness.json",
+    "schema": "schemas/profile_row.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/profile_row.pass_nproc_low.json",
+    "schema": "schemas/profile_row.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/profile_row.pass_missing_timing.json",
+    "schema": "schemas/profile_row.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/profile_row.pass_no_server_control.json",
+    "schema": "schemas/profile_row.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/profile_row.pass_no_server_relief.json",
+    "schema": "schemas/profile_row.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/profile_row.pass_empty_artifacts.json",
+    "schema": "schemas/profile_row.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/profile_row.pass_cpu_fallback.json",
+    "schema": "schemas/profile_row.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/profile_row.bad_shape.json",
+    "schema": "schemas/profile_row.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "valid/island_descriptor.json",
+    "schema": "schemas/island_descriptor.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/island_descriptor.mixed.json",
+    "schema": "schemas/island_descriptor.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "invalid/island_descriptor.bad_layer.json",
+    "schema": "schemas/island_descriptor.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/island_descriptor.mixed_no_vector.json",
+    "schema": "schemas/island_descriptor.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "valid/service_dag.json",
+    "schema": "schemas/service_dag.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/dag_cover.json",
+    "schema": "schemas/dag_cover.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/model_manifest.json",
+    "schema": "schemas/model_manifest.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/model_residency_lease.json",
+    "schema": "schemas/model_residency_lease.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/request_state_lease.json",
+    "schema": "schemas/request_state_lease.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/phone_capability.json",
+    "schema": "schemas/phone_capability.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/telemetry.json",
+    "schema": "schemas/telemetry.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/route_action.single.json",
+    "schema": "schemas/route_action.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/route_action.corun.json",
+    "schema": "schemas/route_action.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "invalid/route_action.corun_uncertified.json",
+    "schema": "schemas/route_action.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/route_action.single_two_assign.json",
+    "schema": "schemas/route_action.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/route_action.merged_one_req.json",
+    "schema": "schemas/route_action.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "valid/route_decision.json",
+    "schema": "schemas/route_decision.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/artifact_manifest.json",
+    "schema": "schemas/artifact_manifest.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/source_config.burstgpt.json",
+    "schema": "schemas/source_config.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/source_config.ragpulse.json",
+    "schema": "schemas/source_config.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "invalid/source_config.deadline_notnull.json",
+    "schema": "schemas/source_config.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/source_config.csv_with_jsonl.json",
+    "schema": "schemas/source_config.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/source_config.no_origin_hash.json",
+    "schema": "schemas/source_config.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/source_config.bad_hash.json",
+    "schema": "schemas/source_config.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/source_config.images_nonzero.json",
+    "schema": "schemas/source_config.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/artifact_manifest.normalize_no_sidecar.json",
+    "schema": "schemas/artifact_manifest.schema.json",
+    "expect": "invalid"
+  }
+]

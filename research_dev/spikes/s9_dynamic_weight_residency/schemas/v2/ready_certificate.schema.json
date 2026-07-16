@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s9/schemas/v2/ready_certificate.schema.json",
+  "title": "Ready certificate (v2)",
+  "$comment": "Self-contained and FAIL-CLOSED BY CONSTRUCTION. A ReadyCertificate exists ONLY for a weight set that is actually READY on one (device, backend): warmup_passed const true, correctness.verdict const pass. It references its CorrectnessCertificate (correctness_id/digest) and its PreparedImage (prepared_image_id/digest), and its own ready_certificate_digest (domain-separated, recomputed by the bundle validator) binds device+boot+generation+state+prepared_image+correctness so a stale-epoch, wrong-generation, or relabeled cert is rejected at dispatch. physical_bytes.total must equal the sum of its parts (semantic).",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": { "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" } },
+  "properties": {
+    "schema_version": { "type": "integer", "const": 2 },
+    "kind": { "type": "string", "const": "ready_certificate" },
+    "cert_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "device_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "soc": { "type": "string", "enum": ["op12", "op15"] },
+    "boot_epoch": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "residency_generation": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "backend": { "type": "string", "enum": ["htp", "gpu"] },
+    "state": { "type": "string", "enum": ["READY_HTP", "READY_GPU"] },
+    "weight_set_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "weight_set_digest": { "$ref": "#/$defs/sha256" },
+    "prepared_image_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "prepared_image_digest": { "$ref": "#/$defs/sha256" },
+    "correctness_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "correctness_digest": { "$ref": "#/$defs/sha256" },
+    "correctness": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "verdict": { "type": "string", "const": "pass" },
+        "metric_digest": { "$ref": "#/$defs/sha256" }
+      },
+      "required": ["verdict", "metric_digest"]
+    },
+    "warmup_passed": { "type": "boolean", "const": true },
+    "physical_bytes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "canonical": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "derived": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "scratch": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "activations_reserved": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "state_reserved": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "total": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
+      },
+      "required": ["canonical", "derived", "scratch", "activations_reserved", "state_reserved", "total"]
+    },
+    "free_ram_after_bytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "issued_receiver_ts_us": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "ready_certificate_digest": { "$ref": "#/$defs/sha256" }
+  },
+  "required": ["schema_version", "kind", "cert_id", "device_id", "soc", "boot_epoch", "residency_generation", "backend", "state", "weight_set_id", "weight_set_digest", "prepared_image_id", "prepared_image_digest", "correctness_id", "correctness_digest", "correctness", "warmup_passed", "physical_bytes", "free_ram_after_bytes", "issued_receiver_ts_us", "ready_certificate_digest"],
+  "allOf": [
+    {
+      "if": { "properties": { "state": { "const": "READY_HTP" } }, "required": ["state"] },
+      "then": { "properties": { "backend": { "const": "htp" } } }
+    },
+    {
+      "if": { "properties": { "state": { "const": "READY_GPU" } }, "required": ["state"] },
+      "then": { "properties": { "backend": { "const": "gpu" } } }
+    }
+  ]
+}

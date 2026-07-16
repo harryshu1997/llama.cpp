@@ -1,0 +1,114 @@
+{
+  "aggregate_method": "SUM_ALL_PAIRS_V1",
+  "aggregate_result_label": "MEASUREMENT_INVALID",
+  "attempted_pairs": 8,
+  "declared_order": [
+    "OPTIMIZED_SERVER_ONLY_CONTROL",
+    "Q_PIM_TREATMENT",
+    "Q_PIM_TREATMENT",
+    "OPTIMIZED_SERVER_ONLY_CONTROL",
+    "OPTIMIZED_SERVER_ONLY_CONTROL",
+    "Q_PIM_TREATMENT",
+    "Q_PIM_TREATMENT",
+    "OPTIMIZED_SERVER_ONLY_CONTROL",
+    "OPTIMIZED_SERVER_ONLY_CONTROL",
+    "Q_PIM_TREATMENT",
+    "Q_PIM_TREATMENT",
+    "OPTIMIZED_SERVER_ONLY_CONTROL",
+    "OPTIMIZED_SERVER_ONLY_CONTROL",
+    "Q_PIM_TREATMENT",
+    "Q_PIM_TREATMENT",
+    "OPTIMIZED_SERVER_ONLY_CONTROL"
+  ],
+  "instrument_kind": "SYNTHETIC",
+  "kind": "RepetitionSet",
+  "order_digest": "a820622cb59b956243fdbf5c31984107172784f63d462e9dd96fcec6619507ca",
+  "pairs": [
+    {
+      "control_record_sha256": "d840ddafd3cd032aef72909eba36c6ed0f0e7fac6db7afcd04be0181501e94f2",
+      "control_timeline_id": "tl.control.0",
+      "first_executed_role": "OPTIMIZED_SERVER_ONLY_CONTROL",
+      "pair_index": 0,
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "status": "OK",
+      "treatment_record_sha256": "9eb2472cf4753a724b61f9d46560e88351d0a1b41e6d9f1b8fd433ca850092e2",
+      "treatment_timeline_id": "tl.treatment.0"
+    },
+    {
+      "control_record_sha256": "c4ce53c19e70588fff309e319dabbfea292cb1a96cf5fc2e3faaf9ede0e8543e",
+      "control_timeline_id": "tl.control.1",
+      "first_executed_role": "Q_PIM_TREATMENT",
+      "pair_index": 1,
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "status": "OK",
+      "treatment_record_sha256": "221ab11bb80e09b4012909622a1a4be932657b0548528240348cdeadb5ed350f",
+      "treatment_timeline_id": "tl.treatment.1"
+    },
+    {
+      "control_record_sha256": "036a0f51eaebd9ad7e80e031df0360e00ed1fb79a7e3fcd05bc78e80b16e756e",
+      "control_timeline_id": "tl.control.2",
+      "first_executed_role": "OPTIMIZED_SERVER_ONLY_CONTROL",
+      "pair_index": 2,
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "status": "OK",
+      "treatment_record_sha256": "8495c04e39016a119f3425db9b815b207bbcee2c1feb7c51ad8327fdcdaf558d",
+      "treatment_timeline_id": "tl.treatment.2"
+    },
+    {
+      "control_record_sha256": "cb92df50f85ed05ae8d660750650f05016a3abea8104c8577ae3ff5f3dd93efb",
+      "control_timeline_id": "tl.control.3",
+      "first_executed_role": "Q_PIM_TREATMENT",
+      "pair_index": 3,
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "status": "OK",
+      "treatment_record_sha256": "4222d47ee9217f8e6f3ad9f397ec99d60b69caf5fb068beb5f66dca5a01745d0",
+      "treatment_timeline_id": "tl.treatment.3"
+    },
+    {
+      "control_record_sha256": "e1109aa7599b2cefc96b7648f4222c7317b3c5159f7171cf2c875d21611b359b",
+      "control_timeline_id": "tl.control.4",
+      "first_executed_role": "OPTIMIZED_SERVER_ONLY_CONTROL",
+      "pair_index": 4,
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "status": "OK",
+      "treatment_record_sha256": "4c2a8ea19b90fd23e0a8f6273bc9b96d3de5781ea850da2608e1def6909334c4",
+      "treatment_timeline_id": "tl.treatment.4"
+    },
+    {
+      "control_record_sha256": "84d0227e2a1b1df063a3a45192078d59a71134c0e8edc7b0457198c1e0c6cb70",
+      "control_timeline_id": "tl.control.5",
+      "first_executed_role": "Q_PIM_TREATMENT",
+      "pair_index": 5,
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "status": "OK",
+      "treatment_record_sha256": "8e7aea538c7b229941375fe3e5702393d34ea2fae6b7e1fc71e3d6f88e15f93e",
+      "treatment_timeline_id": "tl.treatment.5"
+    },
+    {
+      "control_record_sha256": "21f94e03cce15d1ecee891aa50b3b70179d57d26a2f349e53b1c2ba62c5578cd",
+      "control_timeline_id": "tl.control.6",
+      "first_executed_role": "OPTIMIZED_SERVER_ONLY_CONTROL",
+      "pair_index": 6,
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "status": "OK",
+      "treatment_record_sha256": "930158d13409d9077f4ee223007e9d1c41ebf186b0cb40a5304f79157eae41f3",
+      "treatment_timeline_id": "tl.treatment.6"
+    },
+    {
+      "control_record_sha256": "db42b6724fb5503bfeacb1742fdec727beb6c5e30158325e7137d7608bb43ecd",
+      "control_timeline_id": "tl.control.7",
+      "first_executed_role": "Q_PIM_TREATMENT",
+      "pair_index": 7,
+      "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+      "status": "OK",
+      "treatment_record_sha256": "5041fc35a990a67ce125bb508592e2958f153707aec4db2deb14deedbc47dc4a",
+      "treatment_timeline_id": "tl.treatment.7"
+    }
+  ],
+  "reason_code": "SYNTHETIC_NO_PHYSICAL_CLAIM",
+  "record_sha256": "f31b30ba1c41b960fed4dffdd324a9a0500cad58cbb8455bb22ab4539e5e5215",
+  "schema_version": 1,
+  "scope": "GPU_BOARD",
+  "set_id": "set.synthetic.0",
+  "warmup_timelines": []
+}

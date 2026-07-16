@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "s10-e2a-pre-run-plan-v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "plan_id",
+    "chain_id",
+    "set_id",
+    "experiment_identity",
+    "n_pairs",
+    "slots",
+    "declared_order",
+    "order_digest",
+    "aggregate_method",
+    "max_attempts_per_slot",
+    "warmup_count",
+    "gate_constants_digest",
+    "request_set_manifest_sha256",
+    "workload_digest",
+    "trace_digest",
+    "slo_policy_digest",
+    "policy_digest_control",
+    "policy_digest_treatment",
+    "model_digest",
+    "tokenizer_digest",
+    "sampler_digest",
+    "source_revision",
+    "build_revision",
+    "scope",
+    "instrument_kind",
+    "instrument_identity",
+    "device_identity",
+    "board_uuids",
+    "included_rails",
+    "excluded_rails",
+    "record_sha256"
+  ],
+  "$defs": {
+    "ident": {"type": "string", "minLength": 1, "maxLength": 256,
+              "pattern": "^[\\x21-\\x7e]+$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "uint": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+    "role": {"enum": ["OPTIMIZED_SERVER_ONLY_CONTROL", "Q_PIM_TREATMENT"]}
+  },
+  "properties": {
+    "schema_version": {"const": 2},
+    "kind": {"const": "PreRunPlan"},
+    "plan_id": {"$ref": "#/$defs/ident"},
+    "chain_id": {"$ref": "#/$defs/ident"},
+    "set_id": {"$ref": "#/$defs/ident"},
+    "experiment_identity": {"$ref": "#/$defs/ident"},
+    "n_pairs": {"type": "integer", "minimum": 8, "maximum": 256},
+    "slots": {
+      "type": "array",
+      "minItems": 16,
+      "maxItems": 512,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["slot_index", "pair_index", "role", "ordinal_in_pair",
+                     "run_nonce", "expected_entry_state_digest",
+                     "expected_exit_state_digest"],
+        "properties": {
+          "slot_index": {"$ref": "#/$defs/uint"},
+          "pair_index": {"$ref": "#/$defs/uint"},
+          "role": {"$ref": "#/$defs/role"},
+          "ordinal_in_pair": {"type": "integer", "minimum": 0, "maximum": 1},
+          "run_nonce": {"$ref": "#/$defs/ident"},
+          "expected_entry_state_digest": {"$ref": "#/$defs/sha256"},
+          "expected_exit_state_digest": {"$ref": "#/$defs/sha256"}
+        }
+      }
+    },
+    "declared_order": {
+      "type": "array",
+      "minItems": 16,
+      "maxItems": 512,
+      "items": {"$ref": "#/$defs/role"}
+    },
+    "order_digest": {"$ref": "#/$defs/sha256"},
+    "aggregate_method": {"const": "SUM_ALL_PAIRS_V1"},
+    "max_attempts_per_slot": {"const": 1},
+    "warmup_count": {"type": "integer", "minimum": 0, "maximum": 256},
+    "gate_constants_digest": {"$ref": "#/$defs/sha256"},
+    "request_set_manifest_sha256": {"$ref": "#/$defs/sha256"},
+    "workload_digest": {"$ref": "#/$defs/sha256"},
+    "trace_digest": {"$ref": "#/$defs/sha256"},
+    "slo_policy_digest": {"$ref": "#/$defs/sha256"},
+    "policy_digest_control": {"$ref": "#/$defs/sha256"},
+    "policy_digest_treatment": {"$ref": "#/$defs/sha256"},
+    "model_digest": {"$ref": "#/$defs/sha256"},
+    "tokenizer_digest": {"$ref": "#/$defs/sha256"},
+    "sampler_digest": {"$ref": "#/$defs/sha256"},
+    "source_revision": {"$ref": "#/$defs/ident"},
+    "build_revision": {"$ref": "#/$defs/ident"},
+    "scope": {"enum": ["GPU_BOARD", "SERVER_WALL"]},
+    "instrument_kind": {
+      "enum": ["NVML_BOARD", "RAPL_PACKAGE", "EXTERNAL_WALL_METER",
+               "BMC_INPUT_POWER", "SYNTHETIC"]
+    },
+    "instrument_identity": {"$ref": "#/$defs/ident"},
+    "device_identity": {"$ref": "#/$defs/ident"},
+    "board_uuids": {
+      "type": "array", "maxItems": 16, "uniqueItems": true,
+      "items": {"$ref": "#/$defs/ident"}
+    },
+    "included_rails": {
+      "type": "array", "minItems": 1, "maxItems": 32, "uniqueItems": true,
+      "items": {"$ref": "#/$defs/ident"}
+    },
+    "excluded_rails": {
+      "type": "array", "maxItems": 32, "uniqueItems": true,
+      "items": {"$ref": "#/$defs/ident"}
+    },
+    "record_sha256": {"$ref": "#/$defs/sha256"}
+  }
+}

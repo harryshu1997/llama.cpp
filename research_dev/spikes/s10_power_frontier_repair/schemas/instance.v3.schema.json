@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "s10-v0r-instance-v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "instance_id",
+    "horizon_us",
+    "activation_mem_bound_bytes",
+    "server_power",
+    "devices",
+    "batch_profiles",
+    "requests",
+    "nodes",
+    "evidence"
+  ],
+  "properties": {
+    "schema_version": {"const": 3},
+    "instance_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "horizon_us": {"type": "integer", "minimum": 1, "maximum": 1000000000000},
+    "activation_mem_bound_bytes": {"type": "integer", "minimum": 1},
+    "server_power": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["p8_mw", "p0_mw", "wake_us", "idle_entry_us", "transition_nj"],
+      "properties": {
+        "p8_mw": {"type": "integer", "minimum": 0},
+        "p0_mw": {"type": "integer", "minimum": 0},
+        "wake_us": {"type": "integer", "minimum": 0},
+        "idle_entry_us": {"type": "integer", "minimum": 0},
+        "transition_nj": {"type": "integer", "minimum": 0}
+      }
+    },
+    "devices": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {"minLength": 1},
+      "required": ["SERVER"],
+      "properties": {
+        "SERVER": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "active_mw"],
+          "properties": {
+            "kind": {"const": "server"},
+            "active_mw": {"type": "integer", "minimum": 0}
+          }
+        }
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "active_mw"],
+        "properties": {
+          "kind": {"const": "phone"},
+          "active_mw": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "batch_profiles": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "minProperties": 1,
+        "propertyNames": {"pattern": "^[1-9][0-9]*$"},
+        "additionalProperties": {"type": "integer", "minimum": 1}
+      }
+    },
+    "requests": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "arrival_us", "terminal_node", "deadline_us", "priority"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "arrival_us": {"type": "integer", "minimum": 0},
+          "terminal_node": {"type": "string", "minLength": 1},
+          "deadline_us": {"type": "integer", "minimum": 0},
+          "priority": {"const": 0}
+        }
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "request_id",
+          "model_id",
+          "weight_set_id",
+          "graph_id",
+          "island_id",
+          "predecessors",
+          "release_us",
+          "routes",
+          "batch_key",
+          "tokens",
+          "kv_tokens",
+          "output_bytes"
+        ],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "request_id": {"type": "string", "minLength": 1},
+          "model_id": {"type": "string", "minLength": 1},
+          "weight_set_id": {"type": "string", "minLength": 1},
+          "graph_id": {"type": "string", "minLength": 1},
+          "island_id": {"type": "string", "minLength": 1},
+          "predecessors": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "release_us": {"type": "integer", "minimum": 0},
+          "routes": {
+            "type": "object",
+            "minProperties": 1,
+            "propertyNames": {"minLength": 1},
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["duration_us", "extra_energy_nj"],
+              "properties": {
+                "duration_us": {"type": "integer", "minimum": 1},
+                "extra_energy_nj": {"type": "integer", "minimum": 0}
+              }
+            }
+          },
+          "batch_key": {"type": ["string", "null"]},
+          "tokens": {"type": "integer", "minimum": 1},
+          "kv_tokens": {"type": "integer", "minimum": 0},
+          "output_bytes": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "scope", "bundle_sha256", "bindings"],
+      "properties": {
+        "schema_version": {"const": 3},
+        "scope": {"enum": ["MECHANICS_ONLY", "MEASURED"]},
+        "bundle_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "bindings": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 1024,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["target", "record_id", "record_sha256", "field", "value"],
+            "properties": {
+              "target": {"type": "string", "minLength": 1, "maxLength": 256},
+              "record_id": {"type": "string", "minLength": 1, "maxLength": 256},
+              "record_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+              "field": {"type": "string", "minLength": 1, "maxLength": 256},
+              "value": {"type": "integer", "minimum": 0, "maximum": 9007199254740991}
+            }
+          }
+        }
+      }
+    }
+  }
+}

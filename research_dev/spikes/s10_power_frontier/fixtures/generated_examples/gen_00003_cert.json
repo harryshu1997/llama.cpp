@@ -1,0 +1,109 @@
+{
+  "certificate_sha256": "85643e6f8b7734536ba339391ae93bd1e60070def838822b643f1732b34d38d6",
+  "certificate_version": 1,
+  "energy_nj": 263100000,
+  "energy_phone_nj": 0,
+  "energy_server_nj": 263100000,
+  "hbm": {
+    "mode": {
+      "w0": "server"
+    },
+    "relief_bytes": 0
+  },
+  "instance_id": "gen_00003",
+  "instance_sha256": "c9f152c286c2198ce9e6c70c79779861dcc21f504687d7fa594c8238ebb5d9c3",
+  "label": "C4_oracle",
+  "met": 3,
+  "objective_key": [
+    0,
+    0,
+    -3,
+    263100000
+  ],
+  "phone_busy_us": {
+    "OP12": 0,
+    "OP15": 0
+  },
+  "phone_islands": {
+    "OP12": [],
+    "OP15": []
+  },
+  "power_model": {
+    "count_phone_idle": false,
+    "count_server_idle": false,
+    "gpu_active_mw": 300000,
+    "gpu_idle_mw": 25000,
+    "name": "favorable",
+    "phone_mw": {
+      "OP12": 2000,
+      "OP15": 2000
+    },
+    "usb_host_mw": 0
+  },
+  "schedule": [
+    {
+      "deadline": 120000,
+      "mid_device": "SERVER",
+      "mid_finish": 757,
+      "mid_start": 150,
+      "mid_tokens": 16,
+      "model_id": "m_w0",
+      "outcome": "MET",
+      "pre_finish": 50,
+      "pre_start": 0,
+      "request": "r00",
+      "suf_finish": 797,
+      "suf_start": 757,
+      "weight_set": "w0"
+    },
+    {
+      "deadline": 120000,
+      "mid_device": "SERVER",
+      "mid_finish": 757,
+      "mid_start": 150,
+      "mid_tokens": 16,
+      "model_id": "m_w0",
+      "outcome": "MET",
+      "pre_finish": 100,
+      "pre_start": 50,
+      "request": "r01",
+      "suf_finish": 837,
+      "suf_start": 797,
+      "weight_set": "w0"
+    },
+    {
+      "deadline": 120000,
+      "mid_device": "SERVER",
+      "mid_finish": 757,
+      "mid_start": 150,
+      "mid_tokens": 16,
+      "model_id": "m_w0",
+      "outcome": "MET",
+      "pre_finish": 150,
+      "pre_start": 100,
+      "request": "r02",
+      "suf_finish": 877,
+      "suf_start": 837,
+      "weight_set": "w0"
+    }
+  ],
+  "server_batches": [
+    {
+      "batch_id": 0,
+      "finish": 757,
+      "latency_us": 607,
+      "members": [
+        "r00",
+        "r01",
+        "r02"
+      ],
+      "start": 150,
+      "tokens": 48,
+      "wave": 0,
+      "weight_set": "w0"
+    }
+  ],
+  "server_busy_us": 877,
+  "tardy": 0,
+  "timeout": 0
+}

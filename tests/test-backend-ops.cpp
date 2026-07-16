@@ -6678,6 +6678,13 @@ struct test_leaky_relu : public test_case {
 
 // GGML_OP_FLASH_ATTN_EXT
 struct test_flash_attn_ext : public test_case {
+    enum mask_profile_type {
+        MASK_RANDOM,
+        MASK_ALL_VALID,
+        MASK_RAGGED_PREFIX,
+        MASK_RAGGED_HOLES,
+    };
+
     const int64_t hsk; // K head size
     const int64_t hsv; // V head size
     const int64_t nh; // num heads
@@ -6695,9 +6702,14 @@ struct test_flash_attn_ext : public test_case {
     const ggml_type type_K;
     const ggml_type type_V;
     std::array<int32_t, 4> permute;
+    const mask_profile_type mask_profile;
 
     std::string vars() override {
-        return VARS_TO_STR14(hsk, hsv, nh, nr23, kv, nb, mask, sinks, max_bias, logit_softcap, prec, type_K, type_V, permute);
+        return VARS_TO_STR15(hsk, hsv, nh, nr23, kv, nb, mask, sinks, max_bias, logit_softcap, prec, type_K, type_V, permute, mask_profile);
+    }
+
+    std::string op_desc(ggml_tensor * t) override {
+        return mask_profile == MASK_RANDOM ? test_case::op_desc(t) : "FLASH_ATTN_EXT_RAGGED";
     }
 
     double max_nmse_err() override {
@@ -6713,9 +6725,10 @@ struct test_flash_attn_ext : public test_case {
 
     test_flash_attn_ext(int64_t hsk = 128, int64_t hsv = 128, int64_t nh = 32, std::array<int64_t, 2> nr23 = {1, 1}, int64_t kv = 96, int64_t nb = 8,
                         bool mask = true, bool sinks = false, float max_bias = 0.0f, float logit_softcap = 0.0f, ggml_prec prec = GGML_PREC_F32,
-                        ggml_type type_K = GGML_TYPE_F16, ggml_type type_V = GGML_TYPE_F16, std::array<int32_t, 4> permute = {0, 1, 2, 3})
+                        ggml_type type_K = GGML_TYPE_F16, ggml_type type_V = GGML_TYPE_F16, std::array<int32_t, 4> permute = {0, 1, 2, 3},
+                        mask_profile_type mask_profile = MASK_RANDOM)
         : hsk(hsk), hsv(hsv), nh(nh), nr23(nr23), kv(kv), nb(nb), mask(mask), sinks(sinks), max_bias(max_bias), logit_softcap(logit_softcap), prec(prec),
-          type_K(type_K), type_V(type_V), permute(permute) {}
+          type_K(type_K), type_V(type_V), permute(permute), mask_profile(mask_profile) {}
 
     ggml_tensor * build_graph(ggml_context * ctx) override {
         const int64_t hsk_padded = GGML_PAD(hsk, ggml_blck_size(type_K));
@@ -6787,7 +6800,34 @@ struct test_flash_attn_ext : public test_case {
                 // make the sink values more noticeable in order to trigger a test failure when the implementation is wrong
                 init_tensor_uniform(t, -10.0f, 10.0f);
             } else if (strcmp(t->name, "m") == 0) {
-                init_tensor_kq_mask(t);
+                if (mask_profile == MASK_RANDOM) {
+                    init_tensor_kq_mask(t);
+                    continue;
+                }
+
+                GGML_ASSERT(t->type == GGML_TYPE_F16);
+                GGML_ASSERT(t->ne[1] == 1 && t->ne[2] == 1);
+
+                std::vector<ggml_fp16_t> data(ggml_nelements(t), ggml_fp32_to_fp16(0.0f));
+                const ggml_fp16_t masked = ggml_fp32_to_fp16(-INFINITY);
+
+                for (int64_t seq = 0; seq < t->ne[3]; ++seq) {
+                    if (mask_profile == MASK_RAGGED_PREFIX) {
+                        const int64_t dense_valid = kv * (4 - seq % 4) / 4;
+                        const int64_t valid = seq % 4 == 0 ? dense_valid : std::max<int64_t>(1, dense_valid - 17);
+                        for (int64_t pos = valid; pos < kv; ++pos) {
+                            data[seq * kv + pos] = masked;
+                        }
+                    } else if (mask_profile == MASK_RAGGED_HOLES) {
+                        const int64_t begin = (seq % 2 == 0) ? kv / 4 : kv / 2;
+                        const int64_t end   = begin + kv / 4;
+                        for (int64_t pos = begin; pos < end; ++pos) {
+                            data[seq * kv + pos] = masked;
+                        }
+                    }
+                }
+
+                ggml_backend_tensor_set(t, data.data(), 0, data.size() * sizeof(data[0]));
             } else {
                 init_tensor_uniform(t);
             }
@@ -9450,6 +9490,16 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
         }
     }
 
+    for (int64_t nseq : {8, 16}) {
+        for (auto profile : {test_flash_attn_ext::MASK_ALL_VALID,
+                             test_flash_attn_ext::MASK_RAGGED_PREFIX,
+                             test_flash_attn_ext::MASK_RAGGED_HOLES}) {
+            test_cases.emplace_back(new test_flash_attn_ext(
+                256, 256, 8, {2, nseq}, 512, 1, true, false, 0.0f, 0.0f,
+                GGML_PREC_F32, GGML_TYPE_F16, GGML_TYPE_F16, {0, 1, 2, 3}, profile));
+        }
+    }
+
     return test_cases;
 }
 #ifdef _MSC_VER
@@ -9716,6 +9766,17 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_perf() {
             for (int nr : { 1, 4, }) {
                 test_cases.emplace_back(new test_flash_attn_ext(hs, hs, 8, {nr, 1}, kv, 1, true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_F16, GGML_TYPE_F16));
             }
+        }
+    }
+
+
+    for (int64_t nseq : {8, 16, 32}) {
+        for (auto profile : {test_flash_attn_ext::MASK_ALL_VALID,
+                             test_flash_attn_ext::MASK_RAGGED_PREFIX,
+                             test_flash_attn_ext::MASK_RAGGED_HOLES}) {
+            test_cases.emplace_back(new test_flash_attn_ext(
+                256, 256, 8, {2, nseq}, 512, 1, true, false, 0.0f, 0.0f,
+                GGML_PREC_F32, GGML_TYPE_F16, GGML_TYPE_F16, {0, 1, 2, 3}, profile));
         }
     }
 

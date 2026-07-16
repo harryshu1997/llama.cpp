@@ -1,0 +1,72 @@
+[
+  {
+    "file": "valid/weight_segment.json",
+    "schema": "schemas/v3/weight_segment.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/weight_set.json",
+    "schema": "schemas/v3/weight_set.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/model_manifest.json",
+    "schema": "schemas/v3/model_manifest.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/canonical_allocation.json",
+    "schema": "schemas/v3/canonical_allocation.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/prepared_image.json",
+    "schema": "schemas/v3/prepared_image.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/correctness_certificate.json",
+    "schema": "schemas/v3/correctness_certificate.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/island_executable.json",
+    "schema": "schemas/v3/island_executable.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/ready_certificate.json",
+    "schema": "schemas/v3/ready_certificate.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/residency_lease.json",
+    "schema": "schemas/v3/residency_lease.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/state_lease.json",
+    "schema": "schemas/v3/state_lease.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/dispatch_decision.json",
+    "schema": "schemas/v3/dispatch_decision.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/transfer_ticket.json",
+    "schema": "schemas/v3/transfer_ticket.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/transport_frame.json",
+    "schema": "schemas/v3/transport_frame.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/device_inventory.json",
+    "schema": "schemas/v3/device_inventory.schema.json",
+    "expect": "valid"
+  }
+]

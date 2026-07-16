@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s9/schemas/v2/island_executable.schema.json",
+  "title": "Island executable (v2)",
+  "$comment": "Self-contained. A runnable unit binding a graph + atomic weight set(s) + backend prepared image(s) + a backend route + a CorrectnessCertificate (by id/digest) + a server fallback. In v2 the required weight sets and prepared images are declared as digest lists (required_weight_set_digests / required_prepared_image_digests) so the dispatch tuple can be checked exactly. island_digest (recomputed by the bundle validator) is the domain-separated identity. A stateless island reserves no mutable state; sticky/rebuildable islands are owned by exactly one StateLease at runtime.",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": { "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" } },
+  "properties": {
+    "schema_version": { "type": "integer", "const": 2 },
+    "kind": { "type": "string", "const": "island_executable" },
+    "island_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "service_class": { "type": "string", "enum": ["decode", "prefill", "embedding", "rerank", "vision_encode", "background"] },
+    "model_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "model_version": { "$ref": "#/$defs/sha256" },
+    "graph_hash": { "$ref": "#/$defs/sha256" },
+    "backend": { "type": "string", "enum": ["htp", "gpu", "cpu"] },
+    "layer_range": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "start": { "type": "integer", "minimum": 0, "maximum": 100000 },
+        "end": { "type": "integer", "minimum": 1, "maximum": 100000 },
+        "n_layer_total": { "type": "integer", "minimum": 1, "maximum": 100000 }
+      },
+      "required": ["start", "end", "n_layer_total"]
+    },
+    "required_weight_set_ids": { "type": "array", "minItems": 1, "maxItems": 256, "items": { "type": "string", "minLength": 1, "maxLength": 256 } },
+    "required_weight_set_digests": { "type": "array", "minItems": 1, "maxItems": 256, "items": { "$ref": "#/$defs/sha256" } },
+    "required_prepared_image_ids": { "type": "array", "minItems": 1, "maxItems": 256, "items": { "type": "string", "minLength": 1, "maxLength": 256 } },
+    "required_prepared_image_digests": { "type": "array", "minItems": 1, "maxItems": 256, "items": { "$ref": "#/$defs/sha256" } },
+    "io_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "input_dtype": { "type": "string", "enum": ["f16", "f32", "bf16"] },
+        "output_dtype": { "type": "string", "enum": ["f16", "f32", "bf16"] },
+        "max_input_bytes": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "max_output_bytes": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
+      },
+      "required": ["input_dtype", "output_dtype", "max_input_bytes", "max_output_bytes"]
+    },
+    "state_policy": { "type": "string", "enum": ["stateless", "sticky", "rebuildable"] },
+    "correctness_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "correctness_digest": { "$ref": "#/$defs/sha256" },
+    "required_kernel_path": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "fallback": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "const": "server" },
+        "available": { "type": "boolean" }
+      },
+      "required": ["kind", "available"]
+    },
+    "island_digest": { "$ref": "#/$defs/sha256" }
+  },
+  "required": ["schema_version", "kind", "island_id", "service_class", "model_id", "model_version", "graph_hash", "backend", "layer_range", "required_weight_set_ids", "required_weight_set_digests", "required_prepared_image_ids", "required_prepared_image_digests", "io_schema", "state_policy", "correctness_id", "correctness_digest", "required_kernel_path", "fallback", "island_digest"]
+}

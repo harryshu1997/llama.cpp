@@ -1,0 +1,45 @@
+S9-V0-R1 HISTORICAL RED EVIDENCE (frozen 2026-07-14)
+====================================================
+
+This directory freezes the pre-R2 S9-V0-R1 validator + digest library byte-for-byte, so the
+v4 (R2) STATIC-COHERENCE regressions can be checked AGAINST persisted RED evidence. The R1
+suites passed and R1 closed the DRAINING / stale-boot / allocation-ownership / served-island
+holes, but the 2026-07-14 review (REVIEW_2026-07-14.md) proved that v3 still validates static
+bundles that disagree with authoritative device state, executable identity, transport epochs,
+or physical reservations. Every blocker below is reproduced RED here (frozen v3 ACCEPTS) and
+closed GREEN under v4 (sim/test_v4_regressions.py, red-v3 / green-v4).
+
+Frozen artifacts
+  bundle_validate_v0r1.py   pre-R2 validator (imports patched to s9lib_v0r1; SCHEMAS_V2/V3 repointed
+                            two levels up to the still-frozen schemas/v2 + schemas/v3)
+  s9lib_v0r1.py             pre-R2 digest library (byte copy; NO v4 symbols)
+
+Provenance hashes (do not edit; asserted by the golden/regression suites)
+  FROZEN_V0R1_VALIDATOR  sha256:06b962c520048a930b10d9451bb21329f2c57cecee08a6d7d8d619b9184bd525
+  FROZEN_V0R1_S9LIB      sha256:6cfe043e09c9a1a8aaa2dc4a7cdc3d2f94b24776a1226945a4a4e5a22b9c455a
+  R1_GOLDEN_REPLAY       sha256:9a69a7f6...   (preserved; sim unchanged in R2)
+  GIT_HEAD               933c722f69c7bea64113d68a8c7aad49527c8122
+
+Status of the v3 result (RELABELED after the R2 review)
+  SUITES PASS; STATIC SNAPSHOT COHERENT ONLY; SCHEDULER DISPATCH CERTIFICATION BLOCKED;
+  CAPACITY UNPROVEN.
+
+  The 11 fail-open cases the v3 suites did NOT catch (validator = wrongly ACCEPTS a static
+  bundle that could never be a legal live dispatch):
+    1  DISPATCH with an absent DeviceInventory, or one at the wrong boot epoch / status_seq.
+    2  DeviceInventory says accepting=false / draining=true / stale=true / thermal ineligible.
+    3  A ResidencyLease already expired (horizon.end_us) at the decision timestamp.
+    4  CorrectnessCertificate.backend_build differs from PreparedImage.backend_build.
+    5  Island model_id/model_version/graph_hash identity differs from the prepared image/manifest.
+    6  PreparedImage.source_weight_set_id names a foreign set (also absent from the v3 digest).
+    7  BULK transport epoch/device/command identity stale or foreign vs the ticket.
+    8  EXECUTE transport epoch stack / request / device foreign vs the dispatch + state lease.
+    9  TransferTicket issued_boot_epoch / issued_residency_generation absent from its v3 digest.
+    10 StateLease reserved_state/activation bytes + in_flight_mutation_seq absent from its v3
+       digest, and reservations able to exceed the device ledger.
+    11 DeviceInventory declaring a zero-live (or otherwise non-derivable) ledger while live
+       allocations / images / leases / state records exist.
+
+  These are the exact items v4 repairs. This artifact stays frozen as the "before" side.
+  v4 is a STATIC_SNAPSHOT_COHERENT repair only: atomic snapshot acquisition, compare-and-reserve
+  pins, and completion races remain V0c runtime work.

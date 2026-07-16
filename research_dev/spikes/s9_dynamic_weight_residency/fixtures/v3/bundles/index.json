@@ -1,0 +1,131 @@
+[
+  {
+    "file": "valid/dispatchable.json",
+    "expect": "valid",
+    "expected_codes": []
+  },
+  {
+    "file": "invalid/dispatch_wrong_device.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_CHAIN_BROKEN",
+      "E_STATE_LEASE"
+    ]
+  },
+  {
+    "file": "invalid/dispatch_wrong_backend.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_CHAIN_BROKEN",
+      "E_DISPATCH_MISMATCH",
+      "E_STATE_LEASE"
+    ]
+  },
+  {
+    "file": "invalid/dispatch_wrong_route.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_STATE_LEASE"
+    ]
+  },
+  {
+    "file": "invalid/dispatch_wrong_request.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_STATE_LEASE"
+    ]
+  },
+  {
+    "file": "invalid/sticky_null_state_lease.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_STATE_LEASE"
+    ]
+  },
+  {
+    "file": "invalid/sticky_foreign_state_lease.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_STATE_LEASE"
+    ]
+  },
+  {
+    "file": "invalid/incoherent_tuple.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_CHAIN_BROKEN",
+      "E_DISPATCH_MISMATCH"
+    ]
+  },
+  {
+    "file": "invalid/nonexistent_island.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_ISLAND_ABSENT"
+    ]
+  },
+  {
+    "file": "invalid/pi_missing_from_alias_set.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_ALIAS_SET"
+    ]
+  },
+  {
+    "file": "invalid/reclaimable_while_referenced.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_ALIAS_SET"
+    ]
+  },
+  {
+    "file": "invalid/island_ws_digest_ghost.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_DISPATCH_MISMATCH"
+    ]
+  },
+  {
+    "file": "invalid/island_pi_ghost.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_DISPATCH_MISMATCH"
+    ]
+  },
+  {
+    "file": "invalid/draining_lease.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_CHAIN_BROKEN"
+    ]
+  },
+  {
+    "file": "invalid/state_lease_stale_boot.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_STATE_LEASE"
+    ]
+  },
+  {
+    "file": "invalid/lease_alloc_ws_mismatch.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_ALLOC_REFCOUNT",
+      "E_CHAIN_BROKEN"
+    ]
+  },
+  {
+    "file": "invalid/state_lease_foreign_residency.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_STATE_LEASE"
+    ]
+  },
+  {
+    "file": "invalid/ready_cert_foreign_correctness.json",
+    "expect": "invalid",
+    "expected_codes": [
+      "E_CHAIN_BROKEN"
+    ]
+  }
+]

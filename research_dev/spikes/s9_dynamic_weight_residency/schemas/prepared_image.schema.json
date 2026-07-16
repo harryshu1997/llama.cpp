@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s9/schemas/prepared_image.schema.json",
+  "title": "Backend-derived prepared image (v1)",
+  "$comment": "Self-contained. A backend-specific artifact derived from a canonical weight set for one (backend, SoC, layout, build, boot, generation). The DERIVED identity binds ALL of: model_version, tensor_digest, graph_hash, backend_build, soc, arch, layout_version, boot_epoch, residency_generation. derived_image_digest = SHA-256 over the canonical-JSON of exactly those nine binding fields (recomputation checked by validate_manifests.py) so a stale-alias (a second model reusing a tensor name) can never resolve to the wrong image. gpu_plain imports the shared canonical base (derived_bytes MAY be 0, shares_canonical_base=true); gpu_xmem_prepacked and htp repack allocate a private buffer (derived_bytes>0, shares_canonical_base=false).",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": { "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" } },
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "prepared_image_id": { "type": "string", "minLength": 1 },
+    "image_class": { "type": "string", "enum": ["htp_linear", "gpu_plain", "gpu_xmem_prepacked"] },
+    "backend": { "type": "string", "enum": ["htp", "gpu"] },
+    "model_version": { "$ref": "#/$defs/sha256" },
+    "tensor_digest": { "$ref": "#/$defs/sha256", "description": "content digest of the source weight set (== source_weight_set_digest)" },
+    "graph_hash": { "$ref": "#/$defs/sha256" },
+    "backend_build": { "$ref": "#/$defs/sha256" },
+    "soc": { "type": "string", "enum": ["op12", "op15"] },
+    "arch": { "type": "string", "minLength": 1 },
+    "layout_version": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+    "boot_epoch": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "residency_generation": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "derived_image_digest": { "$ref": "#/$defs/sha256", "description": "SHA-256 over canonical-JSON of the nine binding fields" },
+    "source_weight_set_id": { "type": "string", "minLength": 1 },
+    "source_weight_set_digest": { "$ref": "#/$defs/sha256" },
+    "derived_bytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991, "description": "backend-derived RAM, DISTINCT from canonical weight bytes" },
+    "shares_canonical_base": { "type": "boolean" }
+  },
+  "required": ["schema_version", "prepared_image_id", "image_class", "backend", "model_version", "tensor_digest", "graph_hash", "backend_build", "soc", "arch", "layout_version", "boot_epoch", "residency_generation", "derived_image_digest", "source_weight_set_id", "source_weight_set_digest", "derived_bytes", "shares_canonical_base"]
+}

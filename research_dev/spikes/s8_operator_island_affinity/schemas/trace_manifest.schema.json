@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s8/schemas/trace_manifest.schema.json",
+  "title": "Normalized-trace sidecar manifest (v1)",
+  "$comment": "Self-contained. Represents EITHER one real/real_decomposed source OR a semi_synthetic mix with streams[]. Real rejects streams; mixed requires streams and rejects single-source fields. Mix offsets are EXPLICIT committed integers (no PRNG). Binds source+config+code+output hashes; each stream binds its component normalized-trace hash and sidecar-manifest hash.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "provenance": { "type": "string", "enum": ["real", "real_decomposed", "semi_synthetic"] },
+    "normalizer_version": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "normalizer CODE hash; distinct from schema_version" },
+    "normalization_config_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "output_row_count": { "type": "integer", "minimum": 1, "maximum": 9007199254740991, "description": "empty normalized output is forbidden" },
+    "output_sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "source_url": { "type": "string", "minLength": 1 },
+    "source_revision": { "type": "string", "minLength": 1, "description": "pinned commit/tag/release of the source" },
+    "license": { "type": "string", "minLength": 1 },
+    "citation": { "type": "string" },
+    "source_file": { "type": "string", "minLength": 1 },
+    "source_bytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "source_sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rule": { "type": "string", "minLength": 1, "description": "committed load-window rule id (see NORMALIZATION_SPEC)" },
+        "load_metric": { "type": "string", "enum": ["offered_tokens"] },
+        "scenario": { "type": "string", "enum": ["low", "median", "high", "burst"] },
+        "bin_index": { "type": "integer", "minimum": 0 },
+        "t_start_us": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "t_end_us": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "metric_value": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "n_nonempty_bins": { "type": "integer", "minimum": 1 },
+        "quantile_rank": { "type": "integer", "minimum": 1 },
+        "source_row_first": { "type": "integer", "minimum": 0 },
+        "source_row_last": { "type": "integer", "minimum": 0 },
+        "timestamp_policy": { "type": "string", "enum": ["require_nondecreasing", "sort_stable"] },
+        "input_nonmonotonic_pairs": { "type": "integer", "minimum": 0, "description": "count of decreasing adjacent timestamps in source order; nonzero requires policy sort_stable" }
+      },
+      "required": ["rule", "load_metric", "scenario", "bin_index", "t_start_us", "t_end_us", "metric_value", "source_row_first", "source_row_last"]
+    },
+    "filters": { "type": "array", "items": { "type": "string" } },
+    "exclusion_counts": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+    "time_scale_num": { "type": "integer", "minimum": 1, "description": "positive integer numerator; zero/negative rejected" },
+    "time_scale_den": { "type": "integer", "minimum": 1 },
+    "streams": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source": { "type": "string", "minLength": 1 },
+          "source_revision": { "type": "string", "minLength": 1 },
+          "rank": { "type": "integer", "minimum": 0 },
+          "scale_num": { "type": "integer", "minimum": 1 },
+          "scale_den": { "type": "integer", "minimum": 1 },
+          "offset_us": { "type": "integer", "minimum": 0, "maximum": 9007199254740991, "description": "explicit committed integer offset; no PRNG" },
+          "input_output_sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "component normalized-trace hash" },
+          "input_manifest_sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "component sidecar-manifest hash" }
+        },
+        "required": ["source", "source_revision", "rank", "scale_num", "scale_den", "offset_us", "input_output_sha256", "input_manifest_sha256"]
+      }
+    }
+  },
+  "required": [
+    "schema_version", "provenance", "normalizer_version",
+    "normalization_config_hash", "output_row_count", "output_sha256"
+  ],
+  "allOf": [
+    {
+      "$comment": "real / real_decomposed: require single-source binding, forbid streams",
+      "if": { "properties": { "provenance": { "enum": ["real", "real_decomposed"] } }, "required": ["provenance"] },
+      "then": {
+        "required": ["source_url", "source_revision", "license", "source_file", "source_bytes", "source_sha256", "window", "filters", "exclusion_counts", "time_scale_num", "time_scale_den"],
+        "properties": { "streams": false }
+      }
+    },
+    {
+      "$comment": "semi_synthetic mix: require streams, forbid single-source fields",
+      "if": { "properties": { "provenance": { "const": "semi_synthetic" } }, "required": ["provenance"] },
+      "then": {
+        "required": ["streams"],
+        "properties": {
+          "source_file": false,
+          "source_sha256": false,
+          "source_bytes": false,
+          "window": false,
+          "time_scale_num": false,
+          "time_scale_den": false
+        }
+      }
+    }
+  ]
+}

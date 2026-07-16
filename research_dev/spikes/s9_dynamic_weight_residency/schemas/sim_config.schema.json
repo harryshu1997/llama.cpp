@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s9/schemas/sim_config.schema.json",
+  "title": "Residency simulator config (v1)",
+  "$comment": "Self-contained. The COMPLETE deterministic input to the offline simulator. All quantities are integers (microseconds, bytes, per-mille) so a replay is byte-identical -- no floats anywhere. link_goodput_sweep_bytes_per_s is the parameterized link capacity axis (the 40/100/250/400/550 MB/s points are the canonical sweep; any positive integers are legal). Interference and transfer/compute slowdown are per-mille and default to 1000 (== 1.0x, no interference) and are honored ONLY when measured==true; an unmeasured interference term must stay 1000. failure_schedule injects DETERMINISTIC faults (no PRNG) so hash-mismatch / partial-transfer / stale-epoch tests are reproducible.",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": { "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" } },
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "config_id": { "type": "string", "minLength": 1 },
+    "seed": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "horizon_us": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "link_goodput_sweep_bytes_per_s": { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 } },
+    "usb_shared_controller_bytes_per_s": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "baselines": { "type": "array", "minItems": 1, "items": { "type": "string", "enum": ["server_only", "per_request_fetch", "static_placement", "lru", "lfu_ttl", "fastest_ready", "relief_predictive", "clairvoyant"] } },
+    "interference": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "htp_gpu_slowdown_permille": { "type": "integer", "minimum": 1000, "maximum": 10000 },
+        "transfer_compute_slowdown_permille": { "type": "integer", "minimum": 1000, "maximum": 10000 },
+        "measured": { "type": "boolean" }
+      },
+      "required": ["htp_gpu_slowdown_permille", "transfer_compute_slowdown_permille", "measured"]
+    },
+    "server": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gpu_lane_slots": { "type": "integer", "minimum": 1, "maximum": 100000 },
+        "hbm_credit_bytes": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "per_class_gpu_us": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 } },
+        "per_class_hbm_bytes": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 } }
+      },
+      "required": ["gpu_lane_slots", "hbm_credit_bytes", "per_class_gpu_us", "per_class_hbm_bytes"]
+    },
+    "phones": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "device_id": { "type": "string", "minLength": 1 },
+          "soc": { "type": "string", "enum": ["op12", "op15"] },
+          "boot_epoch": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "lpddr_total_bytes": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+          "ufs_write_bytes_per_s": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+          "verify_bytes_per_s": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+          "materialize_bytes_per_s": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+          "prepare_htp_bytes_per_s": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+          "prepare_gpu_bytes_per_s": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+          "warmup_us": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "htp_lane_slots": { "type": "integer", "minimum": 1, "maximum": 100000 },
+          "gpu_lane_slots": { "type": "integer", "minimum": 1, "maximum": 100000 },
+          "thermal_eligible": { "type": "boolean" }
+        },
+        "required": ["device_id", "soc", "boot_epoch", "lpddr_total_bytes", "ufs_write_bytes_per_s", "verify_bytes_per_s", "materialize_bytes_per_s", "prepare_htp_bytes_per_s", "prepare_gpu_bytes_per_s", "warmup_us", "htp_lane_slots", "gpu_lane_slots", "thermal_eligible"]
+      }
+    },
+    "models": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "model_id": { "type": "string", "minLength": 1 },
+          "weight_set_id": { "type": "string", "minLength": 1 },
+          "canonical_bytes": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+          "derived_bytes_htp": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "derived_bytes_gpu": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "scratch_bytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "partial_load_supported": { "type": "boolean" },
+          "eligible_backends": { "type": "array", "minItems": 1, "items": { "type": "string", "enum": ["htp", "gpu"] } },
+          "phone_compute_us": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+        },
+        "required": ["model_id", "weight_set_id", "canonical_bytes", "derived_bytes_htp", "derived_bytes_gpu", "scratch_bytes", "partial_load_supported", "eligible_backends", "phone_compute_us"]
+      }
+    },
+    "workload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requests": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "arrival_us": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "rank": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "request_id": { "type": "string", "minLength": 1 },
+              "service_class": { "type": "string", "enum": ["decode", "prefill", "embedding", "rerank", "vision_encode", "background"] },
+              "model_id": { "type": "string", "minLength": 1 },
+              "weight_set_id": { "type": "string", "minLength": 1 },
+              "input_bytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "output_bytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "state_bytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "deadline_us": { "type": ["integer", "null"], "minimum": 0, "maximum": 9007199254740991 }
+            },
+            "required": ["arrival_us", "rank", "request_id", "service_class", "model_id", "weight_set_id", "input_bytes", "output_bytes", "state_bytes", "deadline_us"]
+          }
+        }
+      },
+      "required": ["requests"]
+    },
+    "failure_schedule": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "at_us": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "kind": { "type": "string", "enum": ["hash_mismatch", "partial_transfer", "thermal_trip", "link_drop", "stale_epoch", "unknown_profile", "unsupported_backend"] },
+          "target": { "type": "string", "minLength": 1 }
+        },
+        "required": ["at_us", "kind", "target"]
+      }
+    },
+    "policy_params": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "reuse_horizon_us": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "min_hold_us": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "ttl_us": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "predictor_ewma_permille": { "type": "integer", "minimum": 0, "maximum": 1000 }
+      },
+      "required": ["reuse_horizon_us", "min_hold_us", "ttl_us", "predictor_ewma_permille"]
+    }
+  },
+  "required": ["schema_version", "config_id", "seed", "horizon_us", "link_goodput_sweep_bytes_per_s", "usb_shared_controller_bytes_per_s", "baselines", "interference", "server", "phones", "models", "workload", "failure_schedule", "policy_params"]
+}

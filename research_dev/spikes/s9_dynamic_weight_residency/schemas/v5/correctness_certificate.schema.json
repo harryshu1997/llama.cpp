@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s9/schemas/v5/correctness_certificate.schema.json",
+  "title": "Correctness certificate (v5)",
+  "$comment": "Self-contained correctness attestation for one island, kernel route, backend build, and exact shape envelope. verdict is const pass. The v5 correctness_digest binds every schema-allowed content field, including the measured tolerance and evidence digests.",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 5
+    },
+    "kind": {
+      "type": "string",
+      "const": "correctness_certificate"
+    },
+    "correctness_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "island_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "backend": {
+      "type": "string",
+      "enum": [
+        "htp",
+        "gpu"
+      ]
+    },
+    "backend_build": {
+      "$ref": "#/$defs/sha256"
+    },
+    "required_kernel_path": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "profile_row_digest": {
+      "$ref": "#/$defs/sha256",
+      "description": "digest of the measured profile row (kernel, shape, backend) this verdict came from"
+    },
+    "shape_envelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "input_dtype": {
+          "type": "string",
+          "enum": [
+            "f16",
+            "f32",
+            "bf16"
+          ]
+        },
+        "output_dtype": {
+          "type": "string",
+          "enum": [
+            "f16",
+            "f32",
+            "bf16"
+          ]
+        },
+        "max_input_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "max_output_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "max_batch": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "max_context": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        }
+      },
+      "required": [
+        "input_dtype",
+        "output_dtype",
+        "max_input_bytes",
+        "max_output_bytes",
+        "max_batch",
+        "max_context"
+      ]
+    },
+    "verdict": {
+      "type": "string",
+      "const": "pass"
+    },
+    "metric_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "rel_l2_micro": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "correctness_digest": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "required": [
+    "schema_version",
+    "kind",
+    "correctness_id",
+    "island_id",
+    "backend",
+    "backend_build",
+    "required_kernel_path",
+    "profile_row_digest",
+    "shape_envelope",
+    "verdict",
+    "metric_digest",
+    "correctness_digest"
+  ]
+}

@@ -1,0 +1,11 @@
+=== USB topology (phones) ===
+--- 3C15AU002CL00000 ---
+usb:8-3
+--- 5ae7a43d ---
+usb:6-2
+
+=== lsusb (Qualcomm/OnePlus/Google) ===
+Bus 006 Device 003: ID 22d9:2772 OPPO Electronics Corp. OnePlus 12
+
+=== adb server endpoint ===
+LISTEN 0      128        127.0.0.1:5037       0.0.0.0:*    users:(("adb",pid=470931,fd=12))           

@@ -1,0 +1,37 @@
+{
+  "exclusion_counts": {
+    "exclude_zero_output": 3
+  },
+  "filters": [
+    "exclude_zero_output"
+  ],
+  "license": "CC-BY-4.0",
+  "normalization_config_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "normalizer_version": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "output_row_count": 100,
+  "output_sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "provenance": "real",
+  "schema_version": 1,
+  "source_bytes": 231682327,
+  "source_file": "BurstGPT_3.csv",
+  "source_revision": "v2.0",
+  "source_sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "source_url": "https://github.com/HPMLL/BurstGPT/releases/download/v2.0/BurstGPT_3.csv",
+  "time_scale_den": 1,
+  "time_scale_num": 1,
+  "window": {
+    "bin_index": 21600,
+    "input_nonmonotonic_pairs": 0,
+    "load_metric": "offered_tokens",
+    "metric_value": 12345,
+    "n_nonempty_bins": 40,
+    "quantile_rank": 20,
+    "rule": "load_window_v1",
+    "scenario": "median",
+    "source_row_first": 100,
+    "source_row_last": 200,
+    "t_end_us": 19440900000000,
+    "t_start_us": 19440000000000,
+    "timestamp_policy": "require_nondecreasing"
+  }
+}

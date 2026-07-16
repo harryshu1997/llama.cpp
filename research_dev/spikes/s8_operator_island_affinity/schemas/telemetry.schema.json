@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s8/schemas/telemetry.schema.json",
+  "title": "Fast occupancy telemetry (v1)",
+  "$comment": "Self-contained. Continuous, loss-tolerant occupancy; explicitly NOT a carrier of readiness/lease/manifest edges (those are reliable, see model_residency_lease). Staleness uses last_receiver_ts_us (receiver clock).",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "device_backend_id": { "type": "string", "pattern": "^[A-Za-z0-9_]+/[A-Za-z0-9_]+$" },
+    "boot_epoch": { "type": "integer", "minimum": 0 },
+    "status_seq": { "type": "integer", "minimum": 0 },
+    "queue_depth": { "type": "integer", "minimum": 0 },
+    "busy": { "type": "boolean" },
+    "gpu_busy_pct": { "type": ["integer", "null"], "minimum": 0, "maximum": 100 },
+    "ram_free_bytes": { "type": ["integer", "null"], "minimum": 0, "maximum": 9007199254740991 },
+    "temperature_c": { "type": ["number", "null"] },
+    "thermal_slope": { "type": ["number", "null"] },
+    "link_rtt_us": { "type": ["integer", "null"], "minimum": 0, "maximum": 9007199254740991 },
+    "last_receiver_ts_us": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "accepting": { "type": "boolean" },
+    "draining": { "type": "boolean" }
+  },
+  "required": ["schema_version", "device_backend_id", "boot_epoch", "status_seq", "queue_depth", "busy", "last_receiver_ts_us", "accepting", "draining"]
+}

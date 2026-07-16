@@ -1,0 +1,330 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s9/schemas/v5/transport_frame.schema.json",
+  "title": "Transport frame descriptor (v5)",
+  "$comment": "Bounded v5 control or bulk frame. Bulk frames carry an exact ticket/chunk binding; EXECUTE and RESULT payloads require integrity hashes. Device, epoch stack, sequence, and idempotency fields are required so cross-record validation and the runtime can reject stale or duplicate work.",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 5
+    },
+    "kind": {
+      "type": "string",
+      "const": "transport_frame"
+    },
+    "magic": {
+      "type": "string",
+      "const": "S9WR"
+    },
+    "protocol_version": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000000
+    },
+    "channel": {
+      "type": "string",
+      "enum": [
+        "control",
+        "bulk"
+      ]
+    },
+    "msg_type": {
+      "type": "string",
+      "enum": [
+        "HELLO",
+        "CACHE_QUERY",
+        "FETCH",
+        "VERIFY",
+        "LOAD",
+        "WARM",
+        "READY",
+        "LEASE",
+        "RELEASE",
+        "ALLOC_STATE",
+        "FREE_STATE",
+        "RESET_STATE",
+        "EXECUTE",
+        "RESULT",
+        "CREDIT",
+        "HEARTBEAT",
+        "DRAIN",
+        "ERROR",
+        "CLOSE",
+        "BULK_CHUNK"
+      ]
+    },
+    "priority_class": {
+      "type": "string",
+      "enum": [
+        "control",
+        "activation",
+        "result",
+        "bulk_weight_background"
+      ]
+    },
+    "header_len": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65536
+    },
+    "payload_bytes": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 16777216
+    },
+    "header_crc32": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "payload_sha256": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "batch_id": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "boot_epoch": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "residency_epoch": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "route_epoch": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "state_epoch": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "deadline_us": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "cancellable": {
+      "type": "boolean"
+    },
+    "bulk_binding": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "ticket_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "segment_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "chunk_index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "chunk_offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "chunk_length": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16777216
+        },
+        "chunk_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      },
+      "required": [
+        "ticket_id",
+        "segment_id",
+        "chunk_index",
+        "chunk_offset",
+        "chunk_length",
+        "chunk_sha256"
+      ]
+    },
+    "device_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    }
+  },
+  "required": [
+    "schema_version",
+    "kind",
+    "magic",
+    "protocol_version",
+    "channel",
+    "msg_type",
+    "priority_class",
+    "header_len",
+    "payload_bytes",
+    "header_crc32",
+    "payload_sha256",
+    "request_id",
+    "seq",
+    "idempotency_key",
+    "boot_epoch",
+    "residency_epoch",
+    "route_epoch",
+    "state_epoch",
+    "deadline_us",
+    "cancellable",
+    "bulk_binding",
+    "device_id"
+  ],
+  "allOf": [
+    {
+      "$comment": "control channel: small frame cap, no bulk payload, no bulk_binding",
+      "if": {
+        "properties": {
+          "channel": {
+            "const": "control"
+          }
+        },
+        "required": [
+          "channel"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload_bytes": {
+            "maximum": 65536
+          },
+          "priority_class": {
+            "enum": [
+              "control",
+              "activation",
+              "result"
+            ]
+          },
+          "msg_type": {
+            "not": {
+              "const": "BULK_CHUNK"
+            }
+          },
+          "bulk_binding": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "$comment": "bulk channel: only BULK_CHUNK, content-hashed, background priority, full bulk_binding present",
+      "if": {
+        "properties": {
+          "channel": {
+            "const": "bulk"
+          }
+        },
+        "required": [
+          "channel"
+        ]
+      },
+      "then": {
+        "properties": {
+          "msg_type": {
+            "const": "BULK_CHUNK"
+          },
+          "priority_class": {
+            "const": "bulk_weight_background"
+          },
+          "payload_sha256": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "bulk_binding": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    {
+      "$comment": "live payloads (EXECUTE/RESULT) must be integrity-protected and preemptive priority",
+      "if": {
+        "properties": {
+          "msg_type": {
+            "enum": [
+              "EXECUTE",
+              "RESULT"
+            ]
+          }
+        },
+        "required": [
+          "msg_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "priority_class": {
+            "enum": [
+              "activation",
+              "result"
+            ]
+          },
+          "payload_sha256": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          }
+        }
+      }
+    }
+  ]
+}

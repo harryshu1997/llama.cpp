@@ -1,0 +1,83 @@
+=== S9-V1A-R CP0 integrity  (date: 2026-07-15T01:40:04Z) ===
+--- HEAD ---
+933c722f69c7bea64113d68a8c7aad49527c8122
+933c722f6 layersplit: flash-attn off on NPU decode ctx → store V transposed, kill v_cont (5.2× decode)
+--- git status --porcelain ---
+ M examples/CMakeLists.txt
+ M examples/layersplit/CMakeLists.txt
+ M examples/layersplit/layersplit.cpp
+ M ggml/src/ggml-hexagon/ggml-hexagon.cpp
+ M ggml/src/ggml-hexagon/htp/hmx-flash-attn-ops.c
+ M ggml/src/ggml-hexagon/htp/htp-ops.h
+ M research_dev/talks.md
+ M tests/test-backend-ops.cpp
+?? examples/layersplit/ffnmerge.cpp
+?? examples/layersplit/microop.cpp
+?? examples/layersplit/oplayerprof.cpp
+?? examples/phone-pim/
+?? research_dev/AGENT_HANDOFF.md
+?? research_dev/DESIGN.md
+?? research_dev/MILESTONES.md
+?? research_dev/MIXED_WORKLOAD_DESIGN.md
+?? research_dev/NEXT_PLAN.md
+?? research_dev/PORT.md
+?? research_dev/README.md
+?? research_dev/TWO_LEVEL_SCHEDULER.md
+?? research_dev/WORKLOAD_TRACES.md
+?? research_dev/energy/
+?? research_dev/figures/
+?? research_dev/novelty_graphs.html
+?? research_dev/novelty_graphs_zh.html
+?? research_dev/pipeline_3dev.sh
+?? research_dev/pipeline_3dev_gen.sh
+?? research_dev/ragged_attention_benefit_zh.html
+?? research_dev/spikes/s3_microop_schedule/
+?? research_dev/spikes/s4_streamed_batch_decode/
+?? research_dev/spikes/s5_operator_affinity/
+?? research_dev/spikes/s6_energy_scheduler/
+?? research_dev/spikes/s6_latency_scheduler/
+?? research_dev/spikes/s7_ragged_attention/
+?? research_dev/spikes/s8_operator_island_affinity/
+?? research_dev/spikes/s9_dynamic_weight_residency/
+?? research_dev/spikes/s9_phone_pim_runtime/
+?? research_dev/spikes/s9_pipelined_transport/
+?? scratchpad/
+--- source hashes (phone-pim + harnesses) ---
+907e544aaa7ce951e17dc121d4f41c3a013593bb8d3e96f41dbbd2f7c0dad506  examples/phone-pim/phone_pim_host.cpp
+ac8ef525fad7fd80e1c664739c7ba1d4cd417bb6e35bbdc6cb780825199a2be4  examples/phone-pim/phone_pim_worker.cpp
+9b32e2a3a020927483ef50c339b65816662bb5d65e2c0092be000a8df8a940ea  examples/phone-pim/phone_pim_socket.cpp
+19512565490fe783977fa4327a58dd89efbe74e59c4d6e8068e12bec84db33e2  examples/phone-pim/phone_pim_socket.h
+c71f7845603abfb34c9ef1dd245c85faa4fb71107a25a633fc2f326180b4c0ac  examples/phone-pim/phone_pim_store.cpp
+b0db16b901abc96f84d772cf1508748f169b35d2f20a38ff858686cd756f7578  examples/phone-pim/phone_pim_store.h
+0dc11f6d858878228e72eee1f23db83d138658591432c109200005db10e8be7d  examples/phone-pim/phone_pim_bench.cpp
+b44b74811dd7a34a4c330fafe2c614debb5276a31bdb5585cb76012e549a3ab9  examples/phone-pim/phone_pim_protocol.h
+b650f90d803bc0444a3aba229c17486c3db40ae58dfcea48026a7881827085a8  examples/phone-pim/CMakeLists.txt
+--- harness hashes ---
+82073f347d35c590f732e61636a127b68fd2a94acaff98e9af1690d80aa1a807  research_dev/spikes/s9_pipelined_transport/adversarial_tests.sh
+aadd18ad35ee6554d8a2418987b02a487e4b75c7439eb88f3f0b7d97a82bd853  research_dev/spikes/s9_pipelined_transport/run_bench.sh
+132396c9f17bc71aef45fb83ad89fce040e30f1f3fef6eeb4a300dd1b769ca19  research_dev/spikes/s9_pipelined_transport/run_prod_instrumented.sh
+ad867dd63d4fcd0a85c8543530d1c1a05ba862c5eb336e5b7337e782e8455e4b  research_dev/spikes/s9_pipelined_transport/run_prod_sweep.sh
+6bff557e7545185307ead88917b952d4e12591626328323f9cea925c1b52f009  research_dev/spikes/s9_pipelined_transport/analyze_sweep.py
+--- host binary hashes ---
+ad01b6a9d4d026a15abfaa2a3d299ebf0dffd12909619fd1760e2ebc00e9aeac  build-phone-pim/bin/llama-phone-pim-host
+6f469620fc859f92b32a4dc4407ae6def4553ac2032611bb86d9cde927a2156f  build-phone-pim/bin/llama-phone-pim-bench
+a5013f8cbcffed59aab347d9c47c974f9090ae9204203350c20dd7734fb7a040  build-phone-pim/bin/llama-phone-pim-worker
+aaa928b85acaeb8beed75237dcf2afd681d7b9d8c7a49fcd10080298e5e4c662  build-snapdragon/bin/llama-phone-pim-worker
+fd1141d44fbe0d8c5cc43241cd3effce5bcc30f1293d37403aab2f3166758c93  build-snapdragon/bin/llama-phone-pim-bench
+--- device serials + USB topology ---
+List of devices attached
+3C15AU002CL00000       device usb:8-3 product:CPH2749 model:CPH2749 device:OP611FL1 transport_id:1
+5ae7a43d               device usb:6-2 product:CPH2583 model:CPH2583 device:OP595DL1 transport_id:2
+
+--- adb server endpoint ---
+ANDROID_ADB_SERVER_PORT=unset(default 5037)
+Android Debug Bridge version 1.0.41
+--- on-device binaries (both phones) ---
+  [OP12 5ae7a43d]
+0a50ca7299ee15a9eb9d524a0dadea40b467721f011a57b7f89617b1bd30e749  llama-phone-pim-worker
+aaa928b85acaeb8beed75237dcf2afd681d7b9d8c7a49fcd10080298e5e4c662  llama-phone-pim-worker-meas
+fd1141d44fbe0d8c5cc43241cd3effce5bcc30f1293d37403aab2f3166758c93  llama-phone-pim-bench
+  [OP15 3C15AU002CL00000]
+0a50ca7299ee15a9eb9d524a0dadea40b467721f011a57b7f89617b1bd30e749  llama-phone-pim-worker
+aaa928b85acaeb8beed75237dcf2afd681d7b9d8c7a49fcd10080298e5e4c662  llama-phone-pim-worker-meas
+fd1141d44fbe0d8c5cc43241cd3effce5bcc30f1293d37403aab2f3166758c93  llama-phone-pim-bench

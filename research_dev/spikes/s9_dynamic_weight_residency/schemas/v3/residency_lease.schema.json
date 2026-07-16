@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s9/schemas/v3/residency_lease.schema.json",
+  "title": "Residency lease (slow loop) (v3)",
+  "$comment": "Self-contained. Leases a READY weight set's RESIDENCY on one (device, backend) for a horizon; shared by many requests. In v2 it names the CanonicalAllocation it holds (source_allocation_id) so the allocation's lease_refcount and reclaimability are exact, and carries a domain-separated residency_lease_digest. It requires a ReadyCertificate (id/digest). min_hold_us is the hysteresis floor. A DRAINING lease must complete a backend fence before EVICTING (state machine, not schema). horizon.end_us must exceed start_us + min_hold_us (semantic).",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": { "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" } },
+  "properties": {
+    "schema_version": { "type": "integer", "const": 3 },
+    "kind": { "type": "string", "const": "residency_lease" },
+    "residency_lease_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "device_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "backend": { "type": "string", "enum": ["htp", "gpu"] },
+    "weight_set_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "weight_set_digest": { "$ref": "#/$defs/sha256" },
+    "source_allocation_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "model_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "model_version": { "$ref": "#/$defs/sha256" },
+    "boot_epoch": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "residency_generation": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "share_registry_generation": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "ready_certificate_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "ready_certificate_digest": { "$ref": "#/$defs/sha256" },
+    "state": { "type": "string", "enum": ["READY", "LEASED", "DRAINING", "EVICTING", "ERROR", "QUARANTINED"] },
+    "horizon": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "start_us": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "end_us": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
+      },
+      "required": ["start_us", "end_us"]
+    },
+    "min_hold_us": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "reserved_bytes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "weights": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "derived": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "scratch": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+      },
+      "required": ["weights", "derived", "scratch"]
+    },
+    "residency_lease_digest": { "$ref": "#/$defs/sha256" }
+  },
+  "required": ["schema_version", "kind", "residency_lease_id", "device_id", "backend", "weight_set_id", "weight_set_digest", "source_allocation_id", "model_id", "model_version", "boot_epoch", "residency_generation", "share_registry_generation", "ready_certificate_id", "ready_certificate_digest", "state", "horizon", "min_hold_us", "reserved_bytes", "residency_lease_digest"]
+}

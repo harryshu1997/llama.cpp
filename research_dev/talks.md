@@ -1,12 +1,1114 @@
-# 📓 Project Log — Phone-Offload LLM Serving
+# Project Log - Q-PIM Power-Frontier Scheduling
 
 > Running progress record. **Current status** is at the top and kept up to date.
 > The **log** below is newest-first; every entry is timestamped.
-> Goal: offload LLM work from an A6000 server to phones (OP15, OP12) to save energy.
+> Goal: reshape concurrent multi-model DAG execution with READY phone-resident
+> islands so the A6000 batches denser or enters measured lower-power intervals,
+> reducing total wall energy or improving iso-power SLO-valid work.
 
 ---
 
-## 📍 Current status — `2026-07-09 EDT`
+## Current status - `2026-07-16 EDT`
+
+**Authoritative direction: Q-PIM POWER-FRONTIER SCHEDULING.** The server owns a
+virtual union of admitted multi-model DAGs. The slow loop places and prepares
+phone-resident weights and publishes certified mirrored/exclusive execution and
+power envelopes. The fast loop uses bounded dependency lookahead to prioritize
+topologically legal unlockers, expose phone-resident descendants early, and
+select sleep, batch-shaping, power-cap, or memory trigger bundles. Remaining
+A6000 work is compressed into native batches or contiguous active bursts, with
+latest SLO-safe claims and measured server power transitions. Phones are
+PIM-style active far-memory accelerators, not coherent server memory.
+
+Skipped GPU-us receives no energy credit. The baseline is an optimized
+server-only policy with the same DAG reordering, lazy batching, and DVFS/power
+controls. A Q-PIM claim requires at least 10 percent lower synchronized total
+wall J/work at equal SLO, or 10 percent more SLO-valid work at equal wall power.
+Mirrored phone weights can save compute but not HBM; exclusive ownership can
+release HBM but has no hidden immediate server copy. Per-GEMM network splitting
+and token-prefix KV ownership are excluded.
+
+**S10-E2A R2 CURRENT STATUS: TARGETED MECHANICS PASS; PHYSICAL CLAIM BLOCKED.**
+This supersedes the older E2A paragraphs below. The repaired v2 chain now binds
+plan -> timeline -> lifecycle/outcomes -> exact attempt ledger -> close receipt.
+It parses run-specific outputs, derives arrival-to-last-token SLO, freezes a
+non-vacuous same-work floor (prefix >=32, length delta <=4, all requests SLO-met),
+requires causal EXEC/RESULT, lease coverage of every resource action, and final
+drain ordering, joins ledger time to the measured window, and rejects
+path/evidence reuse and overlapping windows. Lifecycle and same-work checks only
+accept request evidence issued by the resolver. E2's
+transitive poisoned-pyc path is closed by adapting its pinned wrapper to E2A's
+source-compiled pinned canon. The arithmetic-only checker cannot emit a physical
+label.
+
+Verification: E2A 183/183, R2 19/19, CLI negatives 32/32; E2 152/152 and E1
+201/201 official suites pass; 1187 E1 differential cases have zero mismatches.
+No measurement was run. The production fixture fails closed at
+`E_ANCHOR_TRUST_ROOT`. Even after a root is added, a physical result still needs a
+real verifier, a witnessed pre-run launch relation, an enumerable single-plan
+commitment, and a server-wall power instrument. A single transparency-log
+inclusion proof is not enumerable evidence.
+
+**S10-E2A ALL-PAIRS AGGREGATE: MECHANICS PASS, EXTERNAL ANCHOR BLOCKED. A TIMESTAMP
+AUTHORITY WOULD NOT HELP.** E2A builds the `SUM_ALL_PAIRS_V1` evaluator E2 left
+unbuilt, and hits a THIRD blocker, independent of the two below. An all-pairs sum is
+only worth something if the cohort was fixed before the results were seen. That needs
+two properties, and **they do not covary**:
+
+~~~text
+  P1 PRECEDENCE   the plan existed before the runs   <- RFC3161 buys this, in full
+  P2 EXCLUSIVITY  exactly ONE plan was committed     <- RFC3161 buys NOTHING of this
+
+  A TSA is a RESPONDER, not a LOG. It does not publish or enumerate what it signs.
+  -> anchor 32 candidate plans, run everything, reveal the one that fits.
+  -> every per-record check passes.
+
+  A token is a lower bound on a plan's AGE. Never an upper bound on its COUNT.
+~~~
+
+freetsa.org is genuinely independent (third-party key, third-party clock) and ~10
+minutes of provisioning away -- a live probe returned `Status: Granted` and the chain
+verifies once `cacert.pem` is fetched. **Provisioning it would still not unblock E2A.**
+Encoded as `ANCHOR_INDEPENDENT[RFC3161]=True` beside `ANCHOR_ENUMERABLE[RFC3161]=False`;
+that pair of lines IS the finding. Closing P2 needs an ENUMERABLE commitment
+(pre-registration, or a transparency log with a reviewable identity binding). TPM
+exists but is permission-denied and custodially ours; git is our own force-pushable
+fork; the host's only `[tsa]` config points at `./demoCA`, i.e. openssl configures you
+to be your OWN authority. Also honest: **E2A implements no cryptographic verifier at
+all** -- it types capability, parses no token, checks no signature.
+
+The adversarial review found **3 CRITICAL, all reproduced, all fixed**, two of them
+verbatim recurrences of bugs this codebase documents as fixed: (1) the independent
+checker CLI printed `SERVER_RELIEF_PASS` + exit 0 on twenty lines of hand-written JSON
+-- E2's "handed a conclusion" bug, in the artifact a reviewer runs; (2) `__pycache__`
+defeated the pinned canon -- `exec_module()` ran poisoned bytecode while the source
+digest still matched, killing the type gate (`is_int(1.0)` OLD=True / NEW=False, same
+digest); (3) `validate_aggregate`, billed as "what makes the label unfakeable", raised
+`E_TYPE` on its OWN output and had never once run. Design result kept: **structural
+checks first, policy gates last** -- the anchor gate ran first and masked 13 CLI
+negatives, so a deleted check and a working one looked identical.
+
+**S10-V0-R-E2 MATCHED TIMELINE: MECHANICS PASS, MEASUREMENT NOT RUN. NO SERVER-WALL
+INSTRUMENT EXISTS ON THIS HOST.** E1 rejects every `MEASURED` instance on purpose --
+its solver is additive per-device while a wall/board measurement is an AGGREGATE
+timeline, and feeding an aggregate into an additive solver double-counts shared power.
+E2 is the other shape: it compares two REALIZED timelines POST HOC (optimized
+server-only control vs Q-PIM treatment) at the same boundary. E2 v1 proves aggregate
+accounting closure (`met+tardy+rejected+canceled == offered`) and exact equality of
+opaque workload/SLO digests; it does not yet prove per-request output equivalence or
+that lifecycle work stayed inside the paid window. Frozen: left-edge
+zero-order-hold integer integration, gross energy only (no invented idle baseline),
+conservative decision (`treatment+unc < control-unc`) with a 10% gate by integer cross
+multiplication (`t*10 <= c*9`, no float, no division). `SYSTEM_ENERGY_SAVING` is not a
+value in any E2 schema -- it is inexpressible, not merely disallowed.
+
+**The instrument audit is the load-bearing result.** First-hand on the live host: NVML
+is GPU-board ONLY (TWO A6000 boards, so a timeline must name which; `power.draw` on
+Ampere is a **1-second average** with a vendor-stated **+/-5 W** accuracy, now the
+enforced uncertainty floor). RAPL is unusable twice over -- `energy_uj` is root-only
+(sudo needs a password) AND only `package-0`/`core` exist (no dram, no psys), so it is
+a component counter that can never be a wall. No BMC, IPMI, PDU, or external meter
+exists. **`SERVER_RELIEF_PASS_TOTAL_ENERGY_BLOCKED` is therefore UNREACHABLE without
+new hardware**, not merely unmeasured. A GPU-board delta is named `boundary_delta_nj`
+and its `server_wall_delta_nj`/break-even budget are NULL: a board sensor cannot
+establish how CPU, DRAM, fans, or PSU losses moved, so its delta is not a server delta.
+
+**Physical labels are unreachable by construction here**: a single pair is diagnostic
+only (`PAIR_ONLY_NO_AGGREGATE_CLAIM`); a label needs `SUM_ALL_PAIRS_V1` over a complete
+predeclared repetition set, and that evaluator is deliberately not built. The synthetic
+fixture computes `relief=true` at exactly -20% and is still `MEASUREMENT_INVALID /
+SYNTHETIC_NO_PHYSICAL_CLAIM`. The one existing A6000 trace stays NEGATIVE evidence: 323
+rows hold only **57 value changes** (a 10 Hz poll of a ~1.7 Hz sensor), it spans P0/P2/
+P3/P8, and it is not a matched pair -- rejected on four independent grounds, gate not
+lowered.
+
+**Ten fail-open paths were found and closed.** I found one myself: recomputation was
+opt-in (`samples=None`) and no caller opted in, so a forged `energy_nj=1` validated on
+the strength of a correct artifact hash -- E1's "a signed number is never proof of
+itself", repeated. An independent red team found nine more, all real: `build_comparison`
+accepted a LABEL and checked only set membership, so importing the module stamped a
+sealed `SERVER_RELIEF_PASS` onto junk whose treatment burned 1e15 nJ MORE (critical the
+moment the aggregate evaluator lands, since it calls exactly that function); quality
+gates counted the WHOLE artifact while energy integrates only the window, so padding
+outside the paid window was free and admitted the real 57-update trace; a TOCTOU gap
+between hashing a path and re-opening it (won 74/400 with no privileges); a timeline's
+own `status` was never read, so `FAILED` runs reached the decision; `E_STATUS_CHANGE`
+was opt-in via an optional scalar `pstate` and was **dead code across all 104 tests**.
+Fixes: label DERIVED not supplied, quality measured over the paid window, read-once
+artifacts, `status != OK` refused, `pstates` required one-per-sample. The reproduced
+kill-chain stages are pinned as unit regressions. One claim I could not
+fix and did not pretend to: a label split across two non-adjacent free-form fields
+evades any contiguous scan -- recorded as an executable test, since the closed enum is
+what actually blocks it. A later audit also cross-bound raw power, execution, and
+timeline evidence by run nonce and paid-payload digest; rejected global record-digest
+reuse, stale sample brackets, malformed P-states, and mismatched repetition scope; and
+made `MatchedComparison` v1 diagnostic-only in both schema and runtime. A final live
+audit closed hostile preloading of the canonical type gate, resealed comparison
+arithmetic/reason mutations, representation-dependent paid-payload identity, and
+inexact or over-wide NVML parsing, plus a validator exception leak. It also made
+two next-gate blockers explicit: resolved per-request same-work proof and paid
+lifecycle/drain closure. Suite: 152 E2
+tests + 30 CLI negatives, deterministic across 5 processes/seeds; the final 45-file E1
+baseline is byte-identical before and after. E1 passes 201 tests (28 foundation + 173
+evidence), 39 evidence negatives, 18 CLI negatives, and 1187 differential comparisons
+with zero mismatches. See `spikes/s10_matched_energy_e2/`. No measurement, no
+commit/push.
+
+**S10-V0-R-E1 EVIDENCE INTEGRITY: PASS FOR MECHANICS; ALL PHYSICAL CLAIMS BLOCKED.
+C0-C5 AND PF1 REMAIN UNAUTHORIZED.** The repaired live path runs isolated draft-2020
+schema validation, hashes actual artifact files, binds exact token/KV shapes, pins
+route/correctness/reference/boundary identity, and separates H2D, D2H, and produced
+output bytes. Merged-batch profiles are checked against every legal member subset so a
+zero-output or uncharged-energy boundary cannot back a real merged action. Required
+bindings are derived from the INSTANCE, so deleting one is an error. Certificates are
+schema-checked before indexing. The evidence-bound v3 path still reproduces the frozen
+147250000 and 2974000 nJ mechanics optima, with every v2 mechanics file byte-unchanged.
+
+The atlas remains EMPTY: zero eligible measured rows exist, the A6000 trace is
+GPU_BOARD rather than wall power and has too few independent samples, and phone energy
+is physically unmeasurable. More importantly, E1 now rejects every `MEASURED` instance:
+its solver adds per-device and per-route terms, while SERVER_WALL and TOTAL_WALL are
+aggregate timelines. No GPU-board, server-relief, or system-energy label is emitted
+until a separate typed matched control/treatment record exists. A second adversarial
+pass reproduced and closed live schema bypass (including hostile `PYTHONPATH`), absent
+artifact bytes, disjoint KV/correctness envelopes, phantom fallback/reference proofs,
+route-boundary revision/time/byte mismatches, under-typed power and uncertainty, and a
+batch route that previously selected an invalid 1 us merged action. Final targeted
+review found no remaining executable blocker in those paths. Suite: 201 tests (173
+evidence + 28 foundation), 39 evidence negatives, 18 CLI negatives,
+fixture/hash-seed determinism, and the foundation's 1187-case differential digests
+remain byte-identical. This is tested
+evidence integrity, not certification of arbitrary live dispatch. See
+`spikes/s10_power_frontier_repair/{EVIDENCE_CONTRACT,EVIDENCE_MATRIX,RESULTS_E1}.md`.
+No commit/push.
+
+**S10-V0-R TEMPORAL FOUNDATION: PASS (retained).** The historical S10-V0 `FAIL` is
+still INVALID/INCONCLUSIVE and is retained as a historical tree; it is not a
+falsification of Q-PIM. The earlier exact recursive-hash claim was withdrawn because no
+byte-exact recipe and pre-run manifest were persisted; a persisted, self-checking recipe
+now exists (`HISTORICAL_MANIFEST.txt`, 98 files excluding bytecode -- the old "101" had
+counted 3 `__pycache__` entries). The two exactness defects that blocked the foundation are now closed. The
+solver has two exact modes: earliest-start is kept only where it is provably exact
+(zero wake/idle/transition and zero output bytes, where server energy is independent
+of start times), and everything else enumerates every legal integer start time across
+routes, compatible batch partitions and device orders, bounded by the horizon rather
+than by deadlines (TARDY is legal). It therefore now SELECTS the delayed 147250000 nJ
+placement over the earliest 162000000 nJ at identical zero-miss/zero-lateness
+outcomes (one merged P0 window instead of two), and finds a delayed
+activation-feasible placement where the earliest one breaks the memory bound (peak
+200 > 150 -> 100). Optimality is no longer taken on the solver's word: an
+checker-owned reference with structurally separate enumeration (stdlib only, no
+oracle imports, no incumbent/objective pruning) re-derives the optimum, so default
+checker mode ACCEPTS proven optima and REJECTS feasible-but-suboptimal certificates;
+the signed completeness marker is never proof, extra search metadata is rejected, and
+`--feasibility-only` stays separate and claims nothing. Suite: 25 tests plus 1187
+compared generated cases across four processes and multiple PYTHONHASHSEED values
+(0 mismatches, deterministic digests), 14 CLI negatives with no tracebacks, and
+fail-closed out-of-domain/state-cap behaviour. An adversarial review also closed
+empty identifier acceptance, forged signed search metadata, vacuous differential
+coverage, and error-classification holes. Typed evidence, C0-C5, PF1, runtime,
+capacity, and energy remain unauthorized. See
+`spikes/s10_power_frontier_repair/{V0_AUDIT,PLAN,RESULTS}.md`. No commit/push.
+
+**Phase: S10-V0-R-E2 MATCHED CONTROL/TREATMENT TIMELINE GATE - DONE, VERDICT
+E2_MATCHED_TIMELINE_MECHANICS_PASS_MEASUREMENT_NOT_RUN (2026-07-15, ASCII).** Built a
+separate post-hoc matched-comparison mechanism under `spikes/s10_matched_energy_e2/`:
+versioned records (RealizedTimeline, MatchedComparison, RepetitionSet,
+ServerWallCapability), a deterministic integer integrator, a conservative comparator, an
+instrument audit, and an adversarial suite. No physical measurement was run and none is
+authorized. No server relief and no energy saving is claimed.
+
+Architecture: E1 rejects every `MEASURED` instance CORRECTLY, because its solver is
+additive per-device while a wall/board reading is an AGGREGATE timeline of a whole
+boundary. E2 never feeds an aggregate back into the solver; it compares two REALIZED
+timelines post hoc at the same boundary, over the same CLOSED work, with identical SLO
+outcomes. `assert_not_additive_input` makes that rule executable (and now covers all
+three aggregate kinds, not just the timeline). E2 reuses E1 only for canonical
+JSON/SHA-256, read-only; a test asserts no E1 decision logic is imported.
+
+Frozen mechanics: left-edge zero-order-hold integer integration clipped exactly to the
+window; gross energy only (no invented idle baseline); `treatment+unc < control-unc`
+plus a 10% gate by integer cross multiplication (`t*10 <= c*9`) -- no float, no
+division; uncertainty never optional; work must be closed; scope/rails/boards/clock
+epoch must match. `SYSTEM_ENERGY_SAVING` is absent from every schema and enum:
+inexpressible, not merely disallowed.
+
+**Instrument audit (the load-bearing result, first-hand):** NVML is GPU-board ONLY --
+TWO A6000 boards on this host, and `power.draw` on Ampere is a **1-second average** with
+a vendor-stated **+/-5 W** accuracy (now the enforced uncertainty floor, charged per
+board). RAPL is unusable twice over: `energy_uj` is `-r-------- root root` with no
+sudo, AND only `package-0`/`core` exist (no dram, no psys) -- a component counter, never
+a wall. No BMC/IPMI/PDU/external meter. **SERVER_RELIEF is UNREACHABLE without new
+hardware**, not merely unmeasured. Consequently a GPU-board delta is `boundary_delta_nj`
+with `server_wall_delta_nj` and the phone break-even budget NULL -- a board sensor
+cannot establish how CPU/DRAM/fans/PSU moved.
+
+Physical labels are unreachable BY CONSTRUCTION here: a pair is diagnostic only
+(`PAIR_ONLY_NO_AGGREGATE_CLAIM`); a label needs `SUM_ALL_PAIRS_V1` over a complete
+predeclared repetition set, deliberately not built. The synthetic fixture computes
+`relief=true` at exactly -20% and stays `MEASUREMENT_INVALID /
+SYNTHETIC_NO_PHYSICAL_CLAIM`. CP5: the existing A6000 trace stays NEGATIVE evidence --
+323 rows hold **57 value changes** (10 Hz poll of a ~1.7 Hz sensor), it spans P0/P2/P3/
+P8, and it is one timeline, not a pair. Rejected on four independent grounds; the gate
+was frozen before the trace was read and was not lowered.
+
+**Ten fail-open paths found and closed.** Mine, before the audit: recomputation was
+opt-in (`samples=None`) and NO caller opted in, so a forged `energy_nj=1` validated on a
+correct artifact hash -- E1's "a signed number is never proof of itself", repeated.
+Red team found nine more, all real: (F1) `build_comparison` accepted a LABEL and checked
+only set membership, so importing the module sealed a `SERVER_RELIEF_PASS` onto junk
+whose treatment burned 1e15 nJ MORE -- critical because the next checkpoint's aggregate
+evaluator calls exactly it; (F2) quality gates counted the WHOLE artifact while energy
+integrates only the window, so padding outside the paid window was free and admitted the
+real 57-update trace; (F3) TOCTOU between hashing a path and re-opening it, won 74/400
+unprivileged; (F4) a timeline's own `status` was never read, so `FAILED` runs reached
+the decision; (F5) `E_STATUS_CHANGE` was opt-in via an optional scalar `pstate` -- dead
+code across all 104 tests; plus additive guard covering one kind of three, an evadable
+label scan, empty rails accepted, and `normalizer_digest` required but never checked.
+Fixes: label DERIVED never supplied, quality measured over the paid window, read-once
+artifacts, `status != OK` refused, `pstates` required one-per-sample. The composed kill
+chain is dead at every stage, verified against the red team's own `x4_chain.py`.
+
+Honest limits recorded rather than papered over: a label split across two non-adjacent
+free-form fields evades any contiguous scan (canonical JSON sorts keys) -- kept as an
+executable test, since the closed enum is the real block; E2 cannot detect a FABRICATED
+artifact, only make a lie digest-pinned and attributable; `route_schedule_digest` is
+recorded provenance, deliberately not matched. Suite: 114 E2 tests + 30 CLI negatives,
+deterministic across 5 processes/seeds, E1 byte-identical before AND after in the same
+run. E1 itself moved 185->192->194 tests under concurrent review while E2 was written;
+I did not modify it, and both manifests are kept so the drift is a diff rather than a
+silence. Next: the aggregate evaluator, then a separately authorized GPU-board A/B
+designed around ~1.7 Hz and +/-5 W. No commit/push.
+
+**Phase: S10-V0-R-E1 POST-REVIEW REPAIR - DONE, VERDICT
+TYPED_EVIDENCE_INTEGRITY_PASS_PHYSICAL_CLAIMS_BLOCKED (2026-07-15, ASCII).** Repaired
+the worker's fail-open live path without touching the frozen v2 solver/checker. Live
+schemas now run under isolated system Python; artifacts are resolved, contained, and
+byte-hashed; token/KV and correctness envelopes are exact; reference and fallback
+proofs name distinct real artifacts; route/boundary identity, revision, wall time,
+H2D/D2H/output geometry, and energy are coherent; certificates fail schema before
+indexing; and batch rows cover every legal subset without silently dropping boundary
+energy. All physical claims are disabled in E1 because additive solver inputs cannot
+represent aggregate wall timelines. 185 tests, 39+14 CLI negatives, 1187 differential
+comparisons with no mismatch. No commit/push.
+
+**Superseded worker report: S10-V0-R-E1 TYPED EVIDENCE BINDING - originally reported
+TYPED_EVIDENCE_CONTRACT_PASS_ATLAS_BLOCKED (2026-07-15, ASCII).** Built the versioned
+typed-evidence contract (schema v3, 7 immutable record types, 24 stable `E_*` codes),
+a deterministic binder, a strict fail-closed validator, an honest evidence inventory,
+and an adversarial suite. `evidence.scope=MECHANICS_ONLY` was a label; it is now a
+mechanism.
+
+Structure: required bindings are computed FROM THE INSTANCE, never from the binding
+list, so an omitted binding is `E_BINDING_MISSING` rather than an unchecked number. A
+v3 instance is a v2 core plus a binding block; the binder projects to v2 IN MEMORY
+ONLY to reuse the proven solver, and the certificate signs the FULL v3 instance plus
+the bundle and binding digests, so a swapped projection cannot validate. All v2
+mechanics files are byte-unchanged and the evidence path reproduces both frozen optima
+(147250000 nJ with `server_p0_intervals [[800,1150]]`; 2974000 nJ at peak 100).
+
+Energy boundaries frozen (contract sections 4, 5b, 5c): GPU_BOARD -> GPU-board relief
+only; SERVER_WALL -> server relief only; TOTAL_WALL required for SYSTEM_ENERGY_SAVING;
+`delta_E_server` is a break-even BUDGET for excluded phone/USB/charger/relay energy,
+not a saving; unknown phone energy is UNKNOWN with a reason, never 0.
+
+**Atlas: EMPTY. Zero eligible measured rows.** No PowerProfile of any device passes,
+so no `MEASURED` instance is constructible and no energy claim is authorized. The
+A6000 board trace is a real measurement refused twice (GPU_BOARD scope; ~57
+independent samples at ~1.77 Hz effective vs `MIN_POWER_SAMPLES=100`). Phone energy is
+UNKNOWN and physically unmeasurable (USB rail pinned, coulomb dead at 99% Charging, no
+root on op12, `pwr_sampler.sh` never run). Gates were frozen BEFORE the atlas was read
+and were not lowered when it came back empty.
+
+Also recorded (not this spike's to fix): several published claims are contradicted by
+their own cited artifacts -- S6 "xmem GEMM confirmed" (cited CSV has 0 hits for
+xmem/os8/prepack; the 126x kernel is the stock `kernel_mul_mm_f16_f32_l4_lm`), S6 "HMX
+every M>=5" (only M=1 and M=8 exist on disk; the "7 hmx" are 7 MUL_MATs of one M=8
+graph), S6 fused-FA "native HMX" (all 8 FA lines are unit `----`), the S6-L ffnmerge
+16+48 row (splices a speedup from a no-correctness run onto a correctness value from
+different shapes), and adb-push "262 OP15 / 216 OP12" (device-swapped and ~3x high;
+the artifact says OP12 249 / OP15 86).
+
+**An independent red team broke the first implementation TEN ways. All real, all
+closed, each with its own regression.** Two classes I had missed entirely:
+(1) **float/bool type confusion** defeated EVERY eligibility gate -- guards written
+`if is_int(a) and is_int(b) and <bad>` SKIP on a wrong type, and `900000.0 == 900000`,
+so a route certified at 90% error against a 0.5% threshold bound and solved cleanly;
+JSON Schema provably cannot catch it (draft6+ `integer` accepts any zero-fraction
+number), and my own `test_bool_is_not_an_integer` asserted the exact property that
+guaranteed the bypass. (2) **record selection** -- the contract froze the STATISTIC to
+stop cherry-picking, then left WHICH RECORD free, so cherry-picking returned one level
+up: a server with wake=50 and transition=0 that no record describes (147250000 ->
+146250000), a COLD route and a STEADY route in one schedule (-> 122500000), a
+USB_VBUS twin record double-counting a phone, and any PASS route erasing the activation
+bound. Also: GPU-board energy inside a certified SYSTEM claim, boundary records with no
+identity at all, `MAX_INT` never enforced, `None == None` validating an absent field,
+and tracebacks escaping instead of refusals. Fixes: one type gate at load before any
+comparison, every guard inverted, `E_INCOHERENT` record coherence (one device -> one
+power record, one thermal condition, one build), boundary identity + direction, boundary
+scope folded into claim classification, `canon.MISSING`, and `validate_safe`.
+
+What the red team could NOT break is worth as much: `required_targets()` enumeration is
+complete, verified empirically by perturbing every integer leaf and re-solving. A
+structural guard now walks every integer in the instance and fails if one is neither
+evidence-derived nor declared workload -- including a test proving the guard can fail.
+
+Suite: 154 tests (25 foundation + 129 evidence), 37 evidence CLI negatives + 14
+foundation negatives (no tracebacks), determinism across 5 processes/PYTHONHASHSEED
+values, and the foundation's four 1187-case differential digests BYTE-IDENTICAL to the
+pre-edit baseline. Honest limits recorded: no ajv on this host; the gate binds numbers
+to artifacts but cannot detect a FABRICATED artifact; `activation_mem_bound_bytes` is a
+capacity bound to a designated `CAPACITY_PROBE` route as a proxy; `horizon_us` is
+workload-declared yet multiplies idle energy, so absolute certificate energy is not
+fully evidence-derived. HEAD `933c722f6` unchanged, historical tree verified under a
+persisted self-checking recipe, no commit/push. Even PASS does not authorize C0-C5.
+
+**Phase: S10-V0-R ADVERSARIAL REVIEW CLOSURE - DONE, TEMPORAL FOUNDATION STILL
+PASS (2026-07-15, ASCII).** Independent review reproduced the full suite and found
+no exactness defect in the declared bounded temporal model, including an additional
+1200-seed slice and prune-on/off comparisons. It did find two contract holes: genuine
+optima could carry forged search counters, and empty device/route identifiers were
+accepted. Signed certificates now contain only `search.complete`; default checker
+mode re-proves optimality and rejects extra search metadata. Schemas and semantic
+validation reject empty identifiers. Regression coverage now fails on unexpected
+solver/reference errors instead of calling them jointly infeasible, asserts all 1200
+differential seeds are accounted for with at least 1000 exact comparisons, and makes
+CLI setup fail closed. Reproduced result: 25 unit tests; 14 CLI negatives; 1187
+compared + 13 jointly infeasible + 0 skipped + 0 mismatches; deterministic digests;
+marker `S10_V0R_TEMPORAL_FOUNDATION_TESTS_PASS`. Stale status prose was corrected,
+the unsupported historical recursive-hash and zero-pruning-count claims were
+withdrawn, and the active handoff now targets typed evidence with separately labeled
+GPU-board/server relief while total energy remains blocked by unknown phone energy.
+C0-C5 remain unauthorized. No commit/push.
+
+**Direction reset - 2026-07-15: Q-PIM POWER-FRONTIER DESIGN FROZEN; S10-V0 NOT
+RUN.** Replaced the prior capacity-first MW0-MW7 order with PF0-PF5. The new
+mechanism jointly schedules topological DAG order, phone active-weight
+residency, complete-island placement, A6000 lazy claims/batches/power states,
+and phone pacing. Offload value is evaluated as a counterfactual power-trigger
+bundle at the complete wall boundary rather than a sum of skipped GPU work.
+S9-V1A-R is preserved as completed bounded transport substrate. The first test
+is deliberately small and fail-closed: two/three frozen DAG templates, measured
+server/phone power surfaces, exact tiny enumeration, independent checker,
+bounded causal beam search, and one controlled real replay. Possible verdicts
+are PASS, MECHANISM_PASS_ENERGY_BLOCKED, or FAIL; only PASS authorizes PF1.
+No code was implemented for this direction reset.
+
+**Phase: S10-V0-R TEMPORAL FOUNDATION - DONE, VERDICT TEMPORAL_FOUNDATION_PASS (ASCII).**
+Baseline before editing: HEAD 933c722f6, `scripts/run_tests.sh` 19 tests exit 0 marker
+`S10_V0R_CURRENT_MECHANICS_TESTS_PASS`; historical `s10_power_frontier/` retained as
+101 files. The earlier byte-identical recursive-hash claim is withdrawn because its
+recipe and a pre-run manifest were not persisted. CP1 froze the exact temporal
+domain in PLAN.md: integer us/mW/nJ; EARLIEST mode kept ONLY where provably exact (zero
+wake/idle/transition and zero output_bytes => server energy = p8*H + (p0-p8)*sum(durations),
+independent of start times, and earliest-start minimises every finish of a fixed order);
+TEMPORAL mode otherwise. CP2 implemented full integer start-time enumeration over routes x
+compatible batch partitions x per-device orders x delay, with feasibility windows from
+releases/precedence/wake/HORIZON only - never deadlines, since TARDY is a legal outcome and a
+deadline bound would discard feasible schedules. Declared bound TEMPORAL_MAX_NODES=6,
+TEMPORAL_MAX_ACTIONS=6, TEMPORAL_MAX_WINDOW_PRODUCT=8e6 accumulated and checked before
+recursing into each device order; crossing it raises without a certificate; max_states exhaustion raises;
+`complete=true` only after exhaustion. Two documented B&B rules (R1 lateness/miss bound, R2
+energy floor) are lexicographic lower bounds and are tested against `prune=False`. RESULT:
+the frozen counterexample now SELECTS n0[850,950]+n1[1000,1100] = one merged P0 window
+[800,1150] = **147250000 nJ**, beating the earliest **162000000 nJ** at identical [0,0,-2]
+outcomes. New frozen `activation_delay_counterexample.json`: earliest peak
+200 > bound 150 (infeasible), oracle finds delayed p1[10,14] -> peak 100. CP3: `checker/
+reference.py` is structurally separate (stdlib-only, no incumbent/objective pruning,
+no oracle imports) and
+independently confirms both fixtures. Default checker mode now ACCEPTS proven
+optima and REJECTS feasible-but-suboptimal certs (stable SUBOPTIMAL diagnostic) even when they
+carry the genuine optimum's completeness marker; the marker is never proof; `--feasibility-only`
+stays separate (optimality_verified=false). partial_partition (horizon 5000 => 19.6M combos vs
+8M bound) is OUT of the reference domain, so default mode fails closed with that specific
+reason and its optimum is instead proved by the pre-existing batch slow_reference - no frozen
+fixture rests on the oracle's own word. CP4: 25 unit tests; 1187 compared generated cases
+(1200 seeds, 13 agreed-infeasible, 0 out-of-domain, 0 mismatches) over 4 processes at
+PYTHONHASHSEED 0/1/42/12345, digests byte-identical again at seed 99 and `random`; regressions
+for equal-busy/different-gap, wake+idle boundary equality (touching windows merge to [50,450],
++1us splits them; equal 400us active, delta == exactly one transition_nj), horizon/release/
+deadline/precedence/lane-overlap/duration/batch-identity/activation/terminal/energy/objective
+mutations, incomplete-search and state-cap exhaustion; 14 CLI negatives all nonzero with stable
+ORACLE_FAIL/CHECK_FAIL and zero tracebacks. An adversarial reviewer also caught that my
+partial_partition guard was vacuously green and that PLAN.md's tail contradicted its new
+header; both fixed. A final review removed unverifiable signed counters, rejected empty
+identifiers, required full differential accounting, and stopped classifying arbitrary paired
+runtime errors as agreed infeasible. `git diff --check` clean, ASCII-only, bytecode removed. Marker is now
+`S10_V0R_TEMPORAL_FOUNDATION_TESTS_PASS`. Typed evidence binding is the next separate gate;
+C0-C5, PF1, runtime, capacity and energy remain unauthorized. No commit/push. See
+`spikes/s10_power_frontier_repair/{RESULTS,PLAN}.md`.
+
+**Phase (historical, superseded): S10-V0 SCREEN - INVALID/INCONCLUSIVE, NOT A
+Q-PIM FALSIFICATION (ASCII).**
+CP0 integrity: HEAD 933c722f6 unchanged, pre-existing dirty tree preserved byte-for-byte,
+phone-pim CTest 3/3 release + 3/3 ASan (pre and post edit), smallest resident dense-FFN
+reproduced on both phones with the certified worker 0a50ca72..e749 (OP15/OP12
+PRESTAGED_FFN_PASS, rel-L2 2.9e-4). Physical boundary = ENERGY_BLOCKED: no synchronized
+wall meter (host+PSU+USB+phone), only A6000 board power at ~1.5 Hz (too coarse for few-ms
+islands), power caps unsettable (no root), no A6000 state below auto-P8 (25 W), phone
+charger unmeterable. CP2 atlas MEASURED: A6000 FFN island (n_embd 3840, n_ff 15360, 354 MB
+f16) compute p50 517 us (M1) -> 545 (M16) -> 998 (M256) -> 3625 (M1024), batching nearly
+free (marginal 1.887 us/token); board idle 25 W, sustained active mean 281 W / ceiling
+300 W; phone same island e2e OP15 27.1 ms / OP12 45.0 ms (43-71x slower). INFERRED power
+is mechanism-favorable (phone 2 W, USB 0 W, GPU 300 W) so a FAIL is conservative. CP3:
+exact symmetry-reduced oracle + STANDALONE checker (imports no solver/sim/objective);
+13/13 adversarial mutations caught; 1200 generated fixtures all oracle-valid and all 1200
+corruptions rejected. CP4: policies C0..C5, every one of ~300 certs re-validated by the
+independent checker. Result: under CONSERVATIVE measured-plausible power the oracle offloads
+NOTHING (+0.0% vs optimized server-only in all 22 bins); under FAVORABLE blocked power C4
+beats C1 only by offloading LONE unbatchable islands (primary +20.4%, lone+slack up to
++47%), and larger-server-batch=False in EVERY instance. Opportunity gate met only in
+favorable+lone+slack (non-robust: 0% conservative). MECHANISM gate FAILS: none of the three
+certified levers (denser batch / lower cap / break-even low-power interval) is available or
+triggered on the measured hardware; the favorable-power gain is skipped-GPU-us per-island
+offload, which the design excludes and credits at zero. CP5 physical reproduction NOT run
+(gates failed). Verdict FAIL -> stop Q-PIM runtime / PF1; keep S9 as substrate. No commit/
+push; protected scope untouched (no tools/server, model graph, KV, ggml_sched, kernels, or
+v3 wire). See `spikes/s10_power_frontier/{RESULTS,MANIFEST,PLAN}.md` + `artifacts/`,
+`cp_verdict.json`.
+
+**Phase: S9-V1A-R PIPELINED-TRANSPORT EVIDENCE REPAIR - DONE (ASCII).** Repaired the V1A
+profiling and re-grounded the evidence. Profiling is now opt-in (worker --profile-recv, host
+--profile-transport; default OFF), stage-scoped/per-opcode (excludes HELLO/PREPARE/EXECUTE/
+RELEASE/SHUTDOWN and oracle gaps), splits host outer-frame SHA (envelope+data) from the actual
+socket write (only ~75 ms), measures worker prefix-hash separately, labels hash domains, and NEVER
+sums host-CPU and phone-CPU timers as a wall fraction. WITHDRAWN V1A claims: "61%/69% SHA of wall"
+(illegal cross-CPU sum), "four hashes over identical bytes" (really six passes, differing domains),
+"26%/33% RTT" (process-lifetime, contaminated). Repaired window=1 accounting: HOST-side serial
+timeline 99.86% (OP12) / 99.96% (OP15) of wall, single-CPU valid; phone-side timers reported
+separately. Profiling overhead ~1.00x (measured ON vs OFF). Fail-closed analyzer (analyze_sweep.py,
+18 mutation self-tests) validates device/worker-SHA/model-SHA/bytes/chunks/verdict/source/rel-L2/
+accepted/duplicate/wasted and the UNROUNDED speedup. adversarial_tests.py: structural JSON, nonzero
+exit on any fail, persists host stdout/stderr/exit + recovery records, computes retry/waste from
+persisted first+resumed runs. Added: byte accounting (attempted/written/durable/wasted/retried),
+FAIL_PROVISION record on disconnect, envelope-inclusive checked 64 MiB bound, --stage-window frozen
+to {1,2,4,8}, bench sequence/summary/agreement validation, and an ASan/UBSan test of the real host
+window>1 path (windows 1/2/4/8 + resume, zero diagnostics). Counterbalanced matrix (Latin square),
+full provenance, thermal/frequency snapshots (NOT energy). Full-shard gate (5 reps/window, 0 errors,
+0 duplicate/wasted bytes): OP12 2.61x median / 1.89x conservative (best w4); OP15 2.28x / 1.27x
+(best w8) - OVERALL GATE PASS on both median and conservative min(best)/max(w1). 64 MiB 2.21x
+(OP12) / 1.66x (OP15); 256 MiB stable at w8; simultaneous both phones on separate USB buses with no
+cross-interference (OP12 37.45, OP15 22.86 MiB/s). Adversarial T1/T2/T3 PASS both phones (T2 recovers
+from the worker verified prefix, which on OP15 exceeded the host-acked prefix by one chunk, proving
+no in-flight guessing). Honest labels: gate PASS but partly a DVFS effect (OP15 throttled to 95 C /
+<=1.3 GHz); contract INCOMPLETE; capacity UNPROVEN; energy DEFERRED. SHA de-dup, protocol v4,
+scheduler, llama-server - reported, NOT implemented. No commit/push. See
+`spikes/s9_pipelined_transport/{RESULTS_R,PLAN,MANIFEST}.md` + `artifacts_r/`.
+
+**Phase (superseded by S9-V1A-R): S9-V1A PIPELINED TRANSPORT - PROFILED +
+GATED, PASS.** The stop-and-wait
+dynamic-provisioning path was profiled to 99.85% (OP12) / 99.80% (OP15) of the
+window=1 wall using measurement-only host timers plus an opt-in worker `recv_profile`
+(no v3 wire change; certified worker `0a50ca72…` untouched). Finding: SHA-256 is
+**61% (OP12) / 69% (OP15)** of the wall and mostly **redundant** — each 4 MiB chunk is
+hashed 4× (host verify + host rolling-prefix; worker frame-SHA + worker store-hash) plus
+a full re-verify at commit; round-trip idle is 26%/33%; the wire is NOT the bottleneck
+(a standalone memory-sink bench moves 64 MiB at 120/105 MiB/s, ~8× the full-stage rate).
+A bounded `--stage-window N` (FIFO, ≤64 MiB outstanding, per-request durable-prefix digest
+retained until its ACK, window=1 byte-identical) was added on the HOST only. Gate: median
+provisioning goodput **2.44× (OP12) / 6.71× (OP15)** at window 8 (window 4 recommended),
+both ≥1.20×, **0 correctness failures / 0 wasted bytes over 40 runs**, bit-identical
+published SHA `5cfba18d…` and rel-L2 < 5e-3. Windowing adversarial T1 (resume-after-partial),
+T2 (SIGKILL mid-flight → recover from the worker's verified prefix, resumed @163.6/138.4 MB),
+T3 (window-8 durable identity) all PASS on both phones; ASan/UBSan + release CTest 3/3. Honest
+caveat: part of the win is DVFS (a busy window keeps the CPU clocked up, so the dominant SHA
+runs faster). Bigger levers — **SHA de-dup** (61–69%) and **batched ACKs** (protocol v4) —
+are profiled and reported, NOT implemented (need review). No commit/push. See
+`spikes/s9_pipelined_transport/{RESULTS,PLAN,MANIFEST}.md`.
+
+**Phase: S9-V0-R3 STATIC REPAIR COMPLETE; SEQUENTIAL DYNAMIC PHONE RUNTIME
+MECHANICS PASS; LIVE SCHEDULER BLOCKED.** Append-only schema/bundle v5 closes the static v4
+holes reproduced for complete digest binding, exact manifest/segment membership,
+layer and correctness I/O envelopes, SoC floors, snapshot causality, ticket/chunk
+ranges, duplicates, and ReadyCertificate physical claims. Final v5 evidence is
+24 schema fixtures, 28 bundle fixtures, and 34 red-v4/green-v5 checks, all green.
+This remains immutable-snapshot coherence, not atomic live scheduling. Separately,
+`examples/phone-pim/` now provides the first real trusted-localhost command path:
+the phone accepts one ticketed sequential model stream, ACKs durable verified
+prefixes, resumes after disconnect/restart, atomically publishes a content-addressed
+read-only shard, loads and warms one complete dense FFN, executes HTP0 on bounded
+activation commands, and returns results to an independent production Gemma4
+oracle. Exact-final clean uploads pass on OP15 v81 and OP12 v75 at M=16 (rel-L2
+2.92e-4 / 2.95e-4). Host suites are 22 protocol, 45 storage, and 45 real-process
+integration checks; Android protocol/storage suites pass on both phones. This is
+mechanics, not capacity: the stop-and-wait ADB-forwarded path is only 4.7-14.9
+MiB/s versus separately measured `adb push` at about 216-262 MiB/s. Multi-model
+residency, native pipelined transport, llama-server integration, live leases/
+credits, capacity, and energy remain unimplemented. See
+`spikes/s9_dynamic_weight_residency/V0R3_REPAIR.md` and
+`spikes/s9_phone_pim_runtime/DYNAMIC_RESULTS.md`.
+
+**Phase: S9-V0-R1 targeted suite closure COMPLETE; scheduler dispatch
+certification BLOCKED.** An independent adversarial pass
+found the official V0-R suites PASSED while the mechanics were STILL fail-OPEN, so V0-R
+is relabeled `SUITES PASS; MECHANICS CERTIFICATION BLOCKED; CAPACITY UNPROVEN`. R1 freezes
+V0-R as RED evidence (golden/v0r_historical/, replay af1501b6...), introduces a VERSIONED
+R1/v3 contract (schemas/v3; v1+v2 untouched), and closes its targeted SIXTEEN cases with
+red-before/green-after evidence (each imports the frozen V0-R code AND the R1 code and
+shows V0-R has the hole, R1 closes it; 17/17). Validator (bundle_version 3): PRIVATE
+per-call temp files (race-free), the dispatch island must exist, each satisfied tuple must
+form one coherent chain WeightSet->CanonicalAllocation->PreparedImage->ReadyCertificate->
+ResidencyLease matched on device/backend/boot/generation/ids/digests, DispatchDecision
+must match the island, sticky/rebuildable needs a matching StateLease (stateless needs
+null), and alias/live-lease sets are DERIVED from records with exact set equality +
+refcounts + reclaimable (5 new stable codes, 26 total). Simulator: backend/generation-
+qualified readiness (no HTP residency dispatched to GPU), stale_epoch -> DRAINING +
+non-dispatchable, stale pipeline rolls back once + releases the contention domain + wakes
+the queue, full epoch stack rechecked after D2H, per-request/session sticky state with
+DEFERRED reset while pinned, bounded lane admission (rejected terminal on overflow),
+horizon-bounded event loop, explicit verified-offset partial failures, link_drop
+resumable(bulk)/terminal(activation/compute/d2h), server relief credited only after a
+valid completion, and measured interference REJECTED as unsupported. Suites: 100 schema
+fixtures (53 v1 + 33 v2 + 14 v3, both validators) + v2/v3 bundle selftests + 23 semantic +
+26 PRESERVED frozen-V0-R behavior + 17 R1 red/green + 10 golden/preservation, all green.
+R1 golden replay 9a69a7f6...; V0/V0-R goldens preserved and still reproducible. THEN a
+SECOND independent adversarial pass found further validator and simulator holes. The
+DRAINING lease now rejects, and the 2026-07-14 review also binds StateLease residency and
+ReadyCertificate correctness to the exact dispatched chain. Six simulator defects were
+repaired: shared-domain transfer ownership, phone-scoped bulk faults, deferred eviction,
+single-owner sticky mutation, horizon cleanup, and admitted-only server GPU accounting;
+per-event lane/ledger/pin conservation is asserted. `test_r1_holes.py` is now 16/16 and the
+v3 bundle index is 18/18. This is not closure of the contract: eleven new mutation probes
+still pass across DeviceInventory/expiry authority, executable identity, transport epochs,
+and state-to-ledger binding. Freeze v3 and repair these in v4 before any dispatch claim.
+S9 remains contract/simulator evidence with CAPACITY UNPROVEN. HEAD 933c722f6, nothing
+committed. See `spikes/s9_dynamic_weight_residency/V0R1_REPAIR.md`.
+
+**Phase (superseded): S9-V0-R (contract + simulator closure) COMPLETE.** Repaired the fail-OPEN
+contracts and simulator mechanics the review found in S9-V0, under a VERSIONED v2
+schema bundle (schema_version 2; the v1 schemas stay frozen). Record model: a NEW
+CanonicalAllocation separates the one canonical byte-charge from backend prepared
+images that ALIAS it (refcounted, drain-gated); PreparedImage identity now binds
+preparation algorithm + source allocation + derived_payload_sha256 + sharing mode;
+dispatch is an EXACT tuple set (required == satisfied); domain-separated digests for
+island/cert/leases/allocation; a NEW CorrectnessCertificate binds island + kernel
+route + backend build + profile-row + exact shape envelope; partial ranges get an
+explicit contiguous/disjoint/overlap coverage policy; bulk frames bind
+ticket/segment/chunk/offset/length/digest and a nonzero resume needs a verified prefix
+digest. ONE strict bundle validator always runs JSON Schema + semantic + cross-record
+with 21 stable error codes (rejects unknown kind/version, duplicate JSON keys, missing
+records, mismatched digests). Simulator rewritten: every request reaches exactly one
+terminal outcome (completed_phone/completed_server/fallback/rejected/timed_out, sum
+asserted); pipelines/dispatches/completions are epoch-bound (boot/generation/route/
+state) with stale drops + fail-closed stale-completion rejects; horizon + bounded
+prefetch/server/lane queues; real multi-device selection over PER-DOMAIN links
+(separate USB buses additive -- replaces V0's controller/phone-count division);
+reserve-on-acquire + rollback for UFS/LPDDR/derived/scratch/state with persistent
+sticky state; resume re-sends only the remaining range while retaining link ownership
+and counting retry bytes; the dimensionally-invalid causal score is replaced by a
+documented LEXICOGRAPHIC integer objective; interference applies ONLY over the actual
+overlap window; D2H is an explicit completion blocker. Every repair has red-before/
+green-after evidence: sim/test_regressions.py imports the FROZEN V0 module and the
+repaired one and shows V0 has the bug and V0-R is correct on the same scenario (14/14).
+Suites all green: 86 schema fixtures (53 v1 + 33 v2, both validators) + 15 bundle + 23
+semantic + 26 sim + 14 red/green + 6 cross-process golden-replay (+mutation). V0-R
+golden replay `af1501b6...`; frozen V0 replay `64fcad3b...` preserved as regression
+evidence. Relabel: V0 = SUITES PASS / MECHANICS NOT YET CERTIFIED / CAPACITY UNPROVEN;
+V0-R = SUITES PASS / MECHANICS CERTIFIED / CAPACITY UNPROVEN (device rates symbolic;
+directional H2D/D2H decomposition is the S9-V1 blocker; no real-trace claim until S8
+Gate A). Nothing committed; HEAD 933c722f6. See
+`spikes/s9_dynamic_weight_residency/V0R_REPAIR.md`.
+
+**Phase (superseded): S9-V0 (dynamic weight residency for a PIM-style phone accelerator --
+contracts + schemas + deterministic simulator + tests) COMPLETE.** A separate
+research track from S8: a HOST-MANAGED phone accelerator where weights are
+prefetched to UFS, promoted to LPDDR, prepared for HTP/OpenCL, leased, and executed
+under server commands (PIM-STYLE, not cache-coherent PIM; the host transfers weights
++ boundary tensors). A 7-agent read-only substrate audit (file/line-cited) found the
+crux: the current tree has NO SHA-256 of any weight payload -- the only content hash
+is FNV-1a 64-bit in ggml-rpc, served on a cache hit WITHOUT re-comparing bytes -- so
+VERIFYING, the derived-image identity, durable atomic publish, and
+generation-qualified share/prepack teardown are all NET-NEW around reusable byte
+plumbing. Froze 15 self-contained JSON Schemas (ModelManifest, WeightSegment+chunks,
+atomic WeightSet, backend PreparedImage binding 9 identity fields, IslandExecutable,
+TransferTicket, fail-closed ReadyCertificate + DispatchDecision, ResidencyLease,
+StateLease, DeviceInventory ledger, bounded TransportFrame, sim config/manifest),
+two linked state machines, and four contracts (residency/transport/prefetch/sim).
+Built a deterministic integer-us simulator: 8 baselines, a 40-550 MiB/s goodput sweep,
+the causal residency score, and the never-wait candidate; byte-identical replay
+(64fcad3b...). Tests: 53 schema fixtures + 23 semantic (both validators, 0 fail) and
+28 sim checks (all ten required behaviors: hash/partial recovery, dup/stale/reorder
+rejection, lease-safe eviction + exact byte ledger, no dispatch from on-disk, no
+live-state eviction, activation-preempts-bulk, unknown-profile/unsupported-backend
+fail-closed). Both phones now negotiate USB 3.2 Gen 1 (5 Gbps) on separate root
+buses. Verified 1 GiB ADB staging measured H2D medians 215.9/261.9 MiB/s
+(OP12/OP15) and D2H 189.8/226.8 MiB/s; concurrent fleet makespan rates were
+409.4/392.6 MiB/s. These include filesystem ingestion effects and are not raw
+transport rates. S9-V1 must add per-device directionality, contention domains,
+no-double-count staged paths, and D2H result transfer. MECHANICS VALIDATED;
+capacity + energy UNPROVEN (remaining
+rates symbolic; V0 link topology incomplete; no real-trace claim until S8 Gate A).
+Nothing committed; HEAD 933c722f6. See
+`spikes/s9_dynamic_weight_residency/`.
+
+**Phase (superseded): S8-V0b-P0 (source pinning + final Gate-A input contract) COMPLETE; the
+normalizer + server-only replay are NOT started.** Both real sources are now
+fetched OUTSIDE git, inspected by a full pass, and pinned: BurstGPT v2.0
+`BurstGPT_3.csv` (231682327 B, sha256 2299986a..., 5344021 rows, CC-BY-4.0,
+387963/7.26% zero-response failures KEPT) and RAGPulse `data/0_trace.jsonl`
+@ commit 99a62769... (1923473 B, sha256 cd371571..., 7106 records, MIT). Exact
+parsing/mappings are frozen in `configs/{burstgpt,ragpulse}.config.json` (validated
+by `schemas/source_config.schema.json` under both validators), with a per-source
+timestamp policy discovered by inspection (BurstGPT require_nondecreasing / 0
+inversions; RAGPulse sort_stable / 1 inversion). Quantiles are rational-integer,
+the mix formula + hash preimages + server-only replay are frozen, and a semantic
+manifest validator was added. MW1 atlas and the oracle stay BLOCKED until Gate A
+passes.
+
+**Phase (superseded): S8-V0a-R2 (executable machine-validated schema contract)
+COMPLETE.** The V0a-R draft was machine-hardened into an executable Gate-A
+contract: 15 self-contained JSON Schemas that validate standalone under both
+`jsonschema` 4.10.3 and `ajv-cli@5` (no preloaded refs), a fail-closed request /
+trace-manifest / profile-row / route-action schema set, 43 fixtures (19 valid +
+24 adversarial) and a `run_schema_tests.py` runner that exercises BOTH validators
+(0 failures, exit 0). Gate-A normalization is frozen (aligned load windows, source
+parsing, explicit mix offsets, canonical bytes, full hash binding, deadlines kept
+null). The DECISION_CONTRACT + decision/action/lease schemas are explicitly
+DRAFT-BLOCKED-BEFORE-V0c. MW1 atlas and the oracle stay BLOCKED until Gate A
+passes.
+
+**Phase (superseded by the line above): S8-V0a-R (contract repair after review)
+COMPLETE.** A review returned 10 blocking findings on the V0a draft (S6
+over-certified, prose-not-schemas, underspecified determinism, "where" not
+"what", non-deterministic objective, one-layer overgeneralization, second service
+not executable, unsafe REUSE, BurstGPT metadata, unbounded admission). All 10 are
+repaired as documentation (versioned JSON Schemas, `NORMALIZATION_SPEC.md`,
+DAG-cover + compound-action schemas, frozen objective + p95 formula + tie-break,
+downgraded S6/substrate evidence, `EMBEDDING_MODEL_FUNNEL.md`, corrected trace
+metadata, finite admission credits). MW1 atlas and the oracle stay BLOCKED until
+Gate A passes.
+
+**Phase (superseded by the line above): S8-V0a (inspect + contract) COMPLETE.**
+The primary target is mixed-workload reverse offload, not a fixed Gemma
+partition. Phones first download, verify, load, and warm model shards, then
+advertise READY operator islands on HTP and/or GPU. The host decides what, how,
+and when to offload using server resource pressure, SLO risk, weight/state
+residency, measured interference, thermal/link state, and later total-system
+energy.
+
+**V0a froze the contracts and audited the substrate (no code ported, no gates
+run):** six documents under `spikes/s8_operator_island_affinity/` --
+`S6_EVIDENCE_AUDIT.md` (which S6/S7 results may enter the atlas), file/line-cited
+`SUBSTRATE_AUDIT.md`, `TRACE_SOURCE_AUDIT.md`, `SCHEMA_CONTRACT.md` (v1 frozen),
+`DECISION_CONTRACT.md` (slow/fast loops), and `ATLAS_MATRIX.md`. Gate B is NOT
+met yet: a certified-correct decode island exists on both phones (FA-off path)
+but has no 7-process latency row, and no RAG embed/rerank or vision-encoder
+island is profiled -- a second eligible service class is the top MW1 gap.
+
+**Primary systems hypothesis:** cross-workload slack pooling can move a
+coordinated set of deadline-flexible islands to phones, improve server batch
+formation, release GPU-ms/HBM, and eventually create a real server low-power
+window. Scattering isolated operators while the A6000 remains in the same power
+state is not an energy saving. Capacity and energy are separate claims.
+
+**New sources of truth:** `MIXED_WORKLOAD_DESIGN.md`, `WORKLOAD_TRACES.md`, and
+`NEXT_PLAN.md`. The first bounded experiment is
+`spikes/s8_operator_island_affinity/PLAN.md`: normalize real traces, build a
+resident-island profile atlas, and run an offline capacity oracle before any
+live scheduler or VQ port.
+
+**Reusable substrate:** route `A0` is the live 12B OP15 -> OP12 -> A6000
+pipeline with local KV; GGUF sharding and per-tensor HTP/OpenCL weight sharing
+work; static HTP batching works at tested shapes; raw TCP stages and dual HTP/GPU
+workers exist. The old fork also contains a process-local VQ byte table,
+CONWIP, co-execution harnesses, and an experimental HEFT queue. These are audit
+inputs, not a distributed scheduler.
+
+**Evidence constraining the new design:** S3 row split failed; S4 GPU attention
+failed at realistic context; S5 isolated phone operators did not add useful
+A6000 throughput; S6 overlap is only saturated evidence and its FFN result is
+incomplete; S7 ragged HMX is only an isolated kernel pass. Candidate islands
+must amortize transport/state and use certified kernels.
+
+**Trace decision:** no one public trace contains real arrivals, all modalities,
+true priority, and true deadlines. Use unchanged real scenarios (BurstGPT/Azure
+LLM, Azure LMM, RAGPulse) plus a clearly labeled deterministic superposition.
+Never use observed completion latency as a deadline.
+
+**Energy remains BLOCKED.** No phone/server/link energy claim is authorized
+until MW5 validates synchronized physical boundaries and the A6000 power-state
+break-even interval.
+
+---
+
+## S9-V0-R2 v4 static bundle-coherence closure - `2026-07-14 EDT`
+
+The 2026-07-14 review proved v3 still VALIDATES static bundles that disagree with authoritative
+device state, executable identity, transport epochs, or physical reservations (11 fail-open
+blockers). R2 freezes v1/v2/v3 byte-for-byte, adds a versioned **v4** contract (schema_version 4,
+bundle_version 4) with a v4-only domain-separated digest family (`s9:<kind>:v4`) that additionally
+binds `PreparedImage.source_weight_set_id`, `TransferTicket.issued_boot/gen`, and the three
+`StateLease` reservation fields. `cross_record_v4` binds each DISPATCH to exactly one DeviceInventory
+snapshot (present, boot/status_seq pinned, accepting/not-draining/not-stale/thermal-eligible, backend
+supported), rejects expired leases at a decision timestamp, derives epoch/credit gates from records
+(booleans are not authority), binds full executable identity, binds BULK/EXECUTE/RESULT frame epoch
+stacks, and DERIVES the physical ledger single-copy from live records. All 11 blockers close with
+red-v3/green-v4 fixtures (frozen v3 accepts each; v4 rejects with an exact code). Label:
+`STATIC_SNAPSHOT_COHERENT` only -- NOT live dispatch certification.
+
+**Same meta-lesson as R1: the first v4 pass was INCOMPLETE.** An 8-lens adversarial hole-hunt
+workflow + skeptical verify found 6 more fail-open holes it missed (RESULT frames unbound; identity
+fail-open when the manifest is absent; arch/soc/layout_version never cross-checked; DI-less devices
+escaping the ledger; a cert attesting a footprint > device LPDDR; duplicate dispatch decisions per
+request), plus 2 that the record-derived ledger already covered. All closed with 10 more red-v3/
+green-v4 fixtures. Suites green: 116 schema + (v2 15 + v3 18 + v4 27) bundle + 23 semantic + 26/17/16/13
+sim (untouched) + 33 v4 regression/effectiveness. 35 stable codes (9 new v4). Report:
+`spikes/s9_dynamic_weight_residency/V0R2_REPAIR.md`. NOT a completeness proof; live dispatch =
+V0c. Nothing committed.
+
+---
+
+## Two-level design adversarial correction - `2026-07-13 EDT`
+
+Three independent read-only reviews found and corrected load-bearing gaps in the
+first two-level draft. The causal oracle now has explicit non-anticipativity and
+envelope publication times; future arrivals, output lengths, failures, thermal
+state, and link rates are clairvoyant-only. Request end-to-end p95 may not be
+formed by adding stage p95 values; V0c must freeze request/DAG SLO milestones and
+a calibrated integer scenario method before the oracle runs.
+
+The execution envelope now binds exact plan digests, server and phone weight
+identity, physical tile ownership, expiry, fallback, and split correctness.
+Dispatch atomically pins every residency/prepared-image tuple; DRAINING rejects
+new pins. Compound state uses explicit disjoint state partitions or is ineligible.
+Phone-exclusive HBM relief requires an already READY alternate; a reload restores
+future capacity and never blocks the current request. Any fallback reservation is
+subtracted from relief.
+
+The capacity comparison now uses one closed cohort with terminal conservation.
+Resource relief requires equal completed work and no worse rejection/SLO;
+throughput requires at least 10 percent more completed work. A clairvoyant or
+exact bound cannot authorize runtime integration: the deployable causal policy
+must pass Gate C. The new v3 DRAINING-lease validator probe is recorded as an S9
+dispatch-certification blocker. Documentation only; no runtime/schema/code fix.
+
+---
+
+## Two-level scheduler design decision - `2026-07-13 EDT`
+
+The system scheduler is now explicitly split at the weight-readiness boundary.
+The slow residency/envelope planner sees forecast operator demand, atlas rows,
+server HBM/GPU pressure, phone inventories, and measured link/load costs. It
+chooses whole or partial weight placement, prepared HTP/GPU images, ownership
+mode, minimum-hold leases, background transfer, drain/evict, and an elastic set
+of certified discrete split ratios. A planned placement is not READY; observed
+verify, prepare, warm, correctness, ledger, and lease completion must publish it.
+
+The fast execution scheduler owns the bounded virtual operator queue. For each
+concrete DAG-ready island it chooses admission, bounded batch wait, committed
+cover, READY whole-island/stage/split plan, and atomic lane/link/state/fallback
+credits. It cannot fetch weights or invent a graph cut/split. Split shares balance
+predicted completion including queues and boundary transfer, not equal bytes; an
+HBM-relief policy may choose the largest certified phone share that still meets
+the SLO.
+
+The offline problem is modeled as finite candidate-plan selection plus residency,
+precedence, memory, state, lane, link, batch, and deadline constraints. It is
+NP-hard. The evaluation sequence is exhaustive tiny ground truth, independent
+solution validation, pinned CP-SAT exact agreement, causal rolling-horizon oracle,
+then a separately labeled clairvoyant upper bound. Solver use alone is not the
+novelty; the hypothesis is joint future-demand-driven partial residency, elastic
+execution envelopes, online batching/split selection, and measured server HBM or
+capacity relief from command-driven phone memory.
+
+Updated `MIXED_WORKLOAD_DESIGN.md`, added `TWO_LEVEL_SCHEDULER.md`, revised
+`NEXT_PLAN.md`, and refreshed `README.md`. No runtime, model, backend, kernel, or
+schema was changed. Capacity and energy remain unproven.
+
+---
+
+## S9-L0 dual-phone USB baseline and V1 plan update - `2026-07-13 EDT`
+
+Replaced both phone cables and measured the resulting path without disrupting the
+other user's ADB server (dedicated server on port 5038). OP12 path 6-2/Bus 006 and
+OP15 path 8-3/Bus 008 each negotiate 5000M on separate SuperSpeed roots. A 1 GiB
+incompressible payload, `adb -Z`, three solo reps, and SHA-256 verification produced:
+
+| path | OP12 | OP15 | concurrent fleet makespan |
+|---|---:|---:|---:|
+| host -> phone file | 215.9 MiB/s | 261.9 MiB/s | 409.4 MiB/s |
+| phone file -> host | 189.8 MiB/s | 226.8 MiB/s | 392.6 MiB/s |
+
+This makes background residency useful on a seconds-ahead horizon (900 MiB is
+about 4.2 s on OP12 and 3.4 s on OP15), but does not authorize request-critical
+weight fetch. ADB push already includes file-ingestion effects, so inserting it as
+V0 raw link goodput would double-count part of V0's UFS stage.
+
+Plan updated for S9-V1: freeze V0 replay/results; version the schema to per-device
+H2D/D2H evidence-bound profiles and contention domains; dynamically share only
+active same-domain streams; add D2H result transfer; distinguish staged-file from
+decomposed native-buffer paths; add a measured two-phone scenario; then measure
+native transport, UFS, durable publish, hash, materialize, prepare, warmup, and
+transfer/compute interference. Future 800/1000 MiB/s USB 10 Gbps points remain
+unmeasured sensitivity only. Capacity and energy remain unproven.
+
+Full evidence and exact elapsed samples:
+`spikes/s9_dynamic_weight_residency/CURRENT_SLOW_LINK.md`. No runtime or simulator
+code changed in this plan update.
+
+---
+
+## S9-V0 dynamic weight residency (PIM-style phone accelerator) - `2026-07-13 EDT`
+
+New research track, separate from S8's mixed-workload atlas: a host-managed phone
+accelerator that prefetches weights to UFS, promotes to LPDDR, prepares for
+HTP/OpenCL, leases, and executes under server commands. PIM-STYLE (host transfers
+weights + boundary tensors; the phone cannot read server memory). Contracts +
+schemas + a deterministic simulator + tests -- no daemon/kernel/scheduler, no
+energy/novelty/PIM-hardware claim, nothing committed.
+
+Substrate audit (7 read-only agents, file/line-cited; 12 citations re-verified by
+hand). The crux finding: NO weight payload is cryptographically verified anywhere.
+
+| substrate | class | why |
+|---|---|---|
+| loader offsets / load_data_for | REUSE/ADAPT | locator good; mmap-alias + no hash + not transactional |
+| GGUF split + shard_gguf.py | ADAPT | count-only completeness; no per-shard sha256/manifest/coverage KV |
+| downloader (resume/rename) | ADAPT | zero fsync, zero payload sha256 (grep-confirmed), delete-before-redownload |
+| ggml-rpc SET_TENSOR_HASH | REF-ONLY | FNV-1a 64-bit (not SHA), served on hit WITHOUT re-compare |
+| per-tensor HTP<->OpenCL share | REF-ONLY/ADAPT | name-keyed, first-insert-wins, NO teardown -> stale-alias + leaks |
+| OpenCL xmem prepack cache | REJECT | pointer-keyed, no eviction, deliberate leak, f16-accum ~1.86% rel_L2 |
+| partial load (LLAMA_LAYER_*) | REJECT-arbitrary | gemma4-ONLY (load + graph); a hard eligibility gate |
+
+Froze 15 self-contained JSON Schemas (validate under BOTH jsonschema 4.10.3 +
+ajv-cli 5): ModelManifest, WeightSegment+chunks, atomic WeightSet, backend
+PreparedImage (derived-image digest binds 9 fields), IslandExecutable,
+TransferTicket, fail-closed ReadyCertificate + DispatchDecision, ResidencyLease,
+StateLease, DeviceInventory ledger, bounded TransportFrame, sim config/manifest.
+Two linked state machines (ABSENT..READY..EVICTING) + the dispatch eligibility
+rule. Four contracts: residency / transport (bounded versioned LE frames, chunk
+hashes, resumable verified ranges, fsync+dir-fsync+atomic publish, credits,
+activation-preempts-bulk, epochs, drain-before-evict; does NOT reuse LayerSplit/
+ggml-rpc framing) / prefetch (8 baselines + causal score + never-wait) / simulator.
+
+Deterministic simulator (integer-us, stable order): server GPU queue+HBM, shared
+USB controller + per-phone links, UFS/verify/LPDDR/prepare, bounded HTP+GPU lanes,
+canonical vs backend-derived RAM ledger, activation/state/thermal/deterministic
+failures, interference only-when-measured. Sweep 40/100/250/400/550 MiB/s; the
+never-wait candidate keeps p95 ~5-13 ms and gains relief with goodput, while the
+waiting diagnostic pays 3.5-23.7 s p95. Byte-identical replay 64fcad3b...
+
+Tests: schema 53 (0 fail, both validators) + semantic 23 (0 fail) + missing-fixture
+guard (exit 1) + sim 28 (all ten required behaviors: hash/partial recovery,
+dup/stale/reorder rejection, lease-safe eviction + exact ledger, no on-disk
+dispatch, no live-state eviction, activation-preempts-bulk, unknown-profile/
+unsupported-backend fail-closed). Initial link capture showed both phones on USB
+3.2 Gen 1 (5 Gbps); the newer S9-L0 entry above supersedes the deferred-goodput
+status with measured ADB staging evidence. MECHANICS VALIDATED; capacity/energy
+UNPROVEN (V0 rates/topology are not a measured capacity model; no real-trace claim). See
+`spikes/s9_dynamic_weight_residency/`.
+
+---
+
+## S8-V0b-P0 source pinning + final Gate-A input contract - `2026-07-13 EDT`
+
+**Sources pinned + inspected (outside git); contract frozen; nothing committed.**
+Stopped before the normalizer / server-only replay.
+
+- Task 1 -- real sources fetched to `/home/myid/zs89458/Documents/s8_sources/`
+  (outside the worktree) and characterized by a FULL pass. BurstGPT v2.0
+  `BurstGPT_3.csv`: 231682327 B, sha256 `2299986a...a43b8f`, 5344021 rows,
+  CC-BY-4.0; services {Conversation log 233617, API log 5110404}; models {GPT-4,
+  ChatGPT}; 387963 zero-response failures (7.26%, KEPT as burstgpt_failed);
+  timestamps float-seconds, 0 inversions; API-log rows have blank Session ID ->
+  null. RAGPulse `data/0_trace.jsonl` @ immutable commit `99a62769...` : 1923473
+  B, sha256 `cd371571...801e65`, 7106 records, MIT; hash_ids keys
+  [sys_prompt, passages_ids, history, web_search, user_input]; timestamps integer
+  seconds, **1 non-monotonic pair**. -> `SOURCE_PINS.md`.
+- Task 2/3 -- `schemas/source_config.schema.json` + validated
+  `configs/{burstgpt,ragpulse}.config.json` freeze exact header/keys, column/value
+  maps, session-blank->null, retrieved_chunks=len(passages_ids), namespaced
+  cache_keys order, modality defaults, source_fields, and a const `gate_a` block
+  (deadline/priority always null, provenance none). One authoritative contract
+  (schemas+configs > NORMALIZATION_SPEC > SCHEMA_CONTRACT > informative prose); the
+  "WORKLOAD_TRACES.md wins" cycle removed. Decimal quantiles -> rational-integer.
+- Per-source timestamp policy: BurstGPT `require_nondecreasing`; RAGPulse
+  `sort_stable` (the 1 inversion means a single global strict rule would wrongly
+  reject it).
+- Task 4 -- mix frozen: `t_mix=floor(t*scale_num/scale_den)+offset_us`, checked
+  arithmetic, stretch vs compress stated, unique ranks, streams serialized by
+  rank, provenance rewriting to semi_synthetic, rank-namespaced event IDs,
+  duplicate-ID rejection.
+- Task 5 -- hash preimages frozen (source/output/config/normalizer-code-bundle/
+  component/sidecar/replay), each stating exactly which bytes it covers;
+  artifact `kind=normalize` requires nonempty outputs + sidecar binding.
+- Task 7 -- `validate_manifests.py` semantic validator + 15 fixtures (bin
+  arithmetic, first<=last, quantile bounds, nonmonotonic<->policy, mix unique/
+  sorted ranks + component binding, safe-integer bounds, normalize binding); fixed
+  the previously impossible bin-index fixture (t_start = bin_index*W).
+- Task 8 -- server-only replay DEFINED as a strictly structural reader/order/DAG
+  pass (schema+hash validation, arrival-order preservation, service->DAG mapping,
+  demand accounting); explicitly NOT inference, no synthetic text/profile/deadline/
+  perf.
+- Task 6 -- `run_schema_tests.py` hardened: pins+verifies jsonschema 4.10.3 +
+  ajv-cli 5.0.0, prechecks existence/regular-file/JSON-parse/index-completeness,
+  `--index` override PROVES a missing expected-invalid fixture fails (exit 1).
+
+Test outputs: schema suite 51 fixtures (21 valid + 30 invalid) 0 failures exit 0;
+semantic 15 fixtures (3+12) 0 failures exit 0; missing-fixture proof exit 1; both
+configs valid under both validators. `RESULTS.md` updated. Datasets held outside
+git. No runtime/model/graph/KV/scheduler/backend/kernel/S6/S7 edit; no commit.
+
+---
+
+## S8-V0a-R2 executable Gate-A contract repair - `2026-07-12 EDT`
+
+**Documentation + schema/test only; nothing measured, nothing committed.**
+Review-2 said V0a-R was a useful draft but not yet a frozen executable contract
+(10 blocking findings). All repaired:
+
+- Checkpoint 1 (schema bundle): all 15 schemas made self-contained (local
+  `#/$defs` only) so each validates from its own path under `jsonschema` 4.10.3
+  AND `ajv-cli@5 --spec=draft2020` with no `-r` preload. `request.schema.json` is
+  fail-closed (all canonical keys required; bidirectional deadline/priority-vs-
+  provenance; integer upper bounds; scalar-only `source_fields`; no unknown
+  fields). `trace_manifest.schema.json` splits real (rejects `streams`) vs
+  `semi_synthetic` mix (requires `streams[]`, each binding component trace +
+  sidecar hashes, rank, rational scale, explicit integer offset).
+  `profile_row.schema.json` makes `verdict:PASS` fail-closed (requires
+  correctness=pass, fallback=none, n_proc>=7, non-null timing/memory/boundary,
+  server_control, server_relief, post_transfer_slo_feasible, non-empty
+  artifacts). Added `fixtures/` (19 valid + 24 adversarial) and
+  `run_schema_tests.py` running BOTH validators: 15/15 schemas compile+load, 43
+  fixtures 0 failures, exit 0 (nonzero on any unexpected result).
+- Checkpoint 2 (Gate-A normalization frozen): single authority `schema_version` +
+  provenance `semi_synthetic` across all live docs (WORKLOAD_TRACES,
+  TRACE_SOURCE_AUDIT, SCHEMA_CONTRACT, schemas); row-index quantiles replaced by
+  aligned 15-minute offered-token load windows (nearest-rank + full tie-break);
+  frozen BurstGPT/RAGPulse parsing (encoding/BOM/newline/dialect/columns/grammar/
+  monotonicity/exclusions, header verified vs pinned revision); mix offsets are
+  explicit committed integers (SplitMix64 removed); canonical bytes forbid float/
+  NaN/empty in trace records with checked integer arithmetic; Gate-A v1 keeps
+  deadline/priority null (synthetic SLO deferred -- no MW1 dependency); full hash
+  binding (source+revision+config+code+output+sidecar; mix binds every component).
+- Checkpoint 3 (consistency): DECISION_CONTRACT + decision/action/lease schemas
+  marked DRAFT-BLOCKED-BEFORE-V0c with 6 unresolved items; embedding funnel
+  corrected (CLS+L2 pooling, HF-FP32->CPU reference chain, cosine + retrieval
+  top-k, rerank score + ranking agreement, RAGPulse-no-text synthetic payloads,
+  truncation coverage); Gemma atlas rows split into homogeneous SWA/global
+  islands or an exact per-layer attention vector; stale audit fixed -- NO OP15
+  decode artifact exists (dumps are device-ambiguous/OP12-consistent),
+  oplayerprof/resdiff/dualengine/ffnmerge are component tools PENDING repairs, FFN
+  boundary equality separated from weight-copy count, SUBSTRATE summaries match
+  the downgraded detail, per-tensor sharing noted existing/works-single-load but
+  unsafe across reloads.
+
+`RESULTS.md` updated to V0a-R2. Next is V0b / Gate A ONLY. MW1 and the oracle stay
+blocked until Gate A passes; DECISION_CONTRACT stays DRAFT-BLOCKED until V0c. No
+graph/KV/scheduler/kernel edits; no commit or push.
+
+---
+
+## S8-V0a-R contract repair after review - `2026-07-12 EDT`
+
+**Documentation-only repair of the V0a draft; nothing measured, nothing
+committed.** A review found V0a was a useful draft but not a frozen executable
+contract and returned 10 blocking findings. All repaired:
+
+- Prose "schemas" replaced by 15 versioned JSON Schema files under
+  `spikes/s8_operator_island_affinity/schemas/` (draft 2020-12, all valid, all
+  `$ref`s resolve). Records SPLIT into immutable island descriptor,
+  model-residency lease (slow loop), request-state lease (fast loop), and
+  telemetry. `schema_version` is the single authority (no `trace_version`);
+  provenance value is `semi_synthetic`.
+- `NORMALIZATION_SPEC.md` (new): exact deterministic rules -- window selection,
+  integer time scaling, total-order sort key, splitmix64 mix offsets, no-PRNG
+  rule, canonical JSONL bytes, source+output hash binding, negative tests.
+- `DECISION_CONTRACT.md` rewritten: added the DAG-cover partition rule (the
+  "what"), compound `route_action`s (chain_a0 / corun_pair / merged_batch) with
+  all-or-nothing multi-lane reservation, a frozen lexicographic capacity
+  objective with explicit committed shadow prices, an exact predicted-p95
+  finish-time formula, a total-order tie-break, and finite host+lane admission
+  credits with explicit terminal outcomes (no unbounded wait).
+- S6 evidence DOWNGRADED: the cited raw v2 records are absent; SERVICE is a
+  single-stream (B=1) decode over positions 0-63 with no correctness check; FFN
+  merge is an unequal-boundary mechanism signal; only a narrow blk.2 B1/C512
+  causal_local_swa correctness POINT survives (does NOT certify a 48-layer
+  island).
+- Substrate classifications DOWNGRADED: socket helpers REUSE->ADAPT
+  (SIGPIPE/deadline/typed-error); OverlapLeg/OverlapBarrier ADAPT->REFERENCE_ONLY
+  (ignored-failure-reports-done + diagnostic data race); VQ ring
+  REUSE->ADAPT-concept/REFERENCE_ONLY-code (publish-before-write +
+  overwrite-live-slot).
+- `EMBEDDING_MODEL_FUNNEL.md` (new): exact `bge-small-en-v1.5` embed +
+  `bge-reranker-base`; support-first funnel (CPU ref -> op-support/no-fallback ->
+  correctness -> latency) with the HTP-BERT-op-support risk stated up front; a
+  new `embprof` harness spec (oplayerprof cannot measure RAG/vision).
+- `TRACE_SOURCE_AUDIT.md`: BurstGPT_3 corrected to ~220 MB / ~5.34M rows,
+  failures = zero response tokens; normalized traces bound to source+sidecar
+  hashes.
+- Atlas rows now scoped by exact layer_range + attention_class + graph_hash +
+  shape_envelope; Gate B amended to require a matched A6000 control,
+  post-transfer SLO feasibility, and measured server GPU/HBM relief. Gate B is
+  NOT met.
+
+`RESULTS.md` updated to V0a-R. Next step is V0b / Gate A ONLY (fetch pinned
+sources, deterministic normalization, negative tests, server-only replay, compute
+Gate A, then stop). MW1 profiling and the oracle stay blocked until Gate A
+passes. No graph/KV/scheduler/kernel edits; no commit or push.
+
+---
+
+## S8-V0a inspect + contract checkpoint - `2026-07-12 EDT`
+
+**Documentation and contract work only; nothing measured, nothing committed.**
+Delivered six frozen documents under `spikes/s8_operator_island_affinity/`:
+
+- `S6_EVIDENCE_AUDIT.md`: maps S6/S7 results onto atlas eligibility. INELIGIBLE
+  as passing rows: SERVICE latency (FAIL +19%), FFN merge (LOWER_BOUND, 2 weight
+  copies), v81 fused-FA (5.02e-3 marginal FAIL), all energy (DEFERRED). Preserved
+  as correctness certificates: OP15 FA-off decode 2.95e-3 and OP12 v75 AUTO
+  explicit-attention decode 3.61e-3 (both still need 7-process latency rows).
+  Negative evidence (S3/S4/S5 fails, v75 broken FA) retained.
+- `SUBSTRATE_AUDIT.md`: file/line-cited audit of current + historical mechanisms,
+  each classed REUSE/ADAPT/REFERENCE_ONLY/REJECT. Four parallel read-only
+  investigations covered llama-server queue/slot/cancel, layersplit TCP +
+  dualengine workers, ggml-rpc + weight readiness (download verify/fsync/rollback
+  ABSENT; per-tensor share has no version qualifier -> stale-alias across
+  reloads), and the route2 VQ/CONWIP + Unifer 16-byte telemetry. Enforced the
+  local-occupancy vs distributed-readiness split: neither prototype provides a
+  reliable readiness/lease/manifest plane -- that is net-new.
+- `TRACE_SOURCE_AUDIT.md`: BurstGPT v2.0 + Azure LLM24 (generation), RAGPulse
+  (RAG DAG), Azure LMM25 (vision encoder). URL/release/license/fields/checksum
+  procedure recorded; no dataset downloaded; observed vs synthetic
+  (deadline/priority) fields classified.
+- `SCHEMA_CONTRACT.md`: v1 schemas for request, service DAG, island, model
+  manifest, phone capability, READY lease, profile row, route decision, artifact
+  manifest. Rule: any null measurement makes a route ineligible; no silent
+  estimation into a PASS.
+- `DECISION_CONTRACT.md`: slow loop (placement/download/verify/warm/READY/RAM
+  admission/lease horizon/eviction) and fast loop (admission/batching wait/island
+  selection/credits/state affinity/fallback/reason codes). HTP and GPU are
+  separate bounded lanes; co-run eligible only for a measured compatible pair;
+  `energy_gain` reason code reserved and unusable until MW5.
+- `ATLAS_MATRIX.md`: first experiment matrix (generation, RAG, encoder x
+  controls C1-C7). Gate B NOT met; second service class is the top gap.
+
+`RESULTS.md` updated to V0a-complete / Gates A-C NOT RUN. Stop for human review
+before V0b (normalizer) / MW1 (atlas) / V0c (oracle). No graph/KV/scheduler/
+kernel edits; no commit or push.
+
+---
+
+## Historical Design A/S7 status snapshot - `2026-07-11 EDT` (superseded as current direction)
+
+**Phase: S7-V0 - ragged HMX decode tile skipping passes the isolated operator gate.** On OP15,
+the default-off kernel prototype passes CPU-reference correctness and reduces C=512 attention by
+1.49x for the deterministic ragged-prefix batch at both B=16 and B=32. Dense overhead stays below
+1%. The next gate is a real Gemma layer driven by a real arrival/output-length trace; no scheduler,
+end-to-end, or energy claim is authorized yet.
+
+**Claim boundary corrected.** PowerInfer-2 already demonstrates mobile concurrent batched decode,
+heterogeneous attention/FFN partitioning, and phone J/token. NanoFlow already pipelines decode
+attention with projections across operation nano-batches, and variable-length attention is not a
+new primitive. The open system question is whether trace-driven ragged HMX work elimination on
+phone stages increases useful server capacity and reduces total service energy under latency SLOs.
+Do not use "first" language.
+
+**Worktree status.** S7 adds deterministic ragged cases to `test-backend-ops` and a default-off HMX
+KV-block worklist. The pre-existing `layersplit.cpp` decode-FA toggle and
+`ggml-hexagon.cpp` fused-FA/per-tensor-sharing edits remain uncommitted. No Gemma graph, KV, backend
+scheduler, or production runtime has been changed.
 
 **Phase: M2/M3 streaming pipeline LIVE on 12B + per-tensor sharing shipped; M5 energy still gated on a physical enabler.** Two wins today: (1) **the 3-device streaming pipeline runs the 12B end-to-end** — `op15[0,2) → op12[2,3) → A6000[3,48)`, persistent KV, incremental O(N) decode over TCP/USB, answered *"…capital of France?"* → **"Paris"** at ~10.5 tok/s (log below). (2) **per-tensor weight sharing** replaces the fragile whole-buffer size-match so a phone can hold **many layers at true 1× weight** (validated op15 L=8, log below). Below: the M5 crossover findings (energy blocked remotely).
 
@@ -16,7 +1118,7 @@
 - **Req-3 one-copy sharing L-scaling limit — ✅ FIXED (per-tensor sharing):** the old whole-buffer size-match only worked for a one-buffer shard (Hexagon ~1 GB cap → 4 buffers vs OpenCL ~1.9 GB cap → 2 buffers diverge → 2nd-copy fallback → L=16 OOM). Now sharing is keyed by **tensor NAME**: Hexagon publishes each weight's `{fd,offset,size}`, OpenCL imports each distinct fd once and aliases every weight by name (zero own weight bytes; `set_tensor` skipped for aliases; name-miss lazily promotes one real buffer for compute/KV/token_embd). xmem untouched. **VALIDATED op15 L=8 [2,10): all 4 fds imported once, 0 promotions (100% aliased), correctness bit-identical to no-share.** Designed by a 17-agent workflow.
 - **The L=8 correctness "FAIL" is fp accumulation, NOT a sharing bug (rigorously confirmed):** the harness compares batched(B=16) vs B-single **on the decode engine only** (never touches the shared prefill weights). rel_L2 = **2.755e-3** (< 1e-2 → passes L2); only **1/16** argmax-of-residual flips (a near-tie), tripping the strict `argmax==0` gate. **Identical rel_L2 whether import succeeded OR fell back to a 2nd copy** → the discrepancy is inherent 16-wide-GEMM vs 1-wide-GEMV fp over 8 layers; no cross-seq bleed, no sharing corruption.
 
-*(prior M4)* **DUAL-ENGINE (one session, two backends) live on BOTH real phones.** ✅ `dualengine` mode in `llama-layersplit`: ONE process loads the shard on TWO devices, runs **NPU decode (HTP0) ∥ GPU prefill (GPUOpenCL)** on two threads. Wall == the *longer* single-engine leg → **zero-interference overlap** (op12 **1.76×**, op15 **1.92×**). Static **B=16 batched decode** bit-correct (rel_L2 ~5e-4, 0/16) — **op15 S1 hang did NOT reproduce**. Delivers reqs **(1)** one session/two backends + **(2)** static batch decode ∥ one-by-one prefill. **(3) one weight copy — BUILT** (`--share-weights`, commit 48d54403e), bit-exact *within the single-buffer regime above*.
+*(prior M4)* **DUAL-ENGINE (one session, two backends) live on BOTH real phones.** `dualengine` mode in `llama-layersplit` loads the shard on two devices and runs **NPU decode (HTP0) concurrently with GPU prefill (GPUOpenCL)** on two threads. Its concurrent wall equals the longer co-running leg (op12 **1.76x**, op15 **1.92x** versus serialized leg sums), proving full wall overlap. The harness did not measure equivalent solo leg times, so it does not yet prove zero interference. Static **B=16 batched decode** is bit-correct (rel_L2 ~5e-4, 0/16), and the op15 S1 hang did not reproduce. One-copy weights are built via `--share-weights`.
 
 *(prior)* **M2 done — gemma-4 12B fp16 live on the actual phones over USB.** `op15[0,2) → op12[2,3) → A6000[3,48)` answers *"…capital of France?"* → **"The capital of France is Paris."** Each phone stores ONLY its shard (op15 2.72 GB, op12 0.43 GB) via partial-load (`c615983dd`) + `shard_gguf.py`. Single-engine pipeline: **NPU 194 / CPU 219 / GPU 264 ms/tok**.
 
@@ -33,34 +1135,40 @@
 | Design (`research_dev/`) | ✅ done | DESIGN.md + MILESTONES.md + README.md |
 | **M0 — ground truth + vetoes** | 🔵 partial | `gguf_dump` 12B ✅; **S1** localized (HTP bug, not deadlock); **S2** shared-weights ✅ |
 | **M1 — static pipeline correct** | ✅ done | 3-way head→mid→tail (cuts 2,3) **bit-exact** vs mono; k≤13 ceiling N-invariant |
-| M2 — interconnect + overlap | ✅ done | dualengine wall == max(leg) — zero-interference overlap on both phones |
+| M2 — interconnect + overlap | ✅ done | dualengine wall == max(co-running leg); solo/co-run interference still needs H0 |
 | M3 — batched continuous decode | 🔵 partial | static B=16 lockstep bit-correct, no hang; continuous `n_parallel` still HTP-bugged (S1) |
-| M4 — dual-engine + one-copy | ✅ done | reqs (1)(2)(3) built + validated; sharing bit-exact in single-buffer regime |
-| M5 — rebalance to a real win | 🔵 measured | linear throughput scaling ✅; **defensible J/tok blocked remotely** (needs unplug); RAM + per-buffer sharing cap layers |
+| M4 — dual-engine + one-copy | ✅ done | reqs (1)(2)(3) built + validated; per-tensor sharing validated through op15 L=8 |
+| M5 — rebalance to a real win | 🔵 measured | linear throughput scaling ✅; **defensible J/tok blocked remotely**; serving capacity still needs KV/scratch/thermal budgets |
 
-**⛔ Next:** (1) ✅ **Dual-engine + one-copy share** — done. (2) **Clean energy number** needs op15 **physically unplugged** + WiFi-adb + battery-discharge slope — the remote USB rail can't resolve it. This is the gating action for the M5 crossover verdict. (3) **Scale one-copy sharing past one buffer** — move publish/import to **per-tensor** granularity (or equalize Hexagon `max_bufsize` ↔ OpenCL `max_alloc_size`) so many-layer shards share instead of falling back to 2× RAM. (4) Still open: **S1** continuous-batch HTP bug (`n_parallel=2` hang) — static batch sidesteps it but continuous decode would amortize NPU dispatch further. (5) op12 GPU split flash-attn kernel fails to compile (`sub_group_shuffle_xor` on Adreno v75) — runs via fallback; revisit if op12 GPU becomes load-bearing.
+**Next execution plan:** replay a public request trace into dynamic batches, preserve each stream's
+actual KV length, and run one real Gemma SWA layer at B=16/32. Compare rectangular HMX, ragged HMX
+with the same admitted batch, and compacted smaller batches including compaction cost. Proceed to
+continuous-pipeline integration only if correctness holds and the ragged path remains at least
+1.10x faster on useful trace windows without hurting dense windows by more than 5%. The fleet
+energy verdict still needs matched physical power boundaries and sustained thermal runs.
 
 ---
 
-## 🧭 Decisions locked
+## Historical Design A decisions
 
 - **Build Design A** (server→OP15→OP12→server pipeline) per direction. *(A review preferred hub-spoke B; we build A and mitigate its costs.)*
 - **Phones own the FIRST layers, A6000 is the terminal stage** (llama.cpp pins `lm_head`+sampler to the last device). Baseline: OP15 = layers 0–1, OP12 = layer 2, A6000 = embed + 3–47 + head + sampler.
-- **Baseline phone decode = GPU-only, NPU = prefill-only** (batched NPU decode unproven).
+- **Backend assignment is measurement-driven.** Static HTP batched decode works. Sequence-affine HTP/OpenCL routes remain the coarse control; S4 tests GPU-owned attention/KV inside an HTP layer only after per-phone vetoes pass.
 - **Weights: pre-downloaded mmap shards**, one copy shared by NPU (fastRPC/dmabuf) + GPU (OpenCL import). No runtime weight RPC.
 - **Only the residual `[n_embd, n_tokens]` crosses the wire; KV stays on each stage.**
 
-## 🏗️ Architecture at a glance
+## Historical Design A architecture at a glance
 
 ```
- 8 fps in ─► [A6000] embed + layers 3..47 ─residual─► [OP15] L0-1 ─►(via host)─► [OP12] L2
-                     ▲                                                                │
-                     │  next-token ids                                     residual   │
-                     └──────────── [A6000] norm + lm_head + SAMPLE ◄───────────────────┘
-   PREFILL → phone NPU/HMX   |   DECODE → phone GPU/Adreno   |   KV: local to each stage
+ 8 fps -> [A6000 embed] -> [OP15 L0-1] -> [OP12 L2]
+            ^                                  |
+            | next-token IDs                   v residual
+            +-- [A6000 L3-47 + norm + head + sample]
+
+   CURRENT PHONE DECODE: intact HTP   |   S4 CANDIDATE: HTP-A -> GPU-B/KV -> HTP-C
 ```
 
-## 📊 Key numbers so far
+## Historical measured numbers
 
 | Thing | Value | Source |
 |---|---|---|
@@ -74,7 +1182,558 @@
 
 ---
 
-## 🗒️ Log
+## Log
+
+### 2026-07-16 EDT - S10-E2A R2: semantic evidence chain repaired
+
+An independent audit reproduced seven surviving fail-open paths after the first
+E2A report: transitive poisoned bytecode under pinned E2 sources, vacuous
+same-work thresholds, RESULT before EXEC and reversed leases, an unrelated ledger
+clock, dispatch-only SLO accounting, raw-outcome bypass, and mutable/reused
+artifact paths. The final review also closed early lease release, forged resolved
+wrappers, and the lifecycle helper's omitted-evidence mode. All are closed under
+v2, with 19 focused regressions. Two of those regressions cover overlapping
+windows and reused evidence.
+
+The full E2A suite is 183/183; 32 CLI negatives pass; deterministic regeneration
+and the 45/28 pinned E1/E2 baseline files are unchanged. The original E1 and E2
+suites also pass independently. This is still mechanics-only: no physical
+measurement or energy-saving conclusion was produced.
+
+### 2026-07-15 EDT - S10-E2A: all-pairs aggregate built; a TSA would not unblock it
+
+Built `SUM_ALL_PAIRS_V1` (the evaluator E2 deliberately left unbuilt) plus the
+pre-run plan, both anchor receipts, the request manifest/outcomes, the append-only
+attempt ledger, and lifecycle resolution. Verdict:
+`E2A_AGGREGATE_MECHANICS_PASS_EXTERNAL_ANCHOR_BLOCKED`. No measurement run.
+
+**The result that matters is a negative about anchors, and it was not the expected
+one.** The question was "is there an independent external anchor?" The useful answer
+is sharper:
+
+| property | what it means | RFC3161 (freetsa) |
+|---|---|---|
+| P1 PRECEDENCE | the plan existed before the runs | **YES**, in full |
+| P2 EXCLUSIVITY | exactly ONE plan was committed | **NO**, not at all |
+
+RFC3161 is independent by the spec's own test (third-party key, third-party clock),
+and ~10 min of provisioning away: a live probe got `Status: Granted`, chain verifies
+once `cacert.pem` is fetched. It is still useless here, because a TSA is a
+**responder, not a log**: nothing enumerates what it signed, so anchor-32-reveal-1
+passes every check. **Provisioning a TSA would not unblock E2A** -- it buys the
+property that was never in doubt. Closing P2 needs enumerability: pre-registration or
+a transparency log with a reviewable identity binding. Neither exists.
+
+Encoded as a typed map (E2's instrument-typing lesson applied to integrity -- a
+`verifier_name: "freetsa.org"` string grants nothing):
+
+~~~text
+ANCHOR_INDEPENDENT["RFC3161_TSA"] = True     <- passes the independence test
+ANCHOR_ENUMERABLE ["RFC3161_TSA"] = False    <- and still cannot carry an aggregate
+                                                that pair of lines IS the finding
+REQUIRED_PROPERTY = ORDERING_AND_ENUMERABLE  -> E_ANCHOR_UNENUMERABLE
+~~~
+
+Three blockers now stack, independent -- clearing any one alone changes nothing:
+no wall instrument (E2), no enumerable anchor (E2A), no cryptographic verifier
+implemented at all (E2A, stated rather than hidden: `ANCHOR_VERIFIERS` is empty).
+
+**Adversarial review: 3 CRITICAL, all reproduced, all fixed.** Two were verbatim
+recurrences of bugs this codebase documents as fixed:
+
+- **checker CLI printed a physical label on hand-written JSON** (`SERVER_RELIEF_PASS`,
+  exit 0; no bundle, no anchor, no artifacts). E2's "never be handed a conclusion",
+  recurring in the one artifact a reviewer actually runs. It survived because the file
+  is scrupulously honest in its docstring and the CLI ignored the docstring.
+- **`__pycache__` defeated the pinned canon.** The pin hashed `canon.py` and then
+  `exec_module()`'d it -- which runs the CACHED BYTECODE when the pyc header matches.
+  Same digest, dead type gate. E2's artifact lesson at module scope: hashing one thing
+  and consuming another.
+
+~~~text
+  source digest unchanged : b2a3bfde28a22033  (pin passes, cleanly)
+  OLD exec_module()       : is_int(1.0) = True   <- poisoned bytecode ran
+  NEW compile(data)       : is_int(1.0) = False  <- source ran, pyc ignored
+~~~
+
+- **`validate_aggregate` had never run.** Billed as "what makes the label unfakeable",
+  it raised `E_TYPE` on its own sealed output (the type gate rejects bools; the record
+  has two). No test called it -- which is how it and a no-op additive guard survived
+  145 green tests. A gate that rejects the thing it protects is not strict, it is absent.
+
+**Design result worth keeping: structural checks first, policy gates last.** The anchor
+gate originally ran first; it masked 13 CLI negatives (a broken ledger, a truncated
+cohort, a forged energy and a missing slot all reported `E_ANCHOR_UNENUMERABLE`), so a
+deleted check and a working one were indistinguishable -- and those checks only become
+load-bearing the day an enumerable anchor exists, i.e. the day nobody would notice they
+had rotted. Moved after resolution, the refusal also says something stronger: the bundle
+is impeccable and STILL cannot support the claim. The same mistake recurred within the
+session when a new verifier check was added early and masked six anchor checks.
+
+**Finding about E2 (CP5):** its `repetition_set.json` declares 8 pairs and validates
+cleanly under E2's own rules, but 14 of its 16 declared timeline digests are digests of
+nothing -- only pair 0 exists on disk. A shape check cannot notice that 7/8 of a cohort
+is absent. Relatedly `attempted_pairs == len(pairs)` is a tautology (the producer writes
+both numbers), so E2A checks slot coverage against the anchored plan's 2N slots instead.
+
+145 tests + 32 CLI negatives, deterministic fixtures, E1 (45 files) and E2 (28 files)
+byte-identical before and after. Open items are listed in RESULTS.md section 3 rather
+than smoothed away: no window disjointness, realized work asserted rather than derived
+from output artifacts, and several required-but-unread fields.
+Tree: `research_dev/spikes/s10_matched_energy_e2_aggregate/`.
+
+
+### 2026-07-14 EDT - Sequential dynamic phone provisioning mechanics pass
+
+Extended `examples/phone-pim/` from a pre-staged-only command path to protocol v3
+sequential provisioning. The host binds a ticket, manifest, object digest, ordered
+chunk map, route epoch, and generation. The worker reserves the complete object,
+ACKs only a synced verified prefix, reconstructs that prefix after disconnect or
+process restart, verifies the full file, publishes with no-replace rename plus
+directory sync, and exposes only the mode-0400 content-addressed final. PREPARE
+explicitly selects `published_store`; it cannot silently fall back to a pre-staged
+path. A verified descriptor cache removes the duplicate hash between lookup and
+PREPARE without trusting a mutable path.
+
+Final host suites pass: protocol 22, store 45, and a real worker/socket lifecycle
+suite 45. Android protocol/store suites pass on both phones. Exact-final clean
+464,114,176-byte uploads and production-oracle HTP execution pass on OP15 v81 and
+OP12 v75 with rel-L2 2.92e-4 and 2.95e-4. The important negative result is
+transport efficiency: useful goodput is only 4.7 and 14.9 MiB/s in the final
+clean runs, so this is
+`DYNAMIC_PROVISIONING_MECHANICS_PASS; CAPACITY_UNPROVEN`. The next gate is a
+bounded native/pipelined bulk path with decomposed H2D, UFS, hash, materialize,
+warmup, D2H, and two-domain measurements. No scheduler or energy claim was made.
+See `spikes/s9_phone_pim_runtime/DYNAMIC_RESULTS.md`. Nothing committed or pushed.
+
+### 2026-07-14 EDT - S9 v5 static closure and first real phone FFN runtime
+
+Reviewed the worker's S9 contracts and simulator instead of accepting the green
+suites as certification. A new mutation pass reproduced additional v4 fail-open
+records. Added append-only v5: shape-first validation, all-field content digests,
+exact dispatch/manifest/segment/range/I/O/SoC/causality/transfer/duplicate and
+ReadyCertificate-ledger checks. Final evidence: 24 v5 schema fixtures, 28 v5
+bundle fixtures, and 34 red-v4/green-v5 checks, all pass. Historical simulator,
+bundle, semantic, and golden suites remain preserved. Label stays static snapshot
+coherence only; live atomic dispatch is blocked.
+
+Implemented `examples/phone-pim/` as the smallest actual PIM-style command path.
+The trusted-localhost worker verifies one pre-staged Gemma4 shard by bytes and
+SHA-256, loads a complete dense FFN into one persistent backend graph, warms it,
+and accepts bounded epoch-guarded activation commands. The host oracle captures
+the real Gemma4 FFN boundary through `llama_decode`; it does not reuse the worker
+builder. Replay after reconnect/restart, stale generation, corrupt file, backend
+failure, oracle failure, non-loopback binding, and terminal generation all fail
+closed. Host/Android protocol tests pass; OP15 v81 and OP12 v75 HTP0 both pass
+M=16 correctness. The result is `PRESTAGED_FFN_MECHANICS_PASS`, not dynamic
+streaming, scheduler, capacity, or energy. Full reports are in
+`spikes/s9_phone_pim_runtime/` and `spikes/s9_dynamic_weight_residency/
+V0R3_REPAIR.md`. Nothing committed or pushed.
+
+### `2026-07-12 EDT` - S6-L repair v2: fail-closed harnesses re-run on real devices, honest verdicts
+
+Repaired the S6 measurement infrastructure to be fail-closed (Phases 1-4) and re-ran the smallest
+decisive tests on both phones. Corrected verdicts (full detail in
+[spikes/s6_latency_scheduler/RESULTS.md](spikes/s6_latency_scheduler/RESULTS.md)):
+
+- **Profiler + oracle (Phase 1):** oplayerprof now proves graph placement via `cb_eval` (fails on any
+  CPU-compute fallback), reset returns {ok,method}, correctness/dump are fatal with checked I/O + IEEE
+  finite, and a canonical `resdiff.py` rejects empty/truncated/mismatched/non-finite files. Device:
+  OP15 HTP vs CPU **2.95e-3 PASS**, placement `[HTP0]`.
+- **Dualengine (Phase 2):** owned generation handshake + timed waits + a process watchdog replace the
+  raw-pointer barrier (the prior intermittent hang did NOT reproduce); errors latch and a bad phase
+  emits NO gate metrics; compute-only makespan is separated from the reset-inclusive cycle; a real
+  CPU cross-backend check and an advancing-KV SERVICE microtrace were added. Device (OP15, B16/C512):
+  **SATURATED 1.93x but decode CoV 0.060 -> PROVISIONAL**; **SERVICE decode +19% under contention ->
+  FAIL** (the honest request-latency result). Host: 10k-epoch worker stress + 50ms-reset invariant +
+  parser negative tests all pass.
+- **FFN merge (Phase 3):** verdict ladder now makes a false PASS impossible (UNSUPPORTED without a GPU,
+  SYNTHETIC_UNCERTIFIED without real residuals, LOWER_BOUND without a proven single copy). Real
+  post-attention residuals are captured by oplayerprof `--dump-attn-out` (gemma4 `attn_out`, via
+  `cb_eval`, no model edit). Device (OP15, real residual 16+48): all controls correct 2.18e-3, merged
+  1.91x vs serial-HTP, mem 354/354MB -> **LOWER_BOUND**.
+- **Hexagon FA:** OP12 **v75 AUTO revalidated** - placement `[HTP0]` no CPU fallback, v75 vs OP12 CPU
+  **3.61e-3 PASS**. OP15 **v81 strict-gate result for review**: FA-ON B16/C512 vs CPU **5.02e-3**
+  (marginally over 5e-3), FA-OFF explicit **2.98e-3 PASS**; v81 support policy left UNCHANGED pending
+  human review. Old same-engine batched-vs-single check (5e-4) is blind to this; the CPU cross-backend
+  check is what catches it.
+- **Energy (Phase 4):** `run_energy.sh` refuses (DEFERRED, exit 3); `energy_align.py` gates hardened
+  (bracketing, max-gap, real-sample count, zero-USB, coulomb-when-unplugged, both paths); 16/16
+  synthetic cases pass. NO physical J claimed.
+
+Remaining (set up, not fully run): 7-process OP15 sweep, v81 FA at more B/C, OP12 dualengine (RAM),
+FFN 32+96/32+480, S7-V1 trace. Protected files (gemma4.cpp / llama-graph.cpp / ggml_backend_sched)
+untouched. Nothing committed. Raw data under `scratchpad/s6_latency_repair_v2/`.
+
+### `2026-07-12 EDT` - Direction decision: mixed-workload resident operator islands
+
+The project target changed from one fixed Gemma pipeline to a mixed-service
+server-to-phone accelerator pool. Design A is retained as route `A0` and proven
+substrate. The active design introduces resident operator islands, versioned
+phone weight readiness, a host virtual queue with bounded per-backend credits,
+device/backend status plus cache readiness, rolling residency leases, and
+separate capacity and energy objectives.
+
+S8-V0 is the first gate: public real-trace normalization, existing-code audit,
+resident-island profile atlas, and an offline capacity oracle. No scheduler,
+backend VQ port, graph/KV change, or energy claim starts before that gate.
+
+### `2026-07-12 EDT` - 🔧 S6-L REPAIR: corrected verdicts (the prior "both PASS" was wrong)
+
+A review flagged the earlier S6-L "both hypotheses PASS" as untrustworthy. Repaired the harnesses and
+reran; **corrected verdicts** (`spikes/s6_latency_scheduler/RESULTS.md` sec 0, artifacts
+`scratchpad/s6_latency_repair/`):
+
+| hypothesis | corrected verdict |
+|---|---|
+| overlap **saturated throughput** | **PROVISIONAL** ~1.9x (near-zero interference), but stock-GPU prefill CoV 4-8% trips the 5% gate on 2/6 configs; only 3 procs/config (shared device) |
+| overlap **pair (request) latency** | **FAIL** 1.03-1.38x; 5/6 fail -- decode leg slowed 13-19% by a concurrent prefill, or speedup ~1.03x once prefill dominates |
+| complete-FFN merge | **LOWER_BOUND** -- correct now (rel_L2 2e-3, HMX x3), merged beats best control 1.26-1.81x, but the route-affine control needs a 2nd weight copy (no per-tensor sharing) |
+| Hexagon FA | **v75 FIXED (gate `opt_arch==75`)**, v81 fine -- op12 on/off/auto now 3.3e-3, AUTO stays on HTP |
+| energy | **DEFERRED** -- offline math synth-validated (8 cases), no physical J |
+
+**What was wrong before:** (1) the "1.9x request-latency overlap" was actually *saturated throughput*
+(balanced backlogs); real per-request pair latency is 1.03-1.38x and fails the gate. (2) the FFN
+"PASS 1.35-1.92x" hid non-finite output behind a fast-math `std::isfinite` (a bit check exposed it;
+this gemma's ffn_norm gain mean~25/max~139 overflows F32 for arbitrary synthetic input), used no
+post-FFN norm, and had no GPU-resident boundary -> now LOWER_BOUND. (3) the FA gate `opt_arch<81`
+blessed all future archs -> narrowed to `==75`. Also: dualengine decode default AUTO; correctness now
+returns nonzero; ffnmerge builds on host (missing `<ctime>`); energy adds interpolation/prefill-denom/
+coulomb/battery-only/missing-ilim/non-monotonic/status cases. **Known bug:** the overlap harness
+intermittently hangs (worker futex race) -- fix before a wider run. Nothing committed; stopped for review.
+
+### `2026-07-11 EDT` - S7-V0 ragged HMX decode tile skip passes isolated operator gate
+
+Built a default-off HMX flash-attention prototype and tested it with deterministic, model-free
+Gemma-4 SWA tensors in `test-backend-ops`. The kernel builds a per-sequence active KV-block list
+before K/V DMA and skips only blocks whose broadcast fp16 mask is exactly all negative infinity.
+Partially valid blocks and the original flag-off path are retained.
+
+On OP15 v81, flag off and on both pass all CPU-reference cases at B=8/16. At C=512, ragged-prefix
+attention improves by **1.489x at B=16** and **1.492x at B=32** (five-process CoV below 0.5%). An
+interior masked hole improves by 1.280x/1.274x. The all-valid control changes by +0.2%/-0.7%, within
+the 5% overhead gate. This is an isolated kernel PASS only; no real-layer, trace, end-to-end, or
+energy claim is made. See [S7-V0 results](spikes/s7_ragged_attention/RESULTS.md).
+
+### `2026-07-11 EDT` - 🛠️ S6-L: measurement infra repaired (A-E), both latency hypotheses PASS, real OP12 FA bug found+fixed (SUPERSEDED by the 2026-07-12 repair above -- the "both PASS" verdict did not hold)
+
+Repaired the S6 harnesses, then ran a **latency-only** operator-overlap screen (energy stays
+DEFERRED). Spike: `spikes/s6_latency_scheduler/`. Nothing committed.
+
+**Infra repairs.** `oplayerprof` now has explicit **decode/prefill modes** timing only
+`llama_decode` (KV-clear/build/compile/xmem-prepack excluded), fixed graph shape, `seq_rm` fixed-C
+reset outside the timed window, `--min-samples` gating, CPU-force, status+exit propagation,
+truncate-by-default (CoV now 0.3-4%). Correctness is now **cross-backend vs CPU** at real context
+(not pos 0): stock OpenCL 2.9e-3 PASS, **xmem os8 1.88e-2 -> PERF_ONLY** (excluded). `run_dualengine`
+rewritten to **4 genuine cases** (D solo, P solo, directly-measured serial, D||P barrier-concurrent)
+with persistent workers -- concurrent legs are no longer mislabelled "alone".
+
+**S6-L results (OP15).**
+
+| hypothesis | result |
+|---|---|
+| HTP-decode \|\| stock-GPU-prefill overlap | **PASS** -- 1.91-1.97x speedup, conc/max_solo ~1.01, per-leg slowdown <=1.03, CoV <3.5%, all B={16,32} x T={64,256,512} |
+| complete-FFN merge (16+48, 32+96, 32+480) | **PASS** -- 1.35-1.92x, merged p95 0.52-0.75x sep, xfer <9%, rel_L2=0, all 3 GEMMs HMX |
+
+**Real bug found (OP12 v75).** Cross-backend-vs-CPU exposed that **OP12 Hexagon v75
+FLASH_ATTN_EXT is numerically broken** (rel_L2 ~0.5-0.8) while the non-FA path on the same v75
+engine is correct (3.3e-3); v81/OP15 FA is fine. The old same-engine batched-vs-serial check could
+not see it (both legs share the broken kernel). **Fix:** FA support predicate restricted to
+`opt_arch >= 81`; validated -- OP12 + `--fa auto` now decodes at 3.3e-3. Use `flash_attn_type=AUTO`
+on v75. Flagged for review (changes the op12 decode path).
+
+**Energy still DEFERRED.** Offline scripts repaired (trapezoid + charge-counter/coulomb, gross vs
+incremental J/layer-token, strict validity gates, `set -euo pipefail`, EXIT cleanup) and
+**synthetically validated** (`synth_validate.py` recovers gross=50 J / incr=40 J / coulomb=40 J).
+No physical J/token is claimed. `xmem` cache left disabled for S6-L; a lifetime-safe design is
+proposed for review, not implemented.
+
+---
+
+### `2026-07-11 EDT` - ⚡ Energy measurement: plugged-in whole-device wattmeter is viable; harness built + pipeline validated
+
+**Question:** can we measure per-op / whole-device energy on the phones, and without unplugging?
+
+**Per-op directly: no.** No retail-phone sensor is both fast enough (PMIC updates ~2-6 Hz) and per-rail enough to catch a µs-ms op. The HTP/GPU rails (CX/MX, GFX) are not exposed to userspace on retail OnePlus. The tractable method is the **amortized differential**: average power of a steady loop of one layer on one backend, minus idle.
+
+**Whole-device without unplug: yes, with a caveat -- and it refines the m5 dead-end.** Probed op15 (root; op12 CPH2583 has `no su`). `usb/current_now` is a **live, load-tracking node**, not a fixed ceiling:
+
+| state | usb V x I | note |
+|---|---|---|
+| idle | 5.08 V x ~130 mA ~= **0.66-0.71 W** | tracks load |
+| all 8 cores | 5.04 V x ~496 mA ~= **2.50 W** | **pinned at `input_current_limit` (5 V/500 mA SDP)** |
+
+So the m5 "1.7-1.8 W near-constant ceiling" was **not a broken sensor** -- it was the input-current cap clipping a live reading (dP idle->cap = **1.78 W**, exactly the m5 number). Real blocker = **negotiated input power < workload draw**, not "plugged in." Fix: **Full battery + high-wattage PD/SUPERVOOC charger + WiFi-adb** -> `usb V x I ~= system power`, `pin -> 0`, no unplug/discharge needed (easier than the m5-mandated unplug+coulomb path). Battery-coulomb path still works too (sampler logs `bat_*`), but needs unplug + battery off Full.
+
+**Built the harness (`research_dev/energy/`), ready to drop on either path:**
+- `oplayerprof.cpp` energy mode: `--idle-secs` (idle baseline window per (B,C)) + every `OPLAYERPROF_MARK` now carries `mono=<sec>` from `/proc/uptime`. Harness stays normal-shell (root would break HTP/OpenCL SELinux domain). Android binary rebuilt.
+- `pwr_sampler.sh` (root) -> usb+battery rails @ ~6-10 Hz, `/proc/uptime`-stamped. `energy_align.py` -> `dP = P_compute - P_idle`, E/round + E/tok, and a **validity gate** (`usb_pinned_frac > 5% -> valid=false <usb_capped>` = the "is the charger big enough?" check). `run_energy.sh` orchestrates.
+
+**Pipeline validated end-to-end (op15, dev-port):** against a known idle->all-core-load pattern it recovered **P_idle=0.71 / P_compute=2.50 / dP=1.78 W** and correctly flagged **`usb_pinned_frac=1.0 -> <usb_capped>`**. Sensor + clock-alignment + gate all confirmed. Awaiting a high-wattage charger for an unclipped inference number; op12 needs rooting to participate.
+
+### `2026-07-11 EDT` - S4-V0 offline schedule bound: FAIL (op15 SWA) -> STOP before implementation
+
+Built a measurement-only harness `examples/layersplit/oplayerprof.cpp` (intact
+single-layer (B,C) decode via public llama API; per-op HTP times from
+GGML_HEXAGON_PROFILE, per-op GPU times from a GGML_OPENCL_PROFILING build; no
+graph/KV/scheduler edits). Measured H_A/A_H/H_C (HTP) and G_B = GPU KV-store+fused-FA
+(Adreno) for blk.2 SWA on op15. Ideal speedup = wall / max(H_A+H_C, G_B).
+
+| B | C | wall ms | attn% | H_A+H_C | G_B (Adreno FA) | ideal | verdict |
+|---:|---:|---:|---:|---:|---:|---:|---|
+| 16 | 32 | 20.0 | 22.8% | 15.5 | 7.7 | 1.30 | pass (empty KV) |
+| 16 | 512 | 20.7 | 23.3% | 15.9 | 25.4 | 0.82 | FAIL |
+| 16 | 1024 | 23.3 | 32.2% | 15.8 | 44.2 | 0.53 | FAIL |
+| 32 | 512 | 26.5 | 37.8% | 16.5 | 56.7 | 0.47 | FAIL |
+
+**Verdict: FAIL at realistic context.** The split clears >=1.20x only at C=32
+(near-empty KV). Root cause: the Adreno OpenCL decode flash-attention kernel is slow
+and scales ~linearly with KV (G_B 7.7->25.4->44.2 ms as C 32->512->1024 at B=16),
+while Hexagon HMX FA scales ~1.6x (A_H 4.6->7.5 ms) and HTP does the whole rest of the
+layer in ~15-16 ms flat. Moving attention off HMX onto Adreno replaces a cheap,
+well-scaling op with an expensive, poorly-scaling one -> GPU attention becomes the
+bottleneck and the pipeline is SLOWER than intact HTP (down to 0.47x) at any C real
+decode runs in. Both required batches (16, 32) fail at C>=512.
+
+op15 is the FASTER GPU (Adreno 840); op12/Adreno 750 expected no better (older GPU +
+FA split-variant won't compile). FULL class can't run GPU attention at all (head_dim
+512 fallback). So S4 operator-type split is non-viable on both classes. Per PLAN stop
+rule (S>=2 below 1.20x ideal at B=16/32 for same class+C -> stop before implementation):
+**STOP; do not proceed to V1/V2 or graph integration.** Device runs hit repeated adb
+dropoffs from MEMORY PRESSURE (usable RAM ceiling ~6 GB op12 / ~10 GB op15): running
+HTP-prof and OpenCL-G_B processes concurrently (two shard maps + OpenCL image/xmem) and
+the OpenCL backend accumulating per-shape prepack buffers across the B×C sweep exceeded
+the ceiling -> OOM. Handled via one-process-at-a-time detached nohup runs + adb-server
+restarts. The failing gate points (B=16/32 at C>=512) are tiny-memory (KV <=140 MB) and
+reliable; op12's full grid still pending but moot given the solo bound fails. NOTE the
+6/10 GB ceiling is itself a standing serving constraint (batch x context x layers per
+phone).
+Full table + raw artifacts in
+[spikes/s4_streamed_batch_decode/RESULTS.md](spikes/s4_streamed_batch_decode/RESULTS.md).
+
+### `2026-07-11 EDT` - S4-V0 GPU fused-attention veto: BOTH phones PASS (SWA decode); OP12 veto was STALE
+
+Ran the one authorized device slice (existing `llama-layersplit`, no new code):
+force the batched decode of the SWA shard blk.2 (head_dim 256) onto the Adreno GPU
+with FA enabled, `GGML_SCHED_DEBUG=2`, watch OpenCL compile + op placement.
+`--mode dualengine --dev-decode GPUOpenCL --dev-prefill CPU -m 12b-f16-mid-2-3.gguf -b 8 -n 2`.
+
+| Phone | FA compile | Placement | splits | Correctness | Verdict |
+|---|---|---|---|---|---|
+| OP12 / Adreno 750 | non-split OK; **split fails** (sub_group_shuffle_xor, NON-FATAL) | FLASH_ATTN on `[OpenC]`, no CPU node | 1 | PASS rel_L2 1.8e-5, argmax 0/8 | **PASS (SWA decode)** |
+| OP15 / Adreno 840 | both variants OK | FLASH_ATTN on `[OpenC]` | 1 | PASS rel_L2 1.8e-5, argmax 0/8 | **PASS (clean)** |
+
+**The historical OP12 flash-attn veto (this log:168, AGENT_HANDOFF:132-134) is STALE
+for the decode path.** In-tree non-fatal FA compile skips the failing split variant;
+the non-split f32_f16 kernel runs the whole SWA decode attention on the Adreno 750
+with no CPU fallback, correct. Neither phone is vetoed for the SWA class.
+
+Caveats carried forward: (1) RESOLVED to 512-ctx — a follow-up probe put a 512-token
+GPU prefill + 100-round decode on OP12's Adreno 750 (both contexts GPUOpenCL): 880
+FLASH_ATTN ops all on-GPU, 0 CPU, splits=1, correct. The failing split variant is
+never actually required; the non-split kernel serves prefill (n_q=512) and decode.
+Only C=1024 (SWA-window top) unconfirmed, no cliff expected. (2) FULL/global class (head_dim 512)
+not runtime-tested (no blk.5 shard on device) but source-conclusive: absent from the
+OpenCL supported_dims table -> GPU-B CPU-falls-back on all 8 global layers on BOTH
+phones. S4 GPU-owned attention covers at most the 40 SWA layers. Raw logs +
+gate table in [spikes/s4_streamed_batch_decode/RESULTS.md](spikes/s4_streamed_batch_decode/RESULTS.md).
+
+### `2026-07-11 EDT` - S4-V0 Checkpoint 1: graph-cut + capability inventory (inspect-only, source-verified)
+
+Completed the pre-code inventory (PLAN.md checkpoint 1). Nothing edited. Two
+load-bearing claims verified directly in source.
+
+**Graph cut (dense gemma-4 12B).** HTP-A ends at gemma4.cpp:344 (post-RoPE Q/K,
+post-rms V, retained residual). GPU-B is the interior of the single
+build_attn(iswa) overload (llama-graph.cpp:2869): KV store cpy_k/cpy_v
+(:2919/:2925) + fused ggml_flash_attn_ext (:2426), ending at the kqv_out marker
+(:2935). HTP-C = wo + post-norms + residual + FFN. The single straddle PLAN.md
+warned about is CONFIRMED: `wo` is fused inside build_attn at :2941-2942, one line
+past the kqv_out marker — the cut must return kqv_out and relocate wo to HTP-C.
+Mask + KV indices are built HOST-side (set_input).
+
+**Metadata.** 48 layers, PLAIN dense (no per-layer-embd, no shared-KV, no MoE),
+5 SWA : 1 FULL repeat. SWA class (40 layers): GQA 16:8, head_dim 256, window 1024,
+seed blk.2. FULL class (8 layers): MQA 16:1, head_dim 512, V-LESS "alternative
+attention" (V = reused K-proj, weightless rms_norm, no V-RoPE), seed blk.5.
+
+**NEW constraint — S4 attention offload covers at most 40/48 layers.** The OpenCL
+FA supported_dims table (ggml-opencl.cpp:5836-5840, VERIFIED) tops out at 256;
+head_dim 512 is absent -> GPU-B fused attention silently CPU-falls-back on all 8
+global layers on BOTH phones. So GPU-owned attention is viable only for the 40 SWA
+layers; the 8 global layers stay intact-HTP, and throughput/energy accounting must
+reflect that. Independent of the OP12 shuffle issue.
+
+**Veto calls (confirm at Checkpoint 2 with device build logs).** OP12 (Adreno-750):
+predicted veto — historical sub_group_shuffle_xor FA compile failure (in-tree
+mitigations may now let gemma-F16 FA compile, but a missing variant HARD-ABORTS at
+GGML_ASSERT(kernel!=NULL) ggml-opencl.cpp:12785), plus the head_dim-512 FULL-class
+fallback. OP15 (Adreno-840): proceeds, SWA-only.
+
+**Gate deliverability.** Ideal compute-only >=1.20x replay is fully deliverable at
+Checkpoint 2 (needs only H_A/H_C/G_B/A_H). Bounded >=1.15x is BLOCKED on handoff
+(X_AG/X_GC) + metadata (X_META) TIMES, each needing a reviewed measurement-only
+edit (X_META one touches llama-graph.cpp set_input -> propose-and-stop). Details in
+[spikes/s4_streamed_batch_decode/RESULTS.md](spikes/s4_streamed_batch_decode/RESULTS.md).
+STOP here for review; no code, no device runs, no edits.
+
+### `2026-07-11 EDT` - S4 pivot: operator-type multi-stream decode, veto before implementation
+
+The output-row result does not support continuing with column or row splits of
+one dense weight. More importantly, that mechanism is not the research claim:
+PowerInfer-2 already covers heterogeneous mobile batched decode and phone
+J/token, while NanoFlow directly covers attention/projection overlap across
+operation nano-batches. S4 therefore asks a narrower systems question: can an
+HTP-Adreno inter-operator pipeline improve real continuous batch decode and
+gross fleet J/completed-token in the existing server -> OP15 -> OP12 -> server
+layer pipeline?
+
+The initial phone-local DAG for request group `s` and layer `l` is:
+
+```text
+HTP-A(s,l): norm + Q/K/V projections + Q/K/V norm + RoPE
+GPU-B(s,l): GPU-exclusive KV update + fused attention
+HTP-C(s,l): output projection + residual/norm + complete FFN
+
+HTP-A(s,l) -> GPU-B(s,l) -> HTP-C(s,l) -> HTP-A(s,l+1)
+```
+
+There is one serial HTP worker, one serial GPU worker, and multiple disjoint
+request groups occupying the cross-backend pipeline. GPU owns each participating
+sequence's attention KV from allocation through eviction. HTP never mirrors or
+mutates that KV. An S4 request must take this route from admission so GPU-B also
+populates its KV during prefill; decode cannot inherit an HTP-built cache. The
+primary control is an intact full-B HTP decode, not serial microbatches that
+reread weights.
+
+The first agent assignment is V0 only. It must first label the real SWA/full
+attention and KV-sharing layer classes, reproduce correct GPU fused attention,
+profile real B=4/5/8/16/32 and context=32/256/512/1024 task costs, and
+offline-replay S=1/2/4 schedules including HMX fragmentation, repeated weight
+reads, handoff, fill/drain, and co-run interference. OP12 is `UNSUPPORTED` if
+the known OpenCL flash-attention compile failure reproduces; no slow fallback is
+allowed. No integration code starts unless the same S>=2 schedule at B=16 and
+B=32 for the same layer class and context logs real HMX execution and reaches
+1.20x ideal and 1.15x handoff-bounded predicted layer-throughput. Full contracts are
+in [S4 PLAN](spikes/s4_streamed_batch_decode/PLAN.md), [RELATED_WORK](spikes/s4_streamed_batch_decode/RELATED_WORK.md), and [RESULTS](spikes/s4_streamed_batch_decode/RESULTS.md). The executable handoff is [AGENT_HANDOFF.md](AGENT_HANDOFF.md).
+
+This entry also supersedes the H1 wording immediately below. OP15 is a valid
+failure and OP12 xmem-off loses. OP12 xmem-on is `INVALID`, not a platform
+failure, because the static xmem prepack cache was keyed only by the recycled
+OpenCL allocation handle and offset. Its merged split output is wrong, so its
+timing cannot support either a win or a loss. S3 remains archived because the
+research direction changed, not because every heterogeneous operator pipeline
+was disproved. No commits were made.
+
+### `2026-07-11 EDT` - S3-H1: output-row split FAILS on both phones -> STOP (GPU too slow to complement HTP)
+Built the standalone `llama-phone-microop` (new `examples/layersplit/microop.cpp` + CMake target + `sweep.sh`; bare HTP0+GPUOpenCL ggml backends, no llama/sched) and ran the HeteroInfer-style output-row split screen on the real `blk.2.ffn_gate.weight` [3840,15360] F16: HTP computes rows [0:n_h], GPU rows [n_h:N], host merge, no reduction. Host CPU smoke bit-exact (projL2=0), Android build via snapdragon docker, device runs on both phones.
+
+Full matrix (M=1,2,4,5,8,16,32,64 x split 0/25/50/75/100 x {xmem off,on} x 2 phones = 160 rows):
+
+```
+best interior split is 75% HTP / 25% GPU at every useful M (GPU is 2-3x slower).
+                   complete-op speedup vs best intact backend
+        M=5   M=8   M=16  M=32  M=64      (>=1.10x at 2 adjacent useful B REQUIRED)
+op12 off 0.94  0.95  0.89  0.82  0.68
+op12 on  0.96  0.90  1.03* 0.98  0.82    (*M=16 1.03x but projL2=9e-3 > 5e-3 -> correctness FAIL)
+op15 off 0.93  0.73  0.69  0.64  0.39
+op15 on  0.93  0.73  0.88  0.81  0.64
+```
+
+- **H1 gate = FAIL on both OP12 and OP15.** Max complete-op speedup at any useful B over all 160 rows = **1.03x** (needs >=1.10x), and that single point violates the projection rel-L2 <= 5e-3 gate. Everywhere else the split is SLOWER than the best single backend. Correctness otherwise clean (projL2 ~2e-4 xmem-off, split rel-L2 <=2.8e-4, repeat=0, sentinel PASS).
+- Root cause: the OpenCL GPU F16 GEMV is 2-3x slower than the Hexagon HTP for this projection (GPU-only ~20 ms xmem-off / ~10-14 ms xmem-on at M>=16 vs HTP ~6-8 ms). The completion-balanced 75/25 split makes the concurrent wall ~= HTP's 75%-share time -- barely below HTP alone -- and fanout+merge overhead erases it. xmem halves GPU time at M>=16 but still misses 10% AND its prepack GEMM pushes cross-backend rel-L2 to ~9e-3.
+- Per PLAN + handoff ("if Gate A fails everywhere, stop; whole-request/layer-stage scheduling is the better granularity"): **STOPPED.** No H2/H3, no FFN branch split, no mutable activations, no graph integration. Micro-op output-row splitting is not viable on these phones for this workload. Verdict + 160-row data + eff-GBps in [RESULTS.md](spikes/s3_microop_schedule/RESULTS.md). No commits. Directional takeaway: keep HTP as the decode engine and use the GPU for a *different phase* (prefill), not for co-splitting one memory-bound GEMV.
+
+### `2026-07-11 EDT` - S3-H0: real B-way batch-decode baseline measured (HTP >> GPU), gate PASS
+Ran H0 (no code edits) via existing `dualengine` on the identical 1-layer shard `12b-f16-mid-2-3.gguf` (blk.2, head-less/nextn), B=1,2,4,5,8,16,32,64, 30 rounds, distinct seq_id[j]=j. One llama_decode/round; correctness = batched vs serial replay on the same engine.
+
+```
+mean ms/round   B=1   B=2   B=4   B=5   B=8  B=16  B=32  B=64    (ALL correctness PASS)
+op12 HTP0(FA)   10.7  11.3  17.2  25.6  27.6  31.8  39.6   OOM    rel_L2 ~5e-4
+op12 GPU(noFA)  18.8  86.7  87.5  88.6  89.3  94.3 102.5 111.6    rel_L2 ~1-2e-5
+op15 HTP0(FA)   11.1  10.3  12.2  26.5  24.8  35.8  34.3  49.1    rel_L2 ~5e-4
+op15 GPU(noFA)  16.9  83.8  85.0  84.0  88.3  96.2 111.4 132.2    rel_L2 ~1-2e-5
+A6000 CUDA0      1.3   1.5   1.5   1.5   1.5   1.6   1.8   2.1     per-layer ref
+```
+
+- HTP dominates GPU decode 2.6-8x on both phones (GPU is attention-bound; B=1->2 GPU cliff = kernel-path switch). HMX boundary at B=5 confirmed on both. Phones 8-23x slower/layer than A6000 (near-flat over batch) -> phones can only win on energy.
+- Correctness PASS everywhere; rel_L2 FLAT across B=1..64 => no cross-seq bleed, KV isolation holds; 0/B argmax mismatch.
+- On the reviewer's "dualengine labels co-run legs as alone" caveat: tested, not assumed. op12 HTP0 B=8 decode = 26.2 ms @ prefill-1tok vs 24.9 ms @ prefill-64tok (4x heavier) -> decode leg load-insensitive => co-run leg == solo for NPU-decode||GPU-prefill (zero interference). A true single-worker solo intact-decode over a head-less shard is not available without editing layersplit.cpp (flagged).
+- op12 HTP B=64 OOM (2GB HTP buf map; KV over-allocates all 48 layers). op12 Adreno-750 GPU flash-attn kernel fails to compile (sub_group_shuffle_xor) -> GPU decode FA-off.
+- Measured tables written to [RESULTS.md](spikes/s3_microop_schedule/RESULTS.md); raw JSONL in scratchpad. H0 gate PASS. Next = build standalone `llama-phone-microop` for the H1 output-row split screen on `blk.2.ffn_gate`, pending review. No commits.
+
+### `2026-07-10 EDT` - S3 corrected to test real batch decode first
+
+The target workload is static B-way decode, so a synthetic GEMM `M` sweep alone
+is insufficient. H0 now runs one real `llama_decode` per round with B distinct
+sequences, one token per sequence, private KV histories, and advancing positions
+on each phone backend. It compares B-way output with serial replay and records KV
+length, correctness, hangs, fallback, and backend failures.
+
+H1 keeps the bounded output-row experiment, but uses `M_kernel=B` and the same
+batch occupancies as the real decode control, including B=5 at the HMX boundary.
+Its result is explicitly a batch-shaped operator screen. A batch-decode claim
+requires a separately reviewed one-layer integration that runs the split inside
+a real B-way graph. No runtime code was changed for this correction.
+
+### `2026-07-10 EDT` - S3 corrected from related work: bandwidth provenance + output-row split first
+
+Reviewed the primary HeteroInfer and llm.npu papers plus the llm.npu artifact. The important correction is that HeteroInfer's decode result splits one `MUL_MAT` weight along output rows and runs complementary GPU/NPU slices; it does not demonstrate two request streams. It reports GPU-only 43.3 GB/s versus GPU+NPU 59.5 GB/s on Snapdragon 8 Gen 3, but does not disclose the DDR counter/tool or byte-accounting formula, so those numbers are not a reproducible method for this tree. llm.npu reports NPU bubble/critical-path utilization, not DRAM bandwidth; its transferable idea is offline subgraph profiling plus input-ready task ordering.
+
+The revised [related-work note](spikes/s3_microop_schedule/RELATED_WORK.md), [S3 plan](spikes/s3_microop_schedule/PLAN.md), [results template](spikes/s3_microop_schedule/RESULTS.md), and [agent handoff](AGENT_HANDOFF.md) define H0-H3. H0 first measures true solo and co-running legs because current `dualengine` labels co-running leg times as `alone` and gives prefill no equivalent warmup. OP15 exposes an aggregate `dcvs/bw_hwmon_meas` tracepoint; comparable OP12 trace access is denied, so OP12 uses a documented profiler capture or explicitly reports no direct DDR result. The portable fallback is named `effective_min_weight_read_GBps`, never physical bandwidth.
+
+H1 then splits `[K,N]` along ggml `ne1=N`, sweeps HTP shares 0/25/50/75/100 percent, concatenates disjoint output channels, and tests private slices, one-copy parent views, and a full-copy control. H2 compares row split, FFN gate/up, independent streams, and single-backend execution at equal total M. H3 is only a bounded ready-task trace replay. Full-layer 15 percent and whole-phone J/token 10 percent gates remain mandatory. No code was written for this revision.
+
+### `2026-07-10 EDT` — 🔬 S3 checkpoint 1: micro-op FFN harness sketch + full API recon (design only, no code, awaiting review) ⏸️
+Started the bounded **S3 micro-operator spike** ([PLAN](spikes/s3_microop_schedule/PLAN.md)) — the one question before any generic scheduler: *can gemma-4-12B's independent FFN `gate` and `up` projections run concurrently on **HTP ∥ OpenCL** with enough full-FFN win to justify mutable-activation sharing?* This is **Gate A** (concurrent projections ≥10% vs best serial) + **Gate B** (complete FFN ≥15% vs best intact backend) **only**. Per the plan I stopped at **checkpoint 1 = file/interface sketch**; **nothing was built or committed**, and the uncommitted Fused-FA change + `gemma4.cpp` + `layersplit.cpp` + `ggml_backend_sched` were **not touched**.
+
+**Deliverable = a standalone `examples/layersplit/microop.cpp` → `llama-phone-microop`** that makes ONE bare `HTP0` and ONE `GPUOpenCL` `ggml_backend_t` (no llama, no sched), preads the 3 real `blk.2` FFN weights, and hand-builds direct graphs. Faithful span (verified against the model graph, *not* assumed): `up=mul_mat(x)`, `gate=mul_mat(x)` (same `x`), `h=geglu_split(gate,up)`, `out=mul_mat(down,h)`.
+
+**A 6-agent recon workflow mapped the exact current APIs and surfaced 10 plan-vs-reality corrections** the reviewer should know — the plan is feasible, but the wording was off in load-bearing places:
+```
+· activation is ONE fused ggml_geglu_split(gate,up) — tanh-GELU on arg-1(gate) × up — NOT gelu+mul
+· both HTP0 AND GPUOpenCL report device-type GPU → must select by NAME, never by type
+· env latches at first REGISTRY access (not dev_init) → "xmem off" vs "xmem on+cache" = 2 processes (mandatory)
+· must build via ggml_build_forward_expand or graph_compute SILENTLY skips nodes (repo-specific COMPUTE-flag gate)
+· HTP join needs the remote projection copied into an HTP-buffer MIRROR (every HTP operand must live on the HTP session buffer) — cross-backend copy is host-staged, one ggml_backend_tensor_copy call
+· xmem GEMM only FIRES at token N>=16 & M>=64 & K%8==0 → decode M<16 silently uses the l4_lm buffer kernel even with xmem on (log the ACTUAL path)
+· op-refuse knob is GGML_HEXAGON_OPFILTER, not the plan's GGML_HEXAGON_OPMASK
+· HTP run needs ADSP_LIBRARY_PATH=. (for libggml-htp-vNN.so) — the CPU pipeline scripts omit it
+· F16 weights need NO repack/prepack: plain [K,N] F16 into the default buft feeds both standard + xmem paths
+· link ggml ALONE (pulls ggml-base+gguf, cpu, hexagon, opencl; self-registers HTP0/GPUOpenCL) — no llama/llama-common
+```
+
+**Ground truth confirmed on disk + devices:** `blk.2.ffn_{gate,up}.weight` = `[3840,15360]` F16, `ffn_down` = `[15360,3840]` F16, **112.5 MiB each** (matches plan). Read by `pread(data_offset + tensor_offset, nbytes)` — metadata-only gguf open, blob never touched; verified bit-exact. A **layer-2 shard already exists** (`12b-f16-mid-2-3.gguf` on op12; host has `mid-2-{6,10,18}`). Both phones online (op12 `5ae7a43d`, op15 `3C15AU002CL00000`, 18 `.so` staged each).
+
+**Experiment matrix** (per M in `1,2,4,5,8,16,32,64,128,256,512`, x {xmem off, xmem on+cache}, x {op12, op15}):
+```
+1 HTP-only FFN   2 OCL-only FFN   (intact references)
+3 gate=HTP up=OCL join=HTP    4 gate=HTP up=OCL join=OCL
+5 gate=OCL up=HTP join=HTP    6 gate=OCL up=HTP join=OCL
+```
+Correctness before performance (proj rel_L2 <= 5e-3, FFN rel_L2 <= 1e-2, repeat <= 1e-7, no CPU fallback), then p50/p95/mean/sd/min/max for fanout · gate · up · concurrent-wall · remote-transfer · join · down · full-FFN → one JSONL record per config.
+
+**Status: ⏸️ stopped for review.** Two decisions requested before checkpoint 2 (host build + CPU smoke): (1) link `ggml`-only *(recommended)* vs `llama` to match the sibling target; (2) generate a fresh `[2,3)` shard vs reuse `mid-2-6`. On approval → write `microop.cpp` + the 5-line CMake target + `sweep.sh`, host-smoke on the CPU backend, return the checkpoint-2 report (diff, build output, run cmd, smoke log). Gate C (mutable shared activations) stays unbuilt unless Gate A passes, Gate B loses on copy cost, **and** a reviewer approves.
+
+### `2026-07-09 EDT` — ⚡ Attention 2.3× more: run FLASH_ATTN on the NPU for batched decode (root-cause fix) ✅
+The v_trans fix below killed the `v_cont` but left attention as explicit `kq`/`kqv` score matmuls on **HVX (15.8 ms/layer at B=32)**. Tried the *other* lever — the user's insight — and it wins: **keep flash-attn ON the NPU**.
+
+**Root cause (correcting the entry below):** Hexagon *does* have a working `flash_attn_ext` kernel (`flash-attn-ops.c` HVX + `hmx-flash-attn-ops.c` HMX). The only thing blocking it for batched decode was one over-conservative host gate — `ggml_hexagon_supported_flash_attn_ext`: `if (dst->ne[3] != 1) return false`. Batched decode packs the `npl` sequences into `ne[3]` (n_seqs), so that gate rejected exactly the B>1 case → auto-FA saw a device mismatch → downgraded flash off → the `v_cont`. **Single-token decode (B=1, ne[3]=1) always passed the gate** — so stagenet never actually had a v_cont problem (the "no FA kernel" claim below was wrong).
+
+**Fix:** delete the gate (both FA kernels already iterate `ne[3]` — HMX `for (ib3=0; ib3<neq3; ++ib3)`, HVX `qrows=neq1*neq2*neq3` with per-row `iq3` + GQA broadcast), and set the NPU decode context to `flash_attn = ENABLED`. Now the whole attention is **one fused `FLASH_ATTN_EXT` op on HMX**, V stays in its natural layout (no transposed 65536-row scatter write).
+
+**A/B on op12 (gemma-4-12B, B=32 batched decode, one layer), all bit-identical (rel_L2 5.23e-4, 0/32 PASS):**
+```
+                        (A) v_trans/explicit     (B) NPU fused FA
+attention block            15.8 ms/layer            6.9 ms/layer   ← 2.3×
+  · kq (HVX)                7.30 ms                  ─┐
+  · kqv (HVX)              6.30 ms                   ├ one HMX FA op
+  · softmax + kqv_out CONT  1.22 ms                  ─┘
+  · V write                0.98 ms (65536×1)        0.03 ms (32×2048, natural)
+full layer (+21 ms weights) ~37 ms                  ~29 ms          ← ~22%
+CPU fallback                0                        0  (gate relaxed → all 35 FA ops on DSP)
+```
+Control run (`Bcpu`: FA on, gate NOT relaxed) proved the gate is load-bearing — 3 batched FA ops dropped off the DSP (35→32, i.e. to CPU). The advantage **grows with context**: `kq`/`kqv` (config A, HVX) scale with `n_kv`; the fused HMX FA streams it. **Adopted B as the default** (`GGML_DECODE_NO_FA=1` still selects the v_trans path for A/B). Bonus: the gate deletion means AUTO now resolves to FA-on-NPU everywhere, so any Hexagon-decode mode (stagenet/tail/…) is fixed for free. Full chain from the original bug: **193 → 37 → 29 ms/layer**.
 
 ### `2026-07-09 EDT` — ⚡ Decode 5.2× faster: kill the attention V-repack by storing V transposed ✅
 Per-op profiling (`GGML_HEXAGON_PROFILE`) of the B=32 NPU decode on op12 exposed a shocker: one op, **`v_cont` (the attention V materialization), was 154 ms/layer — 80% of a 193 ms layer** — while the weight matmuls (q/k/v/o/ffn) were already fast on **HMX (~21 ms total)**.

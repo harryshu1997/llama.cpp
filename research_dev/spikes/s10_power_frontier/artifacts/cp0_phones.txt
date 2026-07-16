@@ -1,0 +1,20 @@
+=== adb devices -l ===
+List of devices attached
+3C15AU002CL00000       device usb:8-3 product:CPH2749 model:CPH2749 device:OP611FL1 transport_id:1
+5ae7a43d               device usb:6-2 product:CPH2583 model:CPH2583 device:OP595DL1 transport_id:2
+
+
+=== adb server / endpoint ===
+ANDROID_ADB_SERVER_PORT=default 5037
+Android Debug Bridge version 1.0.41
+Version 34.0.4-debian
+
+=== per-device props ===
+--- 3C15AU002CL00000 ---
+CPH2749
+SM8850
+arm64-v8a
+--- 5ae7a43d ---
+CPH2583
+SM8650
+arm64-v8a

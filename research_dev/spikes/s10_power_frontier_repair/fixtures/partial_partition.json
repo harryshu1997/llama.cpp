@@ -1,0 +1,106 @@
+{
+  "activation_mem_bound_bytes": 1024,
+  "batch_profiles": {
+    "ffn:w0": {
+      "16": 545,
+      "32": 599,
+      "48": 607
+    }
+  },
+  "devices": {
+    "SERVER": {
+      "active_mw": 300000,
+      "kind": "server"
+    }
+  },
+  "evidence": {
+    "latency": "retained V0 measured/derived table",
+    "scope": "MECHANICS_ONLY"
+  },
+  "horizon_us": 5000,
+  "instance_id": "partial_partition",
+  "nodes": [
+    {
+      "batch_key": "ffn:w0",
+      "id": "n0",
+      "model_id": "m0",
+      "output_bytes": 0,
+      "predecessors": [],
+      "release_us": 0,
+      "request_id": "r0",
+      "routes": {
+        "SERVER": {
+          "duration_us": 545,
+          "extra_energy_nj": 0
+        }
+      },
+      "tokens": 16,
+      "weight_set_id": "w0"
+    },
+    {
+      "batch_key": "ffn:w0",
+      "id": "n1",
+      "model_id": "m0",
+      "output_bytes": 0,
+      "predecessors": [],
+      "release_us": 0,
+      "request_id": "r1",
+      "routes": {
+        "SERVER": {
+          "duration_us": 545,
+          "extra_energy_nj": 0
+        }
+      },
+      "tokens": 16,
+      "weight_set_id": "w0"
+    },
+    {
+      "batch_key": "ffn:w0",
+      "id": "n2",
+      "model_id": "m0",
+      "output_bytes": 0,
+      "predecessors": [],
+      "release_us": 0,
+      "request_id": "r2",
+      "routes": {
+        "SERVER": {
+          "duration_us": 545,
+          "extra_energy_nj": 0
+        }
+      },
+      "tokens": 16,
+      "weight_set_id": "w0"
+    }
+  ],
+  "requests": [
+    {
+      "arrival_us": 0,
+      "deadline_us": 550,
+      "id": "r0",
+      "priority": 0,
+      "terminal_node": "n0"
+    },
+    {
+      "arrival_us": 0,
+      "deadline_us": 1200,
+      "id": "r1",
+      "priority": 0,
+      "terminal_node": "n1"
+    },
+    {
+      "arrival_us": 0,
+      "deadline_us": 1200,
+      "id": "r2",
+      "priority": 0,
+      "terminal_node": "n2"
+    }
+  ],
+  "schema_version": 2,
+  "server_power": {
+    "idle_entry_us": 0,
+    "p0_mw": 300000,
+    "p8_mw": 25000,
+    "transition_nj": 0,
+    "wake_us": 0
+  }
+}

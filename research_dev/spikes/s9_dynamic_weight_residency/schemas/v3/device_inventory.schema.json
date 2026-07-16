@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s9/schemas/v3/device_inventory.schema.json",
+  "title": "Device inventory + physical-byte accounting (v3)",
+  "$comment": "Self-contained. One record per physical device. lpddr accounting MUST partition the LPDDR budget exactly: weights_resident + derived_images + scratch + activations + mutable_state + free == lpddr.total_bytes (bundle validator); no field may exceed the total. soc is an enum so an UNKNOWN PROFILE fails closed. Staleness is measured on the HOST receiver clock (receiver_ts_us). v2 splits the link into an explicit H2D/D2H pair with a contention_domain so the S9-V1 directional-link model can attach measured per-domain caps; both directions default measured=false (symbolic) in V0-R.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "integer", "const": 3 },
+    "kind": { "type": "string", "const": "device_inventory" },
+    "device_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "soc": { "type": "string", "enum": ["op12", "op15"] },
+    "boot_epoch": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "status_seq": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "backends": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "type": "string", "enum": ["htp", "gpu", "cpu"] } },
+    "ufs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "total_bytes": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "free_bytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+      },
+      "required": ["total_bytes", "free_bytes"]
+    },
+    "lpddr": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "total_bytes": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
+      },
+      "required": ["total_bytes"]
+    },
+    "physical_byte_accounting": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "weights_resident": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "derived_images": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "scratch": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "activations": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "mutable_state": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "free": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+      },
+      "required": ["weights_resident", "derived_images", "scratch", "activations", "mutable_state", "free"]
+    },
+    "thermal": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "temp_milli_c": { "type": "integer", "minimum": -50000, "maximum": 200000 },
+        "slope_milli_c_per_s": { "type": "integer", "minimum": -1000000, "maximum": 1000000 },
+        "eligible": { "type": "boolean" }
+      },
+      "required": ["temp_milli_c", "eligible"]
+    },
+    "link": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "contention_domain": { "type": "string", "minLength": 1, "maxLength": 256, "description": "streams in the same domain share bandwidth; distinct domains (separate USB buses) do not" },
+        "h2d_goodput_bytes_per_s": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "d2h_goodput_bytes_per_s": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "rtt_us": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "measured": { "type": "boolean", "description": "true only if goodput was measured on this link; false => symbolic" }
+      },
+      "required": ["contention_domain", "h2d_goodput_bytes_per_s", "d2h_goodput_bytes_per_s", "rtt_us", "measured"]
+    },
+    "accepting": { "type": "boolean" },
+    "draining": { "type": "boolean" },
+    "stale": { "type": "boolean" },
+    "receiver_ts_us": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+  },
+  "required": ["schema_version", "kind", "device_id", "soc", "boot_epoch", "status_seq", "backends", "ufs", "lpddr", "physical_byte_accounting", "thermal", "link", "accepting", "draining", "stale", "receiver_ts_us"]
+}

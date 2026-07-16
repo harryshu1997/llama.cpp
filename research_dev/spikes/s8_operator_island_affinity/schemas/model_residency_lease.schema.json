@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s8/schemas/model_residency_lease.schema.json",
+  "title": "Model-residency lease (v1, SLOW loop) -- DRAFT-BLOCKED-BEFORE-V0c",
+  "$comment": "Self-contained. DRAFT-BLOCKED-BEFORE-V0c: eviction timing and the authoritative residency ledger are unresolved (see DECISION_CONTRACT). Leases WEIGHTS (shared, many requests), distinct from a request-state lease.",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": { "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" } },
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "status": { "type": "string", "const": "DRAFT_BLOCKED_BEFORE_V0C" },
+    "residency_lease_id": { "type": "string", "minLength": 1 },
+    "device_backend_id": { "type": "string", "pattern": "^[A-Za-z0-9_]+/[A-Za-z0-9_]+$" },
+    "model_id": { "type": "string", "minLength": 1 },
+    "model_version": { "$ref": "#/$defs/sha256" },
+    "weight_set_id": { "$ref": "#/$defs/sha256" },
+    "residency_epoch": { "type": "integer", "minimum": 0 },
+    "ready_state": { "type": "string", "enum": ["ABSENT", "DOWNLOADING", "VERIFYING", "ON_DISK", "LOADING", "WARMING", "READY", "DRAINING", "ERROR", "STALE"] },
+    "reserved_weight_bytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "granted_us": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "min_horizon_us": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "expiry_us": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "share_registry_generation": { "type": "integer", "minimum": 0 }
+  },
+  "required": ["schema_version", "status", "residency_lease_id", "device_backend_id", "model_id", "model_version", "weight_set_id", "residency_epoch", "ready_state", "granted_us", "min_horizon_us", "expiry_us"]
+}

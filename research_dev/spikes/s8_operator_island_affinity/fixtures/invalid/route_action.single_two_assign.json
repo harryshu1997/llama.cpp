@@ -1,0 +1,33 @@
+{
+  "action_id": "a1",
+  "action_kind": "single_island",
+  "assignments": [
+    {
+      "device_backend_id": "OP15/HTP0",
+      "island_id": "i",
+      "request_ids": [
+        "req1"
+      ],
+      "stage_index": 0
+    },
+    {
+      "device_backend_id": "OP15/HTP0",
+      "island_id": "i",
+      "request_ids": [
+        "req1"
+      ],
+      "stage_index": 0
+    }
+  ],
+  "atomic_reservation_ok": true,
+  "reservations": [
+    {
+      "activation_bytes": 100,
+      "device_backend_id": "OP15/HTP0",
+      "queue_credits": 1,
+      "state_slots": 1
+    }
+  ],
+  "schema_version": 1,
+  "status": "DRAFT_BLOCKED_BEFORE_V0C"
+}

@@ -1,0 +1,200 @@
+{
+  "certificate_sha256": "20a05786e8fe7739510352f94fb49096af8866563e417c3d92c46da1924447de",
+  "certificate_version": 1,
+  "energy_nj": 633000000,
+  "energy_phone_nj": 0,
+  "energy_server_nj": 633000000,
+  "hbm": {
+    "mode": {
+      "w0": "server"
+    },
+    "relief_bytes": 0
+  },
+  "instance_id": "gen_00004",
+  "instance_sha256": "6c54e165397ede0d918892844dfb0a8f50592eaee0358b730906008ff536892f",
+  "label": "C4_oracle",
+  "met": 8,
+  "objective_key": [
+    0,
+    0,
+    -8,
+    633000000
+  ],
+  "phone_busy_us": {
+    "OP12": 0,
+    "OP15": 0
+  },
+  "phone_islands": {
+    "OP12": [],
+    "OP15": []
+  },
+  "power_model": {
+    "count_phone_idle": false,
+    "count_server_idle": false,
+    "gpu_active_mw": 300000,
+    "gpu_idle_mw": 25000,
+    "name": "favorable",
+    "phone_mw": {
+      "OP12": 2000,
+      "OP15": 2000
+    },
+    "usb_host_mw": 0
+  },
+  "schedule": [
+    {
+      "deadline": 60000,
+      "mid_device": "SERVER",
+      "mid_finish": 815,
+      "mid_start": 200,
+      "mid_tokens": 16,
+      "model_id": "m_w0",
+      "outcome": "MET",
+      "pre_finish": 50,
+      "pre_start": 0,
+      "request": "r00",
+      "suf_finish": 875,
+      "suf_start": 815,
+      "weight_set": "w0"
+    },
+    {
+      "deadline": 60000,
+      "mid_device": "SERVER",
+      "mid_finish": 815,
+      "mid_start": 200,
+      "mid_tokens": 16,
+      "model_id": "m_w0",
+      "outcome": "MET",
+      "pre_finish": 100,
+      "pre_start": 50,
+      "request": "r01",
+      "suf_finish": 935,
+      "suf_start": 875,
+      "weight_set": "w0"
+    },
+    {
+      "deadline": 60000,
+      "mid_device": "SERVER",
+      "mid_finish": 815,
+      "mid_start": 200,
+      "mid_tokens": 16,
+      "model_id": "m_w0",
+      "outcome": "MET",
+      "pre_finish": 150,
+      "pre_start": 100,
+      "request": "r02",
+      "suf_finish": 995,
+      "suf_start": 935,
+      "weight_set": "w0"
+    },
+    {
+      "deadline": 60000,
+      "mid_device": "SERVER",
+      "mid_finish": 815,
+      "mid_start": 200,
+      "mid_tokens": 16,
+      "model_id": "m_w0",
+      "outcome": "MET",
+      "pre_finish": 200,
+      "pre_start": 150,
+      "request": "r03",
+      "suf_finish": 1055,
+      "suf_start": 995,
+      "weight_set": "w0"
+    },
+    {
+      "deadline": 66000,
+      "mid_device": "SERVER",
+      "mid_finish": 6815,
+      "mid_start": 6200,
+      "mid_tokens": 16,
+      "model_id": "m_w0",
+      "outcome": "MET",
+      "pre_finish": 6050,
+      "pre_start": 6000,
+      "request": "r04",
+      "suf_finish": 6875,
+      "suf_start": 6815,
+      "weight_set": "w0"
+    },
+    {
+      "deadline": 66000,
+      "mid_device": "SERVER",
+      "mid_finish": 6815,
+      "mid_start": 6200,
+      "mid_tokens": 16,
+      "model_id": "m_w0",
+      "outcome": "MET",
+      "pre_finish": 6100,
+      "pre_start": 6050,
+      "request": "r05",
+      "suf_finish": 6935,
+      "suf_start": 6875,
+      "weight_set": "w0"
+    },
+    {
+      "deadline": 66000,
+      "mid_device": "SERVER",
+      "mid_finish": 6815,
+      "mid_start": 6200,
+      "mid_tokens": 16,
+      "model_id": "m_w0",
+      "outcome": "MET",
+      "pre_finish": 6150,
+      "pre_start": 6100,
+      "request": "r06",
+      "suf_finish": 6995,
+      "suf_start": 6935,
+      "weight_set": "w0"
+    },
+    {
+      "deadline": 66000,
+      "mid_device": "SERVER",
+      "mid_finish": 6815,
+      "mid_start": 6200,
+      "mid_tokens": 16,
+      "model_id": "m_w0",
+      "outcome": "MET",
+      "pre_finish": 6200,
+      "pre_start": 6150,
+      "request": "r07",
+      "suf_finish": 7055,
+      "suf_start": 6995,
+      "weight_set": "w0"
+    }
+  ],
+  "server_batches": [
+    {
+      "batch_id": 0,
+      "finish": 815,
+      "latency_us": 615,
+      "members": [
+        "r00",
+        "r01",
+        "r02",
+        "r03"
+      ],
+      "start": 200,
+      "tokens": 64,
+      "wave": 0,
+      "weight_set": "w0"
+    },
+    {
+      "batch_id": 1,
+      "finish": 6815,
+      "latency_us": 615,
+      "members": [
+        "r04",
+        "r05",
+        "r06",
+        "r07"
+      ],
+      "start": 6200,
+      "tokens": 64,
+      "wave": 1,
+      "weight_set": "w0"
+    }
+  ],
+  "server_busy_us": 2110,
+  "tardy": 0,
+  "timeout": 0
+}

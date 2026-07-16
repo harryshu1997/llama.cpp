@@ -1,0 +1,267 @@
+[
+  {
+    "file": "valid/weight_segment.valid.json",
+    "schema": "schemas/weight_segment.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/weight_set.valid.json",
+    "schema": "schemas/weight_set.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/model_manifest.valid.json",
+    "schema": "schemas/model_manifest.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/model_manifest.full.json",
+    "schema": "schemas/model_manifest.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/prepared_image.htp.json",
+    "schema": "schemas/prepared_image.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/prepared_image.gpu_xmem.json",
+    "schema": "schemas/prepared_image.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/island_executable.valid.json",
+    "schema": "schemas/island_executable.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/transfer_ticket.fresh.json",
+    "schema": "schemas/transfer_ticket.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/transfer_ticket.resume.json",
+    "schema": "schemas/transfer_ticket.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/ready_certificate.htp.json",
+    "schema": "schemas/ready_certificate.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/ready_certificate.gpu.json",
+    "schema": "schemas/ready_certificate.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/residency_lease.valid.json",
+    "schema": "schemas/residency_lease.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/state_lease.stateless.json",
+    "schema": "schemas/state_lease.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/state_lease.sticky.json",
+    "schema": "schemas/state_lease.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/device_inventory.valid.json",
+    "schema": "schemas/device_inventory.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/dispatch_decision.dispatch.json",
+    "schema": "schemas/dispatch_decision.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/dispatch_decision.fallback.json",
+    "schema": "schemas/dispatch_decision.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/transport_frame.control_execute.json",
+    "schema": "schemas/transport_frame.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/transport_frame.heartbeat.json",
+    "schema": "schemas/transport_frame.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/transport_frame.bulk_chunk.json",
+    "schema": "schemas/transport_frame.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/sim_config.valid.json",
+    "schema": "schemas/sim_config.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "valid/sim_run_manifest.valid.json",
+    "schema": "schemas/sim_run_manifest.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "invalid/weight_segment.zero_bytes.json",
+    "schema": "schemas/weight_segment.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/weight_set.bad_atomicity.json",
+    "schema": "schemas/weight_set.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/model_manifest.unknown_soc.json",
+    "schema": "schemas/model_manifest.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/model_manifest.missing_setdigest.json",
+    "schema": "schemas/model_manifest.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/prepared_image.bad_digest_pattern.json",
+    "schema": "schemas/prepared_image.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/island_executable.bad_service.json",
+    "schema": "schemas/island_executable.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/transfer_ticket.priority_wrong.json",
+    "schema": "schemas/transfer_ticket.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/transfer_ticket.extra_field.json",
+    "schema": "schemas/transfer_ticket.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/ready_certificate.warmup_false.json",
+    "schema": "schemas/ready_certificate.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/ready_certificate.verdict_fail.json",
+    "schema": "schemas/ready_certificate.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/ready_certificate.backend_mismatch.json",
+    "schema": "schemas/ready_certificate.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/ready_certificate.overflow.json",
+    "schema": "schemas/ready_certificate.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/residency_lease.bad_state.json",
+    "schema": "schemas/residency_lease.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/state_lease.stateless_nonzero.json",
+    "schema": "schemas/state_lease.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/state_lease.sticky_zero.json",
+    "schema": "schemas/state_lease.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/state_lease.rebuildable_zero.json",
+    "schema": "schemas/state_lease.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/device_inventory.unknown_soc.json",
+    "schema": "schemas/device_inventory.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/dispatch_decision.dispatch_no_cert.json",
+    "schema": "schemas/dispatch_decision.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/dispatch_decision.dispatch_stale.json",
+    "schema": "schemas/dispatch_decision.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/dispatch_decision.dispatch_credit.json",
+    "schema": "schemas/dispatch_decision.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/dispatch_decision.dispatch_gate.json",
+    "schema": "schemas/dispatch_decision.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/dispatch_decision.dispatch_bad_reason.json",
+    "schema": "schemas/dispatch_decision.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/dispatch_decision.fallback_dispatch_ok.json",
+    "schema": "schemas/dispatch_decision.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/transport_frame.bad_magic.json",
+    "schema": "schemas/transport_frame.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/transport_frame.bulk_no_hash.json",
+    "schema": "schemas/transport_frame.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/transport_frame.bulk_wrong_msg.json",
+    "schema": "schemas/transport_frame.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/transport_frame.oversize.json",
+    "schema": "schemas/transport_frame.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/transport_frame.control_oversize.json",
+    "schema": "schemas/transport_frame.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/transport_frame.execute_background.json",
+    "schema": "schemas/transport_frame.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/sim_config.bad_baseline.json",
+    "schema": "schemas/sim_config.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/sim_run_manifest.not_fixtures_only.json",
+    "schema": "schemas/sim_run_manifest.schema.json",
+    "expect": "invalid"
+  }
+]

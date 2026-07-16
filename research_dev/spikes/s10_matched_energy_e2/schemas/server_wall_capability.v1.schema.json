@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "s10-e2-server-wall-capability-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "capability_id",
+    "provenance",
+    "instrument_kind",
+    "instrument_identity",
+    "covers_cpu",
+    "covers_dram",
+    "covers_gpu",
+    "covers_storage",
+    "covers_psu_losses",
+    "covers_fans",
+    "coverage_proof_artifact_id",
+    "coverage_proof_sha256",
+    "coverage_proof_artifact_path",
+    "uncertainty_floor_mw",
+    "status",
+    "reason_code",
+    "record_sha256"
+  ],
+  "$defs": {
+    "ident": {"type": "string", "minLength": 1, "maxLength": 256},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "properties": {
+    "schema_version": {"const": 1},
+    "kind": {"const": "ServerWallCapability"},
+    "capability_id": {"$ref": "#/$defs/ident"},
+    "provenance": {"enum": ["MEASURED", "SYNTHETIC"]},
+    "instrument_kind": {"enum": ["EXTERNAL_WALL_METER", "BMC_INPUT_POWER"]},
+    "instrument_identity": {"$ref": "#/$defs/ident"},
+    "covers_cpu": {"type": "boolean"},
+    "covers_dram": {"type": "boolean"},
+    "covers_gpu": {"type": "boolean"},
+    "covers_storage": {"type": "boolean"},
+    "covers_psu_losses": {"type": "boolean"},
+    "covers_fans": {"type": "boolean"},
+    "coverage_proof_artifact_id": {"$ref": "#/$defs/ident"},
+    "coverage_proof_sha256": {"$ref": "#/$defs/sha256"},
+    "coverage_proof_artifact_path": {
+      "type": "string", "minLength": 1, "maxLength": 512
+    },
+    "uncertainty_floor_mw": {"type": "integer", "minimum": 1,
+                             "maximum": 9007199254740991},
+    "status": {"enum": ["OK", "INELIGIBLE"]},
+    "reason_code": {"$ref": "#/$defs/ident"},
+    "record_sha256": {"$ref": "#/$defs/sha256"}
+  }
+}

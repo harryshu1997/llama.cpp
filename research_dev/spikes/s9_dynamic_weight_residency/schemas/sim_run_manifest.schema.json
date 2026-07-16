@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s9/schemas/sim_run_manifest.schema.json",
+  "title": "Residency simulator run manifest (v1)",
+  "$comment": "Self-contained. Wraps one simulator run for reproducibility. deterministic_replay_sha256 = SHA-256 over the canonical-JSON of goodput_results; two runs with the same config_hash + code_version + seed reproduce it byte-identically. clairvoyant is labeled is_upper_bound=true; per_request_fetch is labeled is_diagnostic_losing=true. fixtures_only MUST be true in S9-V0 (no real-trace results until S8 Gate A is independently confirmed passing).",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": { "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" } },
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "kind": { "type": "string", "const": "residency_sim" },
+    "fixtures_only": { "type": "boolean", "const": true },
+    "config_id": { "type": "string", "minLength": 1 },
+    "config_hash": { "$ref": "#/$defs/sha256" },
+    "code_version": { "$ref": "#/$defs/sha256" },
+    "seed": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "role": { "type": "string", "minLength": 1 },
+          "path": { "type": "string", "minLength": 1 },
+          "sha256": { "$ref": "#/$defs/sha256" }
+        },
+        "required": ["role", "path", "sha256"]
+      }
+    },
+    "goodput_results": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "goodput_bytes_per_s": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+          "baselines": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "policy": { "type": "string", "enum": ["server_only", "per_request_fetch", "static_placement", "lru", "lfu_ttl", "fastest_ready", "relief_predictive", "clairvoyant"] },
+                "is_upper_bound": { "type": "boolean" },
+                "is_diagnostic_losing": { "type": "boolean" },
+                "completed": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                "dispatched_to_phone": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                "fell_back_to_server": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                "weight_misses": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                "server_gpu_us_used": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                "server_gpu_us_freed": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                "server_hbm_bytes_freed": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                "transfer_bytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                "prepare_us_total": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                "evictions": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                "deadline_hits": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                "deadline_misses": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                "completion_p50_us": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                "completion_p95_us": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                "causal_score_total": { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 },
+                "waited_for_weights": { "type": "integer", "minimum": 0, "maximum": 9007199254740991, "description": "count of dispatches that blocked on weight arrival; MUST be 0 for relief_predictive" }
+              },
+              "required": ["policy", "is_upper_bound", "is_diagnostic_losing", "completed", "dispatched_to_phone", "fell_back_to_server", "weight_misses", "server_gpu_us_used", "server_gpu_us_freed", "transfer_bytes", "prepare_us_total", "evictions", "deadline_hits", "deadline_misses", "causal_score_total", "waited_for_weights"]
+            }
+          }
+        },
+        "required": ["goodput_bytes_per_s", "baselines"]
+      }
+    },
+    "deterministic_replay_sha256": { "$ref": "#/$defs/sha256" },
+    "gate_results": { "type": "object" }
+  },
+  "required": ["schema_version", "run_id", "kind", "fixtures_only", "config_id", "config_hash", "code_version", "seed", "inputs", "goodput_results", "deterministic_replay_sha256"]
+}

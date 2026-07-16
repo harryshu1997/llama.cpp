@@ -1,0 +1,77 @@
+[
+  {
+    "file": "valid/trace_real.json",
+    "kind": "trace",
+    "expect": "valid"
+  },
+  {
+    "file": "invalid/trace_bin_tstart.json",
+    "kind": "trace",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/trace_bin_tend.json",
+    "kind": "trace",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/trace_first_gt_last.json",
+    "kind": "trace",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/trace_rank_oob.json",
+    "kind": "trace",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/trace_nonmono_policy.json",
+    "kind": "trace",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/trace_rowcount0.json",
+    "kind": "trace",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/trace_safeint.json",
+    "kind": "trace",
+    "expect": "invalid"
+  },
+  {
+    "file": "valid/mix.json",
+    "kind": "trace",
+    "expect": "valid"
+  },
+  {
+    "file": "invalid/mix_dup_rank.json",
+    "kind": "trace",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/mix_unsorted_rank.json",
+    "kind": "trace",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/mix_dup_component.json",
+    "kind": "trace",
+    "expect": "invalid"
+  },
+  {
+    "file": "valid/artifact_normalize.json",
+    "kind": "artifact",
+    "expect": "valid"
+  },
+  {
+    "file": "invalid/artifact_no_sidecar.json",
+    "kind": "artifact",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/artifact_empty_outputs.json",
+    "kind": "artifact",
+    "expect": "invalid"
+  }
+]

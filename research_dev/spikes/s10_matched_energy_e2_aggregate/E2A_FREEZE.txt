@@ -1,0 +1,39 @@
+S10-E2A CP0 FREEZE
+==================
+
+Recorded before any E2A implementation existed. E1 and E2 are read-only
+historical baselines: E2A adds records, it never edits theirs.
+
+git HEAD: 933c722f69c7bea64113d68a8c7aad49527c8122
+git branch: plan-a-port
+git describe: gguf-v0.19.0-826-g933c722f6-dirty
+
+worktree state (tracked, dirty) at freeze time:
+   M examples/CMakeLists.txt
+   M examples/layersplit/CMakeLists.txt
+   M examples/layersplit/layersplit.cpp
+   M ggml/src/ggml-hexagon/ggml-hexagon.cpp
+   M ggml/src/ggml-hexagon/htp/hmx-flash-attn-ops.c
+   M ggml/src/ggml-hexagon/htp/htp-ops.h
+   M research_dev/talks.md
+   M tests/test-backend-ops.cpp
+
+E1 baseline (research_dev/spikes/s10_power_frontier_repair/)
+  manifest: s10_matched_energy_e2/E1_BASELINE_MANIFEST.txt
+  files:    45
+  verify:   45 of 45 OK
+  suite:    201 tests, 39 evidence negatives, 18 CLI negatives,
+            1187 differential cases compared (294+298+297+298), 0 mismatches
+  frozen optima: 147250000 nJ (transition_delay_counterexample)
+                 2974000 nJ (activation_delay_counterexample)
+
+E2 baseline (research_dev/spikes/s10_matched_energy_e2/)
+  manifest: E2_BASELINE_MANIFEST.txt (this directory)
+  files:    28
+  suite:    152 tests, 30 CLI negatives
+  deterministic replay digest:
+            50b68e886fb9936eee9c7a0763e9bc20474babfe4329b6e0c57002144006f812
+  manifest-of-manifest sha256: a05f0dbbb61db0a6522105b79f6f685842288388d76d53fa8e9f4f6db7d9439c
+
+Both baselines reproduced live at freeze time with zero discrepancy.
+Neither was re-pinned.

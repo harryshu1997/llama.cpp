@@ -1,0 +1,18 @@
+{
+  "depends_on_residency_epoch": 1,
+  "depends_on_residency_lease_id": "r1",
+  "device_backend_id": "OP15/HTP0",
+  "expiry_us": 900000000,
+  "granted_us": 0,
+  "island_id": "i",
+  "lease_epoch": 2,
+  "replay_boundary": "token_history",
+  "request_id": "req1",
+  "route_epoch": 1,
+  "schema_version": 1,
+  "seq_slot_epoch": 3,
+  "state_bytes": 1000,
+  "state_owner": "OP15/HTP0",
+  "status": "granted",
+  "status_block": "DRAFT_BLOCKED_BEFORE_V0C"
+}

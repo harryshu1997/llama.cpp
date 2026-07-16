@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s9/schemas/v5/weight_set.schema.json",
+  "title": "Atomic weight set (v5)",
+  "$comment": "Self-contained. An ATOMIC grouping of weight segments; a route may use the set ONLY when EVERY listed segment is VERIFIED_ON_DISK and materialized. set_digest = SHA-256 over the ascending-sorted segment sha256 strings joined by LF (recomputed by the bundle validator). total_bytes must equal the sum of segment bytes. layer_range.start < end <= n_layer_total (semantic). atomicity is const so the all-or-none rule is machine-visible.",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 5
+    },
+    "kind": {
+      "type": "string",
+      "const": "weight_set"
+    },
+    "weight_set_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "model_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "model_version": {
+      "$ref": "#/$defs/sha256"
+    },
+    "layout_version": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000000
+    },
+    "arch": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "dtype": {
+      "type": "string",
+      "enum": [
+        "f16",
+        "f32",
+        "bf16"
+      ]
+    },
+    "layer_range": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "start": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "n_layer_total": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        }
+      },
+      "required": [
+        "start",
+        "end",
+        "n_layer_total"
+      ]
+    },
+    "segments": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4096,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "segment_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "sha256": {
+            "$ref": "#/$defs/sha256"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "segment_id",
+          "sha256",
+          "bytes"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "set_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "total_bytes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "atomicity": {
+      "type": "string",
+      "const": "all_or_none"
+    }
+  },
+  "required": [
+    "schema_version",
+    "kind",
+    "weight_set_id",
+    "model_id",
+    "model_version",
+    "layout_version",
+    "arch",
+    "dtype",
+    "layer_range",
+    "segments",
+    "set_digest",
+    "total_bytes",
+    "atomicity"
+  ]
+}

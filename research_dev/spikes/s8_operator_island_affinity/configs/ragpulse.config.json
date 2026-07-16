@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "config_version": "ragpulse-cfg-1",
+  "source": "ragpulse",
+  "provenance": "real_decomposed",
+  "origin": {
+    "url": "https://raw.githubusercontent.com/flashserve/RAGPulse/99a62769a91d5ebd17a2d4ddbbc88c1d16edc0e8/data/0_trace.jsonl",
+    "revision": "99a62769a91d5ebd17a2d4ddbbc88c1d16edc0e8",
+    "filename": "data/0_trace.jsonl",
+    "bytes": 1923473,
+    "sha256": "sha256:cd371571bef3320907147f8901729e37f412aafb067ec8eb153e2828e1801e65",
+    "line_count": 7107,
+    "record_count": 7106,
+    "license": "MIT"
+  },
+  "format": "jsonl",
+  "encoding": "utf-8",
+  "bom": "reject",
+  "newline": "lf_or_crlf",
+  "jsonl": {
+    "required_keys": ["timestamp", "input_length", "output_length", "session_id", "hash_ids"],
+    "key_types": {
+      "timestamp": "string",
+      "input_length": "integer",
+      "output_length": "integer",
+      "session_id": "string",
+      "hash_ids": "object"
+    },
+    "nested_hash_ids": {
+      "required_keys": ["sys_prompt", "passages_ids", "history", "web_search", "user_input"],
+      "value_type": "list_of_int",
+      "empty_allowed": ["passages_ids", "web_search"]
+    },
+    "duplicate_key": "reject"
+  },
+  "timestamp": {
+    "field": "timestamp",
+    "grammar": "^[0-9]+$",
+    "unit": "seconds",
+    "to_us": "decimal_round_half_up_1e6",
+    "policy": "sort_stable",
+    "overflow_max": 9007199254740991
+  },
+  "gate_a": {
+    "deadline_us": null,
+    "deadline_provenance": "none",
+    "priority_class": null,
+    "priority_provenance": "none",
+    "observed_latency_us": null,
+    "images": 0,
+    "audio_ms": 0
+  },
+  "mapping": {
+    "t_from": "timestamp",
+    "input_tokens": { "from": "input_length", "grammar": "^[0-9]+$" },
+    "output_tokens": { "from": "output_length", "grammar": "^[0-9]+$" },
+    "session_id": { "from": "session_id", "blank_to_null": true },
+    "service": { "const": "rag_qa" },
+    "model_class": { "const": "rag" },
+    "retrieved_chunks": { "derive": "len", "from": "hash_ids.passages_ids" },
+    "cache_keys": { "derive": "namespaced", "order": ["sys_prompt", "passages_ids", "history", "web_search", "user_input"], "separator": ":" },
+    "source_fields": {}
+  }
+}

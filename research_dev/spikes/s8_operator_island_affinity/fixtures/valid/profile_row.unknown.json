@@ -1,0 +1,30 @@
+{
+  "artifact_paths": [],
+  "attention_class": "causal_local_swa",
+  "build_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "correctness": "unknown",
+  "device_backend_id": "OP15/HTP0",
+  "device_binary_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "fallback": "unknown",
+  "graph_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "island_descriptor_ref": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "island_id": "x",
+  "kernel_provenance": "unknown",
+  "layer_range": {
+    "end": 3,
+    "n_layer_total": 48,
+    "start": 2
+  },
+  "model_version": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "n_proc": 0,
+  "schema_version": 1,
+  "shape_envelope": {
+    "batch_max": 1,
+    "batch_min": 1,
+    "context_max": 512,
+    "context_min": 512,
+    "dtype": "f16"
+  },
+  "state_class": "sticky",
+  "verdict": "UNKNOWN"
+}

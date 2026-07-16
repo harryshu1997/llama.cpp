@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s9/schemas/island_executable.schema.json",
+  "title": "Island executable (v1)",
+  "$comment": "Self-contained. A runnable unit that binds a graph + atomic weight set(s) + backend-derived prepared image(s) + a backend route + a correctness certificate + a server fallback. This is the object a ResidencyLease makes dispatchable; it is NOT a runtime state. A stateless island reserves no mutable state; sticky/rebuildable islands are owned by exactly one StateLease at runtime.",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": { "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" } },
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "island_id": { "type": "string", "minLength": 1 },
+    "service_class": { "type": "string", "enum": ["decode", "prefill", "embedding", "rerank", "vision_encode", "background"] },
+    "model_id": { "type": "string", "minLength": 1 },
+    "model_version": { "$ref": "#/$defs/sha256" },
+    "graph_hash": { "$ref": "#/$defs/sha256" },
+    "backend": { "type": "string", "enum": ["htp", "gpu", "cpu"] },
+    "layer_range": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "start": { "type": "integer", "minimum": 0, "maximum": 100000 },
+        "end": { "type": "integer", "minimum": 1, "maximum": 100000 },
+        "n_layer_total": { "type": "integer", "minimum": 1, "maximum": 100000 }
+      },
+      "required": ["start", "end", "n_layer_total"]
+    },
+    "required_weight_sets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "weight_set_id": { "type": "string", "minLength": 1 },
+          "set_digest": { "$ref": "#/$defs/sha256" }
+        },
+        "required": ["weight_set_id", "set_digest"]
+      }
+    },
+    "required_prepared_images": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "prepared_image_id": { "type": "string", "minLength": 1 },
+          "derived_image_digest": { "$ref": "#/$defs/sha256" }
+        },
+        "required": ["prepared_image_id", "derived_image_digest"]
+      }
+    },
+    "io_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "input_dtype": { "type": "string", "enum": ["f16", "f32", "bf16"] },
+        "output_dtype": { "type": "string", "enum": ["f16", "f32", "bf16"] },
+        "max_input_bytes": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "max_output_bytes": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
+      },
+      "required": ["input_dtype", "output_dtype", "max_input_bytes", "max_output_bytes"]
+    },
+    "state_policy": { "type": "string", "enum": ["stateless", "sticky", "rebuildable"] },
+    "correctness": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "verdict": { "type": "string", "enum": ["pass", "fail", "blocked", "unknown"] },
+        "metric_digest": { "$ref": "#/$defs/sha256" },
+        "rel_l2_micro": { "type": ["integer", "null"], "minimum": 0, "maximum": 9007199254740991, "description": "measured rel_L2 vs CPU reference, in parts-per-million (integer); null if unmeasured" }
+      },
+      "required": ["verdict", "metric_digest"]
+    },
+    "required_kernel_path": { "type": "string", "minLength": 1 },
+    "fallback": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "const": "server" },
+        "available": { "type": "boolean" }
+      },
+      "required": ["kind", "available"]
+    }
+  },
+  "required": ["schema_version", "island_id", "service_class", "model_id", "model_version", "graph_hash", "backend", "layer_range", "required_weight_sets", "required_prepared_images", "io_schema", "state_policy", "correctness", "required_kernel_path", "fallback"]
+}

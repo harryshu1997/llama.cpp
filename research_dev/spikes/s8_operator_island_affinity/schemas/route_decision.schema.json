@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s8/schemas/route_decision.schema.json",
+  "title": "Route decision record (v1) -- DRAFT-BLOCKED-BEFORE-V0c",
+  "$comment": "Self-contained. DRAFT-BLOCKED-BEFORE-V0c: request-level SLO objective and the total compound-action tie-break are unresolved (see DECISION_CONTRACT). Carries the frozen objective score and deterministic tie-break key.",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": {
+    "reason": { "type": "string", "enum": ["unsupported", "not_resident", "state_pinned", "no_slack", "transfer_dominated", "thermal", "stale", "insufficient_ram", "interference", "credits_exhausted", "server_cheaper", "capacity_relief", "energy_gain"] },
+    "nint": { "type": ["integer", "null"], "minimum": 0, "maximum": 9007199254740991 },
+    "nnum": { "type": ["number", "null"] }
+  },
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "status": { "type": "string", "const": "DRAFT_BLOCKED_BEFORE_V0C" },
+    "t_us": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "request_id": { "type": "string", "minLength": 1 },
+    "island_id": { "type": "string", "minLength": 1 },
+    "candidate_actions": { "type": "array", "items": { "type": "string" } },
+    "hard_gate_failures": { "type": "object", "additionalProperties": { "type": "array", "items": { "$ref": "#/$defs/reason" } } },
+    "predicted_finish_us": { "$ref": "#/$defs/nint" },
+    "objective_score": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "slo_violations": { "type": "integer", "minimum": 0 },
+        "relief_value": { "type": "number" },
+        "risk_penalty": { "type": "number" }
+      },
+      "required": ["slo_violations", "relief_value", "risk_penalty"]
+    },
+    "tie_break_key": { "type": ["array", "null"], "items": true },
+    "selected_action_id": { "type": ["string", "null"] },
+    "selected_reason": { "$ref": "#/$defs/reason" },
+    "actual_queue_us": { "$ref": "#/$defs/nint" },
+    "actual_start_us": { "$ref": "#/$defs/nint" },
+    "actual_finish_us": { "$ref": "#/$defs/nint" },
+    "transfer_us": { "$ref": "#/$defs/nint" },
+    "fallback_taken": { "type": "boolean" },
+    "prediction_error": { "$ref": "#/$defs/nnum" }
+  },
+  "required": ["schema_version", "status", "t_us", "request_id", "island_id", "candidate_actions", "hard_gate_failures", "selected_reason", "fallback_taken"]
+}

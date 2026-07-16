@@ -1,0 +1,17 @@
+[
+  {
+    "name": "T1 windowed resume-after-partial",
+    "pass": true,
+    "detail": "resume_offset=167772160"
+  },
+  {
+    "name": "T2 windowed kill-mid-flight",
+    "pass": true,
+    "detail": "resume_offset=20971520 waste=33554432"
+  },
+  {
+    "name": "T3 durable-result identity (window=8)",
+    "pass": true,
+    "detail": "verdict=DYNAMIC_FFN_PASS rel_l2=0.000292403199 dup=0"
+  }
+]

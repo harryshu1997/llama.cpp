@@ -1,0 +1,40 @@
+{
+  "action_id": "a2",
+  "action_kind": "corun_pair",
+  "assignments": [
+    {
+      "device_backend_id": "OP15/HTP0",
+      "island_id": "dec",
+      "request_ids": [
+        "r1"
+      ],
+      "stage_index": 0
+    },
+    {
+      "device_backend_id": "OP15/GPUOpenCL",
+      "island_id": "pre",
+      "request_ids": [
+        "r2"
+      ],
+      "stage_index": 0
+    }
+  ],
+  "atomic_reservation_ok": true,
+  "corun_pair_certified": false,
+  "reservations": [
+    {
+      "activation_bytes": 100,
+      "device_backend_id": "OP15/HTP0",
+      "queue_credits": 1,
+      "state_slots": 1
+    },
+    {
+      "activation_bytes": 100,
+      "device_backend_id": "OP15/GPUOpenCL",
+      "queue_credits": 1,
+      "state_slots": 0
+    }
+  ],
+  "schema_version": 1,
+  "status": "DRAFT_BLOCKED_BEFORE_V0C"
+}

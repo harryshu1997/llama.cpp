@@ -1,0 +1,46 @@
+S9-V0-R HISTORICAL RED EVIDENCE (frozen 2026-07-13)
+===================================================
+
+This directory freezes the pre-R1 S9-V0-R validator and simulator byte-for-byte, so the
+R1 fail-closed regressions can be checked AGAINST persisted RED evidence. An independent
+adversarial pass found that the official V0-R suites passed while the mechanics were
+STILL fail-OPEN; every hole below is reproduced RED here and closed GREEN in R1
+(sim/test_r1_regressions.py, 16 historical regressions plus one current invariant).
+
+Frozen artifacts
+  residency_sim_v0r.py      pre-R1 simulator (imported by the R1 regression + behavior suites)
+  bundle_validate_v0r.py    pre-R1 validator (FIXED /tmp paths retained as the concurrency bug)
+  s9lib_v0r.py              pre-R1 digest library
+
+Provenance hashes (do not edit; asserted by the golden/behavior suites)
+  FROZEN_V0R_SIM        sha256:6393e227831e0632addc6716d54b79606a632f0f37f0a49895aa6486ebc9b7eb
+  FROZEN_V0R_VALIDATOR  sha256:b763c3847fdfbeeafa0c2966488e50e6a03d71dd3090ee33f4b24864c2ed8399
+  FROZEN_V0R_S9LIB      sha256:0bf36ea52cf6b383431ff457c460252ed5f38a8546d726ac9764a8a6cbfc26f5
+  V0R_GOLDEN_REPLAY     sha256:af1501b6b766a7a70afa41460de87b379bf47b7bf133017799bb13058b840339
+  GIT_HEAD              933c722f69c7bea64113d68a8c7aad49527c8122
+
+Status of the V0-R result (RELABELED after the R1 finding)
+  SUITES PASS; MECHANICS CERTIFICATION BLOCKED; CAPACITY UNPROVEN.
+
+  The 16 fail-open cases the V0-R suites did NOT catch (validator = wrongly ACCEPTS;
+  simulator = wrongly mishandles):
+    1  DISPATCH with a wrong device, backend, request id, or route epoch -> accepted.
+    2  sticky/rebuildable DISPATCH with a null / missing / foreign StateLease -> accepted.
+    3  tuple (ws1, pi2, rc1, rl1) whose records exist but do not form one chain -> accepted.
+    4  DISPATCH referencing a nonexistent island -> accepted.
+    5  PreparedImage pointing to an allocation but missing from its alias set -> accepted.
+    6  Allocation marked reclaimable while an image/lease still references it -> accepted.
+    7  Parallel validators racing through shared /tmp filenames -> nondeterministic verdicts.
+    8  Stale RECEIVING pipeline: detected but LEAKED (domain link never released, queue
+       never woken, UFS never rolled back).
+    9  Request arriving after stale_epoch: device not DRAINING -> re-prefetch onto a
+       stale device.
+    10 Epoch change while D2H is active -> stale output accepted.
+    11 HTP-prepared residency submitted to GPU (and the reverse) -> dispatched.
+    12 Two independent sticky sessions collapse into one scalar (wrong sizes).
+    13 Reset requested while state is pinned -> silently dropped (no deferral).
+    14 Lane queue is unbounded -> overflow never rejected.
+    15 Partial failures dedupe to a single fixed canonical/4 resume (offsets ignored).
+    16 link_drop is ignored (pass) in every phase.
+
+  These are the exact items R1 repairs. This artifact stays frozen as the "before" side.

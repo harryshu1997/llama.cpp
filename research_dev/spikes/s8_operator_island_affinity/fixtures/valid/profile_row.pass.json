@@ -1,0 +1,61 @@
+{
+  "artifact_hashes": [
+    "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  ],
+  "artifact_paths": [
+    "run0.json"
+  ],
+  "attention_class": "causal_local_swa",
+  "boundary_in_bytes": 100,
+  "boundary_out_bytes": 100,
+  "build_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "correctness": "pass",
+  "correctness_metric": {
+    "kind": "rel_L2_vs_cpu",
+    "reference": "cpu_same_shape",
+    "value": 0.003
+  },
+  "cov": 0.03,
+  "device_backend_id": "OP15/HTP0",
+  "device_binary_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "fallback": "none",
+  "graph_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "island_descriptor_ref": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "island_id": "gemma4.decode.blk0-4",
+  "kernel_provenance": "explicit_attention",
+  "layer_range": {
+    "end": 4,
+    "n_layer_total": 48,
+    "start": 0
+  },
+  "model_version": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "n_proc": 7,
+  "p50_us": 1000,
+  "p95_us": 1200,
+  "p99_us": 1300,
+  "post_transfer_slo_feasible": true,
+  "resident_bytes": 1000,
+  "schema_version": 1,
+  "server_control": {
+    "device_backend_id": "A6000/CUDA",
+    "gpu_ms": 1.2,
+    "hbm_peak_bytes": 1000,
+    "p50_us": 800
+  },
+  "server_relief": {
+    "gpu_ms_freed": 1.0,
+    "hbm_bw_freed": 2.0,
+    "hbm_bytes_freed": 1000
+  },
+  "shape_envelope": {
+    "batch_max": 16,
+    "batch_min": 16,
+    "context_max": 512,
+    "context_min": 512,
+    "dtype": "f16"
+  },
+  "state_class": "sticky",
+  "supported": true,
+  "transfer_measured_us": 50,
+  "verdict": "PASS"
+}

@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s9/schemas/v4/model_manifest.schema.json",
+  "title": "Residency model manifest (v4)",
+  "$comment": "Self-contained. The server-published, content-addressed description of a model and its atomic weight sets. partial_load_supported is the ARBITRARY-MODEL gate: false => exactly one weight set spanning [0,n_layer_total). coverage_policy declares the EXPLICIT gap/overlap rule the bundle validator enforces over the weight-set layer ranges: contiguous_partition (ranges tile [0,n) with no gap and no overlap), sharded_disjoint (disjoint, gaps allowed, all inside [0,n)), overlap_allowed (bounds only). Each layer_range obeys start<end<=n_layer_total, all share n_layer_total, weight_set_ids are unique, and each per-set total_bytes matches its WeightSet record (bundle validator).",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": { "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" } },
+  "properties": {
+    "schema_version": { "type": "integer", "const": 4 },
+    "kind": { "type": "string", "const": "model_manifest" },
+    "model_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "model_version": { "$ref": "#/$defs/sha256" },
+    "source_sha256": { "$ref": "#/$defs/sha256" },
+    "arch": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "n_layer_total": { "type": "integer", "minimum": 1, "maximum": 100000 },
+    "dtype": { "type": "string", "enum": ["f16", "f32", "bf16"] },
+    "layout_version": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+    "graph_hash": { "$ref": "#/$defs/sha256" },
+    "partial_load_supported": { "type": "boolean" },
+    "coverage_policy": { "type": "string", "enum": ["contiguous_partition", "sharded_disjoint", "overlap_allowed"] },
+    "weight_sets": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4096,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "weight_set_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "set_digest": { "$ref": "#/$defs/sha256" },
+          "total_bytes": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+          "layer_range": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "start": { "type": "integer", "minimum": 0, "maximum": 100000 },
+              "end": { "type": "integer", "minimum": 1, "maximum": 100000 },
+              "n_layer_total": { "type": "integer", "minimum": 1, "maximum": 100000 }
+            },
+            "required": ["start", "end", "n_layer_total"]
+          }
+        },
+        "required": ["weight_set_id", "set_digest", "total_bytes", "layer_range"]
+      }
+    },
+    "required_backends": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "backend": { "type": "string", "enum": ["htp", "gpu", "cpu"] },
+          "backend_build": { "$ref": "#/$defs/sha256" },
+          "min_soc": { "type": "string", "enum": ["op12", "op15"] }
+        },
+        "required": ["backend", "backend_build"]
+      }
+    },
+    "compatible_soc": { "type": "array", "minItems": 1, "maxItems": 16, "items": { "type": "string", "enum": ["op12", "op15"] } },
+    "resident_ram_estimate_bytes": { "type": ["integer", "null"], "minimum": 0, "maximum": 9007199254740991 },
+    "warmup_cmd": { "type": "string", "maxLength": 1024 }
+  },
+  "required": ["schema_version", "kind", "model_id", "model_version", "source_sha256", "arch", "n_layer_total", "dtype", "layout_version", "graph_hash", "partial_load_supported", "coverage_policy", "weight_sets", "required_backends", "compatible_soc"],
+  "allOf": [
+    {
+      "$comment": "a model whose backend cannot honor a layer window declares one full-range set and a contiguous partition",
+      "if": { "properties": { "partial_load_supported": { "const": false } }, "required": ["partial_load_supported"] },
+      "then": {
+        "properties": {
+          "weight_sets": { "type": "array", "maxItems": 1 },
+          "coverage_policy": { "const": "contiguous_partition" }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,136 @@
+{
+  "certificate_sha256": "a717e5cc05eee42fa91de4ac910ff8c3a409c25b8c50add32902910aa1d72ec8",
+  "certificate_version": 1,
+  "energy_nj": 3788608000,
+  "energy_phone_nj": 0,
+  "energy_server_nj": 3788608000,
+  "hbm": {
+    "mode": {
+      "w0": "server"
+    },
+    "relief_bytes": 0
+  },
+  "instance_id": "gen_00002",
+  "instance_sha256": "ae5948ee38d8d7f69d097d1e606a11321a21aa099e02c52fb174e5efe6ccee37",
+  "label": "C4_oracle",
+  "met": 4,
+  "objective_key": [
+    0,
+    0,
+    -4,
+    3788608000
+  ],
+  "phone_busy_us": {
+    "OP12": 0,
+    "OP15": 0
+  },
+  "phone_islands": {
+    "OP12": [],
+    "OP15": []
+  },
+  "power_model": {
+    "count_phone_idle": false,
+    "count_server_idle": true,
+    "gpu_active_mw": 281000,
+    "gpu_idle_mw": 25000,
+    "name": "conservative",
+    "phone_mw": {
+      "OP12": 6000,
+      "OP15": 6000
+    },
+    "usb_host_mw": 8000
+  },
+  "schedule": [
+    {
+      "deadline": 90000,
+      "mid_device": "SERVER",
+      "mid_finish": 759,
+      "mid_start": 160,
+      "mid_tokens": 16,
+      "model_id": "m_w0",
+      "outcome": "MET",
+      "pre_finish": 80,
+      "pre_start": 0,
+      "request": "r00",
+      "suf_finish": 759,
+      "suf_start": 759,
+      "weight_set": "w0"
+    },
+    {
+      "deadline": 90000,
+      "mid_device": "SERVER",
+      "mid_finish": 759,
+      "mid_start": 160,
+      "mid_tokens": 16,
+      "model_id": "m_w0",
+      "outcome": "MET",
+      "pre_finish": 160,
+      "pre_start": 80,
+      "request": "r01",
+      "suf_finish": 759,
+      "suf_start": 759,
+      "weight_set": "w0"
+    },
+    {
+      "deadline": 96000,
+      "mid_device": "SERVER",
+      "mid_finish": 6759,
+      "mid_start": 6160,
+      "mid_tokens": 16,
+      "model_id": "m_w0",
+      "outcome": "MET",
+      "pre_finish": 6080,
+      "pre_start": 6000,
+      "request": "r02",
+      "suf_finish": 6759,
+      "suf_start": 6759,
+      "weight_set": "w0"
+    },
+    {
+      "deadline": 96000,
+      "mid_device": "SERVER",
+      "mid_finish": 6759,
+      "mid_start": 6160,
+      "mid_tokens": 16,
+      "model_id": "m_w0",
+      "outcome": "MET",
+      "pre_finish": 6160,
+      "pre_start": 6080,
+      "request": "r03",
+      "suf_finish": 6759,
+      "suf_start": 6759,
+      "weight_set": "w0"
+    }
+  ],
+  "server_batches": [
+    {
+      "batch_id": 0,
+      "finish": 759,
+      "latency_us": 599,
+      "members": [
+        "r00",
+        "r01"
+      ],
+      "start": 160,
+      "tokens": 32,
+      "wave": 0,
+      "weight_set": "w0"
+    },
+    {
+      "batch_id": 1,
+      "finish": 6759,
+      "latency_us": 599,
+      "members": [
+        "r02",
+        "r03"
+      ],
+      "start": 6160,
+      "tokens": 32,
+      "wave": 1,
+      "weight_set": "w0"
+    }
+  ],
+  "server_busy_us": 1518,
+  "tardy": 0,
+  "timeout": 0
+}

@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s9/schemas/v5/transfer_ticket.schema.json",
+  "title": "Transfer ticket (v5)",
+  "$comment": "Self-contained. Authorizes a RESUMABLE, VERIFIED bulk transfer of one weight segment (or a chunk sub-range) to one device. priority_class const bulk_weight_background. NONZERO RESUME REQUIRES A VERIFIED PREFIX DIGEST: resumable_from_verified_offset>=1 forces resume_partial_sha256 to be a real sha256 (if/then), and byte_range.offset must equal resumable_from_verified_offset (semantic) so a resume can never trust a bare byte count. transfer_ticket_digest is the domain-separated identity. chunk_range must lie inside the segment's chunk list (semantic).",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 5
+    },
+    "kind": {
+      "type": "string",
+      "const": "transfer_ticket"
+    },
+    "ticket_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "device_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "channel": {
+      "type": "string",
+      "const": "bulk"
+    },
+    "priority_class": {
+      "type": "string",
+      "const": "bulk_weight_background"
+    },
+    "model_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "model_version": {
+      "$ref": "#/$defs/sha256"
+    },
+    "weight_set_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "segment_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "expected_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "byte_range": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "length": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "offset",
+        "length"
+      ]
+    },
+    "chunk_range": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "first": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "last": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "first",
+        "last"
+      ]
+    },
+    "resumable_from_verified_offset": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "resume_partial_sha256": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "credits_bytes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "deadline_us": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "issued_boot_epoch": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "issued_residency_generation": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "transfer_ticket_digest": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "required": [
+    "schema_version",
+    "kind",
+    "ticket_id",
+    "idempotency_key",
+    "device_id",
+    "channel",
+    "priority_class",
+    "model_id",
+    "model_version",
+    "weight_set_id",
+    "segment_id",
+    "expected_sha256",
+    "byte_range",
+    "chunk_range",
+    "resumable_from_verified_offset",
+    "resume_partial_sha256",
+    "credits_bytes",
+    "deadline_us",
+    "issued_boot_epoch",
+    "issued_residency_generation",
+    "transfer_ticket_digest"
+  ],
+  "allOf": [
+    {
+      "$comment": "a fresh transfer starts at offset 0 with no prefix digest",
+      "if": {
+        "properties": {
+          "resumable_from_verified_offset": {
+            "const": 0
+          }
+        },
+        "required": [
+          "resumable_from_verified_offset"
+        ]
+      },
+      "then": {
+        "properties": {
+          "resume_partial_sha256": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "$comment": "a nonzero resume MUST carry the verified-prefix digest",
+      "if": {
+        "properties": {
+          "resumable_from_verified_offset": {
+            "minimum": 1
+          }
+        },
+        "required": [
+          "resumable_from_verified_offset"
+        ]
+      },
+      "then": {
+        "properties": {
+          "resume_partial_sha256": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          }
+        }
+      }
+    }
+  ]
+}

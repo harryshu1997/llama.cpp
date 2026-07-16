@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s9/schemas/v3/dispatch_decision.schema.json",
+  "title": "Dispatch decision (v3)",
+  "$comment": "Self-contained and FAIL-CLOSED. In v2 the dispatch requirement is an EXACT TUPLE set: each element is (weight_set_id, prepared_image_id, ready_certificate_id, residency_lease_id). verdict==DISPATCH is only representable when required_tuples and satisfied_tuples are BOTH non-empty AND equal as sets (checked by the bundle validator: E_TUPLE_MISMATCH otherwise), every epoch matches, every credit class is ok, correctness passed, and hard_gate_failures is empty. Any missing certificate/lease, an extra or absent tuple, a stale epoch, a failed credit, or a non-empty hard gate forces verdict==FALLBACK_SERVER with a non-dispatch reason. There is NO path from an unknown/partial input to DISPATCH.",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": {
+    "tuple": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "weight_set_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "prepared_image_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "ready_certificate_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "residency_lease_id": { "type": "string", "minLength": 1, "maxLength": 256 }
+      },
+      "required": ["weight_set_id", "prepared_image_id", "ready_certificate_id", "residency_lease_id"]
+    }
+  },
+  "properties": {
+    "schema_version": { "type": "integer", "const": 3 },
+    "kind": { "type": "string", "const": "dispatch_decision" },
+    "request_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "island_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "device_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "backend": { "type": "string", "enum": ["htp", "gpu", "cpu"] },
+    "route_epoch": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "required_tuples": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/tuple" } },
+    "satisfied_tuples": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/tuple" } },
+    "state_lease_id": { "type": ["string", "null"], "maxLength": 256 },
+    "epoch_match": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "boot": { "type": "boolean" },
+        "residency": { "type": "boolean" },
+        "route": { "type": "boolean" },
+        "state": { "type": "boolean" }
+      },
+      "required": ["boot", "residency", "route", "state"]
+    },
+    "credits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "weights_ok": { "type": "boolean" },
+        "derived_ok": { "type": "boolean" },
+        "scratch_ok": { "type": "boolean" },
+        "activations_ok": { "type": "boolean" },
+        "state_ok": { "type": "boolean" }
+      },
+      "required": ["weights_ok", "derived_ok", "scratch_ok", "activations_ok", "state_ok"]
+    },
+    "correctness_verdict": { "type": "string", "enum": ["pass", "fail", "blocked", "unknown"] },
+    "hard_gate_failures": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["unsupported_backend", "not_resident", "partial_on_disk", "state_pinned", "no_slack", "transfer_dominated", "thermal", "stale_epoch", "insufficient_ram", "interference", "credits_exhausted", "hash_mismatch", "unknown_profile", "lease_expired", "quarantined", "tuple_mismatch"] }
+    },
+    "verdict": { "type": "string", "enum": ["DISPATCH", "FALLBACK_SERVER"] },
+    "reason_code": { "type": "string", "enum": ["dispatch_ok", "unsupported_backend", "not_resident", "partial_on_disk", "state_pinned", "no_slack", "transfer_dominated", "thermal", "stale_epoch", "insufficient_ram", "interference", "credits_exhausted", "server_cheaper", "capacity_relief", "hash_mismatch", "unknown_profile", "duplicate_message", "reordered_message", "lease_expired", "quarantined", "tuple_mismatch"] }
+  },
+  "required": ["schema_version", "kind", "request_id", "island_id", "device_id", "backend", "route_epoch", "required_tuples", "satisfied_tuples", "state_lease_id", "epoch_match", "credits", "correctness_verdict", "hard_gate_failures", "verdict", "reason_code"],
+  "allOf": [
+    {
+      "$comment": "DISPATCH requires every scalar gate satisfied and non-empty tuple sets; the exact required==satisfied equality is enforced by the bundle validator (E_TUPLE_MISMATCH)",
+      "if": { "properties": { "verdict": { "const": "DISPATCH" } }, "required": ["verdict"] },
+      "then": {
+        "properties": {
+          "required_tuples": { "type": "array", "minItems": 1 },
+          "satisfied_tuples": { "type": "array", "minItems": 1 },
+          "correctness_verdict": { "const": "pass" },
+          "reason_code": { "const": "dispatch_ok" },
+          "hard_gate_failures": { "type": "array", "maxItems": 0 },
+          "epoch_match": {
+            "properties": {
+              "boot": { "const": true },
+              "residency": { "const": true },
+              "route": { "const": true },
+              "state": { "const": true }
+            }
+          },
+          "credits": {
+            "properties": {
+              "weights_ok": { "const": true },
+              "derived_ok": { "const": true },
+              "scratch_ok": { "const": true },
+              "activations_ok": { "const": true },
+              "state_ok": { "const": true }
+            }
+          }
+        }
+      }
+    },
+    {
+      "$comment": "a server fallback must NOT claim the dispatch_ok reason",
+      "if": { "properties": { "verdict": { "const": "FALLBACK_SERVER" } }, "required": ["verdict"] },
+      "then": { "properties": { "reason_code": { "not": { "const": "dispatch_ok" } } } }
+    }
+  ]
+}

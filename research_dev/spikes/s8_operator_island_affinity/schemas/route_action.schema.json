@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s8/schemas/route_action.schema.json",
+  "title": "Compound route action (v1) -- DRAFT-BLOCKED-BEFORE-V0c",
+  "$comment": "Self-contained. DRAFT-BLOCKED-BEFORE-V0c: the runtime lane-credit ledger, compound-action timing, and total tie-break are unresolved (see DECISION_CONTRACT). action_kind consistency is enforced: single_island (<=1 assignment/reservation), chain_a0 (>=2 assignments), corun_pair (certified=true, >=2 reservations), merged_batch (each assignment batches >=2 request_ids).",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": {
+    "dbid": { "type": "string", "pattern": "^[A-Za-z0-9_]+/[A-Za-z0-9_]+$" }
+  },
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "status": { "type": "string", "const": "DRAFT_BLOCKED_BEFORE_V0C" },
+    "action_id": { "type": "string", "minLength": 1 },
+    "action_kind": { "type": "string", "enum": ["single_island", "chain_a0", "corun_pair", "merged_batch"] },
+    "assignments": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "island_id": { "type": "string", "minLength": 1 },
+          "request_ids": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+          "device_backend_id": { "$ref": "#/$defs/dbid" },
+          "stage_index": { "type": "integer", "minimum": 0 }
+        },
+        "required": ["island_id", "request_ids", "device_backend_id", "stage_index"]
+      }
+    },
+    "reservations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "device_backend_id": { "$ref": "#/$defs/dbid" },
+          "queue_credits": { "type": "integer", "minimum": 1 },
+          "activation_bytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "state_slots": { "type": "integer", "minimum": 0 }
+        },
+        "required": ["device_backend_id", "queue_credits", "activation_bytes", "state_slots"]
+      }
+    },
+    "corun_pair_certified": { "type": ["boolean", "null"] },
+    "atomic_reservation_ok": { "type": "boolean" }
+  },
+  "required": ["schema_version", "status", "action_id", "action_kind", "assignments", "reservations", "atomic_reservation_ok"],
+  "allOf": [
+    {
+      "if": { "properties": { "action_kind": { "const": "single_island" } }, "required": ["action_kind"] },
+      "then": { "properties": { "assignments": { "maxItems": 1 }, "reservations": { "maxItems": 1 } } }
+    },
+    {
+      "if": { "properties": { "action_kind": { "const": "chain_a0" } }, "required": ["action_kind"] },
+      "then": { "properties": { "assignments": { "minItems": 2 } } }
+    },
+    {
+      "if": { "properties": { "action_kind": { "const": "corun_pair" } }, "required": ["action_kind"] },
+      "then": {
+        "required": ["corun_pair_certified"],
+        "properties": { "corun_pair_certified": { "const": true }, "reservations": { "minItems": 2 } }
+      }
+    },
+    {
+      "if": { "properties": { "action_kind": { "const": "merged_batch" } }, "required": ["action_kind"] },
+      "then": { "properties": { "assignments": { "items": { "properties": { "request_ids": { "minItems": 2 } } } } } }
+    }
+  ]
+}

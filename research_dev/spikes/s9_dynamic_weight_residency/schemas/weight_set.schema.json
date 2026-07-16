@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s9/schemas/weight_set.schema.json",
+  "title": "Atomic weight set (v1)",
+  "$comment": "Self-contained. An ATOMIC grouping of weight segments: a route may use the set ONLY when EVERY listed segment is VERIFIED_ON_DISK and materialized. set_digest = SHA-256 over the ascending-sorted segment sha256 strings joined by LF (recomputation checked by validate_manifests.py). total_bytes must equal the sum of segment bytes (semantic check). atomicity is a const so the all-or-none rule is machine-visible.",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": { "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" } },
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "weight_set_id": { "type": "string", "minLength": 1 },
+    "model_id": { "type": "string", "minLength": 1 },
+    "model_version": { "$ref": "#/$defs/sha256" },
+    "layout_version": { "type": "integer", "minimum": 1, "maximum": 1000000, "description": "canonical (backend-neutral) byte-layout version; bump on any repack/format change" },
+    "arch": { "type": "string", "minLength": 1 },
+    "dtype": { "type": "string", "enum": ["f16", "f32", "bf16"] },
+    "layer_range": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "start": { "type": "integer", "minimum": 0, "maximum": 100000 },
+        "end": { "type": "integer", "minimum": 1, "maximum": 100000 },
+        "n_layer_total": { "type": "integer", "minimum": 1, "maximum": 100000 }
+      },
+      "required": ["start", "end", "n_layer_total"]
+    },
+    "segments": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "segment_id": { "type": "string", "minLength": 1 },
+          "sha256": { "$ref": "#/$defs/sha256" },
+          "bytes": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
+        },
+        "required": ["segment_id", "sha256", "bytes"]
+      }
+    },
+    "set_digest": { "$ref": "#/$defs/sha256" },
+    "total_bytes": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "atomicity": { "type": "string", "const": "all_or_none" }
+  },
+  "required": ["schema_version", "weight_set_id", "model_id", "model_version", "layout_version", "arch", "dtype", "segments", "set_digest", "total_bytes", "atomicity"]
+}

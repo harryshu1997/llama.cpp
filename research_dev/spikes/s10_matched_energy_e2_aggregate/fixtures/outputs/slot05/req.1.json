@@ -1,0 +1,207 @@
+{
+  "arrival_us": 150930000,
+  "dispatched_us": 152000000,
+  "model_digest": "24f2b6068e47caa3df21ed535e26c8d299b4e933367a2ece137e710f31739dc8",
+  "request_id": "req.1",
+  "run_nonce": "run.tl.slot05",
+  "sampling_mode": "GREEDY",
+  "schema": "e2a.output.v2",
+  "seed": 1234,
+  "stop_reason": "EOS",
+  "timeline_id": "tl.slot05",
+  "token_events": [
+    {
+      "emitted_us": 152010416,
+      "token_id": 1000
+    },
+    {
+      "emitted_us": 152020833,
+      "token_id": 1001
+    },
+    {
+      "emitted_us": 152031250,
+      "token_id": 1002
+    },
+    {
+      "emitted_us": 152041666,
+      "token_id": 1003
+    },
+    {
+      "emitted_us": 152052083,
+      "token_id": 1004
+    },
+    {
+      "emitted_us": 152062500,
+      "token_id": 1005
+    },
+    {
+      "emitted_us": 152072916,
+      "token_id": 1006
+    },
+    {
+      "emitted_us": 152083333,
+      "token_id": 1007
+    },
+    {
+      "emitted_us": 152093750,
+      "token_id": 1008
+    },
+    {
+      "emitted_us": 152104166,
+      "token_id": 1009
+    },
+    {
+      "emitted_us": 152114583,
+      "token_id": 1010
+    },
+    {
+      "emitted_us": 152125000,
+      "token_id": 1011
+    },
+    {
+      "emitted_us": 152135416,
+      "token_id": 1012
+    },
+    {
+      "emitted_us": 152145833,
+      "token_id": 1013
+    },
+    {
+      "emitted_us": 152156250,
+      "token_id": 1014
+    },
+    {
+      "emitted_us": 152166666,
+      "token_id": 1015
+    },
+    {
+      "emitted_us": 152177083,
+      "token_id": 1016
+    },
+    {
+      "emitted_us": 152187500,
+      "token_id": 1017
+    },
+    {
+      "emitted_us": 152197916,
+      "token_id": 1018
+    },
+    {
+      "emitted_us": 152208333,
+      "token_id": 1019
+    },
+    {
+      "emitted_us": 152218750,
+      "token_id": 1020
+    },
+    {
+      "emitted_us": 152229166,
+      "token_id": 1021
+    },
+    {
+      "emitted_us": 152239583,
+      "token_id": 1022
+    },
+    {
+      "emitted_us": 152250000,
+      "token_id": 1023
+    },
+    {
+      "emitted_us": 152260416,
+      "token_id": 1024
+    },
+    {
+      "emitted_us": 152270833,
+      "token_id": 1025
+    },
+    {
+      "emitted_us": 152281250,
+      "token_id": 1026
+    },
+    {
+      "emitted_us": 152291666,
+      "token_id": 1027
+    },
+    {
+      "emitted_us": 152302083,
+      "token_id": 1028
+    },
+    {
+      "emitted_us": 152312500,
+      "token_id": 1029
+    },
+    {
+      "emitted_us": 152322916,
+      "token_id": 1030
+    },
+    {
+      "emitted_us": 152333333,
+      "token_id": 1031
+    },
+    {
+      "emitted_us": 152343750,
+      "token_id": 1032
+    },
+    {
+      "emitted_us": 152354166,
+      "token_id": 1033
+    },
+    {
+      "emitted_us": 152364583,
+      "token_id": 1034
+    },
+    {
+      "emitted_us": 152375000,
+      "token_id": 1035
+    },
+    {
+      "emitted_us": 152385416,
+      "token_id": 1036
+    },
+    {
+      "emitted_us": 152395833,
+      "token_id": 1037
+    },
+    {
+      "emitted_us": 152406250,
+      "token_id": 1038
+    },
+    {
+      "emitted_us": 152416666,
+      "token_id": 1039
+    },
+    {
+      "emitted_us": 152427083,
+      "token_id": 1040
+    },
+    {
+      "emitted_us": 152437500,
+      "token_id": 1041
+    },
+    {
+      "emitted_us": 152447916,
+      "token_id": 1042
+    },
+    {
+      "emitted_us": 152458333,
+      "token_id": 1043
+    },
+    {
+      "emitted_us": 152468750,
+      "token_id": 1044
+    },
+    {
+      "emitted_us": 152479166,
+      "token_id": 1045
+    },
+    {
+      "emitted_us": 152489583,
+      "token_id": 1046
+    },
+    {
+      "emitted_us": 152500000,
+      "token_id": 1047
+    }
+  ],
+  "tokenizer_digest": "506b9430fcaca1f74ff6232b9658164b8957e604ebb5a9b906a4a4123f077ee0"
+}

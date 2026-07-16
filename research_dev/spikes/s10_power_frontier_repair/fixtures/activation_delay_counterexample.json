@@ -1,0 +1,118 @@
+{
+  "activation_mem_bound_bytes": 150,
+  "batch_profiles": {},
+  "devices": {
+    "OP15": {
+      "active_mw": 2000,
+      "kind": "phone"
+    },
+    "SERVER": {
+      "active_mw": 300000,
+      "kind": "server"
+    }
+  },
+  "evidence": {
+    "purpose": "earliest placement exceeds the activation bound; a delayed placement is feasible",
+    "scope": "MECHANICS_ONLY"
+  },
+  "horizon_us": 30,
+  "instance_id": "activation_delay_counterexample",
+  "nodes": [
+    {
+      "batch_key": null,
+      "id": "p0",
+      "model_id": "m0",
+      "output_bytes": 100,
+      "predecessors": [],
+      "release_us": 0,
+      "request_id": "r0",
+      "routes": {
+        "SERVER": {
+          "duration_us": 4,
+          "extra_energy_nj": 0
+        }
+      },
+      "tokens": 1,
+      "weight_set_id": "wp"
+    },
+    {
+      "batch_key": null,
+      "id": "c0",
+      "model_id": "m0",
+      "output_bytes": 0,
+      "predecessors": [
+        "p0"
+      ],
+      "release_us": 0,
+      "request_id": "r0",
+      "routes": {
+        "OP15": {
+          "duration_us": 6,
+          "extra_energy_nj": 0
+        }
+      },
+      "tokens": 1,
+      "weight_set_id": "w0"
+    },
+    {
+      "batch_key": null,
+      "id": "p1",
+      "model_id": "m1",
+      "output_bytes": 100,
+      "predecessors": [],
+      "release_us": 0,
+      "request_id": "r1",
+      "routes": {
+        "SERVER": {
+          "duration_us": 4,
+          "extra_energy_nj": 0
+        }
+      },
+      "tokens": 1,
+      "weight_set_id": "wp"
+    },
+    {
+      "batch_key": null,
+      "id": "c1",
+      "model_id": "m1",
+      "output_bytes": 0,
+      "predecessors": [
+        "p1"
+      ],
+      "release_us": 0,
+      "request_id": "r1",
+      "routes": {
+        "OP15": {
+          "duration_us": 6,
+          "extra_energy_nj": 0
+        }
+      },
+      "tokens": 1,
+      "weight_set_id": "w1"
+    }
+  ],
+  "requests": [
+    {
+      "arrival_us": 0,
+      "deadline_us": 16,
+      "id": "r0",
+      "priority": 0,
+      "terminal_node": "c0"
+    },
+    {
+      "arrival_us": 0,
+      "deadline_us": 24,
+      "id": "r1",
+      "priority": 0,
+      "terminal_node": "c1"
+    }
+  ],
+  "schema_version": 2,
+  "server_power": {
+    "idle_entry_us": 0,
+    "p0_mw": 300000,
+    "p8_mw": 25000,
+    "transition_nj": 0,
+    "wake_us": 0
+  }
+}

@@ -1,0 +1,38 @@
+S9-V0 HISTORICAL REGRESSION EVIDENCE (frozen 2026-07-13)
+========================================================
+
+This directory freezes the pre-repair S9-V0 simulator and its output byte-for-byte.
+The original input config bytes were not preserved, so this artifact proves source
+provenance and stored-manifest self-consistency, not executable V0 replay.
+
+Frozen artifacts
+  residency_sim_v0.py                 pre-repair simulator (bundle version 1)
+  baseline_sweep.v0.manifest.json     its output for sim/scenarios/baseline_sweep.config.json
+
+Provenance hashes (the code hash and stored replay consistency are asserted)
+  V0_CODE_HASH    sha256:4491827b4d77fc6d513bf7608e90a293dbc518325c3b48eb18253288dd615313
+  V0_CONFIG_HASH  sha256:82d5acce21b43f3978555fddaac4697c20e448cca6e7d4b46c8e4f65f3b605d5 (recorded only; config absent)
+  V0_REPLAY       sha256:64fcad3b400024e9c3b87a748f1219c65477a9c8106e45ae670a2d3e28e59d1e
+  GIT_HEAD        933c722f69c7bea64113d68a8c7aad49527c8122
+
+Status of the V0 result (RELABELED after the review)
+  SUITES PASS; MECHANICS NOT YET CERTIFIED; CAPACITY UNPROVEN.
+
+  The V0 suites (53 schema fixtures + 23 semantic + 28 sim checks) all pass, but the
+  review found that several of the mechanics those suites claimed to prove were
+  fail-OPEN, so a green V0 suite did NOT certify the mechanics:
+    - one physical byte-charge conflated the canonical allocation with each backend
+      prepared image (no refcounted alias ownership);
+    - PreparedImage identity did not bind preparation algorithm / derived payload sha;
+    - dispatch eligibility was checked as scalar booleans, not as an exact required
+      == satisfied tuple set;
+    - the simulator divided ONE shared USB controller by the phone count instead of
+      selecting real per-device candidates, and had no D2H return leg;
+    - not every request reached an explicit terminal outcome (horizon / rejected);
+    - byte reservations were taken at publish time only, without per-stage acquire +
+      rollback, so a transient oversubscription could not be observed;
+    - the causal score summed microseconds, bytes, and permille into one dimensionless
+      integer (not a valid cost or documented lexicographic objective).
+
+  These are the exact items repaired in the V0-R round. This artifact stays frozen as
+  the "before" side of the red-before / green-after evidence.

@@ -1,0 +1,36 @@
+=== host source hashes (phone-pim + s10) ===
+84a8fb2b4a68ec384b9acfab3bb60fef85a381a7b0f81e5aae9a92a1f477a55a  examples/phone-pim/phone_pim_bench.cpp
+66cca1ffa5e6fc76d6dd57a4c77904b3adaa01c41a25d25a2f32f46f36b89869  examples/phone-pim/phone_pim_ffn.cpp
+0eb629e7e0ad380f004a915e4132fb5590622a2fdf142eef0dd3c2d49ebcf138  examples/phone-pim/phone_pim_host.cpp
+de9a7907de614d02f3c9d933dbcd847842fc353f907a4591932598d773aa7ff2  examples/phone-pim/phone_pim_protocol.cpp
+987d983a9f24f9184c560c45ef6be0eea118ecc0bf3a782fb5851cd6ee70dd66  examples/phone-pim/phone_pim_socket.cpp
+f4766ab93ba80a468aaf6c55da239418da82fee811207a5ff8a774bd3c691de0  examples/phone-pim/phone_pim_store.cpp
+8caadd13c8bfe82776363c646b690508ae61e101208c3c979ee20fa6d3e523ff  examples/phone-pim/phone_pim_worker.cpp
+9ae574745bcb27a7dcfdfea8c09920b0b4ed6124225819a2da3d3753e2eb32e9  examples/phone-pim/test_phone_pim_protocol.cpp
+cb894f47995765feb6376fd32dbee275129dc0ee7c63e3b98af5c0a6eb84fb4d  examples/phone-pim/test_phone_pim_store.cpp
+104b9a804862e0e69634925186cf9451c3dfee8245dd284384cc9bdb53b279e8  examples/phone-pim/test_phone_pim_stream.cpp
+7a0abe74651a0c905db99d93f76e71d96e713a2c217d9aba88586f3c5413574e  examples/phone-pim/phone_pim_ffn.h
+b44b74811dd7a34a4c330fafe2c614debb5276a31bdb5585cb76012e549a3ab9  examples/phone-pim/phone_pim_protocol.h
+022ff884c7a9a2980d8cff1f47a065ac1eac9018f36e47051db1f5fb3b005b42  examples/phone-pim/phone_pim_socket.h
+47726918caff0fac50ca41ed9e0b3d6171a7325001a95187292feeb10c4c1263  examples/phone-pim/phone_pim_store.h
+
+=== host binary hashes ===
+8e6af30ac45a6ea4105c8ee9704de34e77c72f96713173244758945ecb90654b  build-phone-pim/bin/llama-phone-pim-host
+3c87c328c89e6a0e22680573e0f1405270cc4f32909f53fa5d66532ffbeb16e1  build-phone-pim/bin/llama-phone-pim-worker
+ac4b8d21086dfb31663f25dae6efdc0a07b8c9adebc000aa674b89524ecde8d3  build-phone-pim/bin/llama-phone-pim-bench
+404ff69191dcbf7571363c45bb274435c54d1b2ae07905badf1c69fe4a286c6f  build-phone-pim-asan/bin/llama-phone-pim-host
+5f1a8d0564bdde2589a624c4b9f950a0003755be667ef545ad479db094e514a3  build-phone-pim-asan/bin/llama-phone-pim-worker
+
+=== android worker binary hash (build-snapdragon) ===
+c284227179b4048feef928f03f03e984cdbdae3bb2e90f25971b2c98cd764f27  build-snapdragon/bin/llama-phone-pim-worker
+
+=== deployed worker hash ON EACH PHONE ===
+--- 3C15AU002CL00000 ---
+--- 5ae7a43d ---
+=== deployed worker hashes (correct path) ===
+--- 3C15AU002CL00000 ---
+llama-phone-pim-worker: 0a50ca7299ee15a9eb9d524a0dadea40b467721f011a57b7f89617b1bd30e749  llama-phone-pim-worker
+llama-phone-pim-worker-meas: c284227179b4048feef928f03f03e984cdbdae3bb2e90f25971b2c98cd764f27  llama-phone-pim-worker-meas
+--- 5ae7a43d ---
+llama-phone-pim-worker: 0a50ca7299ee15a9eb9d524a0dadea40b467721f011a57b7f89617b1bd30e749  llama-phone-pim-worker
+llama-phone-pim-worker-meas: c284227179b4048feef928f03f03e984cdbdae3bb2e90f25971b2c98cd764f27  llama-phone-pim-worker-meas

@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "s10-e2a-aggregate-comparison-v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "aggregate_id",
+    "chain_id",
+    "set_id",
+    "plan_id",
+    "plan_sha256",
+    "plan_anchor_record_sha256",
+    "ledger_close_record_sha256",
+    "ledger_head_sha256",
+    "request_set_manifest_sha256",
+    "aggregate_method",
+    "anchor_kind",
+    "anchor_property",
+    "scope",
+    "instrument_kind",
+    "n_pairs",
+    "pair_contributions",
+    "control_energy_sum_nj",
+    "control_uncertainty_sum_nj",
+    "treatment_energy_sum_nj",
+    "treatment_uncertainty_sum_nj",
+    "control_lower_nj",
+    "treatment_upper_nj",
+    "conservative_margin_nj",
+    "boundary_delta_nj",
+    "server_wall_delta_nj",
+    "phone_plus_external_break_even_budget_nj",
+    "conservative_relief",
+    "meets_ten_percent_gate",
+    "result_label",
+    "reason_code",
+    "record_sha256"
+  ],
+  "$defs": {
+    "ident": {"type": "string", "minLength": 1, "maxLength": 256,
+              "pattern": "^[\\x21-\\x7e]+$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "uint": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+    "int": {"type": "integer", "minimum": -9007199254740991,
+            "maximum": 9007199254740991},
+    "nullable_int": {
+      "oneOf": [{"type": "null"},
+                {"type": "integer", "minimum": -9007199254740991,
+                 "maximum": 9007199254740991}]
+    }
+  },
+  "properties": {
+    "schema_version": {"const": 2},
+    "kind": {"const": "AggregateComparison"},
+    "aggregate_id": {"$ref": "#/$defs/ident"},
+    "chain_id": {"$ref": "#/$defs/ident"},
+    "set_id": {"$ref": "#/$defs/ident"},
+    "plan_id": {"$ref": "#/$defs/ident"},
+    "plan_sha256": {"$ref": "#/$defs/sha256"},
+    "plan_anchor_record_sha256": {"$ref": "#/$defs/sha256"},
+    "ledger_close_record_sha256": {"$ref": "#/$defs/sha256"},
+    "ledger_head_sha256": {"$ref": "#/$defs/sha256"},
+    "request_set_manifest_sha256": {"$ref": "#/$defs/sha256"},
+    "aggregate_method": {"const": "SUM_ALL_PAIRS_V1"},
+    "anchor_kind": {
+      "enum": ["RFC3161_TSA", "TRANSPARENCY_LOG_INCLUSION", "TPM_NV_QUOTE",
+               "SELF_SIGNED_TSA", "LOCAL_HMAC", "LOCAL_GPG_SIGNATURE",
+               "GIT_COMMIT_LOCAL", "LOCAL_CLOCK_ASSERTION", "BMC_EVENT_LOG",
+               "SYNTHETIC_ANCHOR"]
+    },
+    "anchor_property": {
+      "enum": ["NONE", "ORDERING_ONLY", "ORDERING_AND_ENUMERABLE"]
+    },
+    "scope": {"enum": ["GPU_BOARD", "SERVER_WALL"]},
+    "instrument_kind": {
+      "enum": ["NVML_BOARD", "RAPL_PACKAGE", "EXTERNAL_WALL_METER",
+               "BMC_INPUT_POWER", "SYNTHETIC"]
+    },
+    "n_pairs": {"type": "integer", "minimum": 8, "maximum": 256},
+    "pair_contributions": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["pair_index", "control_timeline_id",
+                     "control_record_sha256", "treatment_timeline_id",
+                     "treatment_record_sha256", "control_energy_nj",
+                     "control_uncertainty_nj", "treatment_energy_nj",
+                     "treatment_uncertainty_nj", "first_executed_role"],
+        "properties": {
+          "pair_index": {"$ref": "#/$defs/uint"},
+          "control_timeline_id": {"$ref": "#/$defs/ident"},
+          "control_record_sha256": {"$ref": "#/$defs/sha256"},
+          "treatment_timeline_id": {"$ref": "#/$defs/ident"},
+          "treatment_record_sha256": {"$ref": "#/$defs/sha256"},
+          "control_energy_nj": {"$ref": "#/$defs/uint"},
+          "control_uncertainty_nj": {"$ref": "#/$defs/uint"},
+          "treatment_energy_nj": {"$ref": "#/$defs/uint"},
+          "treatment_uncertainty_nj": {"$ref": "#/$defs/uint"},
+          "first_executed_role": {
+            "enum": ["OPTIMIZED_SERVER_ONLY_CONTROL", "Q_PIM_TREATMENT"]
+          }
+        }
+      }
+    },
+    "control_energy_sum_nj": {"$ref": "#/$defs/uint"},
+    "control_uncertainty_sum_nj": {"$ref": "#/$defs/uint"},
+    "treatment_energy_sum_nj": {"$ref": "#/$defs/uint"},
+    "treatment_uncertainty_sum_nj": {"$ref": "#/$defs/uint"},
+    "control_lower_nj": {"$ref": "#/$defs/int"},
+    "treatment_upper_nj": {"$ref": "#/$defs/int"},
+    "conservative_margin_nj": {"$ref": "#/$defs/int"},
+    "boundary_delta_nj": {"$ref": "#/$defs/int"},
+    "server_wall_delta_nj": {"$ref": "#/$defs/nullable_int"},
+    "phone_plus_external_break_even_budget_nj": {"$ref": "#/$defs/nullable_int"},
+    "conservative_relief": {"type": "boolean"},
+    "meets_ten_percent_gate": {"type": "boolean"},
+    "result_label": {
+      "enum": ["GPU_BOARD_RELIEF_ONLY_TOTAL_ENERGY_BLOCKED",
+               "SERVER_RELIEF_PASS_TOTAL_ENERGY_BLOCKED",
+               "RELIEF_FAIL",
+               "MEASUREMENT_INVALID"]
+    },
+    "reason_code": {"$ref": "#/$defs/ident"},
+    "record_sha256": {"$ref": "#/$defs/sha256"}
+  }
+}

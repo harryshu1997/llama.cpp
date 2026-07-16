@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s9/schemas/device_inventory.schema.json",
+  "title": "Device inventory + physical-byte accounting (v1)",
+  "$comment": "Self-contained. One record per physical device. lpddr accounting MUST partition the LPDDR budget exactly: weights_resident + derived_images + scratch + activations + mutable_state + free == lpddr.total_bytes (semantic check in validate_manifests.py); no field may exceed the total. soc is an enum so an UNKNOWN PROFILE fails closed. temp_milli_c is an integer (milli-Celsius) so device records carry no floats. Staleness is measured on the HOST receiver clock (receiver_ts_us), never the phone's own clock.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "device_id": { "type": "string", "minLength": 1 },
+    "soc": { "type": "string", "enum": ["op12", "op15"] },
+    "boot_epoch": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "status_seq": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "backends": { "type": "array", "minItems": 1, "items": { "type": "string", "enum": ["htp", "gpu", "cpu"] } },
+    "ufs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "total_bytes": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "free_bytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+      },
+      "required": ["total_bytes", "free_bytes"]
+    },
+    "lpddr": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "total_bytes": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
+      },
+      "required": ["total_bytes"]
+    },
+    "physical_byte_accounting": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "weights_resident": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "derived_images": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "scratch": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "activations": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "mutable_state": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "free": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+      },
+      "required": ["weights_resident", "derived_images", "scratch", "activations", "mutable_state", "free"]
+    },
+    "thermal": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "temp_milli_c": { "type": "integer", "minimum": -50000, "maximum": 200000 },
+        "slope_milli_c_per_s": { "type": "integer", "minimum": -1000000, "maximum": 1000000 },
+        "eligible": { "type": "boolean" }
+      },
+      "required": ["temp_milli_c", "eligible"]
+    },
+    "link": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "goodput_bytes_per_s": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "rtt_us": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "measured": { "type": "boolean", "description": "true only if goodput was measured on this link; false => symbolic/assumed" }
+      },
+      "required": ["goodput_bytes_per_s", "rtt_us", "measured"]
+    },
+    "accepting": { "type": "boolean" },
+    "draining": { "type": "boolean" },
+    "stale": { "type": "boolean" },
+    "receiver_ts_us": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+  },
+  "required": ["schema_version", "device_id", "soc", "boot_epoch", "status_seq", "backends", "ufs", "lpddr", "physical_byte_accounting", "thermal", "link", "accepting", "draining", "stale", "receiver_ts_us"]
+}

@@ -1,0 +1,60 @@
+{
+  "board_uuids": [
+    "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f"
+  ],
+  "build_revision": "synthetic-e2a-build-0",
+  "clock_epoch_id": "boot-synthetic-e2a-0000",
+  "completed_work": 3,
+  "device_identity": "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f",
+  "energy_nj": 2000000000,
+  "excluded_rails": [
+    "SERVER/USB_VBUS",
+    "PHONE/BATTERY"
+  ],
+  "execution_artifact_id": "execution.tl.slot03",
+  "execution_artifact_path": "execution/tl.slot03.json",
+  "execution_artifact_sha256": "003bfc14bddb3a41369256fe67e4b7ed9c0e58f5dadf9047df4930a3f54a3d31",
+  "included_rails": [
+    "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f/BOARD"
+  ],
+  "independent_updates": 199,
+  "instrument_identity": "synthetic-meter-0",
+  "instrument_kind": "SYNTHETIC",
+  "instrument_label": "synthetic mechanics meter",
+  "kind": "RealizedTimeline",
+  "marker_end_us": 120000000,
+  "marker_start_us": 100000000,
+  "max_gap_us": 100000,
+  "normalizer_digest": "4100d28c3b594518300d81a645eca7ddda04d43a3bd436ed801278e2b6b5142c",
+  "offered_work": 3,
+  "outcomes": {
+    "canceled": 0,
+    "met": 3,
+    "rejected": 0,
+    "tardy": 0
+  },
+  "paid_payload_sha256": "0e5249845794d48df2c32e815916dc63b02e7466373cfc9dcc1f6226df0f0e55",
+  "policy_digest": "ded3a74d106b9aa02407a840d8d5d985260968fcaed3ca1d05c6f1ca5f287a4f",
+  "provenance": "SYNTHETIC",
+  "raw_artifact_id": "raw.tl.slot03",
+  "raw_artifact_path": "raw/tl.slot03.json",
+  "raw_artifact_sha256": "4802aa4f18f5e081fbbe1f49918ea56841b40bf76c1987243bc530aac46c6505",
+  "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
+  "record_sha256": "fa12313614a7d3f716f44819e0cd2e801a08633e76a0a15859181cdbe02aaed1",
+  "role": "OPTIMIZED_SERVER_ONLY_CONTROL",
+  "route_schedule_digest": "e65561fa243864623acf46ab24168a96ffe52aa6feab26507f5396f8af8b43aa",
+  "run_nonce": "run.tl.slot03",
+  "sample_count": 201,
+  "schema_version": 1,
+  "scope": "GPU_BOARD",
+  "slo_policy_digest": "17972eecf35e4c0bf8b8238c232753dd60adc68e112c0d9b40a7813cefd4a192",
+  "source_revision": "933c722f6",
+  "status": "OK",
+  "synchronization": "MONOTONIC_SHARED",
+  "timeline_id": "tl.slot03",
+  "trace_digest": "edbc9fb8c78b14b155f3f81b5fb02fd95b24f8f00a6c51001e6a593bbeb38b83",
+  "uncertainty_nj": 20000000,
+  "window_end_us": 120000000,
+  "window_start_us": 100000000,
+  "workload_digest": "d5fc40efce7c5d511d2cdc724f2e2857e21bea8dd3bab648916b81e63c86f7f8"
+}

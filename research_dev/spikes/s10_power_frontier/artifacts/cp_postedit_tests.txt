@@ -1,0 +1,10 @@
+=== post-edit RELEASE ctest ===
+
+100% tests passed, 0 tests failed out of 3
+
+Total Test time (real) =   1.15 sec
+=== post-edit ASAN ctest ===
+
+100% tests passed, 0 tests failed out of 3
+
+Total Test time (real) =   1.21 sec
