@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "s10-e2a-lifecycle-record-v4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "lifecycle_id",
+    "set_id",
+    "timeline_id",
+    "run_nonce",
+    "clock_epoch_id",
+    "window_start_us",
+    "window_end_us",
+    "entry_state_digest",
+    "exit_state_digest",
+    "drain_acknowledged_us",
+    "actions",
+    "record_sha256"
+  ],
+  "$defs": {
+    "ident": {"type": "string", "minLength": 1, "maxLength": 256,
+              "pattern": "^[\\x21-\\x7e]+$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "uint": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+    "nullable_ident": {
+      "oneOf": [{"type": "null"}, {"type": "string", "minLength": 1,
+                                   "maxLength": 256,
+                                   "pattern": "^[\\x21-\\x7e]+$"}]
+    }
+  },
+  "properties": {
+    "schema_version": {"const": 4},
+    "kind": {"const": "LifecycleRecord"},
+    "lifecycle_id": {"$ref": "#/$defs/ident"},
+    "set_id": {"$ref": "#/$defs/ident"},
+    "timeline_id": {"$ref": "#/$defs/ident"},
+    "run_nonce": {"$ref": "#/$defs/ident"},
+    "clock_epoch_id": {"$ref": "#/$defs/ident"},
+    "window_start_us": {"$ref": "#/$defs/uint"},
+    "window_end_us": {"$ref": "#/$defs/uint"},
+    "entry_state_digest": {"$ref": "#/$defs/sha256"},
+    "exit_state_digest": {"$ref": "#/$defs/sha256"},
+    "drain_acknowledged_us": {"$ref": "#/$defs/uint"},
+    "actions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8192,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["action_id", "action_kind", "state", "enqueue_us",
+                     "start_us", "end_us", "ack_us", "lease_id",
+                     "parent_action_id", "request_ids",
+                     "route_schedule_digest", "execution_domain",
+                     "device_identity", "backend_kind",
+                     "operator_island_digest", "model_digest",
+                     "input_bytes", "output_bytes"],
+        "properties": {
+          "action_id": {"$ref": "#/$defs/ident"},
+          "action_kind": {
+            "enum": ["PREFETCH", "WARMUP", "H2D", "D2H", "EXEC", "RESULT_EMIT",
+                     "CANCEL", "CLEANUP", "LEASE_ACQUIRE", "LEASE_RELEASE",
+                     "QUEUE_SUBMIT", "QUEUE_DRAIN"]
+          },
+          "state": {
+            "enum": ["DECLARED", "ENQUEUED", "RUNNING", "IN_FLIGHT", "COMPLETE",
+                     "CANCELED", "FAILED"]
+          },
+          "enqueue_us": {"$ref": "#/$defs/uint"},
+          "start_us": {"$ref": "#/$defs/uint"},
+          "end_us": {"$ref": "#/$defs/uint"},
+          "ack_us": {"$ref": "#/$defs/uint"},
+          "lease_id": {"$ref": "#/$defs/nullable_ident"},
+          "parent_action_id": {"$ref": "#/$defs/nullable_ident"},
+          "request_ids": {
+            "type": "array", "maxItems": 4096, "uniqueItems": true,
+            "items": {"$ref": "#/$defs/ident"}
+          },
+          "route_schedule_digest": {"$ref": "#/$defs/sha256"},
+          "execution_domain": {
+            "enum": ["SERVER", "PHONE", "TRANSPORT", "CONTROL"]
+          },
+          "device_identity": {"$ref": "#/$defs/ident"},
+          "backend_kind": {
+            "enum": ["HOST_CPU", "CUDA", "HTP", "OPENCL", "USB_BULK",
+                     "CONTROL"]
+          },
+          "operator_island_digest": {
+            "oneOf": [{"type": "null"}, {"$ref": "#/$defs/sha256"}]
+          },
+          "model_digest": {
+            "oneOf": [{"type": "null"}, {"$ref": "#/$defs/sha256"}]
+          },
+          "input_bytes": {"$ref": "#/$defs/uint"},
+          "output_bytes": {"$ref": "#/$defs/uint"}
+        }
+      }
+    },
+    "record_sha256": {"$ref": "#/$defs/sha256"}
+  }
+}

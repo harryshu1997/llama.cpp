@@ -1,6 +1,6 @@
 # Mixed-Workload Trace Contract
 
-Status: authoritative trace-source and normalization contract as of 2026-07-12.
+Status: authoritative trace-source and normalization contract as of 2026-07-17.
 
 ## 1. Honest trace policy
 
@@ -210,6 +210,28 @@ Recommended `mix-v1` lanes are:
 The headline report must also include each real source replay separately so a
 result does not depend only on synthetic superposition.
 
+### S14 initial execution freeze
+
+The first S14 scheduler workload uses exactly two lanes:
+
+1. BurstGPT v2.0 generation; and
+2. RAGPulse RAG.
+
+The source-component normalization gate passes, but the deterministic `mix-v1`
+composition and structural mixed replay are not implemented yet. They are S14-
+CP0, before scheduler or device results. The transform must follow the frozen S8
+integer ordering and hash rules and label the output `semi_synthetic`. Each real
+source replay remains a mandatory control.
+
+RAGPulse identifies stages and demand but does not provide executable text or
+measured component times. Synthetic payload text must be labeled synthetic, and
+latency comes only from a matching measured profile. The preferred second phone
+service is the BGE embedding/reranking funnel. It enters `mix-v1` execution only
+after backend support, CPU-reference correctness, no-fallback, boundary, memory,
+and latency gates pass. If it does not pass, S14 stops with
+`TRACE_OR_SERVICE_BLOCKED`; a symbolic second model is not a real mixed-service
+result.
+
 ## 6. Synthetic deadline and priority sensitivity
 
 Public sources do not expose true priority or deadlines. When needed, define an
@@ -250,3 +272,8 @@ MW0 passes only when:
 - filtering and context-limit exclusions are reported rather than clipped;
 - source licenses and checksums are recorded; and
 - a server-only replay consumes the normalized file without reordering it.
+
+Current status: the separate BurstGPT and RAGPulse component rows satisfy the
+normalization/structural portion, but the mixed composition, executable second
+service, and exact measured-profile coverage remain open. Therefore MW0/S14-CP0
+is not complete.

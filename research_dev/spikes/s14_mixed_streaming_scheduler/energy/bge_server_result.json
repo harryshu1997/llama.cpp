@@ -1,0 +1,417 @@
+{
+  "schema": "s14-bge-server-control-v2",
+  "checkpoint": "A",
+  "scope": "A6000_GPU_BOARD BGE encode latency/throughput; phone latency+energy OUT OF SCOPE",
+  "selected_gpu_uuid": "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f",
+  "second_gpu_uuid": "GPU-431a4567-fa90-7a73-625a-2ee6e7b5eaaf",
+  "second_gpu_idle_at_report": true,
+  "model": "bge-small-en-v1.5-f16",
+  "model_sha256": "4cd429b83d2805e4028d96f6174b153bc87657808ba9f3b3c4f84d374b481e03",
+  "flash_attn": "off (explicit softmax; no CPU fallback)",
+  "bench": {
+    "procs": 7,
+    "reps_per_proc": 20,
+    "warmup": 5,
+    "method": "env-gated BGEPROF loop; load/tokenize/warmup excluded"
+  },
+  "correctness_cuda_vs_cpu": {
+    "32": {
+      "cuda_vs_cpu_cosine": 0.999999,
+      "n_embd": 384,
+      "seq_len_exact": 31
+    },
+    "128": {
+      "cuda_vs_cpu_cosine": 0.999999,
+      "n_embd": 384,
+      "seq_len_exact": 132
+    },
+    "512": {
+      "cuda_vs_cpu_cosine": 1.0,
+      "n_embd": 384,
+      "seq_len_exact": 499
+    }
+  },
+  "cosine_gate": 0.999,
+  "shapes": [
+    {
+      "seq_len_target": 32,
+      "seq_len_exact": 31,
+      "batch": 1,
+      "ok_procs": 7,
+      "n_samples": 140,
+      "lat_us_p50": 1224.65,
+      "lat_us_p95": 1255.63,
+      "lat_us_p99": 1262.59,
+      "lat_us_mean": 1229.53,
+      "cov": 0.0103,
+      "throughput_enc_s": 816.6
+    },
+    {
+      "seq_len_target": 32,
+      "seq_len_exact": 31,
+      "batch": 2,
+      "ok_procs": 7,
+      "n_samples": 140,
+      "lat_us_p50": 1424.74,
+      "lat_us_p95": 1466.13,
+      "lat_us_p99": 1476.88,
+      "lat_us_mean": 1430.44,
+      "cov": 0.0111,
+      "throughput_enc_s": 1403.8
+    },
+    {
+      "seq_len_target": 32,
+      "seq_len_exact": 31,
+      "batch": 4,
+      "ok_procs": 7,
+      "n_samples": 140,
+      "lat_us_p50": 1503.44,
+      "lat_us_p95": 1528.77,
+      "lat_us_p99": 1553.55,
+      "lat_us_mean": 1506.77,
+      "cov": 0.0085,
+      "throughput_enc_s": 2660.6
+    },
+    {
+      "seq_len_target": 32,
+      "seq_len_exact": 31,
+      "batch": 8,
+      "ok_procs": 7,
+      "n_samples": 140,
+      "lat_us_p50": 2093.77,
+      "lat_us_p95": 2150.01,
+      "lat_us_p99": 2180.68,
+      "lat_us_mean": 2104.31,
+      "cov": 0.0113,
+      "throughput_enc_s": 3820.9
+    },
+    {
+      "seq_len_target": 32,
+      "seq_len_exact": 31,
+      "batch": 16,
+      "ok_procs": 7,
+      "n_samples": 140,
+      "lat_us_p50": 3780.33,
+      "lat_us_p95": 3872.27,
+      "lat_us_p99": 3915.98,
+      "lat_us_mean": 3787.31,
+      "cov": 0.0098,
+      "throughput_enc_s": 4232.4
+    },
+    {
+      "seq_len_target": 32,
+      "seq_len_exact": 31,
+      "batch": 32,
+      "ok_procs": 7,
+      "n_samples": 140,
+      "lat_us_p50": 10515.29,
+      "lat_us_p95": 10858.75,
+      "lat_us_p99": 10947.81,
+      "lat_us_mean": 10575.98,
+      "cov": 0.0152,
+      "throughput_enc_s": 3043.2
+    },
+    {
+      "seq_len_target": 128,
+      "seq_len_exact": 132,
+      "batch": 1,
+      "ok_procs": 7,
+      "n_samples": 140,
+      "lat_us_p50": 1544.34,
+      "lat_us_p95": 1583.72,
+      "lat_us_p99": 1588.06,
+      "lat_us_mean": 1529.24,
+      "cov": 0.024,
+      "throughput_enc_s": 647.5
+    },
+    {
+      "seq_len_target": 128,
+      "seq_len_exact": 132,
+      "batch": 2,
+      "ok_procs": 7,
+      "n_samples": 140,
+      "lat_us_p50": 2313.97,
+      "lat_us_p95": 2377.12,
+      "lat_us_p99": 2413.65,
+      "lat_us_mean": 2327.81,
+      "cov": 0.0121,
+      "throughput_enc_s": 864.3
+    },
+    {
+      "seq_len_target": 128,
+      "seq_len_exact": 132,
+      "batch": 4,
+      "ok_procs": 7,
+      "n_samples": 140,
+      "lat_us_p50": 5108.62,
+      "lat_us_p95": 5306.11,
+      "lat_us_p99": 5340.38,
+      "lat_us_mean": 5141.35,
+      "cov": 0.0146,
+      "throughput_enc_s": 783.0
+    },
+    {
+      "seq_len_target": 128,
+      "seq_len_exact": 132,
+      "batch": 8,
+      "ok_procs": 7,
+      "n_samples": 140,
+      "lat_us_p50": 12621.95,
+      "lat_us_p95": 12809.91,
+      "lat_us_p99": 12899.33,
+      "lat_us_mean": 12630.52,
+      "cov": 0.0067,
+      "throughput_enc_s": 633.8
+    },
+    {
+      "seq_len_target": 128,
+      "seq_len_exact": 132,
+      "batch": 16,
+      "ok_procs": 7,
+      "n_samples": 140,
+      "lat_us_p50": 34055.06,
+      "lat_us_p95": 34298.01,
+      "lat_us_p99": 34427.19,
+      "lat_us_mean": 34063.65,
+      "cov": 0.0039,
+      "throughput_enc_s": 469.8
+    },
+    {
+      "seq_len_target": 128,
+      "seq_len_exact": 132,
+      "batch": 32,
+      "ok_procs": 7,
+      "n_samples": 140,
+      "lat_us_p50": 119245.23,
+      "lat_us_p95": 119930.46,
+      "lat_us_p99": 122025.51,
+      "lat_us_mean": 119405.46,
+      "cov": 0.0066,
+      "throughput_enc_s": 268.4
+    },
+    {
+      "seq_len_target": 512,
+      "seq_len_exact": 499,
+      "batch": 1,
+      "ok_procs": 7,
+      "n_samples": 140,
+      "lat_us_p50": 3880.41,
+      "lat_us_p95": 3965.01,
+      "lat_us_p99": 4012.5,
+      "lat_us_mean": 3893.9,
+      "cov": 0.0092,
+      "throughput_enc_s": 257.7
+    },
+    {
+      "seq_len_target": 512,
+      "seq_len_exact": 499,
+      "batch": 2,
+      "ok_procs": 7,
+      "n_samples": 140,
+      "lat_us_p50": 11141.5,
+      "lat_us_p95": 11282.13,
+      "lat_us_p99": 11336.74,
+      "lat_us_mean": 11150.03,
+      "cov": 0.006,
+      "throughput_enc_s": 179.5
+    },
+    {
+      "seq_len_target": 512,
+      "seq_len_exact": 499,
+      "batch": 4,
+      "ok_procs": 7,
+      "n_samples": 140,
+      "lat_us_p50": 29821.31,
+      "lat_us_p95": 30174.01,
+      "lat_us_p99": 30340.52,
+      "lat_us_mean": 29845.44,
+      "cov": 0.0067,
+      "throughput_enc_s": 134.1
+    },
+    {
+      "seq_len_target": 512,
+      "seq_len_exact": 499,
+      "batch": 8,
+      "ok_procs": 7,
+      "n_samples": 140,
+      "lat_us_p50": 99240.54,
+      "lat_us_p95": 99865.28,
+      "lat_us_p99": 100729.86,
+      "lat_us_mean": 99322.69,
+      "cov": 0.0032,
+      "throughput_enc_s": 80.6
+    },
+    {
+      "seq_len_target": 512,
+      "seq_len_exact": 499,
+      "batch": 16,
+      "ok_procs": 7,
+      "n_samples": 140,
+      "lat_us_p50": 381659.51,
+      "lat_us_p95": 390197.59,
+      "lat_us_p99": 399876.92,
+      "lat_us_mean": 383198.6,
+      "cov": 0.0108,
+      "throughput_enc_s": 41.9
+    },
+    {
+      "seq_len_target": 512,
+      "seq_len_exact": 499,
+      "batch": 32,
+      "ok_procs": 7,
+      "n_samples": 140,
+      "lat_us_p50": 1464029.67,
+      "lat_us_p95": 1492843.65,
+      "lat_us_p99": 1512492.62,
+      "lat_us_mean": 1468258.82,
+      "cov": 0.0087,
+      "throughput_enc_s": 21.9
+    }
+  ],
+  "throughput_knee_measured": {
+    "32": {
+      "knee_batch_95pct": 16
+    },
+    "128": {
+      "knee_batch_95pct": 2
+    },
+    "512": {
+      "knee_batch_95pct": 1
+    }
+  },
+  "roofline_analytic": {
+    "a6000_ridge_flop_per_byte": 201.8,
+    "weight_bytes_f16": 42467328,
+    "note": "AI = fwd FLOPs / weight bytes; compute_bound iff AI > ridge. Independent of the measured throughput curve.",
+    "points": [
+      {
+        "seq_len": 32,
+        "batch": 1,
+        "fwd_gflops": 1.38,
+        "arith_intensity": 32.4,
+        "regime": "memory_bound"
+      },
+      {
+        "seq_len": 32,
+        "batch": 2,
+        "fwd_gflops": 2.76,
+        "arith_intensity": 64.9,
+        "regime": "memory_bound"
+      },
+      {
+        "seq_len": 32,
+        "batch": 4,
+        "fwd_gflops": 5.51,
+        "arith_intensity": 129.8,
+        "regime": "memory_bound"
+      },
+      {
+        "seq_len": 32,
+        "batch": 8,
+        "fwd_gflops": 11.02,
+        "arith_intensity": 259.6,
+        "regime": "compute_bound"
+      },
+      {
+        "seq_len": 32,
+        "batch": 16,
+        "fwd_gflops": 22.05,
+        "arith_intensity": 519.1,
+        "regime": "compute_bound"
+      },
+      {
+        "seq_len": 32,
+        "batch": 32,
+        "fwd_gflops": 44.09,
+        "arith_intensity": 1038.2,
+        "regime": "compute_bound"
+      },
+      {
+        "seq_len": 128,
+        "batch": 1,
+        "fwd_gflops": 5.74,
+        "arith_intensity": 135.1,
+        "regime": "memory_bound"
+      },
+      {
+        "seq_len": 128,
+        "batch": 2,
+        "fwd_gflops": 11.48,
+        "arith_intensity": 270.2,
+        "regime": "compute_bound"
+      },
+      {
+        "seq_len": 128,
+        "batch": 4,
+        "fwd_gflops": 22.95,
+        "arith_intensity": 540.4,
+        "regime": "compute_bound"
+      },
+      {
+        "seq_len": 128,
+        "batch": 8,
+        "fwd_gflops": 45.9,
+        "arith_intensity": 1080.9,
+        "regime": "compute_bound"
+      },
+      {
+        "seq_len": 128,
+        "batch": 16,
+        "fwd_gflops": 91.8,
+        "arith_intensity": 2161.8,
+        "regime": "compute_bound"
+      },
+      {
+        "seq_len": 128,
+        "batch": 32,
+        "fwd_gflops": 183.61,
+        "arith_intensity": 4323.6,
+        "regime": "compute_bound"
+      },
+      {
+        "seq_len": 512,
+        "batch": 1,
+        "fwd_gflops": 26.58,
+        "arith_intensity": 625.8,
+        "regime": "compute_bound"
+      },
+      {
+        "seq_len": 512,
+        "batch": 2,
+        "fwd_gflops": 53.15,
+        "arith_intensity": 1251.6,
+        "regime": "compute_bound"
+      },
+      {
+        "seq_len": 512,
+        "batch": 4,
+        "fwd_gflops": 106.3,
+        "arith_intensity": 2503.1,
+        "regime": "compute_bound"
+      },
+      {
+        "seq_len": 512,
+        "batch": 8,
+        "fwd_gflops": 212.6,
+        "arith_intensity": 5006.2,
+        "regime": "compute_bound"
+      },
+      {
+        "seq_len": 512,
+        "batch": 16,
+        "fwd_gflops": 425.2,
+        "arith_intensity": 10012.4,
+        "regime": "compute_bound"
+      },
+      {
+        "seq_len": 512,
+        "batch": 32,
+        "fwd_gflops": 850.4,
+        "arith_intensity": 20024.9,
+        "regime": "compute_bound"
+      }
+    ]
+  },
+  "failures": [],
+  "n_failures": 0
+}

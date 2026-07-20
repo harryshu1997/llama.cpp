@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "s10-e2a-request-set-manifest-v4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "manifest_id",
+    "set_id",
+    "corpus_sha256",
+    "sampler_digest",
+    "entries",
+    "work_vector",
+    "record_sha256"
+  ],
+  "$defs": {
+    "ident": {"type": "string", "minLength": 1, "maxLength": 256,
+              "pattern": "^[\\x21-\\x7e]+$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "uint": {"type": "integer", "minimum": 0, "maximum": 9007199254740991}
+  },
+  "properties": {
+    "schema_version": {"const": 4},
+    "kind": {"const": "RequestSetManifest"},
+    "manifest_id": {"$ref": "#/$defs/ident"},
+    "set_id": {"$ref": "#/$defs/ident"},
+    "corpus_sha256": {"$ref": "#/$defs/sha256"},
+    "sampler_digest": {"$ref": "#/$defs/sha256"},
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4096,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["request_id", "input_sha256", "prompt_token_ids_sha256",
+                     "prompt_tokens", "arrival_us", "model_digest", "tokenizer_digest",
+                     "sampling_mode", "seed", "max_tokens", "stop_set_digest",
+                     "decode_params_digest", "slo_class", "slo_deadline_us",
+                     "length_tolerance_tokens", "min_prefix_tokens",
+                     "entry_sha256"],
+        "properties": {
+          "request_id": {"$ref": "#/$defs/ident"},
+          "input_sha256": {"$ref": "#/$defs/sha256"},
+          "prompt_token_ids_sha256": {"$ref": "#/$defs/sha256"},
+          "prompt_tokens": {"type": "integer", "minimum": 1,
+                            "maximum": 1048576},
+          "arrival_us": {"$ref": "#/$defs/uint"},
+          "model_digest": {"$ref": "#/$defs/sha256"},
+          "tokenizer_digest": {"$ref": "#/$defs/sha256"},
+          "sampling_mode": {"enum": ["GREEDY", "SAMPLED"]},
+          "seed": {"$ref": "#/$defs/uint"},
+          "max_tokens": {"type": "integer", "minimum": 1, "maximum": 1048576},
+          "stop_set_digest": {"$ref": "#/$defs/sha256"},
+          "decode_params_digest": {"$ref": "#/$defs/sha256"},
+          "slo_class": {"$ref": "#/$defs/ident"},
+          "slo_deadline_us": {"type": "integer", "minimum": 1,
+                              "maximum": 9007199254740991},
+          "length_tolerance_tokens": {"type": "integer", "minimum": 0,
+                                      "maximum": 1048576},
+          "min_prefix_tokens": {"$ref": "#/$defs/uint"},
+          "entry_sha256": {"$ref": "#/$defs/sha256"}
+        }
+      }
+    },
+    "work_vector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requests", "prompt_tokens", "max_generated_tokens"],
+      "properties": {
+        "requests": {"$ref": "#/$defs/uint"},
+        "prompt_tokens": {"$ref": "#/$defs/uint"},
+        "max_generated_tokens": {"$ref": "#/$defs/uint"}
+      }
+    },
+    "record_sha256": {"$ref": "#/$defs/sha256"}
+  }
+}

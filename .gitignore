@@ -18,8 +18,12 @@
 *.metallib
 *.o
 *.so
+*.so.*
 *.swp
 *.tmp
+*.f32
+*.stderr
+*.stdout
 *.DS_Store
 
 # IDE / OS
@@ -148,6 +152,9 @@ flake.lock
 /research_dev/figures/
 /research_dev/*.html
 /research_dev/energy/
+/research_dev/spikes/**/artifacts/
+/research_dev/spikes/**/logs*/
+/research_dev/spikes/**/scratchpad/
 
 # IDE
 

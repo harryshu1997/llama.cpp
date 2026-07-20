@@ -1,0 +1,93 @@
+{
+  "schema": "s14-stage-c-mixed-gpu-energy-v1",
+  "scope": "A6000_GPU_BOARD_DECODE_ENERGY_ONLY_PHONE_UNKNOWN",
+  "formal_claim": "MIXED_WORKLOAD_GPU_BOARD_ENERGY_OVERLAP_CEILING",
+  "inputs": {
+    "stage_a_result": "stage_a_k8_result.json",
+    "stage_a_sha256": "sha256:c86b4af310f55caccc53510cf1a7543b6943a4c52699609aa9873d1800b1ddbf",
+    "stage_b_result": "stageb_result.json",
+    "stage_b_sha256": "sha256:144a748e265bdf2d23cfe29ba7127b0040a7b7df8b43d5ed9af8da7b9c660ee6",
+    "trace": "mix_v1.trace.jsonl",
+    "trace_sha256": "sha256:567d4af180f65f16db345817b15cf1abcd24ac534b930bd4267f542759c4712d"
+  },
+  "offload_depth_k_star": 8,
+  "why_k_star": "deepest Stage-B feasible single-phone head (certified [2, 6, 8], DSP-abort [10, 12]); [0,12) (22.8% Stage-A ceiling) needs a two-phone split",
+  "measured_per_token_energy_mj": {
+    "full_[0,48)": 859.91617701153,
+    "tail_[8,48)": 730.0216953466335
+  },
+  "per_token_saving_at_k_star": 0.15105481805949883,
+  "workload": {
+    "total_output_tokens": 21595,
+    "tokens_by_service": {
+      "api_generation": 12943,
+      "conversation_generation": 6046,
+      "rag_qa": 2606
+    },
+    "generation_token_fraction": 0.8793239175735124
+  },
+  "mixed_gpu_board_energy": {
+    "server_only_energy_j": 18569.88984256399,
+    "offload_fraction_sweep": [
+      {
+        "offload_token_fraction": 0.0,
+        "gpu_board_energy_j": 18569.88984256399,
+        "gpu_board_saving_vs_server_only": 0.0
+      },
+      {
+        "offload_token_fraction": 0.25,
+        "gpu_board_energy_j": 17868.62200967563,
+        "gpu_board_saving_vs_server_only": 0.03776370451487465
+      },
+      {
+        "offload_token_fraction": 0.5,
+        "gpu_board_energy_j": 17167.354176787274,
+        "gpu_board_saving_vs_server_only": 0.07552740902974919
+      },
+      {
+        "offload_token_fraction": 0.879324,
+        "gpu_board_energy_j": 16103.32329901709,
+        "gpu_board_saving_vs_server_only": 0.1328261268353509
+      },
+      {
+        "offload_token_fraction": 1.0,
+        "gpu_board_energy_j": 15764.81851101055,
+        "gpu_board_saving_vs_server_only": 0.15105481805949883
+      }
+    ],
+    "operating_points": {
+      "server_only": {
+        "offload_token_fraction": 0.0,
+        "gpu_board_saving": 0.0,
+        "note": "baseline: A6000 runs the full model for every token"
+      },
+      "offload_all_generation_to_phone_head": {
+        "offload_token_fraction": 0.8793239175735124,
+        "gpu_board_saving": 0.1328261143844327,
+        "note": "route all 18989 generation tokens (87.9% of decode) to the phone head [0,8); rag_qa stays on the server",
+        "slo_required": {
+          "phone_route_latency_serial_us_per_request": 1192775,
+          "phone_head_us": 934148,
+          "server_tail_us": 258627,
+          "comment": "achievable only at a RELAXED SLO: the phone route is far slower per request than server-only; overlap hides the phone head behind independent server work, serial does not"
+        }
+      },
+      "offload_all_decode_to_phone_head": {
+        "offload_token_fraction": 1.0,
+        "gpu_board_saving": 0.15105481805949883,
+        "note": "ceiling if rag_qa generation ALSO used [0,8); == measured s(k*)"
+      }
+    }
+  },
+  "headline": {
+    "realisable_single_phone_gpu_board_saving_at_full_generation_offload": 0.1328261143844327,
+    "vs_ceiling_note": "single-phone head caps at [0,8] = 15.1% per-token; mixed workload realises 13.3% (generation is 87.9% of decode). [0,12)=22.8% needs the two-phone split (Stage D)."
+  },
+  "caveats": [
+    "A6000 GPU_BOARD decode energy ONLY (same instrument/caveats as Stage A). Phone/USB/total-wall UNKNOWN.",
+    "Overlap CEILING: assumes the A6000 stays busy while the phone runs the head. Idle-wait energy is NOT modelled (the S11-E0 +53% failure mode).",
+    "Offload fraction is a workload/scheduler knob; a given f is achievable only at an SLO >= the Stage B phone-route latency (relaxed-latency regime, as authorised).",
+    "saving(f) = f * s(k*) is exact because A6000 power is flat (Stage A): energy scales with GPU-seconds = layers run.",
+    "rag_qa (12.1% of tokens, model_class 'rag') is kept on the server here; its generation phase could also use the head, raising the ceiling toward s(k*)."
+  ]
+}

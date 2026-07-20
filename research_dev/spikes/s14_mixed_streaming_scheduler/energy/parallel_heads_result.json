@@ -1,0 +1,400 @@
+{
+  "artifacts": {
+    "harness": {
+      "path": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/spikes/s14_mixed_streaming_scheduler/energy/parallel_heads_device.py",
+      "sha256": "a4c24958cc54527a4ae469cd81443828b3f54aa58de03886e53655768a9d564d"
+    },
+    "host": {
+      "bytes": 59372,
+      "path": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/spikes/s14_mixed_streaming_scheduler/energy/logs_parallel_heads/host.stderr",
+      "sha256": "74d6a1ff905c3496a309a8ef2e154ba627c7c80c6f85cea0762579329644ee86"
+    },
+    "host_binary": {
+      "path": "/home/myid/zs89458/Documents/llama.cpp-release/build-cuda/bin/llama-layersplit",
+      "sha256": "aa26a0b2a92f20fa6ea9d54c0dbbb0de7fee7f72d4d9d2f8d056a1ff5e7c88f3"
+    },
+    "host_stdout": {
+      "bytes": 321,
+      "path": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/spikes/s14_mixed_streaming_scheduler/energy/logs_parallel_heads/host.stdout",
+      "sha256": "e9a950742fda8fc20d10e667e8dd062324ae8ebe57a60aaa4802d1480d417f46"
+    },
+    "op12": {
+      "bytes": 31021,
+      "path": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/spikes/s14_mixed_streaming_scheduler/energy/logs_parallel_heads/op12.log",
+      "sha256": "80259dfc511a2032f0c231df7abf5a75c2225baa8910ef235b657e6762f5971f"
+    },
+    "op15": {
+      "bytes": 30883,
+      "path": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/spikes/s14_mixed_streaming_scheduler/energy/logs_parallel_heads/op15.log",
+      "sha256": "5d3955de66cf88897020c7de56ff15e5d829ee06c9c5f9115d1d767916255034"
+    },
+    "phone_binary_op12": {
+      "path": "/data/local/tmp/ls-s14-cpe/llama-layersplit",
+      "sha256": "2be934b2808703f7f10108d5960f75b87aa302b8b306fb7bf4cef0cd3eb2541c"
+    },
+    "phone_binary_op15": {
+      "path": "/data/local/tmp/ls-s14-cpe/llama-layersplit",
+      "sha256": "2be934b2808703f7f10108d5960f75b87aa302b8b306fb7bf4cef0cd3eb2541c"
+    },
+    "shard_op12": {
+      "path": "/data/local/tmp/ls-npu/12b-f16-head-0-6.gguf",
+      "sha256": "d507b7bb453242dff12ba1ce0add53189755b8a9a2b960743ead1578d8f1a6b5"
+    },
+    "shard_op15": {
+      "path": "/data/local/tmp/ls-npu/12b-f16-head-0-6.gguf",
+      "sha256": "d507b7bb453242dff12ba1ce0add53189755b8a9a2b960743ead1578d8f1a6b5"
+    }
+  },
+  "certificates": {
+    "host": {
+      "compute_by_buffer_type": {
+        "CUDA0": 19504
+      },
+      "compute_by_op": {
+        "ADD": 1360,
+        "FLASH_ATTN_EXT": 672,
+        "GET_ROWS": 16,
+        "GLU": 672,
+        "MUL": 4720,
+        "MUL_MAT": 4608,
+        "RMS_NORM": 4720,
+        "ROPE": 1344,
+        "SCALE": 32,
+        "SET_ROWS": 1344,
+        "UNARY": 16
+      },
+      "compute_by_op_and_buffer": {
+        "ADD": {
+          "CUDA0": 1360
+        },
+        "FLASH_ATTN_EXT": {
+          "CUDA0": 672
+        },
+        "GET_ROWS": {
+          "CUDA0": 16
+        },
+        "GLU": {
+          "CUDA0": 672
+        },
+        "MUL": {
+          "CUDA0": 4720
+        },
+        "MUL_MAT": {
+          "CUDA0": 4608
+        },
+        "RMS_NORM": {
+          "CUDA0": 4720
+        },
+        "ROPE": {
+          "CUDA0": 1344
+        },
+        "SCALE": {
+          "CUDA0": 32
+        },
+        "SET_ROWS": {
+          "CUDA0": 1344
+        },
+        "UNARY": {
+          "CUDA0": 16
+        }
+      },
+      "compute_nodes": 19504,
+      "copy_by_buffer_type": {},
+      "copy_nodes": 0,
+      "layer_end": 48,
+      "layer_start": 6,
+      "metadata_nodes": 9408,
+      "missing_buffer_compute_nodes": 0,
+      "mode": "pipedriver",
+      "n_layer": 48,
+      "pid": 3656119,
+      "role": "host_tail",
+      "run_rc": 0,
+      "schema": "layersplit-scheduled-placement-v2",
+      "status": "SCHEDULED_PLACEMENT_OK"
+    },
+    "op12": {
+      "compute_by_buffer_type": {
+        "CPU": 16,
+        "HTP0": 2976
+      },
+      "compute_by_op": {
+        "ADD": 192,
+        "GET_ROWS": 16,
+        "GLU": 96,
+        "MUL": 672,
+        "MUL_MAT": 848,
+        "RMS_NORM": 672,
+        "ROPE": 192,
+        "SCALE": 16,
+        "SET_ROWS": 192,
+        "SOFT_MAX": 96
+      },
+      "compute_by_op_and_buffer": {
+        "ADD": {
+          "HTP0": 192
+        },
+        "GET_ROWS": {
+          "CPU": 16
+        },
+        "GLU": {
+          "HTP0": 96
+        },
+        "MUL": {
+          "HTP0": 672
+        },
+        "MUL_MAT": {
+          "HTP0": 848
+        },
+        "RMS_NORM": {
+          "HTP0": 672
+        },
+        "ROPE": {
+          "HTP0": 192
+        },
+        "SCALE": {
+          "HTP0": 16
+        },
+        "SET_ROWS": {
+          "HTP0": 192
+        },
+        "SOFT_MAX": {
+          "HTP0": 96
+        }
+      },
+      "compute_nodes": 2992,
+      "copy_by_buffer_type": {
+        "HTP0": 192
+      },
+      "copy_nodes": 192,
+      "layer_end": 6,
+      "layer_start": 0,
+      "metadata_nodes": 1248,
+      "missing_buffer_compute_nodes": 0,
+      "mode": "stagenet",
+      "n_layer": 48,
+      "pid": 19788,
+      "role": "phone_stage",
+      "run_rc": 0,
+      "schema": "layersplit-scheduled-placement-v2",
+      "status": "SCHEDULED_PLACEMENT_OK"
+    },
+    "op15": {
+      "compute_by_buffer_type": {
+        "CPU": 16,
+        "HTP0": 2784
+      },
+      "compute_by_op": {
+        "ADD": 192,
+        "FLASH_ATTN_EXT": 96,
+        "GET_ROWS": 16,
+        "GLU": 96,
+        "MUL": 672,
+        "MUL_MAT": 656,
+        "RMS_NORM": 672,
+        "ROPE": 192,
+        "SCALE": 16,
+        "SET_ROWS": 192
+      },
+      "compute_by_op_and_buffer": {
+        "ADD": {
+          "HTP0": 192
+        },
+        "FLASH_ATTN_EXT": {
+          "HTP0": 96
+        },
+        "GET_ROWS": {
+          "CPU": 16
+        },
+        "GLU": {
+          "HTP0": 96
+        },
+        "MUL": {
+          "HTP0": 672
+        },
+        "MUL_MAT": {
+          "HTP0": 656
+        },
+        "RMS_NORM": {
+          "HTP0": 672
+        },
+        "ROPE": {
+          "HTP0": 192
+        },
+        "SCALE": {
+          "HTP0": 16
+        },
+        "SET_ROWS": {
+          "HTP0": 192
+        }
+      },
+      "compute_nodes": 2800,
+      "copy_by_buffer_type": {},
+      "copy_nodes": 0,
+      "layer_end": 6,
+      "layer_start": 0,
+      "metadata_nodes": 1152,
+      "missing_buffer_compute_nodes": 0,
+      "mode": "stagenet",
+      "n_layer": 48,
+      "pid": 15961,
+      "role": "phone_stage",
+      "run_rc": 0,
+      "schema": "layersplit-scheduled-placement-v2",
+      "status": "SCHEDULED_PLACEMENT_OK"
+    }
+  },
+  "checks": {
+    "all_tokens_match_b2_reference": false,
+    "host_returncode_zero": true,
+    "host_tail_cert_ok": true,
+    "op12_cert_ok": true,
+    "op15_cert_ok": true,
+    "tail_batch_two": true,
+    "thermal_end_ok": true,
+    "thermal_start_ok": true,
+    "two_rows_complete": true
+  },
+  "energy_scope": "UNKNOWN",
+  "formal_claim": "NONE",
+  "head_batch_per_phone": 1,
+  "host_returncode": 0,
+  "n_gen": 8,
+  "reference_tokens_full_model_b2": [
+    108,
+    107,
+    100,
+    45518,
+    107,
+    101,
+    28925,
+    522
+  ],
+  "requests": 2,
+  "route": {
+    "op12": [
+      0,
+      6
+    ],
+    "op15": [
+      0,
+      6
+    ],
+    "shared_server_tail": [
+      6,
+      48
+    ]
+  },
+  "rows": [
+    {
+      "batch_index": 0,
+      "batch_size": 2,
+      "decode_us": 648678,
+      "eog": 0,
+      "generated_tokens": 8,
+      "host_us": 285030,
+      "prefill_us": 200245,
+      "prompt_tokens": 9,
+      "request_index": 0,
+      "request_wall_us": 1116892,
+      "requested_tokens": 8,
+      "route": "A0_PHONE_FLEET",
+      "stage_a_us": 563893,
+      "stage_b_us": 0,
+      "status": "ok",
+      "stream_index": 0,
+      "token_ids": [
+        107,
+        100,
+        45518,
+        107,
+        101,
+        28925,
+        522,
+        563
+      ]
+    },
+    {
+      "batch_index": 0,
+      "batch_size": 2,
+      "decode_us": 909134,
+      "eog": 0,
+      "generated_tokens": 8,
+      "host_us": 285030,
+      "prefill_us": 203556,
+      "prompt_tokens": 9,
+      "request_index": 1,
+      "request_wall_us": 1116892,
+      "requested_tokens": 8,
+      "route": "A0_PHONE_FLEET",
+      "stage_a_us": 827660,
+      "stage_b_us": 0,
+      "status": "ok",
+      "stream_index": 1,
+      "token_ids": [
+        108,
+        45518,
+        107,
+        100,
+        45518,
+        107,
+        101,
+        28925
+      ]
+    }
+  ],
+  "schema": "s14-parallel-heads-device-v1",
+  "scope": "OP15_AND_OP12_PARALLEL_HEADS_ONE_SHARED_A6000_TAIL_MECHANICS_ONLY_ENERGY_UNKNOWN",
+  "shared_tail_batch": 2,
+  "status": "PARALLEL_HEADS_FAIL",
+  "thermals": {
+    "op12": {
+      "end": {
+        "max_millic": 31800,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 31400,
+          "nsphmx-1": 31400,
+          "nsphmx-2": 31000,
+          "nsphmx-3": 31800
+        },
+        "valid": true
+      },
+      "start": {
+        "max_millic": 30600,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 29800,
+          "nsphmx-1": 29800,
+          "nsphmx-2": 30200,
+          "nsphmx-3": 30600
+        },
+        "valid": true
+      }
+    },
+    "op15": {
+      "end": {
+        "max_millic": 29000,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 29000,
+          "nsphmx-1": 29000,
+          "nsphmx-2": 28700,
+          "nsphmx-3": 29000
+        },
+        "valid": true
+      },
+      "start": {
+        "max_millic": 26700,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 25900,
+          "nsphmx-1": 26300,
+          "nsphmx-2": 26700,
+          "nsphmx-3": 26300
+        },
+        "valid": true
+      }
+    }
+  }
+}

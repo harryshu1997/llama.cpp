@@ -1,0 +1,278 @@
+{
+  "artifacts": {
+    "cuda.b64.f32": {
+      "bytes": 983040,
+      "path": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/spikes/s17_hierarchical_batch_funnel/screen-results/cuda.b64.f32",
+      "sha256": "6edea4f894eaa95a7030ed7a2013426714fa13a35732a3f2577942b24af1e1d7"
+    },
+    "cuda.log": {
+      "bytes": 31117,
+      "path": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/spikes/s17_hierarchical_batch_funnel/screen-results/cuda.log",
+      "sha256": "83cecbf2f1a903b4b04e799441a70a1bed3410b61d4325ba56a53f0f231bb4b9"
+    },
+    "cuda.split32.f32": {
+      "bytes": 983040,
+      "path": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/spikes/s17_hierarchical_batch_funnel/screen-results/cuda.split32.f32",
+      "sha256": "5bc4a3d8fa9df20c19fa13aa40b68ec10492a972bff204606a87d770cbc1e7b9"
+    },
+    "htp.b64.f32": {
+      "bytes": 983040,
+      "path": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/spikes/s17_hierarchical_batch_funnel/screen-results/htp.b64.f32",
+      "sha256": "c14a4f7f6648c910c16198003bddc54a0e1936fd5e9213117bd72f9ed29fef81"
+    },
+    "htp.log": {
+      "bytes": 31472,
+      "path": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/spikes/s17_hierarchical_batch_funnel/screen-results/htp.log",
+      "sha256": "d30777ef7a19a76d3f440e892d8a9179a6998ed811cc0eb77baf1bfc216d0d8c"
+    },
+    "htp.split32.f32": {
+      "bytes": 983040,
+      "path": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/spikes/s17_hierarchical_batch_funnel/screen-results/htp.split32.f32",
+      "sha256": "c14a4f7f6648c910c16198003bddc54a0e1936fd5e9213117bd72f9ed29fef81"
+    }
+  },
+  "batch_shapes": {
+    "coalesced": 64,
+    "control": [
+      32,
+      32
+    ],
+    "decode_position": 0
+  },
+  "checks": {
+    "htp_coalescing_faster": true,
+    "htp_vs_cuda_b64": false,
+    "outputs_finite": true,
+    "placement_valid": true,
+    "repeat_stable": true,
+    "same_backend_b64_vs_2xb32": false,
+    "workers_complete": true
+  },
+  "cross_backend": {
+    "b64_argmax_mismatches": 8,
+    "b64_rel_l2": 0.009750758636832259
+  },
+  "error": null,
+  "identity": {
+    "host_binary": {
+      "bytes": 488768,
+      "path": "/home/myid/zs89458/Documents/llama.cpp-release/build-cuda/bin/llama-layersplit",
+      "sha256": "da12f9255d2e7acf276c3803cbfab2e7e2aaed1ed50230a43bd8bd1f79f2c8f7"
+    },
+    "host_shard": {
+      "bytes": 2741158560,
+      "path": "/home/myid/zs89458/Documents/models/12b-f16-mid-6-12.gguf",
+      "sha256": "e4fdd28f0f5fef0692a3c93c6308ea48ac971a97428f17199ecbc921020b1c36"
+    },
+    "phone_binary_sha256": "269c24baa0484bb2345bec5267c36cb0a18d19f5a918fad568bad85a15ff42ab",
+    "phone_serial": "3C15AU002CL00000",
+    "phone_shard_sha256": "e4fdd28f0f5fef0692a3c93c6308ea48ac971a97428f17199ecbc921020b1c36",
+    "selected_gpu_uuid": "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f"
+  },
+  "phone_energy": "UNKNOWN",
+  "route_fragment": {
+    "device": "op15",
+    "layer_range": [
+      6,
+      12
+    ]
+  },
+  "schema": "s17-middle-island-screen-v1",
+  "scope": "REAL_OP15_MIDDLE_ISLAND_MECHANICS_ONLY_NO_PIPELINE_OR_ENERGY_CLAIM",
+  "status": "CP1_MIDDLE_SCREEN_FAIL",
+  "thermal": {
+    "end": {
+      "maximum_millic": 95000,
+      "raw": "status=/sys/class/thermal/thermal_zone0/temp=35200\n/sys/class/thermal/thermal_zone1/temp=36000\n/sys/class/thermal/thermal_zone10/temp=35200\n/sys/class/thermal/thermal_zone11/temp=34500\n/sys/class/thermal/thermal_zone12/temp=34500\n/sys/class/thermal/thermal_zone13/temp=34900\n/sys/class/thermal/thermal_zone14/temp=34500\n/sys/class/thermal/thermal_zone15/temp=34900\n/sys/class/thermal/thermal_zone16/temp=34900\n/sys/class/thermal/thermal_zone17/temp=35100\n/sys/class/thermal/thermal_zone18/temp=35100\n/sys/class/thermal/thermal_zone19/temp=35100\n/sys/class/thermal/thermal_zone2/temp=34500\n/sys/class/thermal/thermal_zone20/temp=34700\n/sys/class/thermal/thermal_zone21/temp=34700\n/sys/class/thermal/thermal_zone22/temp=34700\n/sys/class/thermal/thermal_zone23/temp=34300\n/sys/class/thermal/thermal_zone24/temp=34500\n/sys/class/thermal/thermal_zone25/temp=34500\n/sys/class/thermal/thermal_zone26/temp=33700\n/sys/class/thermal/thermal_zone27/temp=34100\n/sys/class/thermal/thermal_zone28/temp=33700\n/sys/class/thermal/thermal_zone29/temp=33700\n/sys/class/thermal/thermal_zone3/temp=34100\n/sys/class/thermal/thermal_zone30/temp=33300\n/sys/class/thermal/thermal_zone31/temp=33700\n/sys/class/thermal/thermal_zone32/temp=32900\n/sys/class/thermal/thermal_zone33/temp=33300\n/sys/class/thermal/thermal_zone34/temp=33300\n/sys/class/thermal/thermal_zone35/temp=32900\n/sys/class/thermal/thermal_zone36/temp=33700\n/sys/class/thermal/thermal_zone37/temp=33300\n/sys/class/thermal/thermal_zone38/temp=33700\n/sys/class/thermal/thermal_zone39/temp=32900\n/sys/class/thermal/thermal_zone4/temp=33700\n/sys/class/thermal/thermal_zone40/temp=33300\n/sys/class/thermal/thermal_zone41/temp=33300\n/sys/class/thermal/thermal_zone42/temp=32900\n/sys/class/thermal/thermal_zone43/temp=32900\n/sys/class/thermal/thermal_zone44/temp=32900\n/sys/class/thermal/thermal_zone45/temp=33300\n/sys/class/thermal/thermal_zone46/temp=32500\n/sys/class/thermal/thermal_zone47/temp=32900\n/sys/class/thermal/thermal_zone48/temp=33600\n/sys/class/thermal/thermal_zone49/temp=33600\n/sys/class/thermal/thermal_zone5/temp=32900\n/sys/class/thermal/thermal_zone50/temp=33200\n/sys/class/thermal/thermal_zone51/temp=33200\n/sys/class/thermal/thermal_zone52/temp=33200\n/sys/class/thermal/thermal_zone53/temp=32800\n/sys/class/thermal/thermal_zone54/temp=32800\n/sys/class/thermal/thermal_zone55/temp=95000\n/sys/class/thermal/thermal_zone56/temp=95000\n/sys/class/thermal/thermal_zone57/temp=28614\n/sys/class/thermal/thermal_zone58/temp=27613\n/sys/class/thermal/thermal_zone59/temp=20\n/sys/class/thermal/thermal_zone6/temp=32900\n/sys/class/thermal/thermal_zone60/temp=37000\n/sys/class/thermal/thermal_zone61/temp=27733\n/sys/class/thermal/thermal_zone62/temp=0\n/sys/class/thermal/thermal_zone63/temp=29819\n/sys/class/thermal/thermal_zone64/temp=28000\n/sys/class/thermal/thermal_zone65/temp=37000\n/sys/class/thermal/thermal_zone66/temp=37000\n/sys/class/thermal/thermal_zone67/temp=0\n/sys/class/thermal/thermal_zone68/temp=31507\n/sys/class/thermal/thermal_zone69/temp=0\n/sys/class/thermal/thermal_zone7/temp=32500\n/sys/class/thermal/thermal_zone70/temp=28148\n/sys/class/thermal/thermal_zone71/temp=0\n/sys/class/thermal/thermal_zone72/temp=30445\n/sys/class/thermal/thermal_zone73/temp=0\n/sys/class/thermal/thermal_zone74/temp=31566\n/sys/class/thermal/thermal_zone75/temp=0\n/sys/class/thermal/thermal_zone76/temp=37717\n/sys/class/thermal/thermal_zone77/temp=0\n/sys/class/thermal/thermal_zone78/temp=29773\n/sys/class/thermal/thermal_zone79/temp=0\n/sys/class/thermal/thermal_zone8/temp=32900\n/sys/class/thermal/thermal_zone80/temp=31552\n/sys/class/thermal/thermal_zone81/temp=0\n/sys/class/thermal/thermal_zone82/temp=34335\n/sys/class/thermal/thermal_zone83/temp=29623\n/sys/class/thermal/thermal_zone84/temp=30269\n/sys/class/thermal/thermal_zone85/temp=31792\n/sys/class/thermal/thermal_zone86/temp=32288\n/sys/class/thermal/thermal_zone87/temp=32656\n/sys/class/thermal/thermal_zone88/temp=31753\n/sys/class/thermal/thermal_zone89/temp=31686\n/sys/class/thermal/thermal_zone9/temp=32900\n/sys/class/thermal/thermal_zone90/temp=32221\n/sys/class/thermal/thermal_zone91/temp=34194\n/sys/class/thermal/thermal_zone92/temp=61161\n/sys/class/thermal/thermal_zone93/temp=28000\n/sys/class/thermal/thermal_zone94/temp=2700\n/sys/class/thermal/thermal_zone95/temp=-273000\n/sys/class/thermal/thermal_zone96/temp=-273000\n/sys/class/thermal/thermal_zone97/temp=-273000\n",
+      "sensor_count": 84
+    },
+    "start": {
+      "maximum_millic": 95000,
+      "raw": "status=/sys/class/thermal/thermal_zone0/temp=31400\n/sys/class/thermal/thermal_zone1/temp=31800\n/sys/class/thermal/thermal_zone10/temp=30600\n/sys/class/thermal/thermal_zone11/temp=31000\n/sys/class/thermal/thermal_zone12/temp=30600\n/sys/class/thermal/thermal_zone13/temp=31000\n/sys/class/thermal/thermal_zone14/temp=31000\n/sys/class/thermal/thermal_zone15/temp=31000\n/sys/class/thermal/thermal_zone16/temp=31000\n/sys/class/thermal/thermal_zone17/temp=30800\n/sys/class/thermal/thermal_zone18/temp=31200\n/sys/class/thermal/thermal_zone19/temp=31200\n/sys/class/thermal/thermal_zone2/temp=31400\n/sys/class/thermal/thermal_zone20/temp=31200\n/sys/class/thermal/thermal_zone21/temp=31200\n/sys/class/thermal/thermal_zone22/temp=30800\n/sys/class/thermal/thermal_zone23/temp=30800\n/sys/class/thermal/thermal_zone24/temp=31000\n/sys/class/thermal/thermal_zone25/temp=31400\n/sys/class/thermal/thermal_zone26/temp=31000\n/sys/class/thermal/thermal_zone27/temp=30600\n/sys/class/thermal/thermal_zone28/temp=31000\n/sys/class/thermal/thermal_zone29/temp=30600\n/sys/class/thermal/thermal_zone3/temp=31400\n/sys/class/thermal/thermal_zone30/temp=30200\n/sys/class/thermal/thermal_zone31/temp=30200\n/sys/class/thermal/thermal_zone32/temp=30200\n/sys/class/thermal/thermal_zone33/temp=30600\n/sys/class/thermal/thermal_zone34/temp=30600\n/sys/class/thermal/thermal_zone35/temp=30600\n/sys/class/thermal/thermal_zone36/temp=31000\n/sys/class/thermal/thermal_zone37/temp=31000\n/sys/class/thermal/thermal_zone38/temp=31000\n/sys/class/thermal/thermal_zone39/temp=30600\n/sys/class/thermal/thermal_zone4/temp=31400\n/sys/class/thermal/thermal_zone40/temp=31400\n/sys/class/thermal/thermal_zone41/temp=31000\n/sys/class/thermal/thermal_zone42/temp=30600\n/sys/class/thermal/thermal_zone43/temp=31000\n/sys/class/thermal/thermal_zone44/temp=30600\n/sys/class/thermal/thermal_zone45/temp=31000\n/sys/class/thermal/thermal_zone46/temp=30600\n/sys/class/thermal/thermal_zone47/temp=30600\n/sys/class/thermal/thermal_zone48/temp=31600\n/sys/class/thermal/thermal_zone49/temp=30800\n/sys/class/thermal/thermal_zone5/temp=31000\n/sys/class/thermal/thermal_zone50/temp=30800\n/sys/class/thermal/thermal_zone51/temp=30800\n/sys/class/thermal/thermal_zone52/temp=31200\n/sys/class/thermal/thermal_zone53/temp=30500\n/sys/class/thermal/thermal_zone54/temp=30800\n/sys/class/thermal/thermal_zone55/temp=95000\n/sys/class/thermal/thermal_zone56/temp=95000\n/sys/class/thermal/thermal_zone57/temp=28376\n/sys/class/thermal/thermal_zone58/temp=27698\n/sys/class/thermal/thermal_zone59/temp=20\n/sys/class/thermal/thermal_zone6/temp=31400\n/sys/class/thermal/thermal_zone60/temp=37000\n/sys/class/thermal/thermal_zone61/temp=27698\n/sys/class/thermal/thermal_zone62/temp=0\n/sys/class/thermal/thermal_zone63/temp=29523\n/sys/class/thermal/thermal_zone64/temp=28000\n/sys/class/thermal/thermal_zone65/temp=37000\n/sys/class/thermal/thermal_zone66/temp=37000\n/sys/class/thermal/thermal_zone67/temp=0\n/sys/class/thermal/thermal_zone68/temp=30018\n/sys/class/thermal/thermal_zone69/temp=0\n/sys/class/thermal/thermal_zone7/temp=31000\n/sys/class/thermal/thermal_zone70/temp=28117\n/sys/class/thermal/thermal_zone71/temp=0\n/sys/class/thermal/thermal_zone72/temp=29632\n/sys/class/thermal/thermal_zone73/temp=0\n/sys/class/thermal/thermal_zone74/temp=30060\n/sys/class/thermal/thermal_zone75/temp=0\n/sys/class/thermal/thermal_zone76/temp=37714\n/sys/class/thermal/thermal_zone77/temp=0\n/sys/class/thermal/thermal_zone78/temp=29394\n/sys/class/thermal/thermal_zone79/temp=0\n/sys/class/thermal/thermal_zone8/temp=30600\n/sys/class/thermal/thermal_zone80/temp=30200\n/sys/class/thermal/thermal_zone81/temp=0\n/sys/class/thermal/thermal_zone82/temp=34284\n/sys/class/thermal/thermal_zone83/temp=29405\n/sys/class/thermal/thermal_zone84/temp=29610\n/sys/class/thermal/thermal_zone85/temp=30241\n/sys/class/thermal/thermal_zone86/temp=31017\n/sys/class/thermal/thermal_zone87/temp=31218\n/sys/class/thermal/thermal_zone88/temp=30214\n/sys/class/thermal/thermal_zone89/temp=30348\n/sys/class/thermal/thermal_zone9/temp=31000\n/sys/class/thermal/thermal_zone90/temp=30917\n/sys/class/thermal/thermal_zone91/temp=32054\n/sys/class/thermal/thermal_zone92/temp=62745\n/sys/class/thermal/thermal_zone93/temp=28000\n/sys/class/thermal/thermal_zone94/temp=2700\n/sys/class/thermal/thermal_zone95/temp=-273000\n/sys/class/thermal/thermal_zone96/temp=-273000\n/sys/class/thermal/thermal_zone97/temp=-273000\n",
+      "sensor_count": 84
+    }
+  },
+  "total_system_energy": "UNKNOWN",
+  "workers": {
+    "cuda": {
+      "b64_p50_us": 9696,
+      "b64_us": [
+        12709,
+        9696,
+        9224
+      ],
+      "b64_vs_split_argmax_mismatches": 12,
+      "b64_vs_split_rel_l2": 0.01538069220928562,
+      "coalesce_speedup": 1.4557549504950495,
+      "error": null,
+      "finite": true,
+      "hello": {
+        "layer_end": 12,
+        "layer_start": 6,
+        "magic": 1280529458,
+        "n_batch": 64,
+        "n_ctx_seq": 256,
+        "n_embd": 3840,
+        "n_layer": 48,
+        "n_seq_max": 64,
+        "n_ubatch": 64,
+        "version": 1
+      },
+      "kind": "cuda",
+      "placement": {
+        "compute_by_buffer_type": {
+          "CUDA0": 2076
+        },
+        "compute_by_op": {
+          "ADD": 144,
+          "FLASH_ATTN_EXT": 72,
+          "GLU": 72,
+          "MUL": 504,
+          "MUL_MAT": 492,
+          "RMS_NORM": 504,
+          "ROPE": 144,
+          "SET_ROWS": 144
+        },
+        "compute_by_op_and_buffer": {
+          "ADD": {
+            "CUDA0": 144
+          },
+          "FLASH_ATTN_EXT": {
+            "CUDA0": 72
+          },
+          "GLU": {
+            "CUDA0": 72
+          },
+          "MUL": {
+            "CUDA0": 504
+          },
+          "MUL_MAT": {
+            "CUDA0": 492
+          },
+          "RMS_NORM": {
+            "CUDA0": 504
+          },
+          "ROPE": {
+            "CUDA0": 144
+          },
+          "SET_ROWS": {
+            "CUDA0": 144
+          }
+        },
+        "compute_nodes": 2076,
+        "copy_by_buffer_type": {},
+        "copy_nodes": 0,
+        "layer_end": 12,
+        "layer_start": 6,
+        "metadata_nodes": 1008,
+        "missing_buffer_compute_nodes": 0,
+        "mode": "stagenet",
+        "n_layer": 48,
+        "pid": 3856989,
+        "role": "phone_stage",
+        "run_rc": 0,
+        "schema": "layersplit-scheduled-placement-v2",
+        "status": "SCHEDULED_PLACEMENT_OK"
+      },
+      "placement_problems": [],
+      "repeat_rel_l2_max": 0.0,
+      "returncode": 0,
+      "split32_p50_us": 14115,
+      "split32_us": [
+        14014,
+        14352,
+        14115
+      ]
+    },
+    "htp": {
+      "b64_p50_us": 282214,
+      "b64_us": [
+        276406,
+        286455,
+        282214
+      ],
+      "b64_vs_split_argmax_mismatches": 0,
+      "b64_vs_split_rel_l2": 0.0,
+      "coalesce_speedup": 1.5313910720233581,
+      "error": null,
+      "finite": true,
+      "hello": {
+        "layer_end": 12,
+        "layer_start": 6,
+        "magic": 1280529458,
+        "n_batch": 64,
+        "n_ctx_seq": 256,
+        "n_embd": 3840,
+        "n_layer": 48,
+        "n_seq_max": 64,
+        "n_ubatch": 64,
+        "version": 1
+      },
+      "kind": "htp",
+      "placement": {
+        "compute_by_buffer_type": {
+          "HTP0": 2076
+        },
+        "compute_by_op": {
+          "ADD": 144,
+          "FLASH_ATTN_EXT": 72,
+          "GLU": 72,
+          "MUL": 504,
+          "MUL_MAT": 492,
+          "RMS_NORM": 504,
+          "ROPE": 144,
+          "SET_ROWS": 144
+        },
+        "compute_by_op_and_buffer": {
+          "ADD": {
+            "HTP0": 144
+          },
+          "FLASH_ATTN_EXT": {
+            "HTP0": 72
+          },
+          "GLU": {
+            "HTP0": 72
+          },
+          "MUL": {
+            "HTP0": 504
+          },
+          "MUL_MAT": {
+            "HTP0": 492
+          },
+          "RMS_NORM": {
+            "HTP0": 504
+          },
+          "ROPE": {
+            "HTP0": 144
+          },
+          "SET_ROWS": {
+            "HTP0": 144
+          }
+        },
+        "compute_nodes": 2076,
+        "copy_by_buffer_type": {},
+        "copy_nodes": 0,
+        "layer_end": 12,
+        "layer_start": 6,
+        "metadata_nodes": 1008,
+        "missing_buffer_compute_nodes": 0,
+        "mode": "stagenet",
+        "n_layer": 48,
+        "pid": 27770,
+        "role": "phone_stage",
+        "run_rc": 0,
+        "schema": "layersplit-scheduled-placement-v2",
+        "status": "SCHEDULED_PLACEMENT_OK"
+      },
+      "placement_problems": [],
+      "repeat_rel_l2_max": 0.0,
+      "returncode": 0,
+      "split32_p50_us": 432180,
+      "split32_us": [
+        432180,
+        432648,
+        431619
+      ]
+    }
+  }
+}

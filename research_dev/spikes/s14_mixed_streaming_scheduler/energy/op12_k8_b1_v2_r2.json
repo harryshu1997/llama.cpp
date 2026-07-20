@@ -1,0 +1,76 @@
+{
+  "artifact_files": [],
+  "caveats": [
+    "This is a batch-1, one-process profile point unless aggregated with independent artifacts.",
+    "Phone and total-system energy are unknown.",
+    "Only GET_ROWS on CPU is an allowed placement exception.",
+    "The host A6000 tail and USB boundary remain part of request_wall_us."
+  ],
+  "decode_fa_policy": "AUTO_WITH_V75_FUSED_FA_DISABLED_BY_BACKEND_GATE",
+  "device": {
+    "backend": "HTP0",
+    "hexagon": "v75",
+    "serial": "5ae7a43d",
+    "soc": "SM8650"
+  },
+  "error": "TimeoutExpired: Command '['/home/myid/zs89458/Documents/llama.cpp-release/build-cuda/bin/llama-layersplit', '-m', '/home/myid/zs89458/Documents/models/gemma-4-12B-it-f16.gguf', '-ngl', '99', '--mode', 'pipedriver', '--host', '127.0.0.1', '--port', '16642', '-p', 'Explain why batching improves accelerator utilization.', '-n', '8', '--driver-requests', '8', '--driver-warmup', '1', '--driver-batch', '1', '--driver-context', '512', '--driver-max-prefill', '64']' timed out after 120 seconds",
+  "formal_claim": "NONE",
+  "gpu_uuid": "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f",
+  "host_binary_sha256": "f682f66eb889c21bfb4f90496cb86a4003bd89fc09fd97703c4bfd598a2cf4f0",
+  "layer_range": [
+    0,
+    8
+  ],
+  "measurement_config": {
+    "batch": 1,
+    "driver_context": 512,
+    "driver_max_prefill": 64,
+    "n_gen": 8,
+    "prompt": "Explain why batching improves accelerator utilization.",
+    "requests": 8,
+    "warmups": 1
+  },
+  "model": "gemma-4-12b-it-f16",
+  "model_version": "sha256:bac4e29337273d1cb41aa36f4209ebcf63baa1162e6ab4dc55f6034b3d69b35a",
+  "phone_binary_sha256": "2be934b2808703f7f10108d5960f75b87aa302b8b306fb7bf4cef0cd3eb2541c",
+  "point": null,
+  "process_identity": {
+    "ended_utc_us": 1784410487121952,
+    "host_boot_id": "60cb683b-1898-41eb-aca2-24b1a77a5a3b",
+    "pid": 3648369,
+    "started_utc_us": 1784410316398656
+  },
+  "reference_token_ids": null,
+  "run_id": "k8_b1_v2_r2",
+  "schema": "s14-op12-head-placement-v1",
+  "scope": "OP12_HTP0_PLACEMENT_CORRECTNESS_AND_LATENCY_PHONE_ENERGY_UNKNOWN",
+  "stageb_source_sha256": "093b6c30cf7c614522a7f6705f17334ef5d97d38adc5505d3ba53f49184cb80a",
+  "status": "OP12_HEAD_POINT_FAIL",
+  "thermal": {
+    "end": {
+      "max_millic": 34500,
+      "sensor_class": "nsphmx-*",
+      "sensors_millic": {
+        "nsphmx-0": 33700,
+        "nsphmx-1": 33300,
+        "nsphmx-2": 33300,
+        "nsphmx-3": 34500
+      },
+      "valid": true
+    },
+    "end_max_millic": 85000,
+    "start": {
+      "max_millic": 34500,
+      "sensor_class": "nsphmx-*",
+      "sensors_millic": {
+        "nsphmx-0": 33700,
+        "nsphmx-1": 32900,
+        "nsphmx-2": 33300,
+        "nsphmx-3": 34500
+      },
+      "valid": true
+    },
+    "start_max_millic": 60000
+  },
+  "wrapper_sha256": "228ff6afa28015a909594dd5bc017dd2fad198fa899b46e090586b0b2cc4d9b7"
+}

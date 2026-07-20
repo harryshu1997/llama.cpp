@@ -14,6 +14,7 @@
   },
   "jsonl": {
     "duplicate_key": "reject",
+    "blank_row": "reject_except_single_terminal",
     "key_types": {
       "hash_ids": "object",
       "input_length": "integer",

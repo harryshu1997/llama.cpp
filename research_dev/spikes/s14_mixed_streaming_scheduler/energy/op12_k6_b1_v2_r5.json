@@ -1,0 +1,285 @@
+{
+  "artifact_files": [
+    {
+      "bytes": 31035,
+      "path": "op12_logs/k6_b1_v2_r5/phone_k6.log",
+      "sha256": "1f0698604e94fe0fe2e9cdf7ee23e7a52107367d2290fd071a1322193245c311"
+    },
+    {
+      "bytes": 61294,
+      "path": "op12_logs/k6_b1_v2_r5/host_k6_b1.stderr",
+      "sha256": "8b524c2deda3488a16dcf54b206f29353ce7e5b879ad116c7a63650190550353"
+    }
+  ],
+  "caveats": [
+    "This is a batch-1, one-process profile point unless aggregated with independent artifacts.",
+    "Phone and total-system energy are unknown.",
+    "Only GET_ROWS on CPU is an allowed placement exception.",
+    "The host A6000 tail and USB boundary remain part of request_wall_us."
+  ],
+  "decode_fa_policy": "AUTO_WITH_V75_FUSED_FA_DISABLED_BY_BACKEND_GATE",
+  "device": {
+    "backend": "HTP0",
+    "hexagon": "v75",
+    "serial": "5ae7a43d",
+    "soc": "SM8650"
+  },
+  "error": null,
+  "formal_claim": "OP12_BATCH1_HEAD_PLACEMENT_CORRECTNESS_AND_LATENCY_POINT",
+  "gpu_uuid": "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f",
+  "host_binary_sha256": "f682f66eb889c21bfb4f90496cb86a4003bd89fc09fd97703c4bfd598a2cf4f0",
+  "layer_range": [
+    0,
+    6
+  ],
+  "measurement_config": {
+    "batch": 1,
+    "driver_context": 512,
+    "driver_max_prefill": 64,
+    "n_gen": 8,
+    "prompt": "Explain why batching improves accelerator utilization.",
+    "requests": 8,
+    "warmups": 1
+  },
+  "model": "gemma-4-12b-it-f16",
+  "model_version": "sha256:bac4e29337273d1cb41aa36f4209ebcf63baa1162e6ab4dc55f6034b3d69b35a",
+  "phone_binary_sha256": "2be934b2808703f7f10108d5960f75b87aa302b8b306fb7bf4cef0cd3eb2541c",
+  "point": {
+    "all_tokens_match_vs_mono": true,
+    "batch": 1,
+    "compute_cpu_nodes": 72,
+    "compute_htp0_nodes": 13392,
+    "cpu_mapped_mib": 1920.0,
+    "hexagon_mbuf_mib": 3336,
+    "host_returncode": 0,
+    "host_us_p50": 274747,
+    "htp0_model_buffer_mib": 2599.12,
+    "k": 6,
+    "layer_range": [
+      0,
+      6
+    ],
+    "missing_buffer_compute_nodes": 0,
+    "model_buffers_mib": {
+      "CPU_Mapped": 1920.0,
+      "HTP0": 2599.12
+    },
+    "n_gen": 8,
+    "n_requests_measured": 8,
+    "phone_resident_total_mib": 4519.12,
+    "placement_cert": {
+      "compute_by_buffer_type": {
+        "CPU": 72,
+        "HTP0": 13392
+      },
+      "compute_by_op": {
+        "ADD": 864,
+        "GET_ROWS": 72,
+        "GLU": 432,
+        "MUL": 3024,
+        "MUL_MAT": 3816,
+        "RMS_NORM": 3024,
+        "ROPE": 864,
+        "SCALE": 72,
+        "SET_ROWS": 864,
+        "SOFT_MAX": 432
+      },
+      "compute_by_op_and_buffer": {
+        "ADD": {
+          "HTP0": 864
+        },
+        "GET_ROWS": {
+          "CPU": 72
+        },
+        "GLU": {
+          "HTP0": 432
+        },
+        "MUL": {
+          "HTP0": 3024
+        },
+        "MUL_MAT": {
+          "HTP0": 3816
+        },
+        "RMS_NORM": {
+          "HTP0": 3024
+        },
+        "ROPE": {
+          "HTP0": 864
+        },
+        "SCALE": {
+          "HTP0": 72
+        },
+        "SET_ROWS": {
+          "HTP0": 864
+        },
+        "SOFT_MAX": {
+          "HTP0": 432
+        }
+      },
+      "compute_nodes": 13464,
+      "copy_by_buffer_type": {
+        "HTP0": 864
+      },
+      "copy_nodes": 864,
+      "layer_end": 6,
+      "layer_start": 0,
+      "metadata_nodes": 5616,
+      "missing_buffer_compute_nodes": 0,
+      "mode": "stagenet",
+      "n_layer": 48,
+      "pid": 16372,
+      "role": "phone_stage",
+      "run_rc": 0,
+      "schema": "layersplit-scheduled-placement-v2",
+      "status": "SCHEDULED_PLACEMENT_OK"
+    },
+    "placement_status": "SCHEDULED_PLACEMENT_OK",
+    "request_wall_us_p50": 1182523,
+    "shard": "/data/local/tmp/ls-npu/12b-f16-head-0-6.gguf",
+    "shard_sha256": "d507b7bb453242dff12ba1ce0add53189755b8a9a2b960743ead1578d8f1a6b5",
+    "stage_a_us_max": 943026,
+    "stage_a_us_min": 862283,
+    "stage_a_us_p50": 907664,
+    "token_ids": [
+      108,
+      45518,
+      107,
+      100,
+      45518,
+      107,
+      101,
+      28925
+    ],
+    "token_ids_by_request": [
+      [
+        108,
+        45518,
+        107,
+        100,
+        45518,
+        107,
+        101,
+        28925
+      ],
+      [
+        108,
+        45518,
+        107,
+        100,
+        45518,
+        107,
+        101,
+        28925
+      ],
+      [
+        108,
+        45518,
+        107,
+        100,
+        45518,
+        107,
+        101,
+        28925
+      ],
+      [
+        108,
+        45518,
+        107,
+        100,
+        45518,
+        107,
+        101,
+        28925
+      ],
+      [
+        108,
+        45518,
+        107,
+        100,
+        45518,
+        107,
+        101,
+        28925
+      ],
+      [
+        108,
+        45518,
+        107,
+        100,
+        45518,
+        107,
+        101,
+        28925
+      ],
+      [
+        108,
+        45518,
+        107,
+        100,
+        45518,
+        107,
+        101,
+        28925
+      ],
+      [
+        108,
+        45518,
+        107,
+        100,
+        45518,
+        107,
+        101,
+        28925
+      ]
+    ],
+    "token_match_vs_mono": true
+  },
+  "process_identity": {
+    "ended_utc_us": 1784410847719725,
+    "host_boot_id": "60cb683b-1898-41eb-aca2-24b1a77a5a3b",
+    "pid": 3651791,
+    "started_utc_us": 1784410812831998
+  },
+  "reference_token_ids": [
+    108,
+    45518,
+    107,
+    100,
+    45518,
+    107,
+    101,
+    28925
+  ],
+  "run_id": "k6_b1_v2_r5",
+  "schema": "s14-op12-head-placement-v1",
+  "scope": "OP12_HTP0_PLACEMENT_CORRECTNESS_AND_LATENCY_PHONE_ENERGY_UNKNOWN",
+  "stageb_source_sha256": "093b6c30cf7c614522a7f6705f17334ef5d97d38adc5505d3ba53f49184cb80a",
+  "status": "OP12_HEAD_POINT_PASS",
+  "thermal": {
+    "end": {
+      "max_millic": 38400,
+      "sensor_class": "nsphmx-*",
+      "sensors_millic": {
+        "nsphmx-0": 38400,
+        "nsphmx-1": 37600,
+        "nsphmx-2": 36800,
+        "nsphmx-3": 38000
+      },
+      "valid": true
+    },
+    "end_max_millic": 85000,
+    "start": {
+      "max_millic": 36400,
+      "sensor_class": "nsphmx-*",
+      "sensors_millic": {
+        "nsphmx-0": 36400,
+        "nsphmx-1": 36000,
+        "nsphmx-2": 36000,
+        "nsphmx-3": 36400
+      },
+      "valid": true
+    },
+    "start_max_millic": 60000
+  },
+  "wrapper_sha256": "228ff6afa28015a909594dd5bc017dd2fad198fa899b46e090586b0b2cc4d9b7"
+}

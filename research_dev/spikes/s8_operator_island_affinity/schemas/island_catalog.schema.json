@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research.local/s8/schemas/island_catalog.schema.json",
+  "title": "Frozen candidate island catalog (v1)",
+  "$comment": "S14 CP0-c. Envelope schema only. Each entry in islands[] is validated separately against island_descriptor.schema.json and each entry in profile_rows[] against profile_row.schema.json by validate_catalog.py; this schema treats them as generic objects so cross-file $ref is not required. frozen_status marks the catalog as committed BEFORE any scheduler result is viewed. The catalog is content-addressed by catalog_hash (computed over the canonical serialization with catalog_hash removed).",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+  },
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "catalog_id": { "type": "string", "minLength": 1 },
+    "scope": { "type": "string", "const": "CP0C_ISLAND_CATALOG_MECHANICS_NO_ENERGY" },
+    "frozen_status": { "type": "string", "const": "FROZEN_BEFORE_SCHEDULER_RESULTS" },
+    "energy_status": { "type": "string", "const": "NOT_RUN" },
+    "git_head": { "type": "string", "minLength": 1 },
+    "eligibility_rule": { "type": "string", "minLength": 1 },
+    "catalog_hash": { "$ref": "#/$defs/sha256" },
+    "models": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "model_id": { "type": "string", "minLength": 1 },
+          "model_version": { "$ref": "#/$defs/sha256" },
+          "n_layer_total": { "type": "integer", "minimum": 1, "maximum": 100000 },
+          "host_model_path": { "type": "string", "minLength": 1 },
+          "notes": { "type": "string" }
+        },
+        "required": ["model_id", "model_version", "n_layer_total", "host_model_path"]
+      }
+    },
+    "islands": { "type": "array", "minItems": 1, "items": { "type": "object" } },
+    "profile_rows": { "type": "array", "minItems": 1, "items": { "type": "object" } },
+    "source_bindings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": { "type": "string", "minLength": 1 },
+          "path": { "type": "string", "minLength": 1 },
+          "sha256": { "$ref": "#/$defs/sha256" },
+          "proves": { "type": "string" }
+        },
+        "required": ["kind", "path", "sha256"]
+      }
+    }
+  },
+  "required": [
+    "schema_version", "catalog_id", "scope", "frozen_status", "energy_status",
+    "git_head", "eligibility_rule", "catalog_hash", "models", "islands",
+    "profile_rows", "source_bindings"
+  ]
+}

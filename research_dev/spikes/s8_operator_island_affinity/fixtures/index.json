@@ -250,8 +250,48 @@
     "expect": "invalid"
   },
   {
+    "file": "invalid/source_config.terminal_blank_nonrag.json",
+    "schema": "schemas/source_config.schema.json",
+    "expect": "invalid"
+  },
+  {
     "file": "invalid/artifact_manifest.normalize_no_sidecar.json",
     "schema": "schemas/artifact_manifest.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "valid/mix_config.json",
+    "schema": "schemas/mix_config.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "invalid/mix_config.single_stream.json",
+    "schema": "schemas/mix_config.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/mix_config.bad_provenance.json",
+    "schema": "schemas/mix_config.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/mix_config.zero_scale.json",
+    "schema": "schemas/mix_config.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "valid/structural_replay_mix_result.json",
+    "schema": "schemas/structural_replay_mix_result.schema.json",
+    "expect": "valid"
+  },
+  {
+    "file": "invalid/structural_replay_mix_result.one_stream.json",
+    "schema": "schemas/structural_replay_mix_result.schema.json",
+    "expect": "invalid"
+  },
+  {
+    "file": "invalid/structural_replay_mix_result.order_false.json",
+    "schema": "schemas/structural_replay_mix_result.schema.json",
     "expect": "invalid"
   }
 ]

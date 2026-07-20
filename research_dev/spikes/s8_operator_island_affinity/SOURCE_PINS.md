@@ -53,6 +53,10 @@ Observed facts (full pass, `csv` module, UTF-8, no BOM):
 | license | MIT (repo) |
 
 Observed facts (full pass, JSONL, UTF-8):
+- The pinned file ends with exactly `\n\n`: 7106 JSON records followed by one
+  empty terminal physical line (7107 LF-terminated physical lines total). The
+  source config permits only this single terminal blank; interior or multiple
+  blank lines remain invalid.
 - Every record has exactly these top keys: `timestamp` (str), `input_length`
   (int), `output_length` (int), `session_id` (str), `hash_ids` (object).
 - `hash_ids` has exactly 5 keys in every record:

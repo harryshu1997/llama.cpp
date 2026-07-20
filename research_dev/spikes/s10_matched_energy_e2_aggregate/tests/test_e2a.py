@@ -43,6 +43,19 @@ FIXTURES = ROOT / "fixtures"
 BUNDLE = FIXTURES / "bundle.json"
 
 
+def load_route(role, root=FIXTURES, resolved=True):
+    name = ("route_control.json"
+            if role == "OPTIMIZED_SERVER_ONLY_CONTROL"
+            else "route_treatment.json")
+    root = pathlib.Path(root)
+    route = canon.load_strict(root / "routes" / name)
+    if not resolved:
+        return route
+    plan = canon.load_strict(root / "plan.json")
+    manifest = canon.load_strict(root / "manifest.json")
+    return resolver.resolve_route_schedule(route, plan, manifest, role)
+
+
 @contextlib.contextmanager
 def allow_anchor():
     """Test-only: neutralise anchor policy to exercise later mechanics.
@@ -99,7 +112,9 @@ class Bundle:
                                                  "plan_anchor.json"),
                          ("ledger", "ledger.json"),
                          ("ledger_close", "ledger_close.json"),
-                         ("manifest", "manifest.json")):
+                         ("manifest", "manifest.json"),
+                         ("route_control", "routes/route_control.json"),
+                         ("route_treatment", "routes/route_treatment.json")):
             data = (self.root / rel).read_bytes()
             index[f"{key}_sha256"] = canon.sha256_bytes(data)
         for slot in index["slots"]:
@@ -811,8 +826,10 @@ class LifecycleIntegrity(unittest.TestCase):
             FIXTURES / f"outcomes/outcomes.slot{slot:02d}.json")
         resolved = resolver.resolve_requests(
             manifest, outcomes, timeline, FIXTURES, f"slot{slot}", slot // 2)
+        plan = canon.load_strict(FIXTURES / "plan.json")
         return resolver.resolve_lifecycle(
-            lifecycle, timeline, None, resolved)
+            lifecycle, timeline, None, resolved, plan,
+            load_route(timeline["role"]))
 
     def test_the_fixture_lifecycle_is_closed(self):
         timeline, lifecycle = self._pair()
@@ -875,7 +892,7 @@ class LifecycleIntegrity(unittest.TestCase):
         canon.seal(lifecycle)
         with self.assertRaises(resolver.ResolveError) as ctx:
             self._resolve(lifecycle, timeline)
-        self.assertEqual(ctx.exception.code, "E_LEASE_OPEN")
+        self.assertEqual(ctx.exception.code, "E_ROUTE_NODE_MISSING")
 
     def test_a_missing_drain_is_refused(self):
         timeline, lifecycle = self._pair()
@@ -884,7 +901,7 @@ class LifecycleIntegrity(unittest.TestCase):
         canon.seal(lifecycle)
         with self.assertRaises(resolver.ResolveError) as ctx:
             self._resolve(lifecycle, timeline)
-        self.assertEqual(ctx.exception.code, "E_DRAIN_UNACKED")
+        self.assertEqual(ctx.exception.code, "E_ROUTE_NODE_MISSING")
 
     def test_an_unacknowledged_drain_is_refused(self):
         timeline, lifecycle = self._pair()
@@ -1173,6 +1190,7 @@ class ScopePromotion(unittest.TestCase):
         could hide a broken resolver indefinitely.
         """
         manifest = canon.load_strict(FIXTURES / "manifest.json")
+        plan = canon.load_strict(FIXTURES / "plan.json")
         for slot in range(16):
             timeline = canon.load_strict(
                 FIXTURES / f"timelines/tl.slot{slot:02d}.json")
@@ -1183,7 +1201,9 @@ class ScopePromotion(unittest.TestCase):
             resolved = resolver.resolve_requests(
                 manifest, outcomes, timeline, FIXTURES, f"slot{slot}",
                 slot // 2)
-            resolver.resolve_lifecycle(lifecycle, timeline, None, resolved)
+            resolver.resolve_lifecycle(
+                lifecycle, timeline, None, resolved, plan,
+                load_route(timeline["role"]))
 
     def test_rapl_can_claim_no_scope_at_all(self):
         sys.path.insert(0, str(E2_SRC))
@@ -1754,6 +1774,7 @@ class RedTeamRegressions(unittest.TestCase):
         outcomes = canon.load_strict(FIXTURES / "outcomes/outcomes.slot00.json")
         resolved = resolver.resolve_requests(
             manifest, outcomes, timeline, FIXTURES, "slot0", 0)
+        plan = canon.load_strict(FIXTURES / "plan.json")
         lifecycle = canon.load_strict(FIXTURES / "lifecycle/lc.slot00.json")
         for action in lifecycle["actions"]:
             if action["action_kind"] == "PREFETCH":
@@ -1762,8 +1783,10 @@ class RedTeamRegressions(unittest.TestCase):
                 action["start_us"] -= 5_000_000
         canon.seal(lifecycle)
         with self.assertRaises(resolver.ResolveError) as ctx:
-            resolver.resolve_lifecycle(lifecycle, timeline, None, resolved)
-        self.assertEqual(ctx.exception.code, "E_ACTION_UNBOUND")
+            resolver.resolve_lifecycle(
+                lifecycle, timeline, None, resolved, plan,
+                load_route(timeline["role"]))
+        self.assertEqual(ctx.exception.code, "E_ROUTE_NODE_MISMATCH")
 
     def test_an_anchor_kind_with_no_verifier_is_refused(self):
         """Finding 4: the enumerable path was guarded only by a TSA constant.
@@ -1776,7 +1799,7 @@ class RedTeamRegressions(unittest.TestCase):
         one shared guard, held by luck.
         """
         self.assertEqual(anchors.ANCHOR_VERIFIERS, {},
-                         "E2A v2 implements no cryptographic verifier")
+                         "E2A v4 implements no cryptographic verifier")
         for kind in sorted(anchors.ANCHOR_KINDS):
             with self.subTest(kind=kind):
                 with self.assertRaises(anchors.AnchorError) as ctx:

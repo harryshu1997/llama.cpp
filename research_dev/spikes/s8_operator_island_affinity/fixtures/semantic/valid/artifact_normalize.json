@@ -2,7 +2,11 @@
   "code_version": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
   "config_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
   "deterministic_replay_sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-  "gate_results": {},
+  "gate_results": {
+    "atomic_run_publish": true,
+    "direct_source_execution": true,
+    "source_snapshot_verified": true
+  },
   "inputs": [
     {
       "path": "x",

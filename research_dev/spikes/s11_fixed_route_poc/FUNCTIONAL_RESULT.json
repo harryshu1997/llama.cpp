@@ -1,0 +1,122 @@
+{
+  "schema": "s11-fixed-route-functional-result-v1",
+  "date": "2026-07-16",
+  "git_head": "5e92adf00",
+  "source_file": "examples/layersplit/layersplit.cpp",
+  "scope": "MECHANICS_AND_GPU_MEMORY_ONLY",
+  "formal_energy_claim": "NONE",
+  "workload": {
+    "prompt_sha256": "63750ff93853ff293f3cc601b760bb3696c1d2665150473703c3a08058304bf3",
+    "prompt_tokens": 28,
+    "prefill_mode": "BATCHED",
+    "decode_mode": "GREEDY_SINGLE_STREAM",
+    "warmup_requests": 10,
+    "measured_requests": 7,
+    "generated_tokens_per_request": 4
+  },
+  "control": {
+    "route": "SERVER_ONLY",
+    "gpu_uuid": "GPU-431a4567-fa90-7a73-625a-2ee6e7b5eaaf",
+    "gpu_ready_memory_mib": 24580,
+    "request_wall_us": [
+      158458,
+      157861,
+      157154,
+      156718,
+      156584,
+      156808,
+      156951
+    ],
+    "token_ids": [
+      100,
+      45518,
+      107,
+      236829
+    ]
+  },
+  "treatment": {
+    "route": "A0_OP15",
+    "op15_serial": "3C15AU002CL00000",
+    "op15_soc": "SM8850",
+    "op15_backend": "HTP0",
+    "op15_layer_range": [
+      0,
+      2
+    ],
+    "server_layer_range": [
+      2,
+      48
+    ],
+    "gpu_ready_memory_mib": 23724,
+    "request_wall_us": [
+      336085,
+      372162,
+      380500,
+      384913,
+      342283,
+      383960,
+      384355
+    ],
+    "stage_a_us": [
+      178498,
+      215799,
+      223560,
+      227205,
+      185574,
+      227695,
+      227600
+    ],
+    "host_us": [
+      157541,
+      156343,
+      156912,
+      157679,
+      156691,
+      156246,
+      156736
+    ],
+    "token_ids": [
+      100,
+      45518,
+      107,
+      236829
+    ]
+  },
+  "result": {
+    "exact_requests": 7,
+    "gpu_ready_memory_relief_mib": 856,
+    "gpu_ready_memory_relief_pct": 3.503028318873793,
+    "control_request_wall_median_ms": 156.951,
+    "treatment_request_wall_median_ms": 380.5,
+    "treatment_slowdown": 2.424323514982383,
+    "repeat_treatment_median_range_ms": [
+      345.499,
+      380.5
+    ],
+    "functional_verdict": "PASS",
+    "latency_verdict": "FAIL",
+    "energy_verdict": "NOT_RUN"
+  },
+  "artifacts": {
+    "host_binary": {
+      "bytes": 197688,
+      "sha256": "237a7a6d415c568d5f0421464693aae350a93f18eecc909d9a8a341a92286e62"
+    },
+    "android_binary": {
+      "bytes": 2753312,
+      "sha256": "6efb2ad44df0204e7496c0d69136e8aef2be765490a7bfbfb55e188a8f71276b"
+    },
+    "host_model": {
+      "bytes": 23832065056,
+      "sha256": "bac4e29337273d1cb41aa36f4209ebcf63baa1162e6ab4dc55f6034b3d69b35a"
+    },
+    "op15_shard": {
+      "bytes": 2925710752,
+      "sha256": "45d894d090f27889914b2cd8e5f4b7dbfe376d1ded7194d70efdcb79200ada49"
+    },
+    "raw_plan_sha256": "dad14ecbbbbc4f167863c84497a30130c75e75940005d49027229c87bbde16e2",
+    "raw_summary_sha256": "4aea7bebde1d92e6f439a6207762f5144a6829fe69fadeed5d6cb77d5e2a4c98",
+    "raw_control_sha256": "22614a835976408725f4fb5b8a770bd19e5b2eca7174a996ebb6e9d4c7337b8f",
+    "raw_treatment_sha256": "2f26e90a5b876db0321a03908e2b28d7a905ef275c95bf0fcfb449b3af6af6ab"
+  }
+}

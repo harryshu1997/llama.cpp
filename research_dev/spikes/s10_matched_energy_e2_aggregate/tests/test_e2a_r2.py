@@ -14,9 +14,13 @@ sys.path.insert(0, str(ROOT / "tests"))
 import aggregate  # noqa: E402
 import e2a_canon as canon  # noqa: E402
 import resolver  # noqa: E402
-from test_e2a import _rechain, bundle  # noqa: E402
+from test_e2a import _rechain, bundle, load_route  # noqa: E402
 
 FIXTURES = ROOT / "fixtures"
+
+
+def load_plan():
+    return canon.load_strict(FIXTURES / "plan.json")
 
 
 def load_triplet(slot=0):
@@ -134,7 +138,9 @@ class LifecycleCausality(unittest.TestCase):
             lifecycle["actions"], timeline["window_end_us"])
         canon.seal(lifecycle)
         with self.assertRaises(resolver.ResolveError) as ctx:
-            resolver.resolve_lifecycle(lifecycle, timeline, None, resolved)
+            resolver.resolve_lifecycle(
+                lifecycle, timeline, None, resolved, load_plan(),
+                load_route(timeline["role"]))
         self.assertEqual(ctx.exception.code, "E_LIFECYCLE_CAUSAL")
 
     def test_release_cannot_precede_acquire_ack(self):
@@ -151,8 +157,10 @@ class LifecycleCausality(unittest.TestCase):
             lifecycle["actions"], timeline["window_end_us"])
         canon.seal(lifecycle)
         with self.assertRaises(resolver.ResolveError) as ctx:
-            resolver.resolve_lifecycle(lifecycle, timeline, None, resolved)
-        self.assertEqual(ctx.exception.code, "E_LEASE_ORDER")
+            resolver.resolve_lifecycle(
+                lifecycle, timeline, None, resolved, load_plan(),
+                load_route(timeline["role"]))
+        self.assertEqual(ctx.exception.code, "E_ROUTE_EDGE_ORDER")
 
     def test_lease_must_cover_execution_and_cleanup(self):
         _manifest, timeline, resolved = resolved_slot(FIXTURES, 0)
@@ -167,8 +175,10 @@ class LifecycleCausality(unittest.TestCase):
             lifecycle["actions"], timeline["window_end_us"])
         canon.seal(lifecycle)
         with self.assertRaises(resolver.ResolveError) as ctx:
-            resolver.resolve_lifecycle(lifecycle, timeline, None, resolved)
-        self.assertEqual(ctx.exception.code, "E_LEASE_COVERAGE")
+            resolver.resolve_lifecycle(
+                lifecycle, timeline, None, resolved, load_plan(),
+                load_route(timeline["role"]))
+        self.assertEqual(ctx.exception.code, "E_ROUTE_EDGE_ORDER")
 
     def test_nonclean_entry_state_is_refused(self):
         _manifest, timeline, resolved = resolved_slot(FIXTURES, 0)
@@ -180,7 +190,9 @@ class LifecycleCausality(unittest.TestCase):
             lifecycle["actions"], timeline["window_start_us"])
         canon.seal(lifecycle)
         with self.assertRaises(resolver.ResolveError) as ctx:
-            resolver.resolve_lifecycle(lifecycle, timeline, None, resolved)
+            resolver.resolve_lifecycle(
+                lifecycle, timeline, None, resolved, load_plan(),
+                load_route(timeline["role"]))
         self.assertEqual(ctx.exception.code, "E_LIFECYCLE_STATE")
 
     def test_queue_submit_is_bound_to_arrival(self):
@@ -194,7 +206,9 @@ class LifecycleCausality(unittest.TestCase):
         submit["ack_us"] += 1
         canon.seal(lifecycle)
         with self.assertRaises(resolver.ResolveError) as ctx:
-            resolver.resolve_lifecycle(lifecycle, timeline, None, resolved)
+            resolver.resolve_lifecycle(
+                lifecycle, timeline, None, resolved, load_plan(),
+                load_route(timeline["role"]))
         self.assertEqual(ctx.exception.code, "E_ARRIVAL_BINDING")
 
 

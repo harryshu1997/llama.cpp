@@ -1,15 +1,114 @@
 # Q-PIM executable research plan
 
-Status: authoritative gate order as of 2026-07-16.
+Status: S18 real three-device R1 mechanics pass; selected-GPU relief is
+insufficient as of 2026-07-19. S19 CP0 has now audited llama-server continuous
+batching and frozen the distributed reuse boundary; runtime CP1 has not yet
+started.
+
+The independent-lane design now runs end to end on one selected A6000, OP15,
+and OP12. Six matched rows preserve 339,440 high-priority BGE encodes plus 384
+low-priority Gemma requests per row. All 3,072 Gemma tokens per row are exact,
+the phone routes overlap, both SLO classes pass, and median BGE p95 changes from
+3,875 to 3,877 us. OP12 is fail-closed at its measured credit of two exchanges;
+later loose-SLO groups use OP15.
+
+The configuration does not pass the energy or memory goal. Median selected-GPU
+board saving is only 0.342 percent and its uncertainty-adjusted lower bound is
+-764.1 J. The two independent routes currently load two CUDA tail images, so
+peak selected-GPU memory rises from 26,555 to 45,674 MiB. Verdict:
+`S18_R1_FLEET_MECHANICS_PASS_RELIEF_INSUFFICIENT`. See
+`spikes/s18_two_phone_r1_mixed/RESULTS.md`.
+
+The next physical gate is the focused Q-PIM Funnel runtime: OP12 `[0,6)` rows
+pass through a CUDA `[6,8)` bridge, OP15 `[0,8)` rows enter directly, and both
+feed one variable-batch `[8,48)` CUDA tail. A native llama batch cannot mix
+boundary rows entering at different layers, so the bridge normalizes both
+routes to the same layer-8 cut. The B32 S18 geometry remains a regression point
+only. Production dispatch may choose only measured batch candidates, but it
+must choose among them online rather than hard-code B32/B64.
+
+The request-lifecycle substrate follows llama-server's proven pattern: one slot
+per sequence, one logical batch manifest rebuilt at every update, compatibility
+filtering, prompt admission into residual capacity, and per-sequence KV removal.
+It does not copy the server HTTP/task stack or expose activations through a
+public server API. Q-PIM extends the compatibility key with route/cut,
+residency, backend, activation-layout, and epoch identities, and adds only the
+priority/SLO merge-release policy needed by the focused system. The bounded
+implementation and physical gates are frozen in
+`spikes/s19_dynamic_batch_runtime/PLAN.md`.
+
+1. Freeze one CUDA `[6,8)` bridge and one CUDA `[8,48)` tail. Their weights are
+   disjoint; `[8,48)` is loaded exactly once.
+2. Keep request ownership, KV state, session epochs, and device credits isolated
+   for OP12 prefix, OP15 prefix, CUDA bridge, and CUDA tail.
+3. Add bounded KV-slot tables and token-boundary admission/retirement to both
+   persistent phone heads and the server tail. Every step carries an exact
+   request/position/epoch manifest; a request never changes its cut or KV owner.
+4. Measure per-device batch candidates across relevant context, memory, thermal,
+   and co-run states. The scheduler selects the largest useful SLO-feasible
+   decode batch or the measured compute saturation point, subject to reserved
+   downstream credits. Batch 1/2 is an urgent fallback, not a target.
+5. Prove the frozen B32 route as a regression, then run arrival-varying tests in
+   which active batch membership and selected size change between token steps.
+6. Repeat the S18 mixed screen and require lower peak HBM before any full energy
+   acquisition. Stop if the shared tail or continuous-batch handoff serializes
+   the lanes past their SLOs.
+7. Only after that screen passes, rerun an equal-work selected-GPU test across a
+   frozen workload-ratio sweep. Do not reconnect the general DAG/residency
+   machinery in the paper-critical path.
+
+Historical S17 status follows. Its optional hierarchical R2 middle island is
+still stopped: HTP0 B64 is 1.50-1.53x faster than 2xB32, but HTP0 versus CUDA0
+relative L2 is 8.886e-3 to 9.001e-3 against the frozen 5e-3 gate, with one of 64
+row-argmax mismatches. No R2 result enters the S18 R1 claim.
+
+Everything below this point is historical evidence and deferred design context,
+not an active paper-critical implementation gate.
+
+Previous S16 status follows.
 
 The previous capacity-first mixed-workload scheduler plan is superseded. The new
 target is dependency-aware power-frontier scheduling: reorder independent
 multi-model DAG islands to unlock phone-resident work, then use power-trigger
 bundles to create denser A6000 batches and measured lower-power intervals.
 
-No full scheduler is authorized. Historical S10-V0 is invalid/inconclusive.
-S10-V0-R passes its bounded temporal-enumeration and independent-optimality
-foundation.
+The current executable checkpoint is no longer simulation-only. S16 ran six
+rotated real mixed BGE+Gemma rows on one selected A6000 and OP15. Every row
+completed the same 339,440 high-priority BGE encodes plus 20 low-priority
+Gemma B32 x 8-token cohorts. The P0 full-model CUDA control and the P2 OP15
+`[0,8)` plus CUDA `[8,48)` treatment both kept their processes resident across
+all twenty cohorts. All tokens and placement certificates pass independent
+replay. BGE p95 is preserved (P2/P0 = 0.969), and every low cohort meets the
+synthetic 5 s SLO.
+
+The energy result is deliberately negative: all three pairs show a raw
+selected-GPU reduction, but the median is only 0.75 percent and the 5 W Ampere
+uncertainty-adjusted lower bound is negative. Verdict:
+`MIXED_PERSISTENT_MECHANICS_PASS_GPU_BOARD_RELIEF_UNRESOLVED`. Phone, USB,
+server-wall, and total-system energy remain unknown. See
+`spikes/s16_mixed_persistent_energy/`.
+
+Immediate next physical gate:
+
+1. DONE: certify one persistent OP12 `[0,6)` B32 route with exact tokens,
+   placement, reset, and process identity. Its 9.14-9.41 s route passes a
+   predeclared 12 s lower-priority SLO; it is not eligible for the 5 s class.
+2. Add OP12 as an independent READY request lane. Do not construct a serial
+   OP15-to-OP12 chain.
+3. Replay two disjoint low-priority B32 cohorts concurrently: OP15 `[0,8)` and
+   OP12 `[0,6)`, each with its own CUDA tail work and bounded credits.
+4. Keep BGE B16 on the selected A6000. Compare equal work under the persistent
+   server-only baseline and the two-phone treatment.
+5. Report both uncertainty-aware selected-GPU energy and iso-power SLO-valid
+   work. Stop the energy direction on this hardware if neither reaches 10
+   percent under the frozen fleet gate.
+
+This gate tests the mixed-workload energy mechanism. It does not authorize a
+total-system energy claim or dynamic weight streaming.
+
+No production scheduler integration or total-wall energy claim is authorized.
+Historical S10-V0 is invalid/inconclusive. S10-V0-R passes its bounded
+temporal-enumeration and independent-optimality foundation.
 
 **E1 (typed evidence binding) is COMPLETE**:
 `TYPED_EVIDENCE_INTEGRITY_PASS_PHYSICAL_CLAIMS_BLOCKED`. Every oracle input binds
@@ -37,10 +136,13 @@ The one existing A6000 trace is negative evidence: 323 rows contain only 57
 power-value changes (a 10 Hz poll of a ~1.7 Hz sensor), it spans four p-states,
 and it is not a matched pair. See `spikes/s10_matched_energy_e2/`.
 
-**E2A (all-pairs aggregate) is the CURRENT gate**:
-`E2A_R2_TARGETED_MECHANICS_PASS_PHYSICAL_CLAIM_BLOCKED`. E2A builds the
-`SUM_ALL_PAIRS_V1` evaluator E2 deliberately left unbuilt, and adds a third
-blocker that is independent of the two above and was not anticipated:
+**E2A (all-pairs aggregate) remains the total-wall physical-claim evidence gate**:
+`E2A_R4_ROUTE_DAG_MECHANICS_PASS_PHYSICAL_CLAIM_BLOCKED`. E2A builds the
+`SUM_ALL_PAIRS_V1` evaluator E2 deliberately left unbuilt. Active v4 records bind
+same-work identity, exact resolved control/treatment route DAGs, devices,
+operator islands, request sets, phone-result data paths, leases, SERVER_WALL
+capability, and complete plan-set commitment fields. The internal mechanics pass,
+but three external blockers remain:
 
 - **No INDEPENDENT EXTERNAL ANCHOR exists for the experiment plan.** An all-pairs
   sum is only worth something if the cohort was fixed before the results were
@@ -55,15 +157,109 @@ blocker that is independent of the two above and was not anticipated:
   enumerable commitment: third-party pre-registration, or a transparency log with
   a reviewable identity binding. TPM is present but permission-denied and
   custodially ours; git is our own force-pushable fork.
-- **E2A implements no cryptographic verifier at all.** It types anchor capability;
-  it parses no token, checks no signature, validates no inclusion proof.
-  `ANCHOR_VERIFIERS` is empty and every kind is refused `E_ANCHOR_NO_VERIFIER`.
+- **No eligible cryptographic verifier or independent trust root is registered.**
+  The v4 interface carries the experiment identity, namespace, checkpoint,
+  identity binding, complete plan count, and plan-set digest, but the production
+  fixture still refuses at `E_ANCHOR_TRUST_ROOT`.
+- **No witnessed acquisition launcher exists.** Internal lifecycle records can
+  prove their own consistency, but cannot prove that physical execution followed
+  the externally committed plan without a witnessed launch relation.
 
 The three blockers stack and are independent: clearing any one alone changes
 nothing. See `spikes/s10_matched_energy_e2_aggregate/` (ANCHOR_AUDIT.md is the
 load-bearing document; RESULTS.md section 3 lists what is still open).
 
-C0-C5, PF1, measurements, and runtime work all remain blocked.
+**S11-B (bounded implementation checkpoint) is COMPLETE**:
+`BATCH_MECHANICS_PASS; KV_CAPACITY_PASS; SERVER_THROUGHPUT_RELIEF_FAIL;
+PHONE_LEG_STABILITY_NOT_ESTABLISHED; ENERGY_NOT_RUN`. Exact static phone batches
+pass at B=1,2,4,8,16. The complete OP15 `[0,2)` route scales from 3.18 to 25.49
+req/s, but reaches only 41-51 percent of the equally batched A6000 control. The
+complete repeated B=8 route has 4.74 percent CoV, while the OP15 leg alone has
+8.52 percent CoV. The Gemma-4 layer-window KV repair reduces OP15 `[0,2)` from
+1280 MiB to 4 MiB and OP12 `[2,3)` to 2 MiB at B=1, with exact two-phone output
+retained. See `spikes/s11_batched_route_poc/`.
+
+The post-sweep integrity repair is also complete: runner v2 is hash-bound and
+fail-closed, and a versioned stage hello validates the exact layer chain before
+work. Fresh repaired checkpoints remain exact at B=8 on OP15 and B=1 across
+OP15+OP12, with the same 888 MiB and 1288 MiB A6000 relief respectively. These
+checks do not change the throughput failure or certify per-node HTP placement.
+The hello binds topology and execution capabilities only; S9 model-manifest and
+prepared-image digests remain to be carried by the live PF3 protocol.
+
+This authorizes the batch path only as an experimental scheduler primitive for
+memory-pressure and admission tests. It does not authorize ordinary latency
+routing, production integration, or a physical energy label.
+
+**S11-E0 selected-A6000 board-energy diagnostic is COMPLETE and the fixed
+serial route FAILS**: `GPU_BOARD_DIAGNOSTIC_RELIEF_FAIL`. All eight frozen ABBA
+pairs pass exactness, SLO, placement, power, process, and thermal gates. The
+OP15 `[0,2)` route releases 888 MiB and lowers average selected-board power from
+289 W to 192 W, but equal-work runtime grows 2.31x and A6000 board energy rises
+from 197.4 kJ to 302.3 kJ (+53.15 percent). The conservative relief lower bound
+is -125.8 kJ.
+
+Do not rescue this primitive with B=16 or a boundary sweep. It proves resident
+phone execution and real A6000 residency/power changes, but also proves that a
+serial phone barrier wastes too much server time. The next physical mechanism
+must overlap phone work with useful server work across independent ready jobs.
+Phone and total-system energy remain unknown. See
+`spikes/s11_fixed_route_poc/{ACQUISITION_RESULT.json,RESULTS.md}`.
+
+**S8/S12 trace substrate is PARTIAL and fail-closed**:
+`REAL_COMPONENT_GATE_A_PASS; MIX_COMPOSITION_PASS;
+VQ_MECHANICS_PASS; REAL_PROFILE_COVERAGE_PARTIAL; ENERGY_NOT_RUN`.
+BurstGPT median and all RAGPulse component windows normalize reproducibly and
+pass the structural reader. The frozen S12-V0 queue implements clairvoyant
+server-only, causal server batching, fixed-phone, and memory-triggered policies
+with bounded queues and exact HBM/activation/terminal ledgers. S12-V2 separately
+passes synthetic two-model/two-phone `KEEP`, `PREFETCH`, `REPLICATE`, pin-safe
+replacement, generation, and cold-miss server-fallback mechanics. It is the
+state-reducer substrate for S14, not measured performance: it lacks real
+multi-island DAGs, measured profiles, tail batching, thermal state, and energy.
+The real normalized windows have zero exact S11 profile coverage, so they
+receive no latency.
+
+S14 has executed the deterministic mix transform and structural replay:
+`mix-v1` contains 177 requests from the pinned BurstGPT and RAGPulse sources and
+replays byte-identically. BGE support/correctness establishes a second service
+class, while its server/phone latency atlas and a coherent Gemma
+latency-plus-placement row remain the device-dependent gaps. Do not integrate
+the VQ into `llama-server` until exact real-trace profile coverage and the
+priority/SLO native-batch runtime exist.
+
+**S12-V1 asymmetric data path is the current scheduler topology**:
+`DUAL_PATH_CAUSAL_MECHANICS_PASS; STATIC_HOST_RESIDENCY_ONLY;
+DYNAMIC_MIXED_POLICY_BLOCKED; SINGLE_PHONE_CONTEXT_NO_CROSS_GROUP_OVERLAP;
+PATH_RATES_AND_INTERFERENCE_UNMEASURED; RUNTIME_TWO_SOCKET_PATH_NOT_IMPLEMENTED`.
+Fast-loop input travels host-to-phone over the shared WiFi LAN; phone results
+return on each phone's USB connection. These are separate directional
+resources, but the current runtime cannot yet exploit their independence.
+The slow residency loop uses USB H2P for large verified weight segments, while
+the fast loop uses WiFi H2P for small commands, token IDs, and sequence
+metadata. Dense phone results use USB P2H and preempt background weight traffic
+on that phone's link.
+
+The S12 replay now models bounded WiFi input, phone input/result buffers, phone
+compute, per-phone USB result, host result, and A6000-tail phases. A phone
+request cannot complete before its USB result and server tail complete. Each
+run freezes either a full-model server residency or a tail-only phone-route
+residency, charged for the whole horizon. Dynamic mixing is blocked until host
+load/unload transitions exist. OP15 also has one KV context, so V1 limits the
+phone to one in-flight group and reports zero cross-group path overlap. The
+current executable route is only OP15 A0. OP12 needs its own complete-route
+profile before the fleet scheduler can dispatch it.
+
+This is not yet a latency result. The fixture uses assumed path rates and an old
+single-socket phone-stage wall time as a proxy. The physical gate must measure
+WiFi H2P, USB P2H, shared-WiFi contention, simultaneous WiFi/USB behavior, and
+compute/link interference. Runtime realization needs correlated WiFi ingress
+and USB egress sockets carrying one request and epoch identity, plus multiple
+leased KV contexts or measured state switching before link overlap is useful. See
+`spikes/s12_trace_vq/DUAL_PATH_DESIGN.md`.
+
+S14's bounded C0-C5 harness controls are authorized only in the checkpoint order
+below. PF1 physical claims and production runtime integration remain blocked.
 
 ## 1. Claim boundary
 
@@ -80,6 +276,10 @@ or, at equal total wall power:
 The baseline is not eager llama.cpp. It is the best valid server-only policy
 with the same DAG reordering, lazy batching, DVFS/power caps, and SLO knowledge.
 
+Before a wall-power instrument exists, selected-A6000 `GPU_BOARD` energy is an
+interim mechanism diagnostic only. It can falsify an offload route but cannot
+satisfy the primary total-wall gate or establish net energy savings.
+
 Skipped GPU-us, greater phone utilization, longer idle time, or lower modeled
 energy is not sufficient. A claimed win must be explained by an actual batch or
 power-state change at the complete wall boundary.
@@ -93,7 +293,8 @@ Reusable substrate:
 - S9 versioned weight identity, residency, prepared-image, and lease contracts;
 - examples/phone-pim durable provision/resume/publish/PREPARE/EXECUTE path;
 - one independently checked resident Gemma dense-FFN route on both phones;
-- separate OP12/OP15 USB 3.2 Gen 1 contention domains; and
+- separate OP12/OP15 USB 3.2 Gen 1 contention domains;
+- a shared WiFi H2P input domain independent of the USB P2H result domains; and
 - existing CUDA, HTP, OpenCL, transfer, and interference harnesses.
 
 S9-V1A-R closes the current transport measurement slice:
@@ -148,6 +349,8 @@ internals, or the production backend scheduler.
 
 ### PF0-A: freeze the controlled instance
 
+- [ ] Bind the experiment to one selected A6000; administratively exclude the
+      second installed GPU from scheduling, model placement, and accounting.
 - [ ] Define two or three small DAG templates with explicit server pre/suffix
       islands and at least one phone-eligible complete island.
 - [ ] Include at least two model/weight identities; same-model repetitions may
@@ -157,6 +360,8 @@ internals, or the production backend scheduler.
 - [ ] Bind every CUDA/HTP/OpenCL route to current correctness and no-fallback
       evidence; UNKNOWN routes are excluded.
 - [ ] Fix arrival, dependency, deadline/slack, model-mix, and load sweeps.
+- [ ] Include concurrent high-priority BGE encode and low-priority Gemma decode;
+      label priority and SLO fields synthetic when the source trace lacks them.
 - [ ] Freeze server-only, placement-only, frontier-only, full-Q-PIM, and oracle
       controls before seeing the result.
 
@@ -164,11 +369,19 @@ internals, or the production backend scheduler.
 
 - [ ] Measure A6000 latency and energy versus batch and supported power
       cap/clock/state for every selected server island.
+- [ ] Classify each selected route with measured roofline/throughput evidence.
+      For decode, find the largest useful SLO-feasible batch; for compute-bound
+      work, find the smallest batch at the throughput knee.
+- [x] Run the S11-E0 selected-A6000 diagnostic as the first narrow screen;
+      retain `formal_claim=NONE` and all excluded energy as UNKNOWN.
 - [ ] Measure actual idle states, wake/transition latency and energy, and
       break-even gap. Do not assume a deep sleep state.
 - [ ] Measure phone HTP/GPU latency and energy/thermal state for selected islands
       at available pacing controls.
-- [ ] Include H2D activation, D2H result, verification, host relay, and USB VBUS.
+- [ ] Include WiFi H2P input, USB P2H result, verification, host relay, and USB
+      VBUS. Bind each direction to its physical path and contention domain.
+- [ ] Measure shared-WiFi contention across OP12/OP15 and simultaneous WiFi H2P
+      plus USB P2H. Do not infer no-interference from distinct hardware alone.
 - [ ] Use an external synchronized wall boundary. If phones are host-powered,
       include their VBUS draw in the server-wall measurement and avoid adding it
       twice.
@@ -182,6 +395,8 @@ internals, or the production backend scheduler.
       code with the enumerator.
 - [ ] Enumerate all topologically legal orders, READY routes, allowed batches,
       power-trigger bundles, and power states within fixed small bounds.
+- [ ] Include compute-pressure bundles that offload READY low-priority work and
+      evaluate normal/lower GPU operating points with and without phone relief.
 - [ ] Reject activation-memory overflow, invalid state, transfer omission,
       thermal-profile mismatch, and unfinished horizon work.
 - [ ] Compare against optimized server-only, not eager FIFO.
@@ -198,10 +413,16 @@ internals, or the production backend scheduler.
 
 ### PF0-E: controlled real-device reproduction
 
-- [ ] Reproduce the smallest winning schedule with the A6000, OP12, and OP15.
+- [ ] Reproduce the smallest winning schedule with exactly one selected A6000,
+      OP12, and OP15; verify the second GPU performs zero experiment work.
 - [ ] Use resident weights and the existing bounded phone-PIM command path.
 - [ ] Compare optimized server-only, fixed phone placement, and Q-PIM in rotated
       order with identical offered work.
+- [ ] Run the decisive priority-differentiated overlap: high-priority BGE on the
+      selected A6000 while low-priority Gemma decode forms native phone batches;
+      admit returned boundaries to compatible server suffix batches.
+- [ ] Compare normal-state server-only, lower-state server-only, normal-state
+      phone relief, and lower-state phone relief as separate treatments.
 - [ ] Run enough repeated processes for confidence, then a sustained thermal run.
 - [ ] Account every activation/result byte and every late/canceled phone result.
 
@@ -237,6 +458,8 @@ Goal: generalize a passing mechanism beyond the tiny controlled instance.
 - [ ] Profile A6000/OP12/OP15 routes for at least two service classes.
 - [ ] Add batch, active-burst, power-state, phone-pace, thermal, boundary, and
       pairwise-interference surfaces.
+- [ ] Measure one-GPU compute-bound pressure points and verify that phone relief
+      changes a real batch, power-cap, clock, or active-burst decision.
 - [ ] Record full wall-power validity and uncertainty for every energy row.
 - [ ] Run 30-minute resident/thermal stability for shortlisted routes.
 
@@ -288,9 +511,18 @@ Stop before runtime integration if the causal policy fails.
 
 Goal: reproduce only the winning PF2 mechanism.
 
+PF3-A now exists as a bounded compiled substrate. The
+`examples/phone-pim/llama-phone-pim-fleet` target keeps one session per phone,
+performs authoritative STATUS plus exact PREPARE, checks every FFN result
+against a CPU oracle, and completion-schedules real jobs across OP12 and OP15.
+This closes the simulator-to-device execution gap for one stateless operator
+island only. It does not yet consume the S12 policy, execute a mixed-model DAG,
+or alter A6000 work.
+
 - [ ] Add a host DAG/VQ orchestrator outside ggml backend policy.
 - [ ] Feed admitted request/island milestones from a bounded harness first.
-- [ ] Reuse S9 manifests, verified residency, PREPARE, EXECUTE, and D2H result.
+- [x] Reuse verified residency, PREPARE, EXECUTE, and D2H result for one
+      pre-staged Gemma4 dense FFN island.
 - [ ] Implement authoritative READY, ownership, state, lane, link, and thermal
       reservations with generation-qualified epochs.
 - [ ] Implement H-hop frontier construction and the bounded winning policy.
@@ -350,8 +582,91 @@ Kernel failure does not invalidate Q-PIM. It remains a measured bonus.
 
 ## 11. Immediate instruction
 
-Do not start C0-C5 or claim physical relief. The next controlled experiment
-requires an enumerable independent plan commitment, a registered verifier, a
-witnessed pre-run launch relation, and a valid power instrument. Until those
-exist, preserve the E2A-R2 fixtures and keep runtime, llama-server, model-graph,
-KV, backend-scheduler, protocol, and production-kernel work separate.
+Do not integrate `llama-server` or claim server/total energy relief. Historical
+S11-E0 reached its stop rule and permanently rejected the fixed serial `[0,2)`
+energy route. Do not run a post-hoc S11 boundary sweep or relabel a deeper range
+as an S11 rescue.
+
+The active bounded implementation target is S14, defined in
+`spikes/s14_mixed_streaming_scheduler/PLAN.md`. It extends the existing S12-V2
+state reducer rather than creating another scheduler. Execute these gates in
+order:
+
+### S14-CP0: mixed input and measured catalog
+
+1. implement the frozen deterministic `mix-v1` transform and structural replay
+   for BurstGPT plus RAGPulse;
+2. make a second service/model class executable through its support-first,
+   CPU-reference correctness, boundary, latency, memory, and no-fallback funnel;
+3. profile a finite catalog of independently certified stateless islands and
+   Gemma head cuts `[0,k)` on A6000, OP12, and OP15; and
+4. freeze every candidate range before scheduler results. A stateful request
+   pins its cut, phone, residency generation, and KV owner for its lifetime.
+
+Stop with `TRACE_OR_SERVICE_BLOCKED` if two executable service/model classes do
+not exist. S12-V2's symbolic two-model fixture is not a substitute.
+
+### S14-CP1/CP2: static mixed runtime and placement policy
+
+1. adapt measured rows into S12-V2 and compare optimized server-only, fixed
+   placement, and mixed-VQ static residency with all weights pre-staged;
+2. connect only passing decisions to S13's persistent OP12/OP15 sessions in a
+   bounded harness outside `llama-server`;
+3. let the slow loop choose single, replicated, or diverse phone placement and a
+   certified layer/island range from visible ANNOUNCED demand;
+4. keep finite phone, server, activation, result, KV/state, and queue credits;
+5. require exact output, no fallback, measured placement, stable thermal state,
+   and at least 0.90x optimized server-only useful throughput together with a
+   concrete server-compute, batch, power, or HBM-relief mechanism; and
+6. extend the bounded S10 temporal oracle with discrete placement, replica,
+   memory, generation, and transfer decisions, then report causal-policy gap.
+
+Before the general policy, run a one-GPU bounded screen with two priority
+classes. High-priority BGE remains on the selected A6000 unless another route is
+measured better. Low-priority Gemma decode may wait only within declared slack
+to form the largest useful compatible OP12/OP15 batch. The scheduler admits a
+returned phone boundary to a server suffix batch only after identity, epoch,
+correctness, and D2H validation. Sweep normal and lower A6000 power/clock points;
+do not lower the GPU state unless the complete joint schedule remains SLO-valid
+and reduces measured energy per completed work.
+
+Stop before streaming if static mixed mechanics fail. Replication serves a hot
+repeated model; diverse placement covers different model demand. Both phones are
+available, but forced utilization is not an objective.
+
+### S14-CP3/CP4: overlapped residency streaming
+
+1. add independent per-slot generations so READY/leased G0 keeps serving while
+   one bounded G1 stages, verifies, publishes, prepares, and becomes READY;
+2. do not reuse the current worker's single global generation, which would stale
+   G0 leases during replacement;
+3. use USB H2P for large weights, WiFi H2P for small commands/input, and USB P2H
+   for dense results; result/state traffic preempts bulk weights at bounded chunk
+   boundaries;
+4. measure transfer, verify, UFS, publish, prepare, HTP/GPU, WiFi, result, and
+   A6000 interference rather than assuming overlap is free;
+5. dispatch only complete READY generations and make the server take its SLO-safe
+   route instead of waiting for unfinished prefetch;
+6. compare dynamic placement without overlap against dynamic placement with
+   overlap on separate real source replays and low/median/high/burst `mix-v1`;
+   and
+7. report useful, unused, retried, and evicted prefetch bytes, queue/SLO outcomes,
+   batch density, HBM, throughput, thermal state, and oracle gap.
+
+The 216/262 MiB/s numbers are ADB-to-file staging controls, not READY-weight
+throughput. The repaired S9 full-shard protocol reached about 36-37 MiB/s at its
+best tested windows and OP15 reached 95 C. Weight reuse must amortize the full
+transfer/verify/publish/prepare path.
+
+The path-decomposition measurements remain mandatory: per-phone WiFi H2P, USB
+P2H, shared-WiFi contention, simultaneous WiFi/USB behavior, and compute/link/
+prepare interference. Replace S12 proxy rates only with digest-bound physical
+rows.
+
+Only an S14 mixed-runtime mechanics pass authorizes a new selected-A6000 energy
+diagnostic. Do not reuse S11-E0 energy or SLO evidence. Phone energy remains
+UNKNOWN, and server-wall/total-wall labels remain blocked until valid physical
+instruments exist.
+
+Preserve the E2A-R4 fixtures. The external commitment, witnessed acquisition,
+and wall-power instrument are still required before any physical paper claim.

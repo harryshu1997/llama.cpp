@@ -20,7 +20,7 @@
   "raw_artifact_sha256": "fc64ccedb5b0dc1c9179130a7c2794dd4064394c1080e873ac94a0776444e480",
   "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
   "role": "OPTIMIZED_SERVER_ONLY_CONTROL",
-  "route_schedule_digest": "e65561fa243864623acf46ab24168a96ffe52aa6feab26507f5396f8af8b43aa",
+  "route_schedule_digest": "9609fc3d3f8d7e242f42d799105b2678399ee2af19eb639b19470c276601e9cb",
   "run_nonce": "run.tl.slot04",
   "schema": "e2.execution.v2",
   "slo_policy_digest": "17972eecf35e4c0bf8b8238c232753dd60adc68e112c0d9b40a7813cefd4a192",

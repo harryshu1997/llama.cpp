@@ -22,7 +22,7 @@ import anchors  # noqa: E402
 import e2a_canon as canon  # noqa: E402
 import e2a_e2  # noqa: E402
 import resolver  # noqa: E402
-from test_e2a import _rechain, bundle  # noqa: E402
+from test_e2a import _rechain, bundle, load_route  # noqa: E402
 
 FIXTURES = ROOT / "fixtures"
 
@@ -201,8 +201,11 @@ class RealizedWorkRepair(unittest.TestCase):
             lifecycle["actions"], timeline["window_end_us"])
         canon.seal(lifecycle)
         with self.assertRaises(resolver.ResolveError) as ctx:
-            resolver.resolve_lifecycle(lifecycle, timeline, None, resolved)
-        self.assertEqual(ctx.exception.code, "E_LIFECYCLE_CAUSAL")
+            plan = canon.load_strict(FIXTURES / "plan.json")
+            resolver.resolve_lifecycle(
+                lifecycle, timeline, None, resolved, plan,
+                load_route(timeline["role"]))
+        self.assertEqual(ctx.exception.code, "E_ROUTE_NODE_MISSING")
 
 
 class ExecutedCodeAndAnchorRepair(unittest.TestCase):

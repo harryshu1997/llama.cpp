@@ -1,0 +1,176 @@
+{
+ "schema": "s19-batch-atlas-v1",
+ "rows": [
+  {
+   "route": "CUDA_R0",
+   "batch": 4,
+   "device": "GPU-45b611d6",
+   "p50_us": 317000,
+   "p95_us": 332850,
+   "verdict": "ELIGIBLE",
+   "urgent_control": false
+  },
+  {
+   "route": "CUDA_R0",
+   "batch": 8,
+   "device": "GPU-45b611d6",
+   "p50_us": 329000,
+   "p95_us": 345450,
+   "verdict": "ELIGIBLE",
+   "urgent_control": false
+  },
+  {
+   "route": "CUDA_R0",
+   "batch": 16,
+   "device": "GPU-45b611d6",
+   "p50_us": 365000,
+   "p95_us": 383250,
+   "verdict": "ELIGIBLE",
+   "urgent_control": false
+  },
+  {
+   "route": "CUDA_R0",
+   "batch": 24,
+   "device": "GPU-45b611d6",
+   "p50_us": 415000,
+   "p95_us": 435750,
+   "verdict": "ELIGIBLE",
+   "urgent_control": false
+  },
+  {
+   "route": "CUDA_R0",
+   "batch": 32,
+   "device": "GPU-45b611d6",
+   "p50_us": 457000,
+   "p95_us": 479850,
+   "verdict": "ELIGIBLE",
+   "urgent_control": false
+  },
+  {
+   "route": "CUDA_R0",
+   "batch": 48,
+   "device": "GPU-45b611d6",
+   "p50_us": 502000,
+   "p95_us": 527100,
+   "verdict": "ELIGIBLE",
+   "urgent_control": false
+  },
+  {
+   "route": "CUDA_R0",
+   "batch": 64,
+   "device": "GPU-45b611d6",
+   "p50_us": 585000,
+   "p95_us": 614250,
+   "verdict": "ELIGIBLE",
+   "urgent_control": false
+  },
+  {
+   "route": "OP15_R1",
+   "batch": 4,
+   "device": "3C15AU002CL00000",
+   "p50_us": 1388000,
+   "p95_us": 1457400,
+   "verdict": "ELIGIBLE",
+   "urgent_control": false
+  },
+  {
+   "route": "OP15_R1",
+   "batch": 8,
+   "device": "3C15AU002CL00000",
+   "p50_us": 1988000,
+   "p95_us": 2087400,
+   "verdict": "ELIGIBLE",
+   "urgent_control": false
+  },
+  {
+   "route": "OP15_R1",
+   "batch": 16,
+   "device": "3C15AU002CL00000",
+   "p50_us": 2243000,
+   "p95_us": 2355150,
+   "verdict": "ELIGIBLE",
+   "urgent_control": false
+  },
+  {
+   "route": "OP15_R1",
+   "batch": 24,
+   "device": "3C15AU002CL00000",
+   "p50_us": 2476000,
+   "p95_us": 2599800,
+   "verdict": "ELIGIBLE",
+   "urgent_control": false
+  },
+  {
+   "route": "OP15_R1",
+   "batch": 32,
+   "device": "3C15AU002CL00000",
+   "p50_us": 2735000,
+   "p95_us": 2871750,
+   "verdict": "ELIGIBLE",
+   "urgent_control": false
+  },
+  {
+   "route": "OP15_R1",
+   "batch": 48,
+   "device": "3C15AU002CL00000",
+   "p50_us": 3133000,
+   "p95_us": 3289650,
+   "verdict": "ELIGIBLE",
+   "urgent_control": false
+  },
+  {
+   "route": "OP15_R1",
+   "batch": 64,
+   "device": "3C15AU002CL00000",
+   "p50_us": 3586000,
+   "p95_us": 3765300,
+   "verdict": "ELIGIBLE",
+   "urgent_control": false
+  },
+  {
+   "route": "OP12_R1",
+   "batch": 4,
+   "device": "5ae7a43d",
+   "p50_us": 4200000,
+   "p95_us": 4410000,
+   "verdict": "ELIGIBLE",
+   "urgent_control": false
+  },
+  {
+   "route": "OP12_R1",
+   "batch": 8,
+   "device": "5ae7a43d",
+   "p50_us": 5400000,
+   "p95_us": 5670000,
+   "verdict": "ELIGIBLE",
+   "urgent_control": false
+  },
+  {
+   "route": "OP12_R1",
+   "batch": 16,
+   "device": "5ae7a43d",
+   "p50_us": 7000000,
+   "p95_us": 7350000,
+   "verdict": "ELIGIBLE",
+   "urgent_control": false
+  },
+  {
+   "route": "OP12_R1",
+   "batch": 32,
+   "device": "5ae7a43d",
+   "p50_us": 9148000,
+   "p95_us": 9605400,
+   "verdict": "ELIGIBLE",
+   "urgent_control": false
+  },
+  {
+   "route": "urgent",
+   "batch": 2,
+   "device": "GPU-45b611d6",
+   "p50_us": 300000,
+   "p95_us": 320000,
+   "verdict": "ELIGIBLE",
+   "urgent_control": true
+  }
+ ]
+}

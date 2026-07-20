@@ -1,0 +1,56 @@
+{
+  "schema": "s14-stage-d-overlap-v1",
+  "scope": "A6000_GPU0_BOARD_ENERGY_AND_THROUGHPUT_PLUS_PHONE_HEAD_RATE_ONLY_PHONE_ENERGY_UNKNOWN",
+  "formal_claim": "MEASURED_CONCURRENT_OVERLAP_INTERFERENCE_AND_REALISED_SAVING_BOUND",
+  "gpu0_index": 0,
+  "phone_tail_gpu": "GPU-431a4567-fa90-7a73-625a-2ee6e7b5eaaf",
+  "phone_serial": "3C15AU002CL00000",
+  "offload_depth_k": 8,
+  "batch": 16,
+  "steps": 800,
+  "measured_s_k": 0.1510542890235791,
+  "control_phone_idle": {
+    "label": "control_phone_idle",
+    "energy_j": 10229.033978233341,
+    "duration_s": 34.734999895095825,
+    "avg_power_w": 294.48780794951324,
+    "avg_util_pct": 97.67441860465117,
+    "tokens": 12800,
+    "throughput_tok_s": 368.5043914972693,
+    "energy_per_token_mj": 799.1432795494798
+  },
+  "treatment_phone_concurrent": {
+    "label": "treatment_phone_concurrent",
+    "energy_j": 10276.018545589443,
+    "duration_s": 34.84000015258789,
+    "avg_power_w": 294.9488662624517,
+    "avg_util_pct": 97.91884057971015,
+    "tokens": 12800,
+    "throughput_tok_s": 367.3937986205556,
+    "energy_per_token_mj": 802.8139488741753
+  },
+  "interference": {
+    "throughput_delta_frac": -0.0030137846450113584,
+    "energy_per_token_delta_frac": 0.004593255575852243,
+    "clean_overlap": true,
+    "note": "GPU0 workload is byte-identical in both; delta is pure concurrency cost (USB relay + host CPU + PCIe from the phone pipeline)."
+  },
+  "phone_head": {
+    "phone_alive_during_window": true,
+    "sustained_head_tok_s": 8.203840833182074,
+    "source": "phone_pipeline_result.json stage_a_us_p50 (single-stream [0,k) over adb/USB)"
+  },
+  "realised_saving": {
+    "a6000_decode_tok_s": 368.5043914972693,
+    "phone_offloadable_fraction_at_saturation": 0.022262532068747048,
+    "realised_gpu_board_saving_at_saturation": 0.003362850953509215,
+    "note": "One single-stream phone carries f_sat of the A6000's decode rate; the realised board saving is f_sat * s(k). This is the throughput-bounded reality the Stage C accounting ceiling (f up to 0.879) ignores."
+  },
+  "caveats": [
+    "A6000 GPU0 board energy + throughput ONLY. Phone energy UNKNOWN.",
+    "GPU0 runs the SAME full-model backlog in control and treatment; the phone tail runs on GPU1 to isolate pure concurrency interference.",
+    "R_phone is single-stream (batched multi-seq HTP decode hangs, S1); more phones or a working batch would raise it.",
+    "realised_saving_at_saturation assumes the A6000 is the bottleneck (busy). At the light mix-v1 rate the A6000 is idle-dominated, a different regime.",
+    "Stage A/B energies are reused as measured constants (e_full, e_tail); NVML board-average +/-5W."
+  ]
+}

@@ -1,0 +1,615 @@
+{
+  "schema": "s14-cp-e-batch-cert-v1",
+  "status": "BATCH_CERT_SCREEN_COMPLETE",
+  "scope": "three-device token correctness and placement only; no latency, throughput, or energy claim",
+  "route": {
+    "op15": [
+      0,
+      8
+    ],
+    "op12": [
+      8,
+      12
+    ],
+    "server": [
+      12,
+      48
+    ]
+  },
+  "batches_requested": [
+    1,
+    4,
+    8,
+    16,
+    32,
+    64
+  ],
+  "certified_batches": [
+    1,
+    4,
+    8,
+    32
+  ],
+  "largest_certified_batch": 32,
+  "artifacts": {
+    "host": {
+      "cp_e_live_priority.py": {
+        "path": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/spikes/s14_mixed_streaming_scheduler/energy/artifacts/cp_e_batch_cert/cp_e_live_priority.py",
+        "sha256": "sha256:0c1457cb1cae73e9b30e7b87dac53ae59c5b3264a5e175fa24243808c6d4e707"
+      },
+      "bge_server_prof.py": {
+        "path": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/spikes/s14_mixed_streaming_scheduler/energy/bge_server_prof.py",
+        "sha256": "sha256:bf7abeba10892610145523e759713d77a160d5af292299d47620cb19dd22ff5b"
+      },
+      "cp_b_phone_bge.py": {
+        "path": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/spikes/s14_mixed_streaming_scheduler/energy/cp_b_phone_bge.py",
+        "sha256": "sha256:746da6a6a7e1aa9b9760515dfd6a3bab23f1d331197f05496143d4327cd47c13"
+      },
+      "stage_a_gpu_board.py": {
+        "path": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/spikes/s14_mixed_streaming_scheduler/energy/stage_a_gpu_board.py",
+        "sha256": "sha256:218d88735e79e0673768abddc5354f5bd9fe5fce10af02e931b6e3cb4ab7447d"
+      },
+      "pipe3_device.py": {
+        "path": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/spikes/s14_mixed_streaming_scheduler/energy/pipe3_device.py",
+        "sha256": "sha256:8bb49aa23b61b3aef81cdc126ac21fa25651fd71ca639e609744cfbd1fd289f1"
+      },
+      "stageb_headcert.py": {
+        "path": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/spikes/s14_mixed_streaming_scheduler/energy/stageb_headcert.py",
+        "sha256": "sha256:266cf68bc1f392ddcd4632748496894489790f056ae85a92450b9237aa156e48"
+      },
+      "llama_embedding": {
+        "path": "/home/myid/zs89458/Documents/llama.cpp-release/build-cuda/bin/llama-embedding",
+        "sha256": "sha256:fa3fc4d32d9eea638fb216ecc17bf5eb86a0f4a01f655e8faab927e74563724c"
+      },
+      "llama_layersplit": {
+        "path": "/home/myid/zs89458/Documents/llama.cpp-release/build-cuda/bin/llama-layersplit",
+        "sha256": "sha256:f682f66eb889c21bfb4f90496cb86a4003bd89fc09fd97703c4bfd598a2cf4f0"
+      },
+      "android_llama_layersplit": {
+        "path": "/home/myid/zs89458/Documents/llama.cpp-release/build-snapdragon/bin/llama-layersplit",
+        "sha256": "sha256:2be934b2808703f7f10108d5960f75b87aa302b8b306fb7bf4cef0cd3eb2541c"
+      },
+      "bge_server_result": {
+        "path": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/spikes/s14_mixed_streaming_scheduler/energy/bge_server_result_repaired.json",
+        "sha256": "sha256:823d2c4be1512442ad1edbb4304080cb625382b217be616057353cc5ddfde1de"
+      },
+      "gemma_batch_profile": {
+        "path": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/spikes/s14_mixed_streaming_scheduler/energy/stage_d_batch_scaling.json",
+        "sha256": "sha256:720d37ec2287d4e67ec7ddc9f96e15ee38772195cf5f53b89d6d16e98979fe5e"
+      },
+      "cp_e_batch_cert.py": {
+        "path": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/spikes/s14_mixed_streaming_scheduler/energy/cp_e_batch_cert.py",
+        "sha256": "sha256:a3d593d10ef4eae0bd93f68d000bd2c72e7c634cacc4cc3bcccb3fe05a528a69"
+      }
+    },
+    "phone_binary": {
+      "op15": {
+        "serial": "3C15AU002CL00000",
+        "remote_path": "/data/local/tmp/ls-s14-cpe/llama-layersplit",
+        "sha256": "sha256:2be934b2808703f7f10108d5960f75b87aa302b8b306fb7bf4cef0cd3eb2541c"
+      },
+      "op12": {
+        "serial": "5ae7a43d",
+        "remote_path": "/data/local/tmp/ls-s14-cpe/llama-layersplit",
+        "sha256": "sha256:2be934b2808703f7f10108d5960f75b87aa302b8b306fb7bf4cef0cd3eb2541c"
+      }
+    },
+    "android_runtime": {
+      "libggml-base.so": {
+        "path": "/home/myid/zs89458/Documents/llama.cpp-release/build-snapdragon/bin/libggml-base.so",
+        "sha256": "sha256:c33bd2391692749501ed9e105c8a774c4e9520f8509bda645baf57f009d28611"
+      },
+      "libggml-cpu.so": {
+        "path": "/home/myid/zs89458/Documents/llama.cpp-release/build-snapdragon/bin/libggml-cpu.so",
+        "sha256": "sha256:63bbf72ef438e17eba2890e0079f0862928fdec1aa864abd42cd748454c0e741"
+      },
+      "libggml-hexagon.so": {
+        "path": "/home/myid/zs89458/Documents/llama.cpp-release/build-snapdragon/bin/libggml-hexagon.so",
+        "sha256": "sha256:feb951c024ecba80a963bad39fa8bc7b86fbea5d69ca7b49cb29784489e4b31e"
+      },
+      "libggml-opencl.so": {
+        "path": "/home/myid/zs89458/Documents/llama.cpp-release/build-snapdragon/bin/libggml-opencl.so",
+        "sha256": "sha256:f6b09b7dbd62a9277cc6ed0a5c9fda4e5bbc4e01fb14cb8e6020183024a70958"
+      },
+      "libggml.so": {
+        "path": "/home/myid/zs89458/Documents/llama.cpp-release/build-snapdragon/bin/libggml.so",
+        "sha256": "sha256:99b0e34ae40c28d2d62d32f46a9407ba3d54c215b5959def8e1044686557e5eb"
+      },
+      "libllama-common.so": {
+        "path": "/home/myid/zs89458/Documents/llama.cpp-release/build-snapdragon/bin/libllama-common.so",
+        "sha256": "sha256:ed908443a626965e4e1a42f71fdee9051a889eeb65988144841b09aedeeee3d2"
+      },
+      "libllama.so": {
+        "path": "/home/myid/zs89458/Documents/llama.cpp-release/build-snapdragon/bin/libllama.so",
+        "sha256": "sha256:e61ee6fe4b760d16dd77ef40a57f948da7e8f7e17620f42933631597f993eca2"
+      }
+    },
+    "phone_runtime": {
+      "op15": {
+        "libggml-base.so": {
+          "serial": "3C15AU002CL00000",
+          "remote_path": "/data/local/tmp/ls-s14-cpe/libggml-base.so",
+          "sha256": "sha256:c33bd2391692749501ed9e105c8a774c4e9520f8509bda645baf57f009d28611"
+        },
+        "libggml-cpu.so": {
+          "serial": "3C15AU002CL00000",
+          "remote_path": "/data/local/tmp/ls-s14-cpe/libggml-cpu.so",
+          "sha256": "sha256:63bbf72ef438e17eba2890e0079f0862928fdec1aa864abd42cd748454c0e741"
+        },
+        "libggml-hexagon.so": {
+          "serial": "3C15AU002CL00000",
+          "remote_path": "/data/local/tmp/ls-s14-cpe/libggml-hexagon.so",
+          "sha256": "sha256:feb951c024ecba80a963bad39fa8bc7b86fbea5d69ca7b49cb29784489e4b31e"
+        },
+        "libggml-opencl.so": {
+          "serial": "3C15AU002CL00000",
+          "remote_path": "/data/local/tmp/ls-s14-cpe/libggml-opencl.so",
+          "sha256": "sha256:f6b09b7dbd62a9277cc6ed0a5c9fda4e5bbc4e01fb14cb8e6020183024a70958"
+        },
+        "libggml.so": {
+          "serial": "3C15AU002CL00000",
+          "remote_path": "/data/local/tmp/ls-s14-cpe/libggml.so",
+          "sha256": "sha256:99b0e34ae40c28d2d62d32f46a9407ba3d54c215b5959def8e1044686557e5eb"
+        },
+        "libllama-common.so": {
+          "serial": "3C15AU002CL00000",
+          "remote_path": "/data/local/tmp/ls-s14-cpe/libllama-common.so",
+          "sha256": "sha256:ed908443a626965e4e1a42f71fdee9051a889eeb65988144841b09aedeeee3d2"
+        },
+        "libllama.so": {
+          "serial": "3C15AU002CL00000",
+          "remote_path": "/data/local/tmp/ls-s14-cpe/libllama.so",
+          "sha256": "sha256:e61ee6fe4b760d16dd77ef40a57f948da7e8f7e17620f42933631597f993eca2"
+        }
+      },
+      "op12": {
+        "libggml-base.so": {
+          "serial": "5ae7a43d",
+          "remote_path": "/data/local/tmp/ls-s14-cpe/libggml-base.so",
+          "sha256": "sha256:c33bd2391692749501ed9e105c8a774c4e9520f8509bda645baf57f009d28611"
+        },
+        "libggml-cpu.so": {
+          "serial": "5ae7a43d",
+          "remote_path": "/data/local/tmp/ls-s14-cpe/libggml-cpu.so",
+          "sha256": "sha256:63bbf72ef438e17eba2890e0079f0862928fdec1aa864abd42cd748454c0e741"
+        },
+        "libggml-hexagon.so": {
+          "serial": "5ae7a43d",
+          "remote_path": "/data/local/tmp/ls-s14-cpe/libggml-hexagon.so",
+          "sha256": "sha256:feb951c024ecba80a963bad39fa8bc7b86fbea5d69ca7b49cb29784489e4b31e"
+        },
+        "libggml-opencl.so": {
+          "serial": "5ae7a43d",
+          "remote_path": "/data/local/tmp/ls-s14-cpe/libggml-opencl.so",
+          "sha256": "sha256:f6b09b7dbd62a9277cc6ed0a5c9fda4e5bbc4e01fb14cb8e6020183024a70958"
+        },
+        "libggml.so": {
+          "serial": "5ae7a43d",
+          "remote_path": "/data/local/tmp/ls-s14-cpe/libggml.so",
+          "sha256": "sha256:99b0e34ae40c28d2d62d32f46a9407ba3d54c215b5959def8e1044686557e5eb"
+        },
+        "libllama-common.so": {
+          "serial": "5ae7a43d",
+          "remote_path": "/data/local/tmp/ls-s14-cpe/libllama-common.so",
+          "sha256": "sha256:ed908443a626965e4e1a42f71fdee9051a889eeb65988144841b09aedeeee3d2"
+        },
+        "libllama.so": {
+          "serial": "5ae7a43d",
+          "remote_path": "/data/local/tmp/ls-s14-cpe/libllama.so",
+          "sha256": "sha256:e61ee6fe4b760d16dd77ef40a57f948da7e8f7e17620f42933631597f993eca2"
+        }
+      }
+    },
+    "phone_skeleton": {
+      "op15": {
+        "serial": "3C15AU002CL00000",
+        "remote_path": "/data/local/tmp/ls-s14-cpe/libggml-htp-v81.so",
+        "sha256": "sha256:bbaf7ee312e488a35afcc2db194b44f02e0eb93d0c09f4ae9c1de21742635f94"
+      },
+      "op12": {
+        "serial": "5ae7a43d",
+        "remote_path": "/data/local/tmp/ls-s14-cpe/libggml-htp-v75.so",
+        "sha256": "sha256:39c952422e4012abd32ac25a1fba44dfa8a6877e3c84bb968ab964913ae7a2ba"
+      }
+    },
+    "phone_shards": {
+      "op15": {
+        "serial": "3C15AU002CL00000",
+        "remote_path": "/data/local/tmp/ls-npu/12b-f16-head-0-8.gguf",
+        "sha256": "sha256:a74845294bc1a3cba6ac26c747615d64d9127c904aae04c43c7ea2ebc1ea25c8"
+      },
+      "op12": {
+        "serial": "5ae7a43d",
+        "remote_path": "/data/local/tmp/ls-npu/12b-f16-mid-8-12.gguf",
+        "sha256": "sha256:d8173da6fb9c3a79d060f7747ace7b428f54909f0854a50b91132d42aacbb38f"
+      }
+    }
+  },
+  "rows": [
+    {
+      "batch": 1,
+      "returncode": 0,
+      "certified": true,
+      "result_path": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/spikes/s14_mixed_streaming_scheduler/energy/logs_batch_cert/pipe3_b1.json",
+      "result_sha256": "sha256:67a1041f07dce464f273afc8c224e8353b300229a0734491883b3a59180f0c8e",
+      "result_status": "CERTIFIED_3DEVICE_TOKEN_CORRECT_MECHANICS",
+      "checks": {
+        "host_returncode_zero": true,
+        "result_rows_present": true,
+        "op15_head_cert_ok": true,
+        "op12_mid_cert_ok": true,
+        "ranges_match_topology": true,
+        "token_match_stream0": true,
+        "all_streams_match_reference": true
+      },
+      "request_wall_us_p50": 1532208,
+      "thermal_start": {
+        "op15": {
+          "sensor_class": "nsphmx-*",
+          "sensors_millic": {
+            "nsphmx-0": 29800,
+            "nsphmx-1": 29800,
+            "nsphmx-2": 29800,
+            "nsphmx-3": 30200
+          },
+          "max_millic": 30200,
+          "valid": true
+        },
+        "op12": {
+          "sensor_class": "nsphmx-*",
+          "sensors_millic": {
+            "nsphmx-0": 33300,
+            "nsphmx-1": 32900,
+            "nsphmx-2": 33300,
+            "nsphmx-3": 33700
+          },
+          "max_millic": 33700,
+          "valid": true
+        }
+      },
+      "thermal_end": {
+        "op15": {
+          "sensor_class": "nsphmx-*",
+          "sensors_millic": {
+            "nsphmx-0": 31400,
+            "nsphmx-1": 31800,
+            "nsphmx-2": 32100,
+            "nsphmx-3": 31400
+          },
+          "max_millic": 32100,
+          "valid": true
+        },
+        "op12": {
+          "sensor_class": "nsphmx-*",
+          "sensors_millic": {
+            "nsphmx-0": 34100,
+            "nsphmx-1": 33700,
+            "nsphmx-2": 32900,
+            "nsphmx-3": 33700
+          },
+          "max_millic": 34100,
+          "valid": true
+        }
+      }
+    },
+    {
+      "batch": 4,
+      "returncode": 0,
+      "certified": true,
+      "result_path": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/spikes/s14_mixed_streaming_scheduler/energy/logs_batch_cert/pipe3_b4.json",
+      "result_sha256": "sha256:0c845fed04f6e610274457876013b98f6c85fcdebb6d63c317b5a2160da3dfe5",
+      "result_status": "CERTIFIED_3DEVICE_TOKEN_CORRECT_MECHANICS",
+      "checks": {
+        "host_returncode_zero": true,
+        "result_rows_present": true,
+        "op15_head_cert_ok": true,
+        "op12_mid_cert_ok": true,
+        "ranges_match_topology": true,
+        "token_match_stream0": true,
+        "all_streams_match_reference": true
+      },
+      "request_wall_us_p50": 2286352,
+      "thermal_start": {
+        "op15": {
+          "sensor_class": "nsphmx-*",
+          "sensors_millic": {
+            "nsphmx-0": 29000,
+            "nsphmx-1": 29800,
+            "nsphmx-2": 29800,
+            "nsphmx-3": 29800
+          },
+          "max_millic": 29800,
+          "valid": true
+        },
+        "op12": {
+          "sensor_class": "nsphmx-*",
+          "sensors_millic": {
+            "nsphmx-0": 33300,
+            "nsphmx-1": 32900,
+            "nsphmx-2": 32900,
+            "nsphmx-3": 33700
+          },
+          "max_millic": 33700,
+          "valid": true
+        }
+      },
+      "thermal_end": {
+        "op15": {
+          "sensor_class": "nsphmx-*",
+          "sensors_millic": {
+            "nsphmx-0": 31400,
+            "nsphmx-1": 31800,
+            "nsphmx-2": 32100,
+            "nsphmx-3": 32100
+          },
+          "max_millic": 32100,
+          "valid": true
+        },
+        "op12": {
+          "sensor_class": "nsphmx-*",
+          "sensors_millic": {
+            "nsphmx-0": 33700,
+            "nsphmx-1": 33700,
+            "nsphmx-2": 32900,
+            "nsphmx-3": 33700
+          },
+          "max_millic": 33700,
+          "valid": true
+        }
+      }
+    },
+    {
+      "batch": 8,
+      "returncode": 0,
+      "certified": true,
+      "result_path": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/spikes/s14_mixed_streaming_scheduler/energy/logs_batch_cert/pipe3_b8.json",
+      "result_sha256": "sha256:06010bb13b4e07a56aedbb854add1bc38d57ff43853c2d52697970d08c2f9eca",
+      "result_status": "CERTIFIED_3DEVICE_TOKEN_CORRECT_MECHANICS",
+      "checks": {
+        "host_returncode_zero": true,
+        "result_rows_present": true,
+        "op15_head_cert_ok": true,
+        "op12_mid_cert_ok": true,
+        "ranges_match_topology": true,
+        "token_match_stream0": true,
+        "all_streams_match_reference": true
+      },
+      "request_wall_us_p50": 3977561,
+      "thermal_start": {
+        "op15": {
+          "sensor_class": "nsphmx-*",
+          "sensors_millic": {
+            "nsphmx-0": 29400,
+            "nsphmx-1": 29800,
+            "nsphmx-2": 29800,
+            "nsphmx-3": 29800
+          },
+          "max_millic": 29800,
+          "valid": true
+        },
+        "op12": {
+          "sensor_class": "nsphmx-*",
+          "sensors_millic": {
+            "nsphmx-0": 33300,
+            "nsphmx-1": 32900,
+            "nsphmx-2": 32900,
+            "nsphmx-3": 33300
+          },
+          "max_millic": 33300,
+          "valid": true
+        }
+      },
+      "thermal_end": {
+        "op15": {
+          "sensor_class": "nsphmx-*",
+          "sensors_millic": {
+            "nsphmx-0": 31400,
+            "nsphmx-1": 31800,
+            "nsphmx-2": 31800,
+            "nsphmx-3": 31800
+          },
+          "max_millic": 31800,
+          "valid": true
+        },
+        "op12": {
+          "sensor_class": "nsphmx-*",
+          "sensors_millic": {
+            "nsphmx-0": 33700,
+            "nsphmx-1": 32900,
+            "nsphmx-2": 33300,
+            "nsphmx-3": 34100
+          },
+          "max_millic": 34100,
+          "valid": true
+        }
+      }
+    },
+    {
+      "batch": 16,
+      "returncode": -2,
+      "certified": false,
+      "result_path": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/spikes/s14_mixed_streaming_scheduler/energy/logs_batch_cert/pipe3_b16.json",
+      "result_sha256": null,
+      "result_status": null,
+      "checks": null,
+      "request_wall_us_p50": null,
+      "thermal_start": {
+        "op15": {
+          "sensor_class": "nsphmx-*",
+          "sensors_millic": {
+            "nsphmx-0": 29400,
+            "nsphmx-1": 29800,
+            "nsphmx-2": 30200,
+            "nsphmx-3": 29800
+          },
+          "max_millic": 30200,
+          "valid": true
+        },
+        "op12": {
+          "sensor_class": "nsphmx-*",
+          "sensors_millic": {
+            "nsphmx-0": 32900,
+            "nsphmx-1": 32900,
+            "nsphmx-2": 33300,
+            "nsphmx-3": 33700
+          },
+          "max_millic": 33700,
+          "valid": true
+        }
+      },
+      "thermal_end": {
+        "op15": {
+          "sensor_class": "nsphmx-*",
+          "sensors_millic": {
+            "nsphmx-0": 29000,
+            "nsphmx-1": 29400,
+            "nsphmx-2": 29400,
+            "nsphmx-3": 29000
+          },
+          "max_millic": 29400,
+          "valid": true
+        },
+        "op12": {
+          "sensor_class": "nsphmx-*",
+          "sensors_millic": {
+            "nsphmx-0": 33300,
+            "nsphmx-1": 32900,
+            "nsphmx-2": 32900,
+            "nsphmx-3": 33300
+          },
+          "max_millic": 33300,
+          "valid": true
+        }
+      }
+    },
+    {
+      "batch": 32,
+      "returncode": 0,
+      "certified": true,
+      "result_path": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/spikes/s14_mixed_streaming_scheduler/energy/logs_batch_cert/pipe3_b32.json",
+      "result_sha256": "sha256:18ffb3051c3a1304efaaa741cde1fad300f35ce4cb3dd15c4a92819c2d193019",
+      "result_status": "CERTIFIED_3DEVICE_TOKEN_CORRECT_MECHANICS",
+      "checks": {
+        "host_returncode_zero": true,
+        "result_rows_present": true,
+        "op15_head_cert_ok": true,
+        "op12_mid_cert_ok": true,
+        "ranges_match_topology": true,
+        "token_match_stream0": true,
+        "all_streams_match_reference": true
+      },
+      "request_wall_us_p50": 8421395,
+      "thermal_start": {
+        "op15": {
+          "sensor_class": "nsphmx-*",
+          "sensors_millic": {
+            "nsphmx-0": 28700,
+            "nsphmx-1": 29000,
+            "nsphmx-2": 29400,
+            "nsphmx-3": 29000
+          },
+          "max_millic": 29400,
+          "valid": true
+        },
+        "op12": {
+          "sensor_class": "nsphmx-*",
+          "sensors_millic": {
+            "nsphmx-0": 32900,
+            "nsphmx-1": 32500,
+            "nsphmx-2": 32500,
+            "nsphmx-3": 33300
+          },
+          "max_millic": 33300,
+          "valid": true
+        }
+      },
+      "thermal_end": {
+        "op15": {
+          "sensor_class": "nsphmx-*",
+          "sensors_millic": {
+            "nsphmx-0": 31400,
+            "nsphmx-1": 31400,
+            "nsphmx-2": 31400,
+            "nsphmx-3": 31400
+          },
+          "max_millic": 31400,
+          "valid": true
+        },
+        "op12": {
+          "sensor_class": "nsphmx-*",
+          "sensors_millic": {
+            "nsphmx-0": 33700,
+            "nsphmx-1": 33300,
+            "nsphmx-2": 33300,
+            "nsphmx-3": 34100
+          },
+          "max_millic": 34100,
+          "valid": true
+        }
+      }
+    },
+    {
+      "batch": 64,
+      "returncode": -2,
+      "certified": false,
+      "result_path": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/spikes/s14_mixed_streaming_scheduler/energy/logs_batch_cert/pipe3_b64.json",
+      "result_sha256": null,
+      "result_status": null,
+      "checks": null,
+      "request_wall_us_p50": null,
+      "thermal_start": {
+        "op15": {
+          "sensor_class": "nsphmx-*",
+          "sensors_millic": {
+            "nsphmx-0": 29400,
+            "nsphmx-1": 29800,
+            "nsphmx-2": 30200,
+            "nsphmx-3": 29800
+          },
+          "max_millic": 30200,
+          "valid": true
+        },
+        "op12": {
+          "sensor_class": "nsphmx-*",
+          "sensors_millic": {
+            "nsphmx-0": 32900,
+            "nsphmx-1": 32500,
+            "nsphmx-2": 32500,
+            "nsphmx-3": 33300
+          },
+          "max_millic": 33300,
+          "valid": true
+        }
+      },
+      "thermal_end": {
+        "op15": {
+          "sensor_class": "nsphmx-*",
+          "sensors_millic": {
+            "nsphmx-0": 28700,
+            "nsphmx-1": 29000,
+            "nsphmx-2": 29000,
+            "nsphmx-3": 29400
+          },
+          "max_millic": 29400,
+          "valid": true
+        },
+        "op12": {
+          "sensor_class": "nsphmx-*",
+          "sensors_millic": {
+            "nsphmx-0": 32500,
+            "nsphmx-1": 32500,
+            "nsphmx-2": 32500,
+            "nsphmx-3": 33300
+          },
+          "max_millic": 33300,
+          "valid": true
+        }
+      }
+    }
+  ],
+  "limits": [
+    "A nonpassing batch is ineligible for the live priority-energy gate.",
+    "Exact token matching is stricter than semantic coherence and is not an activation-error metric.",
+    "Phone and total-system energy are unknown."
+  ]
+}

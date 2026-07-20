@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "s10-e2a-request-outcome-record-v4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "outcome_set_id",
+    "set_id",
+    "timeline_id",
+    "run_nonce",
+    "pair_index",
+    "role",
+    "manifest_sha256",
+    "outcomes",
+    "record_sha256"
+  ],
+  "$defs": {
+    "ident": {"type": "string", "minLength": 1, "maxLength": 256,
+              "pattern": "^[\\x21-\\x7e]+$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "uint": {"type": "integer", "minimum": 0, "maximum": 9007199254740991}
+  },
+  "properties": {
+    "schema_version": {"const": 4},
+    "kind": {"const": "RequestOutcomeRecord"},
+    "outcome_set_id": {"$ref": "#/$defs/ident"},
+    "set_id": {"$ref": "#/$defs/ident"},
+    "timeline_id": {"$ref": "#/$defs/ident"},
+    "run_nonce": {"$ref": "#/$defs/ident"},
+    "pair_index": {"$ref": "#/$defs/uint"},
+    "role": {"enum": ["OPTIMIZED_SERVER_ONLY_CONTROL", "Q_PIM_TREATMENT"]},
+    "manifest_sha256": {"$ref": "#/$defs/sha256"},
+    "outcomes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4096,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["request_id", "manifest_entry_sha256",
+                     "realized_model_digest", "weights_transform_id",
+                     "realized_seed", "realized_sampling_mode",
+                     "realized_input_sha256",
+                     "realized_prompt_token_ids_sha256",
+                     "realized_decode_params_digest",
+                     "realized_stop_set_digest",
+                     "realized_output_tokens", "stop_reason",
+                     "terminal_outcome", "arrival_us", "dispatched_us", "last_token_us",
+                     "output_artifact_path", "output_artifact_sha256",
+                     "output_token_ids_sha256", "certificate"],
+        "properties": {
+          "request_id": {"$ref": "#/$defs/ident"},
+          "manifest_entry_sha256": {"$ref": "#/$defs/sha256"},
+          "realized_model_digest": {"$ref": "#/$defs/sha256"},
+          "weights_transform_id": {
+            "enum": ["IDENTITY", "BF16_TO_F16", "SHARD_SPLIT", "QUANTIZED"]
+          },
+          "realized_seed": {"$ref": "#/$defs/uint"},
+          "realized_sampling_mode": {"enum": ["GREEDY", "SAMPLED"]},
+          "realized_input_sha256": {"$ref": "#/$defs/sha256"},
+          "realized_prompt_token_ids_sha256": {"$ref": "#/$defs/sha256"},
+          "realized_decode_params_digest": {"$ref": "#/$defs/sha256"},
+          "realized_stop_set_digest": {"$ref": "#/$defs/sha256"},
+          "realized_output_tokens": {"$ref": "#/$defs/uint"},
+          "stop_reason": {"enum": ["EOS", "MAX_TOKENS", "STOP_STRING",
+                                   "CANCELED", "ERROR"]},
+          "terminal_outcome": {"enum": ["met", "tardy", "rejected", "canceled"]},
+          "arrival_us": {"$ref": "#/$defs/uint"},
+          "dispatched_us": {"$ref": "#/$defs/uint"},
+          "last_token_us": {"$ref": "#/$defs/uint"},
+          "output_artifact_path": {"type": "string", "minLength": 1,
+                                   "maxLength": 512},
+          "output_artifact_sha256": {"$ref": "#/$defs/sha256"},
+          "output_token_ids_sha256": {"$ref": "#/$defs/sha256"},
+          "certificate": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["certificate_kind", "prefix_agreement_tokens",
+                         "first_divergence_index", "referee_verdict"],
+            "properties": {
+              "certificate_kind": {
+                "enum": ["GREEDY_PREFIX_AGREEMENT", "NONE"]
+              },
+              "prefix_agreement_tokens": {"$ref": "#/$defs/uint"},
+              "first_divergence_index": {"type": "integer", "minimum": -1,
+                                         "maximum": 9007199254740991},
+              "referee_verdict": {"enum": ["AGREE", "DIVERGE", "NOT_RUN"]}
+            }
+          }
+        }
+      }
+    },
+    "record_sha256": {"$ref": "#/$defs/sha256"}
+  }
+}

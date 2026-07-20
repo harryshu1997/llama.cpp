@@ -68,9 +68,13 @@
           },
           "required": ["required_keys", "value_type", "empty_allowed"]
         },
-        "duplicate_key": { "type": "string", "const": "reject" }
+        "duplicate_key": { "type": "string", "const": "reject" },
+        "blank_row": {
+          "type": "string",
+          "enum": ["reject", "reject_except_single_terminal"]
+        }
       },
-      "required": ["required_keys", "key_types", "duplicate_key"]
+      "required": ["required_keys", "key_types", "duplicate_key", "blank_row"]
     },
     "timestamp": {
       "type": "object",
@@ -157,6 +161,18 @@
   "required": ["schema_version", "config_version", "source", "provenance", "origin", "format", "encoding", "bom", "newline", "timestamp", "gate_a", "mapping"],
   "allOf": [
     { "if": { "properties": { "format": { "const": "csv" } }, "required": ["format"] }, "then": { "required": ["csv"], "properties": { "jsonl": false } } },
-    { "if": { "properties": { "format": { "const": "jsonl" } }, "required": ["format"] }, "then": { "required": ["jsonl"], "properties": { "csv": false } } }
+    { "if": { "properties": { "format": { "const": "jsonl" } }, "required": ["format"] }, "then": { "required": ["jsonl"], "properties": { "csv": false } } },
+    {
+      "if": {
+        "properties": {
+          "jsonl": {
+            "properties": { "blank_row": { "const": "reject_except_single_terminal" } },
+            "required": ["blank_row"]
+          }
+        },
+        "required": ["jsonl"]
+      },
+      "then": { "properties": { "source": { "const": "ragpulse" } } }
+    }
   ]
 }

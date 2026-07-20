@@ -59,7 +59,9 @@ index = canon.load_strict(root / "bundle.json")
 for key, name in (("plan", "plan.json"), ("plan_anchor", "plan_anchor.json"),
                   ("ledger", "ledger.json"),
                   ("ledger_close", "ledger_close.json"),
-                  ("manifest", "manifest.json")):
+                  ("manifest", "manifest.json"),
+                  ("route_control", "routes/route_control.json"),
+                  ("route_treatment", "routes/route_treatment.json")):
     index[f"{key}_sha256"] = canon.sha256_bytes((root / name).read_bytes())
 for slot in index["slots"]:
     for key in ("timeline", "lifecycle", "outcomes"):
@@ -120,8 +122,68 @@ for key, name in (("plan", "plan.json"),
                   ("plan_anchor", "plan_anchor.json"),
                   ("ledger", "ledger.json"),
                   ("ledger_close", "ledger_close.json"),
-                  ("manifest", "manifest.json")):
+                  ("manifest", "manifest.json"),
+                  ("route_control", "routes/route_control.json"),
+                  ("route_treatment", "routes/route_treatment.json")):
     index[f"{key}_sha256"] = canon.sha256_bytes((root / name).read_bytes())
+(root / "bundle.json").write_text(
+    json.dumps(index, indent=2, sort_keys=True) + "\n", encoding="ascii")
+PY
+}
+
+rebind_slot_evidence() {
+    local dst="$1" slot="$2"
+    python3 - "$ROOT" "$dst" "$slot" <<'PY'
+import json, pathlib, sys
+sys.path.insert(0, str(pathlib.Path(sys.argv[1]) / "src"))
+import e2a_canon as canon
+
+root = pathlib.Path(sys.argv[2])
+slot = int(sys.argv[3])
+timeline = canon.load_strict(root / f"timelines/tl.slot{slot:02d}.json")
+lifecycle = canon.load_strict(root / f"lifecycle/lc.slot{slot:02d}.json")
+outcomes = canon.load_strict(root / f"outcomes/outcomes.slot{slot:02d}.json")
+ledger = canon.load_strict(root / "ledger.json")
+end = next(entry for entry in ledger["entries"]
+           if entry["slot_index"] == slot and
+           entry["entry_kind"] == "SLOT_ATTEMPT_END")
+end["timeline_record_sha256"] = timeline["record_sha256"]
+end["lifecycle_record_sha256"] = lifecycle["record_sha256"]
+end["request_outcome_record_sha256"] = outcomes["record_sha256"]
+previous = "0" * 64
+for entry in ledger["entries"]:
+    entry["prev_entry_sha256"] = previous
+    entry["entry_sha256"] = canon.digest(
+        {key: value for key, value in entry.items()
+         if key != "entry_sha256"})
+    previous = entry["entry_sha256"]
+ledger["head_sha256"] = previous
+canon.seal(ledger)
+(root / "ledger.json").write_text(
+    json.dumps(ledger, indent=2, sort_keys=True) + "\n", encoding="ascii")
+
+close = canon.load_strict(root / "ledger_close.json")
+close["attempt_ledger_sha256"] = ledger["record_sha256"]
+close["ledger_head_sha256"] = ledger["head_sha256"]
+close["anchored_digest"] = ledger["record_sha256"]
+close["message_imprint_sha256"] = ledger["record_sha256"]
+canon.seal(close)
+(root / "ledger_close.json").write_text(
+    json.dumps(close, indent=2, sort_keys=True) + "\n", encoding="ascii")
+
+index = canon.load_strict(root / "bundle.json")
+for key, name in (("plan", "plan.json"),
+                  ("plan_anchor", "plan_anchor.json"),
+                  ("ledger", "ledger.json"),
+                  ("ledger_close", "ledger_close.json"),
+                  ("manifest", "manifest.json"),
+                  ("route_control", "routes/route_control.json"),
+                  ("route_treatment", "routes/route_treatment.json")):
+    index[f"{key}_sha256"] = canon.sha256_bytes((root / name).read_bytes())
+for item in index["slots"]:
+    for key in ("timeline", "lifecycle", "outcomes"):
+        item[f"{key}_sha256"] = canon.sha256_bytes(
+            (root / item[f"{key}_path"]).read_bytes())
 (root / "bundle.json").write_text(
     json.dumps(index, indent=2, sort_keys=True) + "\n", encoding="ascii")
 PY
@@ -214,6 +276,59 @@ expect_code "plan_promotes_nvml_to_server_wall" "E_SCOPE" "$B/bundle.json"
 B="$(fresh plan_rapl)"
 mutate "$B" plan.json 'record["instrument_kind"]="RAPL_PACKAGE"'
 expect_code "plan_claims_scope_for_rapl" "E_SCOPE" "$B/bundle.json"
+
+B="$(fresh r3_warmup)"
+mutate "$B" plan.json 'record["warmup_count"]=1'
+expect_code "r3_nonzero_warmup_is_unbound" "E_WARMUP_UNBOUND" "$B/bundle.json"
+
+B="$(fresh r3_same_route)"
+mutate "$B" plan.json 'record["route_schedule_digest_treatment"]=record["route_schedule_digest_control"]'
+expect_code "r3_control_and_treatment_routes_must_differ" "E_ROUTE_BINDING" "$B/bundle.json"
+
+B="$(fresh r3_wall_capability)"
+mutate "$B" plan.json 'record["scope"]="SERVER_WALL"; record["instrument_kind"]="EXTERNAL_WALL_METER"; record["board_uuids"]=[]; record["included_rails"]=["SERVER/AC_INPUT"]; record["excluded_rails"]=[]; record["server_wall_capability_record_sha256"]="a"*64'
+expect_code "r3_server_wall_requires_capability" "E_INCOMPLETE_WALL" "$B/bundle.json"
+
+B="$(fresh r3_duplicate_slot)"
+python3 - "$B" <<'PY'
+import json, pathlib, sys
+root = pathlib.Path(sys.argv[1])
+path = root / "bundle.json"
+record = json.loads(path.read_text(encoding="ascii"))
+record["slots"].append(dict(record["slots"][0]))
+path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n",
+                encoding="ascii")
+PY
+expect_code "r3_duplicate_slot_is_not_last_wins" "E_SLOT_DUPLICATE" "$B/bundle.json"
+
+B="$(fresh r3_lifecycle_set)"
+mutate "$B" lifecycle/lc.slot00.json 'record["set_id"]="set.unrelated"'
+rebind_slot_evidence "$B" 0
+expect_code "r3_lifecycle_set_is_bound" "E_LIFECYCLE_BINDING" "$B/bundle.json"
+
+B="$(fresh r3_phone_exec)"
+mutate "$B" lifecycle/lc.slot01.json 'a=next(x for x in record["actions"] if x["action_kind"]=="EXEC"); a["execution_domain"]="SERVER"; a["device_identity"]="GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f"; a["backend_kind"]="CUDA"'
+rebind_slot_evidence "$B" 1
+expect_code "r3_treatment_requires_phone_exec" "E_ROUTE_NODE_MISMATCH" "$B/bundle.json"
+
+B="$(fresh r3_anchor_identity)"
+mutate "$B" plan_anchor.json 'record["experiment_identity"]="experiment.other"'
+rebind_anchor_chain "$B"
+expect_code "r3_anchor_binds_experiment_identity" "E_ANCHOR_IDENTITY" "$B/bundle.json"
+
+B="$(fresh r4_route_artifact)"
+mutate "$B" routes/route_treatment.json 'record["route_id"]="route.changed"'
+expect_code "r4_route_digest_resolves_an_artifact" "E_ROUTE_ARTIFACT" "$B/bundle.json"
+
+B="$(fresh r4_extra_server_exec)"
+mutate "$B" lifecycle/lc.slot01.json 'a=dict(next(x for x in record["actions"] if x["action_kind"]=="EXEC")); a.update({"action_id":"a.server.real","execution_domain":"SERVER","device_identity":"GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f","backend_kind":"CUDA"}); record["actions"].append(a)'
+rebind_slot_evidence "$B" 1
+expect_code "r4_unplanned_server_exec_is_rejected" "E_ROUTE_NODE_EXTRA" "$B/bundle.json"
+
+B="$(fresh r4_zero_phone_exec)"
+mutate "$B" lifecycle/lc.slot01.json 'a=next(x for x in record["actions"] if x["action_kind"]=="EXEC"); a["end_us"]=a["start_us"]; a["ack_us"]=a["start_us"]'
+rebind_slot_evidence "$B" 1
+expect_code "r4_phone_exec_requires_duration" "E_ACTION_DURATION" "$B/bundle.json"
 
 # --- ledger -------------------------------------------------------------------
 B="$(fresh ledger_chain)"

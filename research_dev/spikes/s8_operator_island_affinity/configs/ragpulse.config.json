@@ -31,7 +31,8 @@
       "value_type": "list_of_int",
       "empty_allowed": ["passages_ids", "web_search"]
     },
-    "duplicate_key": "reject"
+    "duplicate_key": "reject",
+    "blank_row": "reject_except_single_terminal"
   },
   "timestamp": {
     "field": "timestamp",

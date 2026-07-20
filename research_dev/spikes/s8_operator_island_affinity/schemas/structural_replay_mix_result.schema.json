@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "structural_replay_mix_result.schema.json",
+  "title": "S8 Gate-A structural replay result (semi_synthetic mix)",
+  "$comment": "Result of a structural replay over a mixed (semi_synthetic) trace. Distinct from the single-source result: no single source_sha256; instead a per-stream component binding block.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "trace",
+    "record_count",
+    "record_limit",
+    "order_preserved",
+    "first_order_key",
+    "last_order_key",
+    "bindings",
+    "total_demand",
+    "services"
+  ],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "kind": { "type": "string", "const": "structural_replay_mix" },
+    "trace": { "type": "string", "pattern": "^[A-Za-z0-9._-]+\\.jsonl$" },
+    "record_count": { "$ref": "#/$defs/nonnegative_integer" },
+    "record_limit": { "$ref": "#/$defs/nonnegative_integer" },
+    "order_preserved": { "type": "boolean", "const": true },
+    "first_order_key": { "$ref": "#/$defs/order_key" },
+    "last_order_key": { "$ref": "#/$defs/order_key" },
+    "bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "trace_sha256",
+        "sidecar_canonical_sha256",
+        "mix_config_sha256",
+        "structural_replay_code_sha256",
+        "recompose_verified",
+        "sidecar_file_sha256",
+        "artifact_file_sha256",
+        "artifact_run_id",
+        "streams"
+      ],
+      "properties": {
+        "trace_sha256": { "$ref": "#/$defs/sha256" },
+        "sidecar_canonical_sha256": { "$ref": "#/$defs/sha256" },
+        "mix_config_sha256": { "$ref": "#/$defs/sha256" },
+        "structural_replay_code_sha256": { "$ref": "#/$defs/sha256" },
+        "recompose_verified": { "type": "boolean" },
+        "sidecar_file_sha256": { "$ref": "#/$defs/sha256" },
+        "artifact_file_sha256": { "$ref": "#/$defs/sha256" },
+        "artifact_run_id": { "type": "string", "minLength": 1 },
+        "streams": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "rank",
+              "source",
+              "record_count",
+              "input_output_sha256",
+              "input_manifest_sha256"
+            ],
+            "properties": {
+              "rank": { "$ref": "#/$defs/nonnegative_integer" },
+              "source": { "type": "string", "minLength": 1 },
+              "record_count": { "$ref": "#/$defs/nonnegative_integer" },
+              "input_output_sha256": { "$ref": "#/$defs/sha256" },
+              "input_manifest_sha256": { "$ref": "#/$defs/sha256" }
+            }
+          }
+        }
+      }
+    },
+    "total_demand": { "$ref": "#/$defs/demand" },
+    "services": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "service",
+          "service_dag_sha256",
+          "request_count",
+          "demand",
+          "stages"
+        ],
+        "properties": {
+          "service": { "type": "string", "minLength": 1 },
+          "service_dag_sha256": { "$ref": "#/$defs/sha256" },
+          "request_count": { "$ref": "#/$defs/nonnegative_integer" },
+          "demand": { "$ref": "#/$defs/demand" },
+          "stages": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "node_id",
+                "op_class",
+                "demand_scope",
+                "request_count",
+                "demand"
+              ],
+              "properties": {
+                "node_id": { "type": "string", "minLength": 1 },
+                "op_class": { "type": "string", "minLength": 1 },
+                "demand_scope": { "type": "string", "const": "covered_request_demand_not_stage_work" },
+                "request_count": { "$ref": "#/$defs/nonnegative_integer" },
+                "demand": { "$ref": "#/$defs/demand" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "nonnegative_integer": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "order_key": {
+      "type": "array",
+      "prefixItems": [
+        { "$ref": "#/$defs/nonnegative_integer" },
+        { "$ref": "#/$defs/nonnegative_integer" },
+        { "$ref": "#/$defs/nonnegative_integer" }
+      ],
+      "items": false,
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "demand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input_tokens", "output_tokens", "images", "audio_ms", "retrieved_chunks"],
+      "properties": {
+        "input_tokens": { "$ref": "#/$defs/nonnegative_integer" },
+        "output_tokens": { "$ref": "#/$defs/nonnegative_integer" },
+        "images": { "$ref": "#/$defs/nonnegative_integer" },
+        "audio_ms": { "$ref": "#/$defs/nonnegative_integer" },
+        "retrieved_chunks": { "$ref": "#/$defs/nonnegative_integer" }
+      }
+    }
+  }
+}

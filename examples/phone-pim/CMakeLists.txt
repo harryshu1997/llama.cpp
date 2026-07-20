@@ -13,6 +13,10 @@ target_include_directories(phone-pim-protocol PRIVATE
 target_link_libraries(phone-pim-protocol PRIVATE sha256 ${CMAKE_THREAD_LIBS_INIT})
 target_compile_features(phone-pim-protocol PRIVATE cxx_std_17)
 
+add_library(phone-pim-client STATIC phone_pim_client.cpp)
+target_link_libraries(phone-pim-client PRIVATE phone-pim-protocol ${CMAKE_THREAD_LIBS_INIT})
+target_compile_features(phone-pim-client PRIVATE cxx_std_17)
+
 add_library(phone-pim-store STATIC phone_pim_store.cpp)
 target_include_directories(phone-pim-store PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../gguf-hash/deps/sha256
@@ -42,6 +46,12 @@ target_include_directories(${TARGET} PRIVATE
 target_link_libraries(${TARGET} PRIVATE phone-pim-protocol phone-pim-store phone-pim-island llama ggml ${CMAKE_THREAD_LIBS_INIT})
 target_compile_features(${TARGET} PRIVATE cxx_std_17)
 
+set(TARGET llama-phone-pim-fleet)
+add_executable(${TARGET} phone_pim_fleet.cpp)
+install(TARGETS ${TARGET} RUNTIME)
+target_link_libraries(${TARGET} PRIVATE phone-pim-client phone-pim-protocol phone-pim-island ggml ${CMAKE_THREAD_LIBS_INIT})
+target_compile_features(${TARGET} PRIVATE cxx_std_17)
+
 set(TARGET llama-phone-pim-bench)
 add_executable(${TARGET} phone_pim_bench.cpp)
 install(TARGETS ${TARGET} RUNTIME)
@@ -57,6 +67,21 @@ if (BUILD_TESTING)
     target_link_libraries(${TARGET} PRIVATE phone-pim-protocol ${CMAKE_THREAD_LIBS_INIT})
     target_compile_features(${TARGET} PRIVATE cxx_std_17)
     add_test(NAME phone-pim-protocol COMMAND ${TARGET})
+
+    set(TARGET test-phone-pim-client)
+    add_executable(${TARGET} test_phone_pim_client.cpp)
+    target_link_libraries(${TARGET} PRIVATE phone-pim-client phone-pim-protocol ${CMAKE_THREAD_LIBS_INIT})
+    target_compile_features(${TARGET} PRIVATE cxx_std_17)
+    add_test(NAME phone-pim-client COMMAND ${TARGET})
+
+    add_test(NAME phone-pim-fleet-cli-empty COMMAND llama-phone-pim-fleet)
+    set_tests_properties(phone-pim-fleet-cli-empty PROPERTIES WILL_FAIL TRUE)
+    add_test(
+        NAME phone-pim-fleet-cli-duplicate-physical
+        COMMAND ${CMAKE_COMMAND}
+            -DFLEET=$<TARGET_FILE:llama-phone-pim-fleet>
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/test_phone_pim_fleet_cli.cmake
+    )
 
     set(TARGET test-phone-pim-store)
     add_executable(${TARGET} test_phone_pim_store.cpp)

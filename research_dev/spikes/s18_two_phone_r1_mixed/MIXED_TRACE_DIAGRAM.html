@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>S18 Real Mixed-Workload Execution Trace</title>
+<style>
+  :root {
+    color-scheme: light;
+    --ink: #182027;
+    --muted: #5e6870;
+    --line: #c8ced3;
+    --paper: #ffffff;
+    --panel: #f4f6f7;
+    --bge: #236b8e;
+    --op15: #24734d;
+    --op12: #b4532a;
+    --tail: #76558f;
+    --idle: #e8ecef;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    color: var(--ink);
+    background: var(--paper);
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+      "Segoe UI", sans-serif;
+    letter-spacing: 0;
+  }
+  main { max-width: 1500px; margin: 0 auto; padding: 34px 40px 56px; }
+  h1 { margin: 0; font-size: 32px; line-height: 1.15; letter-spacing: 0; }
+  h2 { margin: 34px 0 14px; font-size: 21px; letter-spacing: 0; }
+  p { margin: 8px 0; line-height: 1.5; }
+  .subtitle { color: var(--muted); max-width: 1050px; }
+  .provenance {
+    margin-top: 18px;
+    padding: 10px 12px;
+    border-left: 4px solid var(--ink);
+    background: var(--panel);
+    font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(140px, 1fr));
+    gap: 1px;
+    margin-top: 24px;
+    border: 1px solid var(--line);
+    background: var(--line);
+  }
+  .metric { min-height: 88px; padding: 13px 15px; background: var(--paper); }
+  .metric strong { display: block; font-size: 23px; line-height: 1.15; }
+  .metric span { display: block; margin-top: 6px; color: var(--muted); font-size: 13px; }
+
+  .flow {
+    display: grid;
+    grid-template-columns: 1fr 42px 1fr 42px 1.2fr;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .flow-node {
+    min-height: 114px;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--paper);
+  }
+  .flow-node b { display: block; margin-bottom: 8px; font-size: 15px; }
+  .flow-node p { margin: 3px 0; color: var(--muted); font-size: 13px; }
+  .arrow { display: grid; place-items: center; font-size: 25px; color: var(--muted); }
+  .route-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .route {
+    padding: 8px 10px;
+    color: #fff;
+    border-radius: 4px;
+    font-size: 13px;
+    line-height: 1.35;
+  }
+  .route.op15 { background: var(--op15); }
+  .route.op12 { background: var(--op12); }
+  .route.server { grid-column: 1 / -1; background: var(--bge); }
+
+  .timeline-shell { overflow-x: auto; border: 1px solid var(--line); }
+  .timeline { position: relative; min-width: 1160px; padding: 38px 14px 16px 150px; }
+  .axis {
+    position: absolute;
+    top: 0;
+    left: 150px;
+    right: 14px;
+    height: 34px;
+    border-bottom: 1px solid var(--line);
+  }
+  .tick { position: absolute; bottom: 0; width: 1px; height: 12px; background: var(--line); }
+  .tick span {
+    position: absolute;
+    bottom: 14px;
+    transform: translateX(-50%);
+    color: var(--muted);
+    font: 11px ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space: nowrap;
+  }
+  .lane { position: relative; height: 54px; border-bottom: 1px solid #e1e5e8; }
+  .lane:last-child { border-bottom: 0; }
+  .lane-label {
+    position: absolute;
+    left: -136px;
+    top: 8px;
+    width: 124px;
+    font-size: 13px;
+    line-height: 1.25;
+    font-weight: 650;
+  }
+  .lane-label small { display: block; color: var(--muted); font-weight: 450; }
+  .lane-grid { position: absolute; inset: 0; }
+  .gridline { position: absolute; top: 0; bottom: 0; width: 1px; background: #edf0f2; }
+  .bar {
+    position: absolute;
+    top: 10px;
+    height: 32px;
+    min-width: 2px;
+    overflow: hidden;
+    padding: 7px 8px;
+    color: #fff;
+    border-radius: 3px;
+    font: 11px/18px ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space: nowrap;
+  }
+  .bar.bge { background: var(--bge); }
+  .bar.op15 { background: var(--op15); }
+  .bar.op12 { background: var(--op12); }
+  .bar.idle { background: var(--idle); color: var(--muted); }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 12px 0; }
+  .legend span { font-size: 13px; color: var(--muted); }
+  .swatch { display: inline-block; width: 12px; height: 12px; margin-right: 5px; vertical-align: -1px; }
+
+  .table-wrap { max-height: 620px; overflow: auto; border: 1px solid var(--line); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 9px 10px; border-bottom: 1px solid #e0e4e7; text-align: left; vertical-align: top; }
+  th { position: sticky; top: 0; z-index: 2; background: #e9edef; font-size: 12px; }
+  td:first-child { width: 76px; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  tbody tr:nth-child(even) { background: #f8f9fa; }
+  .job { display: inline-block; margin: 0 5px 3px 0; padding: 3px 6px; border-radius: 3px; color: #fff; }
+  .job.op15 { background: var(--op15); }
+  .job.op12 { background: var(--op12); }
+  .quiet { color: #8a9399; }
+  .note {
+    margin-top: 12px;
+    padding: 11px 13px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+  @media (max-width: 900px) {
+    main { padding: 24px 18px 40px; }
+    .metrics { grid-template-columns: repeat(2, 1fr); }
+    .metric:last-child { grid-column: 1 / -1; }
+    .flow { grid-template-columns: 1fr; }
+    .arrow { transform: rotate(90deg); min-height: 28px; }
+  }
+  @media print {
+    main { max-width: none; padding: 20px; }
+    .table-wrap { max-height: none; overflow: visible; }
+    th { position: static; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Real mixed-workload execution trace</h1>
+  <p class="subtitle">
+    S18 treatment row P4, matched pair 0: one A6000 continuously serves
+    high-priority BGE while OP15 and OP12 execute independent low-priority
+    Gemma routes. Times are normalized to the measured BGE paid-window start.
+  </p>
+  <div class="provenance">
+    Source: results-dynamic/report.json, report sha256
+    df76f20561fcb065744d8047efff2fbc37e3d72ecc8d6415948a74490e63fbf5<br>
+    Trace: rows[1], label=P4, pair=0. All route intervals below are persisted
+    CLOCK_MONOTONIC windows, not simulated times.
+  </div>
+
+  <div class="metrics">
+    <div class="metric"><strong>84.355 s</strong><span>paid BGE window</span></div>
+    <div class="metric"><strong>339,440</strong><span>BGE encodes, B16</span></div>
+    <div class="metric"><strong>384</strong><span>Gemma requests, 6 x 64</span></div>
+    <div class="metric"><strong>3,072</strong><span>exact Gemma tokens</span></div>
+    <div class="metric"><strong>3 devices</strong><span>A6000 + OP15 + OP12</span></div>
+  </div>
+
+  <h2>Mixed workload and route selection</h2>
+  <div class="flow">
+    <div class="flow-node">
+      <b>Frozen mixed arrival set</b>
+      <p>High priority: BGE embedding, B16</p>
+      <p>Low priority: Gemma decode, 6 rounds</p>
+      <p>Each round: tight B32 + loose B32</p>
+    </div>
+    <div class="arrow">&#8594;</div>
+    <div class="flow-node">
+      <b>SLO and route-credit scheduler</b>
+      <p>Tight class: 5 s</p>
+      <p>Loose class: 12 s</p>
+      <p>OP12 credit: exactly 2 exchanges</p>
+    </div>
+    <div class="arrow">&#8594;</div>
+    <div class="flow-node route-list">
+      <div class="route server">A6000: continuous BGE B16</div>
+      <div class="route op15">OP15 `[0,8)` + CUDA tail `[8,48)`</div>
+      <div class="route op12">OP12 `[0,6)` + CUDA tail `[6,48)`</div>
+    </div>
+  </div>
+
+  <h2>Measured timeline</h2>
+  <div class="legend">
+    <span><i class="swatch" style="background:var(--bge)"></i>high-priority BGE</span>
+    <span><i class="swatch" style="background:var(--op15)"></i>OP15 end-to-end route</span>
+    <span><i class="swatch" style="background:var(--op12)"></i>OP12 end-to-end route</span>
+  </div>
+  <div class="timeline-shell"><div id="timeline" class="timeline"></div></div>
+  <div class="note">
+    Each Gemma bar is one B32 group producing eight tokens per request. An
+    end-to-end route window includes the phone head, boundary transfer, and its
+    CUDA tail. The persisted trace does not expose the internal phase boundary,
+    so the diagram does not invent separate phone and tail intervals.
+  </div>
+
+  <h2>What is active in each one-second interval</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Second</th>
+          <th>A6000 high-priority stream</th>
+          <th>OP15 route occupancy</th>
+          <th>OP12 route occupancy</th>
+        </tr>
+      </thead>
+      <tbody id="seconds"></tbody>
+    </table>
+  </div>
+  <div class="note">
+    BGE is continuously active at B16 for the entire paid window. Its exact
+    per-second completion counter was not recorded; 339,440 / 84.355 gives a
+    measured-window average of approximately 4,024 encodes/s. Request ranges
+    are presentation ordinals within this frozen row, not original trace IDs.
+  </div>
+</main>
+
+<script>
+"use strict";
+
+const duration = 84.354718;
+const bgeRate = 4023.96;
+const jobs = [
+  { lane: "op15", round: 1, group: "tight", requests: "1-32",   start: 0.202112,  end: 3.331727 },
+  { lane: "op12", round: 1, group: "loose", requests: "33-64",  start: 0.202502,  end: 9.820461 },
+  { lane: "op15", round: 2, group: "tight", requests: "65-96",  start: 9.821149,  end: 12.789532 },
+  { lane: "op12", round: 2, group: "loose", requests: "97-128", start: 9.821454,  end: 19.151783 },
+  { lane: "op15", round: 3, group: "tight", requests: "129-160", start: 19.716626, end: 22.671817 },
+  { lane: "op15", round: 3, group: "loose", requests: "161-192", start: 22.672026, end: 25.595378 },
+  { lane: "op15", round: 4, group: "tight", requests: "193-224", start: 25.595482, end: 28.558377 },
+  { lane: "op15", round: 4, group: "loose", requests: "225-256", start: 28.558478, end: 31.499108 },
+  { lane: "op15", round: 5, group: "tight", requests: "257-288", start: 31.499214, end: 34.450082 },
+  { lane: "op15", round: 5, group: "loose", requests: "289-320", start: 34.450180, end: 37.402433 },
+  { lane: "op15", round: 6, group: "tight", requests: "321-352", start: 37.402533, end: 40.336439 },
+  { lane: "op15", round: 6, group: "loose", requests: "353-384", start: 40.336550, end: 43.237852 }
+];
+
+function pct(value) {
+  return `${(100 * value / duration).toFixed(6)}%`;
+}
+
+function jobLabel(job) {
+  return `R${job.round} ${job.group} req ${job.requests}`;
+}
+
+function addGrid(parent) {
+  for (let second = 0; second <= 80; second += 10) {
+    const line = document.createElement("span");
+    line.className = "gridline";
+    line.style.left = pct(second);
+    parent.appendChild(line);
+  }
+}
+
+function renderTimeline() {
+  const root = document.getElementById("timeline");
+  const axis = document.createElement("div");
+  axis.className = "axis";
+  for (let second = 0; second <= 80; second += 10) {
+    const tick = document.createElement("div");
+    tick.className = "tick";
+    tick.style.left = pct(second);
+    tick.innerHTML = `<span>${second}s</span>`;
+    axis.appendChild(tick);
+  }
+  root.appendChild(axis);
+
+  const lanes = [
+    { id: "bge", label: "A6000", detail: "BGE B16 continuous" },
+    { id: "op15", label: "OP15 route", detail: "head + CUDA tail" },
+    { id: "op12", label: "OP12 route", detail: "head + CUDA tail" }
+  ];
+
+  for (const lane of lanes) {
+    const row = document.createElement("div");
+    row.className = "lane";
+    row.innerHTML = `<div class="lane-label">${lane.label}<small>${lane.detail}</small></div>`;
+    addGrid(row);
+    if (lane.id === "bge") {
+      const bar = document.createElement("div");
+      bar.className = "bar bge";
+      bar.style.left = "0";
+      bar.style.width = "100%";
+      bar.textContent = "339,440 encodes / 84.355 s";
+      row.appendChild(bar);
+    } else {
+      for (const job of jobs.filter(item => item.lane === lane.id)) {
+        const bar = document.createElement("div");
+        bar.className = `bar ${lane.id}`;
+        bar.style.left = pct(job.start);
+        bar.style.width = pct(job.end - job.start);
+        bar.title = `${jobLabel(job)}: ${job.start.toFixed(3)}-${job.end.toFixed(3)} s`;
+        bar.textContent = `R${job.round}${job.group === "tight" ? "T" : "L"}`;
+        row.appendChild(bar);
+      }
+    }
+    root.appendChild(row);
+  }
+}
+
+function activeInSecond(lane, start, end) {
+  return jobs.filter(job => job.lane === lane && job.start < end && job.end > start);
+}
+
+function renderJobs(selected, start, end) {
+  if (selected.length === 0) {
+    return `<span class="quiet">idle</span>`;
+  }
+  return selected.map(job => {
+    const activeStart = Math.max(start, job.start);
+    const activeEnd = Math.min(end, job.end);
+    const completes = job.end <= end && job.end > start ? "; completes" : "";
+    return `<span class="job ${job.lane}">${jobLabel(job)}</span>` +
+      `<small>${activeStart.toFixed(3)}-${activeEnd.toFixed(3)}s${completes}</small>`;
+  }).join("<br>");
+}
+
+function renderSeconds() {
+  const body = document.getElementById("seconds");
+  const count = Math.ceil(duration);
+  for (let second = 0; second < count; ++second) {
+    const end = Math.min(second + 1, duration);
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${second}-${end.toFixed(3)}s</td>
+      <td>BGE B16 active<br><small>~${Math.round(bgeRate).toLocaleString()} encodes/s window average</small></td>
+      <td>${renderJobs(activeInSecond("op15", second, end), second, end)}</td>
+      <td>${renderJobs(activeInSecond("op12", second, end), second, end)}</td>`;
+    body.appendChild(row);
+  }
+}
+
+renderTimeline();
+renderSeconds();
+</script>
+</body>
+</html>

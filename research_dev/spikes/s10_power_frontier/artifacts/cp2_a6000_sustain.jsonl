@@ -1,2 +1,0 @@
-{"mode":"sustain","backend":"CUDA0","M":256,"iters":5169,"compute_us_mean":991.494,"weight_bytes":353925120,"resident_bytes":428636160}
-{"mode":"sustain","backend":"CUDA0","M":16,"iters":15874,"compute_us_mean":543.884,"weight_bytes":353925120,"resident_bytes":358594560}

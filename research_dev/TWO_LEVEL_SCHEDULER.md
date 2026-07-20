@@ -1,6 +1,12 @@
 # Two-level power-frontier scheduler
 
-Status: authoritative scheduler design as of 2026-07-15.
+Status: deferred broad scheduler design as of 2026-07-19; not paper-critical.
+
+The focused Q-PIM Funnel work fixes phone weight residency before measurement
+and implements one online route/admission/release loop. General DAG lookahead,
+dynamic residency, power bundles, solver optimality, and DVFS remain future
+work. `MIXED_WORKLOAD_DESIGN.md` and the S19 plan are authoritative for the
+current research system.
 
 MIXED_WORKLOAD_DESIGN.md defines Q-PIM. This file defines its slow residency
 planner, fast dependency-aware scheduler, exact oracle, and decision invariants.
@@ -15,6 +21,10 @@ the topological order of independent multi-model islands so that:
 2. the remaining A6000 work forms denser batches or contiguous active bursts;
 3. the A6000 can use a measured lower cap/state for a break-even interval; and
 4. total wall energy decreases without violating an end-to-end SLO.
+
+The first implementation controls one selected A6000. Any additional installed
+GPU is excluded from the candidate-device set and cannot absorb overflow or
+contribute hidden work. OP12 and OP15 are the only additional execution devices.
 
 The two-level invariant is:
 
@@ -75,11 +85,23 @@ Every island has a finite catalog of complete plans:
 - fixed multi-stage route such as A0; and
 - optional grouped-HMX island only after its dedicated gate.
 
+Each server plan binds the selected GPU identity, roofline class, batch size,
+power cap or clock point, latency distribution, throughput, energy boundary,
+and uncertainty. A phone route cannot inherit a server operating point measured
+on another GPU or under a different co-run condition.
+
 Per-GEMM network row/column splitting is excluded from the core catalog.
 Any future cooperative plan must still be one complete island cover with one
 input boundary, one output/merge boundary, exact state ownership, and its own
 measured certificate. The runtime never invents graph cuts or takes a cross
 product of independently measured components.
+
+Stateful layer plans are selected from a finite catalog of independently
+certified contiguous ranges, initially `[0,k)`. Each candidate binds its exact
+graph, memory, boundary, KV, latency, thermal, batch, and correctness evidence.
+The selected cut, device, residency generation, and KV owner remain fixed for a
+request lifetime. Dynamic selection means choosing a catalog entry for new
+requests, not changing `k` during decode.
 
 ## 5. Slow residency and power-envelope planner
 
@@ -93,25 +115,29 @@ phone UFS/LPDDR/prepared-image/state ledgers
 directional USB profiles and contention domains
 current weight, state, ownership, and thermal leases
 transfer, verify, prepare, warm, drain, and reload costs
+useful/unused/retried prefetch history and compute/transfer interference
 ~~~
 
 ### Decisions
 
 The slow loop decides:
 
-1. which complete island weight sets reside on each phone;
-2. which HTP/GPU prepared images exist and alias canonical bytes;
-3. mirrored versus exclusive ownership;
-4. lease/hold horizons, hysteresis, drain, reload, and eviction;
-5. certified route, batch, interference, phone-pace, and server-power envelopes;
-6. bounded prefetch using visible queue reuse; and
-7. a fixed exploration-byte budget for uncertain future demand.
+1. which model, certified island/range, and residency slot belongs on each phone;
+2. whether OP12/OP15 replicate a hot island or hold diverse model islands;
+3. which HTP/GPU prepared images exist and alias canonical bytes;
+4. mirrored versus exclusive ownership;
+5. active/staging slot generations, transfer order, and bounded byte windows;
+6. lease/hold horizons, hysteresis, drain, reload, and eviction;
+7. certified route, batch, interference, phone-pace, and server-power envelopes;
+8. bounded prefetch using visible queue reuse; and
+9. a fixed exploration-byte budget for uncertain future demand.
 
 Prefetch value is based first on actual announced demand:
 
 ~~~text
 visible_reuse_relief >
   transfer + verify + prepare + eviction + memory_opportunity_cost
+  + measured_interference + expected_unused_prefetch
 ~~~
 
 Forecast-only placement is allowed under the exploration budget, but it cannot
@@ -122,6 +148,13 @@ earn a current decision benefit until later used.
 Planning emits idempotent intents. Only observed transfer, verification, atomic
 publish, preparation, warmup, correctness, memory, and thermal completion may
 publish a READY execution envelope.
+
+Each phone may expose one bounded STAGING slot beside an incumbent READY/ACTIVE
+slot only when canonical bytes, derived images, scratch, activation, state, and
+both slot charges fit simultaneously. Slots have independent generations.
+Publishing the staging slot cannot revoke incumbent leases; replacement drains
+the incumbent after the new envelope is usable. The current phone-PIM worker's
+single global generation is therefore insufficient for overlapped replacement.
 
 ~~~text
 ExecutionEnvelope {
@@ -155,7 +188,9 @@ At each event, the scheduler performs bounded receding-horizon planning:
 10. Commit the first action, then replan after the next event.
 
 The search never delays a request beyond its latest safe claim to create an
-artificial energy win.
+artificial energy win. It never waits for STAGING weights: if no READY phone
+envelope exists, the current SLO-safe server route or declared terminal outcome
+wins.
 
 ## 7. Frontier expansion and unlockers
 
@@ -221,7 +256,29 @@ power state.
 
 ## 9. Lazy claims and batch densification
 
-For each candidate server batch b at power state p:
+Batch size is an online decision, not a route constant. B32 and B64 in the
+physical spikes are measured profile points, not production launch rules. For
+each device d, island i, context class c, thermal state t, and power state p,
+the atlas publishes a finite set of certified batch candidates:
+
+~~~text
+B(d,i,c,t,p) = measured supported batch sizes with
+               latency, throughput, memory, boundary, interference,
+               correctness, and downstream-service envelopes
+~~~
+
+The fast loop does not interpolate an unmeasured batch size. A candidate b is
+feasible only when:
+
+~~~text
+resident_and_correct(d,i,b)
+memory(d,i,b,c) <= currently reservable memory
+predicted_finish(d,i,b,c,t,p) <= earliest affected latest_start
+boundary_bytes(i,b) fit reserved link and activation credits
+every later stage has a compatible reserved batch/queue envelope
+~~~
+
+For each feasible batch b at power state p:
 
 ~~~text
 latest_start(b,p) =
@@ -231,12 +288,76 @@ latest_start(b,p) =
   )
 ~~~
 
-The server launches when:
+Each phone or server lane launches when:
 
-- the energy-optimal compatible batch size is reached;
+- its measured throughput/energy sweet region is reached;
 - a lower-state break-even interval would otherwise be lost;
 - the earliest latest_start is reached; or
 - a fault/thermal change invalidates the phone plan.
+
+For memory-bound decode, the fast loop maintains compatibility queues keyed by
+model version, island cut, KV/state owner, attention class, and shape envelope.
+It chooses the largest useful measured batch that can finish before the earliest
+member's latest start and that does not overload a later island. A batch larger
+than the measured knee is useful only when its profile shows additional
+throughput or energy benefit. If a queue exceeds the selected size, the lane
+launches multiple measured microbatches rather than inventing one oversized
+batch. Low-priority work may wait inside its bounded slack; urgent work bypasses
+the wait or takes its certified server route.
+
+For compute-bound encode, prefill, or stateless islands, the fast loop chooses
+the measured point with the best SLO-feasible throughput/energy tradeoff. This
+is often the smallest batch in the saturation region, but memory pressure,
+concurrent lanes, downstream batching, or a different power state may move the
+point. Batch 1 or 2 is not a normal phone operating point. It is used only when
+an explicit profile and an imminent SLO make it preferable to waiting or taking
+the server fallback.
+
+### Continuous batching
+
+All stateful decode executors, on phones and the server, use continuous
+batching. A persistent executor owns a bounded KV-slot table. At each token
+boundary it:
+
+1. retires completed or cancelled sequences and releases their exact slots;
+2. admits compatible READY sequences whose route, state owner, and epochs are
+   already certified;
+3. chooses the next measured batch size from the current active set and SLOs;
+4. executes one decode step for that ragged active set; and
+5. publishes request IDs, sequence positions, mutation epochs, and the exact
+   boundary manifest consumed by the next stage.
+
+Continuous batching changes membership between decode steps; it does not move
+a live request to a different layer cut or KV owner. Prefill may be chunked and
+inserted at certified chunk boundaries. Stateless embedding/reranking queues
+may form new microbatches at every completion event.
+
+For a multi-stage route, upstream fullness is not optimized independently. The
+scheduler selects a compatible batch vector `(b_phone, b_middle, b_tail)` and
+reserves the downstream credits before launching the upstream work. A slow
+producer is therefore optional capacity, never a barrier. If its result will
+miss the next useful downstream batch or latest start, it is not launched and
+the work remains on a direct phone-to-server or server-only route.
+
+When the selected A6000 is compute-bound, a compute-pressure bundle may move
+READY low-priority islands or compatible decode batches to OP12/OP15. Returned
+phone boundaries become eligible for a server suffix batch only after D2H and
+epoch validation. The selected GPU changes cap or clock only when the measured
+joint plan has positive energy credit and remains feasible for every affected
+SLO. Otherwise the scheduler retains the normal operating point.
+
+The decision epoch evaluates at least these four counterfactuals over identical
+ready work:
+
+~~~text
+normal GPU state, server-only batching
+lower GPU state, server-only batching
+normal GPU state, phone relief plus server batching
+lower GPU state, phone relief plus server batching
+~~~
+
+This separates savings caused by phone execution, batch densification, and the
+GPU operating-point change.
 
 Mirrored mode permits an exact phone/server race. The phone wins only after D2H,
 verification, and epoch validation. At latest_start, an unfinished phone result
@@ -258,7 +379,10 @@ subject to phone_finish(r,f) <= bundle_deadline
 If direct DVFS is unavailable, the controllable operating point is backend,
 performance mode, concurrency, batch size, and duty cycle. HTP and GPU may run
 independent islands concurrently only with a measured pair profile. Bulk
-provisioning yields to activation/result traffic.
+provisioning yields to activation/result traffic at a bounded chunk boundary.
+WiFi H2P commands and USB P2H results are modeled separately, while USB H2P
+weights share the phone USB contention domain with results until a measured
+duplex profile proves otherwise.
 
 A thermal bucket change revokes future use of its old performance profile. A
 stateful exclusive lease either retains a conservative route, drains safely, or
@@ -275,6 +399,9 @@ Every plan enforces:
 - batch compatibility and explicit different-model burst semantics;
 - exact state owner and one mutation in flight;
 - lease, use-pin, epoch, and DRAINING rules;
+- independent active/staging generations and simultaneous memory accounting;
+- no dispatch from partial, on-disk-only, or STAGING content;
+- result-before-bulk priority and useful/unused/retried/evicted byte accounting;
 - D2H completion before credit/resource release;
 - mirrored versus exclusive fallback accounting;
 - TTFT, TBT, completion, and bounded-wait constraints;
@@ -347,15 +474,19 @@ server_energy_better, batch_shaping, power_cap, sleep_gap, and memory_relief.
 
 ## 15. Authorization gate
 
-Before any live server scheduler:
+S14 authorizes bounded research-harness work in this order:
 
-1. S10-V0 must show a perfect-future opportunity against an optimized
-   server-only batching/DVFS baseline.
-2. A causal bounded policy must retain the required benefit.
-3. The physical or conservatively validated power model must explain the gain
-   through a real batch/power-state change.
-4. The small real-device test must reproduce the mechanism without hidden state,
-   transfer, fallback, or energy.
+1. deterministic mixed composition plus two executable service/model classes;
+2. measured profile adapter and static READY mixed replay using the existing
+   S12-V2 residency reducer;
+3. exact tiny placement oracle plus a causal bounded policy;
+4. live two-phone static placement through the S13 session substrate; and
+5. per-slot-generation weight streaming only after static mechanics pass.
 
-If any gate fails, preserve S9 as transport/residency evidence and stop Q-PIM
-runtime work.
+This does not authorize `llama-server` integration. A production server path
+requires causal real-trace mechanics against optimized server-only, measured
+transfer/compute interference, bounded 30-minute behavior, and a physical batch,
+power, or memory mechanism that survives its claim boundary. Energy acquisition
+starts only after those mechanics pass. If a gate fails, preserve S8/S9/S12/S13
+as trace, residency, scheduler-mechanics, and runtime evidence rather than
+silently widening the claim.

@@ -1,0 +1,460 @@
+{
+  "schema": "s14-cp-b-phone-bge-atlas-v1",
+  "checkpoint": "B",
+  "scope": "PHONE HTP0 BGE encode latency + scheduled-placement cert; phone ENERGY UNKNOWN",
+  "note": "APPEND-ONLY atlas extension; frozen island_catalog.json NOT mutated. Fills the empty p50/p95/p99 on island bge_encoder_0_12 profile rows.",
+  "model": "bge-small-en-v1.5-f16",
+  "model_sha256": "4cd429b83d2805e4028d96f6174b153bc87657808ba9f3b3c4f84d374b481e03",
+  "flash_attn": "off (explicit softmax)",
+  "bench": {
+    "procs": 3,
+    "reps_per_proc": 10,
+    "warmup": 3,
+    "mbuf_mib": 3072
+  },
+  "cosine_gate": 0.99,
+  "declared_cpu_ops": [
+    "GET_ROWS"
+  ],
+  "cpu_ref_seq_lens": {
+    "32": 384,
+    "128": 384,
+    "512": 384
+  },
+  "devices": {
+    "op15": {
+      "serial": "3C15AU002CL00000",
+      "hexagon": "v81",
+      "binary_sha256": "d44adb3fc4f479a44d39dc5f4f9c0e43ae6536f9c376ce7f4e158902f48af01b",
+      "skel_sha256": "bbaf7ee312e488a35afcc2db194b44f02e0eb93d0c09f4ae9c1de21742635f94",
+      "thermal_zone0_start": 47700,
+      "thermal_zone0_end": 57400
+    },
+    "op12": {
+      "serial": "5ae7a43d",
+      "hexagon": "v75",
+      "binary_sha256": "d44adb3fc4f479a44d39dc5f4f9c0e43ae6536f9c376ce7f4e158902f48af01b",
+      "skel_sha256": "39c952422e4012abd32ac25a1fba44dfa8a6877e3c84bb968ab964913ae7a2ba",
+      "thermal_zone0_start": 0,
+      "thermal_zone0_end": 0
+    }
+  },
+  "shapes": [
+    {
+      "device": "op15",
+      "hexagon": "v81",
+      "seq_len_target": 32,
+      "seq_len_exact": 32,
+      "batch": 1,
+      "ok_procs": 3,
+      "n_samples": 30,
+      "lat_us_p50": 12347.9,
+      "lat_us_p95": 12462.3,
+      "lat_us_p99": 12525.5,
+      "cov": 0.0108,
+      "throughput_enc_s": 81.0,
+      "cosine_vs_cpu": 0.99782,
+      "cert_compute_by_buffer": {
+        "CPU": 2,
+        "HTP0": 296
+      },
+      "cert_non_htp_ops": [
+        "GET_ROWS@CPU:2"
+      ],
+      "cert_status": "SCHEDULED_PLACEMENT_OK"
+    },
+    {
+      "device": "op15",
+      "hexagon": "v81",
+      "seq_len_target": 32,
+      "seq_len_exact": 32,
+      "batch": 2,
+      "ok_procs": 3,
+      "n_samples": 30,
+      "lat_us_p50": 18962.7,
+      "lat_us_p95": 19287.4,
+      "lat_us_p99": 19398.8,
+      "cov": 0.0068,
+      "throughput_enc_s": 105.5,
+      "cosine_vs_cpu": 0.99782,
+      "cert_compute_by_buffer": {
+        "CPU": 2,
+        "HTP0": 296
+      },
+      "cert_non_htp_ops": [
+        "GET_ROWS@CPU:2"
+      ],
+      "cert_status": "SCHEDULED_PLACEMENT_OK"
+    },
+    {
+      "device": "op15",
+      "hexagon": "v81",
+      "seq_len_target": 32,
+      "seq_len_exact": 32,
+      "batch": 4,
+      "ok_procs": 3,
+      "n_samples": 30,
+      "lat_us_p50": 40103.5,
+      "lat_us_p95": 40635.0,
+      "lat_us_p99": 40724.1,
+      "cov": 0.0058,
+      "throughput_enc_s": 99.7,
+      "cosine_vs_cpu": 0.99782,
+      "cert_compute_by_buffer": {
+        "CPU": 2,
+        "HTP0": 296
+      },
+      "cert_non_htp_ops": [
+        "GET_ROWS@CPU:2"
+      ],
+      "cert_status": "SCHEDULED_PLACEMENT_OK"
+    },
+    {
+      "device": "op15",
+      "hexagon": "v81",
+      "seq_len_target": 128,
+      "seq_len_exact": 133,
+      "batch": 1,
+      "ok_procs": 3,
+      "n_samples": 30,
+      "lat_us_p50": 247779.3,
+      "lat_us_p95": 296231.1,
+      "lat_us_p99": 311685.4,
+      "cov": 0.0968,
+      "throughput_enc_s": 4.0,
+      "cosine_vs_cpu": 0.99738,
+      "cert_compute_by_buffer": {
+        "CPU": 2,
+        "HTP0": 296
+      },
+      "cert_non_htp_ops": [
+        "GET_ROWS@CPU:2"
+      ],
+      "cert_status": "SCHEDULED_PLACEMENT_OK"
+    },
+    {
+      "device": "op15",
+      "hexagon": "v81",
+      "seq_len_target": 128,
+      "seq_len_exact": 133,
+      "batch": 2,
+      "ok_procs": 3,
+      "n_samples": 30,
+      "lat_us_p50": 365425.5,
+      "lat_us_p95": 384431.8,
+      "lat_us_p99": 384929.3,
+      "cov": 0.0489,
+      "throughput_enc_s": 5.5,
+      "cosine_vs_cpu": 0.99738,
+      "cert_compute_by_buffer": {
+        "CPU": 2,
+        "HTP0": 296
+      },
+      "cert_non_htp_ops": [
+        "GET_ROWS@CPU:2"
+      ],
+      "cert_status": "SCHEDULED_PLACEMENT_OK"
+    },
+    {
+      "device": "op15",
+      "hexagon": "v81",
+      "seq_len_target": 128,
+      "seq_len_exact": 133,
+      "batch": 4,
+      "ok_procs": 3,
+      "n_samples": 30,
+      "lat_us_p50": 864071.0,
+      "lat_us_p95": 918737.2,
+      "lat_us_p99": 928568.0,
+      "cov": 0.0264,
+      "throughput_enc_s": 4.6,
+      "cosine_vs_cpu": 0.99738,
+      "cert_compute_by_buffer": {
+        "CPU": 2,
+        "HTP0": 296
+      },
+      "cert_non_htp_ops": [
+        "GET_ROWS@CPU:2"
+      ],
+      "cert_status": "SCHEDULED_PLACEMENT_OK"
+    },
+    {
+      "device": "op15",
+      "hexagon": "v81",
+      "seq_len_target": 512,
+      "seq_len_exact": 500,
+      "batch": 1,
+      "ok_procs": 3,
+      "n_samples": 30,
+      "lat_us_p50": 767966.8,
+      "lat_us_p95": 797671.1,
+      "lat_us_p99": 799197.1,
+      "cov": 0.0232,
+      "throughput_enc_s": 1.3,
+      "cosine_vs_cpu": 0.99588,
+      "cert_compute_by_buffer": {
+        "CPU": 2,
+        "HTP0": 296
+      },
+      "cert_non_htp_ops": [
+        "GET_ROWS@CPU:2"
+      ],
+      "cert_status": "SCHEDULED_PLACEMENT_OK"
+    },
+    {
+      "device": "op15",
+      "hexagon": "v81",
+      "seq_len_target": 512,
+      "seq_len_exact": 500,
+      "batch": 2,
+      "ok_procs": 3,
+      "n_samples": 30,
+      "lat_us_p50": 2279416.4,
+      "lat_us_p95": 2580528.6,
+      "lat_us_p99": 2873267.2,
+      "cov": 0.2168,
+      "throughput_enc_s": 0.9,
+      "cosine_vs_cpu": 0.99588,
+      "cert_compute_by_buffer": {
+        "CPU": 2,
+        "HTP0": 296
+      },
+      "cert_non_htp_ops": [
+        "GET_ROWS@CPU:2"
+      ],
+      "cert_status": "SCHEDULED_PLACEMENT_OK"
+    },
+    {
+      "device": "op15",
+      "hexagon": "v81",
+      "seq_len_target": 512,
+      "seq_len_exact": 500,
+      "batch": 4,
+      "ok_procs": 3,
+      "n_samples": 30,
+      "lat_us_p50": 6379246.2,
+      "lat_us_p95": 6571268.2,
+      "lat_us_p99": 6681984.4,
+      "cov": 0.0194,
+      "throughput_enc_s": 0.6,
+      "cosine_vs_cpu": 0.99588,
+      "cert_compute_by_buffer": {
+        "CPU": 2,
+        "HTP0": 296
+      },
+      "cert_non_htp_ops": [
+        "GET_ROWS@CPU:2"
+      ],
+      "cert_status": "SCHEDULED_PLACEMENT_OK"
+    },
+    {
+      "device": "op12",
+      "hexagon": "v75",
+      "seq_len_target": 32,
+      "seq_len_exact": 32,
+      "batch": 1,
+      "ok_procs": 3,
+      "n_samples": 30,
+      "lat_us_p50": 15486.8,
+      "lat_us_p95": 17820.1,
+      "lat_us_p99": 19307.4,
+      "cov": 0.0705,
+      "throughput_enc_s": 64.6,
+      "cosine_vs_cpu": 0.99782,
+      "cert_compute_by_buffer": {
+        "CPU": 2,
+        "HTP0": 296
+      },
+      "cert_non_htp_ops": [
+        "GET_ROWS@CPU:2"
+      ],
+      "cert_status": "SCHEDULED_PLACEMENT_OK"
+    },
+    {
+      "device": "op12",
+      "hexagon": "v75",
+      "seq_len_target": 32,
+      "seq_len_exact": 32,
+      "batch": 2,
+      "ok_procs": 3,
+      "n_samples": 30,
+      "lat_us_p50": 29981.9,
+      "lat_us_p95": 34947.3,
+      "lat_us_p99": 35681.7,
+      "cov": 0.0741,
+      "throughput_enc_s": 66.7,
+      "cosine_vs_cpu": 0.99782,
+      "cert_compute_by_buffer": {
+        "CPU": 2,
+        "HTP0": 296
+      },
+      "cert_non_htp_ops": [
+        "GET_ROWS@CPU:2"
+      ],
+      "cert_status": "SCHEDULED_PLACEMENT_OK"
+    },
+    {
+      "device": "op12",
+      "hexagon": "v75",
+      "seq_len_target": 32,
+      "seq_len_exact": 32,
+      "batch": 4,
+      "ok_procs": 3,
+      "n_samples": 30,
+      "lat_us_p50": 67242.9,
+      "lat_us_p95": 73468.7,
+      "lat_us_p99": 74181.8,
+      "cov": 0.0353,
+      "throughput_enc_s": 59.5,
+      "cosine_vs_cpu": 0.99782,
+      "cert_compute_by_buffer": {
+        "CPU": 2,
+        "HTP0": 296
+      },
+      "cert_non_htp_ops": [
+        "GET_ROWS@CPU:2"
+      ],
+      "cert_status": "SCHEDULED_PLACEMENT_OK"
+    },
+    {
+      "device": "op12",
+      "hexagon": "v75",
+      "seq_len_target": 128,
+      "seq_len_exact": 133,
+      "batch": 1,
+      "ok_procs": 3,
+      "n_samples": 30,
+      "lat_us_p50": 260155.7,
+      "lat_us_p95": 283685.4,
+      "lat_us_p99": 285355.3,
+      "cov": 0.0726,
+      "throughput_enc_s": 3.8,
+      "cosine_vs_cpu": 0.99738,
+      "cert_compute_by_buffer": {
+        "CPU": 2,
+        "HTP0": 296
+      },
+      "cert_non_htp_ops": [
+        "GET_ROWS@CPU:2"
+      ],
+      "cert_status": "SCHEDULED_PLACEMENT_OK"
+    },
+    {
+      "device": "op12",
+      "hexagon": "v75",
+      "seq_len_target": 128,
+      "seq_len_exact": 133,
+      "batch": 2,
+      "ok_procs": 3,
+      "n_samples": 30,
+      "lat_us_p50": 512189.3,
+      "lat_us_p95": 547478.4,
+      "lat_us_p99": 562922.8,
+      "cov": 0.0505,
+      "throughput_enc_s": 3.9,
+      "cosine_vs_cpu": 0.99738,
+      "cert_compute_by_buffer": {
+        "CPU": 2,
+        "HTP0": 296
+      },
+      "cert_non_htp_ops": [
+        "GET_ROWS@CPU:2"
+      ],
+      "cert_status": "SCHEDULED_PLACEMENT_OK"
+    },
+    {
+      "device": "op12",
+      "hexagon": "v75",
+      "seq_len_target": 128,
+      "seq_len_exact": 133,
+      "batch": 4,
+      "ok_procs": 3,
+      "n_samples": 30,
+      "lat_us_p50": 1065321.1,
+      "lat_us_p95": 1128172.5,
+      "lat_us_p99": 1128603.1,
+      "cov": 0.0251,
+      "throughput_enc_s": 3.8,
+      "cosine_vs_cpu": 0.99738,
+      "cert_compute_by_buffer": {
+        "CPU": 2,
+        "HTP0": 296
+      },
+      "cert_non_htp_ops": [
+        "GET_ROWS@CPU:2"
+      ],
+      "cert_status": "SCHEDULED_PLACEMENT_OK"
+    },
+    {
+      "device": "op12",
+      "hexagon": "v75",
+      "seq_len_target": 512,
+      "seq_len_exact": 500,
+      "batch": 1,
+      "ok_procs": 3,
+      "n_samples": 30,
+      "lat_us_p50": 1001795.1,
+      "lat_us_p95": 1068024.0,
+      "lat_us_p99": 1089975.5,
+      "cov": 0.036,
+      "throughput_enc_s": 1.0,
+      "cosine_vs_cpu": 0.99588,
+      "cert_compute_by_buffer": {
+        "CPU": 2,
+        "HTP0": 296
+      },
+      "cert_non_htp_ops": [
+        "GET_ROWS@CPU:2"
+      ],
+      "cert_status": "SCHEDULED_PLACEMENT_OK"
+    },
+    {
+      "device": "op12",
+      "hexagon": "v75",
+      "seq_len_target": 512,
+      "seq_len_exact": 500,
+      "batch": 2,
+      "ok_procs": 3,
+      "n_samples": 30,
+      "lat_us_p50": 2834885.0,
+      "lat_us_p95": 2898556.6,
+      "lat_us_p99": 2900108.9,
+      "cov": 0.0116,
+      "throughput_enc_s": 0.7,
+      "cosine_vs_cpu": 0.99587,
+      "cert_compute_by_buffer": {
+        "CPU": 2,
+        "HTP0": 296
+      },
+      "cert_non_htp_ops": [
+        "GET_ROWS@CPU:2"
+      ],
+      "cert_status": "SCHEDULED_PLACEMENT_OK"
+    },
+    {
+      "device": "op12",
+      "hexagon": "v75",
+      "seq_len_target": 512,
+      "seq_len_exact": 500,
+      "batch": 4,
+      "ok_procs": 3,
+      "n_samples": 30,
+      "lat_us_p50": 10708810.0,
+      "lat_us_p95": 10783791.4,
+      "lat_us_p99": 10828908.4,
+      "cov": 0.0044,
+      "throughput_enc_s": 0.4,
+      "cosine_vs_cpu": 0.99587,
+      "cert_compute_by_buffer": {
+        "CPU": 2,
+        "HTP0": 296
+      },
+      "cert_non_htp_ops": [
+        "GET_ROWS@CPU:2"
+      ],
+      "cert_status": "SCHEDULED_PLACEMENT_OK"
+    }
+  ],
+  "failures": [],
+  "n_failures": 0
+}

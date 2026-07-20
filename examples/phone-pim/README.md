@@ -56,8 +56,9 @@ durably advance route epochs.
 ```sh
 cmake -B build-phone-pim -DLLAMA_BUILD_EXAMPLES=ON
 cmake --build build-phone-pim --target \
-    llama-phone-pim-worker llama-phone-pim-host \
-    test-phone-pim-protocol test-phone-pim-store test-phone-pim-stream
+    llama-phone-pim-worker llama-phone-pim-host llama-phone-pim-fleet \
+    test-phone-pim-protocol test-phone-pim-client \
+    test-phone-pim-store test-phone-pim-stream
 ctest --test-dir build-phone-pim -R phone-pim --output-on-failure
 ```
 
@@ -111,6 +112,50 @@ without it the host fails closed.
 A successful dynamic run emits `verdict=DYNAMIC_FFN_PASS` and
 `model_source=published_store`. That verdict certifies provisioning/execution
 correctness for the one run; it is not a capacity or energy verdict.
+
+## Live fleet runner
+
+`llama-phone-pim-fleet` keeps one protocol session per phone and drains a real
+FFN job queue across all READY devices. Each fresh session performs
+`HELLO -> STATUS`; the STATUS generation is authoritative, so a stale command
+line hint cannot authorize PREPARE or EXECUTE. PREPARE remains the exact
+resident model-identity check because STATUS does not carry the model digest.
+
+Start one worker per phone and forward each port, then run:
+
+```sh
+./llama-phone-pim-fleet \
+    --device op12,127.0.0.1,19012,5ae7a43d \
+    --device op15,127.0.0.1,19015,3C15AU002CL00000 \
+    --model model.gguf --prefix blk.2 --M 16 --jobs 16 \
+    --route-epoch 1 --generation-hint 1 --island-id 1
+```
+
+The runner loads the same FFN island on a local CPU backend before dispatch,
+builds finite deterministic inputs, and checks every returned result against
+that oracle. Each phone receives an initial job; after that, the first phone to
+finish takes the next queue item. Successful output is labeled
+`REAL_FLEET_FFN_PASS` and reports remote setup separately from the validated
+dispatch makespan. The physical IDs are caller assertions and must be checked
+against the external device/forward manifest.
+Local source hashing and CPU-oracle preparation/execution are also reported and
+are outside both remote setup and dispatch.
+
+Fleet records use schema v2. Session, route, island, and generation uint64
+identities are decimal strings so JSON consumers preserve their exact values.
+On a failed setup or dispatch, a possibly created residency is reconciled with
+STATUS and rebound by exact PREPARE identity before RELEASE.
+
+The relative-L2 comparison for each returned job runs inline before that device
+takes another queue item. `validated_dispatch_makespan_ms` therefore includes
+this harness-only check. `last_rpc_complete_ms` marks the final RPC return but
+does not remove earlier inline checks from queue pacing.
+
+This is a live operator-island harness, not `llama-server` integration. It
+currently uses the TCP path selected by the caller (the example ADB forwards
+use USB), supports one Gemma4 dense FFN identity per worker, and keeps the
+server CPU oracle enabled. It does not yet implement mixed-model placement,
+server fallback, WiFi-input/USB-output separation, or an energy claim.
 
 ## Protocol boundary
 

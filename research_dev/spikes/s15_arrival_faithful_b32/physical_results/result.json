@@ -1,0 +1,387 @@
+{
+  "arrival_replay_slo_claim": true,
+  "artifact_hashes_before_report": {
+    "raw/launch-1/cohort.json": "sha256:85e0614d31a6f35ad7d09c3b35b2ab4fa9ef2916bc4a1dcfc32d6f4c70a51ec4",
+    "raw/launch-1/host.pre_prompt.stderr.bin": "sha256:500dee77fa6c44f52427faa49a0ac258fa3fb8805dbb11fb9ceb0536cab191f0",
+    "raw/launch-1/host.stderr.bin": "sha256:558381cfd9be690daf74ae0783cdb3d10254f239d2ce062973c65e9b703f909b",
+    "raw/launch-1/host.stdout.bin": "sha256:186606503866f25f7710c8ca13124ca5b219bc7fe3bd19def95bb473975f58d9",
+    "raw/launch-1/input_manifest.json": "sha256:ea1f2d47b8c6dec6096c8b95b6073181ecba6838d97741ca92ec2ceca6937858",
+    "raw/launch-1/paid_window.json": "sha256:1d55d1b66dfa4bfa9ecc93a8f5d13b08c19e12bd5c14fa26a3f7190a052fa440",
+    "raw/launch-1/phone.stderr.bin": "sha256:60fd40bc4b282d1d943ea9f1b9176f69384048654e0374807f5d9b0af193f5ce",
+    "raw/launch-1/phone.stdout.bin": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "raw/launch-1/preflight.json": "sha256:a2777ecc8dea77e91adb6e3697e1571c2d5af3550879822b7e1da513b95d0424",
+    "raw/launch-1/request.json": "sha256:370f5e85d24d137d5f049c80abfea3ec7e9d8955c2a0d40a98eccaccfb9428ec",
+    "raw/launch-1/thermal_stream.log": "sha256:79ee37dfdf4becd097cb4f15dd8b0f5628011f51e48792e7eb43f4af9a8c619f",
+    "raw/launch-1/thermal_stream.stderr.bin": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "transport/request.json": "sha256:370f5e85d24d137d5f049c80abfea3ec7e9d8955c2a0d40a98eccaccfb9428ec",
+    "transport/stderr.bin": "sha256:e40278a34e1d153664397b415c90cbb3552c1da9d813488a5236988768f7c098",
+    "transport/stdout.bin": "sha256:d2f5c79bfa445b6f3b684da57df6f58a1a68164e7201ad30ce1954ed3937a101",
+    "transport/transport.json": "sha256:840ac734f7e725240d75123643564f4ce9c47c4b3140722b84db7e2c6b95dc8d"
+  },
+  "cohort_sha256": "sha256:85e0614d31a6f35ad7d09c3b35b2ab4fa9ef2916bc4a1dcfc32d6f4c70a51ec4",
+  "deadline_margin_us": 422865,
+  "decisions": [
+    {
+      "action": "WAIT",
+      "after_request_id": "burstgpt-v2:3826765",
+      "at_us": 247000000,
+      "next_wake_us": 248031633,
+      "reason": "bounded_batch_wait"
+    },
+    {
+      "action": "WAIT",
+      "after_request_id": "burstgpt-v2:3826766",
+      "at_us": 247000000,
+      "next_wake_us": 248031633,
+      "reason": "bounded_batch_wait"
+    },
+    {
+      "action": "WAIT",
+      "after_request_id": "burstgpt-v2:3826767",
+      "at_us": 247000000,
+      "next_wake_us": 248031633,
+      "reason": "bounded_batch_wait"
+    },
+    {
+      "action": "WAIT",
+      "after_request_id": "burstgpt-v2:3826768",
+      "at_us": 247000000,
+      "next_wake_us": 248031633,
+      "reason": "bounded_batch_wait"
+    },
+    {
+      "action": "WAIT",
+      "after_request_id": "burstgpt-v2:3826769",
+      "at_us": 247000000,
+      "next_wake_us": 248031633,
+      "reason": "bounded_batch_wait"
+    },
+    {
+      "action": "WAIT",
+      "after_request_id": "burstgpt-v2:3826770",
+      "at_us": 247000000,
+      "next_wake_us": 248031633,
+      "reason": "bounded_batch_wait"
+    },
+    {
+      "action": "WAIT",
+      "after_request_id": "burstgpt-v2:3826771",
+      "at_us": 247000000,
+      "next_wake_us": 248031633,
+      "reason": "bounded_batch_wait"
+    },
+    {
+      "action": "WAIT",
+      "after_request_id": "burstgpt-v2:3826772",
+      "at_us": 247000000,
+      "next_wake_us": 248031633,
+      "reason": "bounded_batch_wait"
+    },
+    {
+      "action": "WAIT",
+      "after_request_id": "burstgpt-v2:3826773",
+      "at_us": 247000000,
+      "next_wake_us": 248031633,
+      "reason": "bounded_batch_wait"
+    },
+    {
+      "action": "WAIT",
+      "after_request_id": "burstgpt-v2:3826774",
+      "at_us": 247000000,
+      "next_wake_us": 248031633,
+      "reason": "bounded_batch_wait"
+    },
+    {
+      "action": "WAIT",
+      "after_request_id": "burstgpt-v2:3826775",
+      "at_us": 247000000,
+      "next_wake_us": 248031633,
+      "reason": "bounded_batch_wait"
+    },
+    {
+      "action": "WAIT",
+      "after_request_id": "burstgpt-v2:3826776",
+      "at_us": 247000000,
+      "next_wake_us": 248031633,
+      "reason": "bounded_batch_wait"
+    },
+    {
+      "action": "WAIT",
+      "after_request_id": "burstgpt-v2:3826777",
+      "at_us": 247000000,
+      "next_wake_us": 248031633,
+      "reason": "bounded_batch_wait"
+    },
+    {
+      "action": "WAIT",
+      "after_request_id": "burstgpt-v2:3826778",
+      "at_us": 247000000,
+      "next_wake_us": 248031633,
+      "reason": "bounded_batch_wait"
+    },
+    {
+      "action": "WAIT",
+      "after_request_id": "burstgpt-v2:3826779",
+      "at_us": 247000000,
+      "next_wake_us": 248031633,
+      "reason": "bounded_batch_wait"
+    },
+    {
+      "action": "WAIT",
+      "after_request_id": "burstgpt-v2:3826780",
+      "at_us": 247000000,
+      "next_wake_us": 248031633,
+      "reason": "bounded_batch_wait"
+    },
+    {
+      "action": "WAIT",
+      "after_request_id": "burstgpt-v2:3826781",
+      "at_us": 247000000,
+      "next_wake_us": 248031633,
+      "reason": "bounded_batch_wait"
+    },
+    {
+      "action": "WAIT",
+      "after_request_id": "burstgpt-v2:3826782",
+      "at_us": 247000000,
+      "next_wake_us": 248031633,
+      "reason": "bounded_batch_wait"
+    },
+    {
+      "action": "WAIT",
+      "after_request_id": "burstgpt-v2:3826783",
+      "at_us": 247000000,
+      "next_wake_us": 248031633,
+      "reason": "bounded_batch_wait"
+    },
+    {
+      "action": "WAIT",
+      "after_request_id": "burstgpt-v2:3826784",
+      "at_us": 247000000,
+      "next_wake_us": 248031633,
+      "reason": "bounded_batch_wait"
+    },
+    {
+      "action": "WAIT",
+      "after_request_id": "burstgpt-v2:3826785",
+      "at_us": 247000000,
+      "next_wake_us": 248031633,
+      "reason": "bounded_batch_wait"
+    },
+    {
+      "action": "WAIT",
+      "after_request_id": "burstgpt-v2:3826787",
+      "at_us": 248000000,
+      "next_wake_us": 248031633,
+      "reason": "bounded_batch_wait"
+    },
+    {
+      "action": "WAIT",
+      "after_request_id": "burstgpt-v2:3826788",
+      "at_us": 248000000,
+      "next_wake_us": 248031633,
+      "reason": "bounded_batch_wait"
+    },
+    {
+      "action": "WAIT",
+      "after_request_id": "burstgpt-v2:3826789",
+      "at_us": 248000000,
+      "next_wake_us": 248031633,
+      "reason": "bounded_batch_wait"
+    },
+    {
+      "action": "WAIT",
+      "after_request_id": "burstgpt-v2:3826790",
+      "at_us": 248000000,
+      "next_wake_us": 248031633,
+      "reason": "bounded_batch_wait"
+    },
+    {
+      "action": "WAIT",
+      "after_request_id": "burstgpt-v2:3826791",
+      "at_us": 248000000,
+      "next_wake_us": 248031633,
+      "reason": "bounded_batch_wait"
+    },
+    {
+      "action": "WAIT",
+      "after_request_id": "burstgpt-v2:3826792",
+      "at_us": 248000000,
+      "next_wake_us": 248031633,
+      "reason": "bounded_batch_wait"
+    },
+    {
+      "action": "WAIT",
+      "after_request_id": "burstgpt-v2:3826793",
+      "at_us": 248000000,
+      "next_wake_us": 248031633,
+      "reason": "bounded_batch_wait"
+    },
+    {
+      "action": "WAIT",
+      "after_request_id": "burstgpt-v2:3826794",
+      "at_us": 248000000,
+      "next_wake_us": 248031633,
+      "reason": "bounded_batch_wait"
+    },
+    {
+      "action": "WAIT",
+      "after_request_id": "burstgpt-v2:3826795",
+      "at_us": 248000000,
+      "next_wake_us": 248031633,
+      "reason": "bounded_batch_wait"
+    },
+    {
+      "action": "WAIT",
+      "after_request_id": "burstgpt-v2:3826796",
+      "at_us": 248000000,
+      "next_wake_us": 248031633,
+      "reason": "bounded_batch_wait"
+    },
+    {
+      "action": "LAUNCH",
+      "after_request_id": "burstgpt-v2:3826797",
+      "at_us": 248000000,
+      "batch_size": 32,
+      "predicted_duration_us": 3968367,
+      "reason": "target_batch_ready",
+      "request_ids": [
+        "burstgpt-v2:3826765",
+        "burstgpt-v2:3826766",
+        "burstgpt-v2:3826767",
+        "burstgpt-v2:3826768",
+        "burstgpt-v2:3826769",
+        "burstgpt-v2:3826770",
+        "burstgpt-v2:3826771",
+        "burstgpt-v2:3826772",
+        "burstgpt-v2:3826773",
+        "burstgpt-v2:3826774",
+        "burstgpt-v2:3826775",
+        "burstgpt-v2:3826776",
+        "burstgpt-v2:3826777",
+        "burstgpt-v2:3826778",
+        "burstgpt-v2:3826779",
+        "burstgpt-v2:3826780",
+        "burstgpt-v2:3826781",
+        "burstgpt-v2:3826782",
+        "burstgpt-v2:3826783",
+        "burstgpt-v2:3826784",
+        "burstgpt-v2:3826785",
+        "burstgpt-v2:3826787",
+        "burstgpt-v2:3826788",
+        "burstgpt-v2:3826789",
+        "burstgpt-v2:3826790",
+        "burstgpt-v2:3826791",
+        "burstgpt-v2:3826792",
+        "burstgpt-v2:3826793",
+        "burstgpt-v2:3826794",
+        "burstgpt-v2:3826795",
+        "burstgpt-v2:3826796",
+        "burstgpt-v2:3826797"
+      ]
+    }
+  ],
+  "earliest_deadline_us": 252000000,
+  "energy_scope": "UNKNOWN",
+  "input_manifest_sha256": "sha256:ea1f2d47b8c6dec6096c8b95b6073181ecba6838d97741ca92ec2ceca6937858",
+  "logical_finish_us": 251577135,
+  "logical_launch_us": 248000000,
+  "paid_window": {
+    "elapsed_us": 3575393,
+    "end_monotonic_ns": 462176740495571,
+    "host_exit_observed_ns": 462176740495571,
+    "phone_exit_observed_ns": 462176256390218,
+    "prompt_submitted_ns": 462173306591343,
+    "prompt_visible_during_preflight": false,
+    "route_wall_us_max": 2659026,
+    "schema": "s15-arrival-paid-window-v1",
+    "start_monotonic_ns": 462173165102516,
+    "thermal_end": {
+      "max_millic": 39100,
+      "sample_age_us": 253573,
+      "sensors_millic": {
+        "nsphmx-0": 38400,
+        "nsphmx-1": 38700,
+        "nsphmx-2": 39100,
+        "nsphmx-3": 39100
+      },
+      "valid": true
+    }
+  },
+  "problems": [],
+  "profile_duration_us": 3968367,
+  "profile_id": "sha256:6fea9922ca8a47779d07d235d0512b25661b176c643e82eb612811519b88d297",
+  "prompt_visible_during_preflight": false,
+  "request_ids": [
+    "burstgpt-v2:3826765",
+    "burstgpt-v2:3826766",
+    "burstgpt-v2:3826767",
+    "burstgpt-v2:3826768",
+    "burstgpt-v2:3826769",
+    "burstgpt-v2:3826770",
+    "burstgpt-v2:3826771",
+    "burstgpt-v2:3826772",
+    "burstgpt-v2:3826773",
+    "burstgpt-v2:3826774",
+    "burstgpt-v2:3826775",
+    "burstgpt-v2:3826776",
+    "burstgpt-v2:3826777",
+    "burstgpt-v2:3826778",
+    "burstgpt-v2:3826779",
+    "burstgpt-v2:3826780",
+    "burstgpt-v2:3826781",
+    "burstgpt-v2:3826782",
+    "burstgpt-v2:3826783",
+    "burstgpt-v2:3826784",
+    "burstgpt-v2:3826785",
+    "burstgpt-v2:3826787",
+    "burstgpt-v2:3826788",
+    "burstgpt-v2:3826789",
+    "burstgpt-v2:3826790",
+    "burstgpt-v2:3826791",
+    "burstgpt-v2:3826792",
+    "burstgpt-v2:3826793",
+    "burstgpt-v2:3826794",
+    "burstgpt-v2:3826795",
+    "burstgpt-v2:3826796",
+    "burstgpt-v2:3826797"
+  ],
+  "schema": "s15-arrival-faithful-physical-b32-v1",
+  "scope": "REAL_OP15_A6000_OBSERVED_ARRIVAL_REPLAY_SYNTHETIC_PAYLOAD_PRIORITY_SLO_ENERGY_UNKNOWN",
+  "terminal_states": {
+    "burstgpt-v2:3826765": "completed_phone",
+    "burstgpt-v2:3826766": "completed_phone",
+    "burstgpt-v2:3826767": "completed_phone",
+    "burstgpt-v2:3826768": "completed_phone",
+    "burstgpt-v2:3826769": "completed_phone",
+    "burstgpt-v2:3826770": "completed_phone",
+    "burstgpt-v2:3826771": "completed_phone",
+    "burstgpt-v2:3826772": "completed_phone",
+    "burstgpt-v2:3826773": "completed_phone",
+    "burstgpt-v2:3826774": "completed_phone",
+    "burstgpt-v2:3826775": "completed_phone",
+    "burstgpt-v2:3826776": "completed_phone",
+    "burstgpt-v2:3826777": "completed_phone",
+    "burstgpt-v2:3826778": "completed_phone",
+    "burstgpt-v2:3826779": "completed_phone",
+    "burstgpt-v2:3826780": "completed_phone",
+    "burstgpt-v2:3826781": "completed_phone",
+    "burstgpt-v2:3826782": "completed_phone",
+    "burstgpt-v2:3826783": "completed_phone",
+    "burstgpt-v2:3826784": "completed_phone",
+    "burstgpt-v2:3826785": "completed_phone",
+    "burstgpt-v2:3826787": "completed_phone",
+    "burstgpt-v2:3826788": "completed_phone",
+    "burstgpt-v2:3826789": "completed_phone",
+    "burstgpt-v2:3826790": "completed_phone",
+    "burstgpt-v2:3826791": "completed_phone",
+    "burstgpt-v2:3826792": "completed_phone",
+    "burstgpt-v2:3826793": "completed_phone",
+    "burstgpt-v2:3826794": "completed_phone",
+    "burstgpt-v2:3826795": "completed_phone",
+    "burstgpt-v2:3826796": "completed_phone",
+    "burstgpt-v2:3826797": "completed_phone"
+  },
+  "transport_elapsed_us": 3577135,
+  "verdict": "ARRIVAL_FAITHFUL_PHYSICAL_B32_PASS"
+}

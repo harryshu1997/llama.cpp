@@ -1,0 +1,2322 @@
+{
+ "schema": "s19-batch-atlas-v1",
+ "rows": [
+  {
+   "schema": "s19-batch-atlas-row-v1",
+   "route": "CUDA_R0",
+   "batch": 4,
+   "device": "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f",
+   "backend": "CUDA0",
+   "layer_range": [
+    0,
+    48
+   ],
+   "host_layer_start": 0,
+   "model_hashes": {
+    "full": "bac4e29337273d1cb41aa36f4209ebcf63baa1162e6ab4dc55f6034b3d69b35a",
+    "head": null
+   },
+   "binary_hashes": {
+    "host": "da12f9255d2e7acf276c3803cbfab2e7e2aaed1ed50230a43bd8bd1f79f2c8f7",
+    "phone": null
+   },
+   "context_envelope": {
+    "context": 16,
+    "max_prefill": 8,
+    "n_gen": 8,
+    "prompt_sha256": "c544378e66bf7a3d6640824b9e4cc28deaef2e35a424772b56b95d27c17fe6c8"
+   },
+   "support": true,
+   "memory_ok": true,
+   "oom": false,
+   "selected_gpu_peak_mib": 23525,
+   "correctness": {
+    "control_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "route_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "exact_match": true
+   },
+   "placement": {
+    "scheduled_placement_ok": true,
+    "missing_buffer": 0,
+    "cpu_get_rows_only": true,
+    "compute_nodes": 44608
+   },
+   "p50_us": 317319,
+   "p95_us": 318039,
+   "p99_us": 318103,
+   "latency_us": {
+    "p50": 317319.0,
+    "p95": 318039.9,
+    "p99": 318103.98,
+    "route_wall_samples": [
+     318120,
+     317319,
+     317196
+    ]
+   },
+   "throughput_tok_s": 100.84489110327462,
+   "thermal": {
+    "phone_start_c": null,
+    "phone_end_c": null
+   },
+   "process_evidence": {
+    "screen_processes": 1,
+    "measured_exchanges": 3,
+    "worker_pids": [],
+    "worker_boot_nonces": [],
+    "reset_applied_all": null,
+    "n_session_certs": 0
+   },
+   "gpu1": {
+    "before": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "after": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "util_max_during": 0,
+    "busy": false
+   },
+   "eligible_level": "screen",
+   "verdict": "ELIGIBLE_SCREEN",
+   "ineligible_reason": null
+  },
+  {
+   "schema": "s19-batch-atlas-row-v1",
+   "route": "CUDA_R0",
+   "batch": 8,
+   "device": "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f",
+   "backend": "CUDA0",
+   "layer_range": [
+    0,
+    48
+   ],
+   "host_layer_start": 0,
+   "model_hashes": {
+    "full": "bac4e29337273d1cb41aa36f4209ebcf63baa1162e6ab4dc55f6034b3d69b35a",
+    "head": null
+   },
+   "binary_hashes": {
+    "host": "da12f9255d2e7acf276c3803cbfab2e7e2aaed1ed50230a43bd8bd1f79f2c8f7",
+    "phone": null
+   },
+   "context_envelope": {
+    "context": 16,
+    "max_prefill": 8,
+    "n_gen": 8,
+    "prompt_sha256": "c544378e66bf7a3d6640824b9e4cc28deaef2e35a424772b56b95d27c17fe6c8"
+   },
+   "support": true,
+   "memory_ok": true,
+   "oom": false,
+   "selected_gpu_peak_mib": 23897,
+   "correctness": {
+    "control_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "route_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "exact_match": true
+   },
+   "placement": {
+    "scheduled_placement_ok": true,
+    "missing_buffer": 0,
+    "cpu_get_rows_only": true,
+    "compute_nodes": 44608
+   },
+   "p50_us": 329352,
+   "p95_us": 330310,
+   "p99_us": 330395,
+   "latency_us": {
+    "p50": 329352.0,
+    "p95": 330310.5,
+    "p99": 330395.7,
+    "route_wall_samples": [
+     330417,
+     329352,
+     329217
+    ]
+   },
+   "throughput_tok_s": 194.32096966163863,
+   "thermal": {
+    "phone_start_c": null,
+    "phone_end_c": null
+   },
+   "process_evidence": {
+    "screen_processes": 1,
+    "measured_exchanges": 3,
+    "worker_pids": [],
+    "worker_boot_nonces": [],
+    "reset_applied_all": null,
+    "n_session_certs": 0
+   },
+   "gpu1": {
+    "before": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "after": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "util_max_during": 0,
+    "busy": false
+   },
+   "eligible_level": "screen",
+   "verdict": "ELIGIBLE_SCREEN",
+   "ineligible_reason": null
+  },
+  {
+   "schema": "s19-batch-atlas-row-v1",
+   "route": "CUDA_R0",
+   "batch": 16,
+   "device": "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f",
+   "backend": "CUDA0",
+   "layer_range": [
+    0,
+    48
+   ],
+   "host_layer_start": 0,
+   "model_hashes": {
+    "full": "bac4e29337273d1cb41aa36f4209ebcf63baa1162e6ab4dc55f6034b3d69b35a",
+    "head": null
+   },
+   "binary_hashes": {
+    "host": "da12f9255d2e7acf276c3803cbfab2e7e2aaed1ed50230a43bd8bd1f79f2c8f7",
+    "phone": null
+   },
+   "context_envelope": {
+    "context": 16,
+    "max_prefill": 8,
+    "n_gen": 8,
+    "prompt_sha256": "c544378e66bf7a3d6640824b9e4cc28deaef2e35a424772b56b95d27c17fe6c8"
+   },
+   "support": true,
+   "memory_ok": true,
+   "oom": false,
+   "selected_gpu_peak_mib": 24635,
+   "correctness": {
+    "control_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "route_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "exact_match": true
+   },
+   "placement": {
+    "scheduled_placement_ok": true,
+    "missing_buffer": 0,
+    "cpu_get_rows_only": true,
+    "compute_nodes": 44608
+   },
+   "p50_us": 365228,
+   "p95_us": 366895,
+   "p99_us": 367043,
+   "latency_us": {
+    "p50": 365228.0,
+    "p95": 366895.7,
+    "p99": 367043.94,
+    "route_wall_samples": [
+     365228,
+     363032,
+     367081
+    ]
+   },
+   "throughput_tok_s": 350.46601027303495,
+   "thermal": {
+    "phone_start_c": null,
+    "phone_end_c": null
+   },
+   "process_evidence": {
+    "screen_processes": 1,
+    "measured_exchanges": 3,
+    "worker_pids": [],
+    "worker_boot_nonces": [],
+    "reset_applied_all": null,
+    "n_session_certs": 0
+   },
+   "gpu1": {
+    "before": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "after": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "util_max_during": 0,
+    "busy": false
+   },
+   "eligible_level": "screen",
+   "verdict": "ELIGIBLE_SCREEN",
+   "ineligible_reason": null
+  },
+  {
+   "schema": "s19-batch-atlas-row-v1",
+   "route": "CUDA_R0",
+   "batch": 24,
+   "device": "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f",
+   "backend": "CUDA0",
+   "layer_range": [
+    0,
+    48
+   ],
+   "host_layer_start": 0,
+   "model_hashes": {
+    "full": "bac4e29337273d1cb41aa36f4209ebcf63baa1162e6ab4dc55f6034b3d69b35a",
+    "head": null
+   },
+   "binary_hashes": {
+    "host": "da12f9255d2e7acf276c3803cbfab2e7e2aaed1ed50230a43bd8bd1f79f2c8f7",
+    "phone": null
+   },
+   "context_envelope": {
+    "context": 16,
+    "max_prefill": 8,
+    "n_gen": 8,
+    "prompt_sha256": "c544378e66bf7a3d6640824b9e4cc28deaef2e35a424772b56b95d27c17fe6c8"
+   },
+   "support": true,
+   "memory_ok": true,
+   "oom": false,
+   "selected_gpu_peak_mib": 25397,
+   "correctness": {
+    "control_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "route_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "exact_match": true
+   },
+   "placement": {
+    "scheduled_placement_ok": true,
+    "missing_buffer": 0,
+    "cpu_get_rows_only": true,
+    "compute_nodes": 44608
+   },
+   "p50_us": 415357,
+   "p95_us": 416074,
+   "p99_us": 416138,
+   "latency_us": {
+    "p50": 415357.0,
+    "p95": 416074.3,
+    "p99": 416138.06,
+    "route_wall_samples": [
+     416154,
+     415357,
+     414346
+    ]
+   },
+   "throughput_tok_s": 462.25295348338904,
+   "thermal": {
+    "phone_start_c": null,
+    "phone_end_c": null
+   },
+   "process_evidence": {
+    "screen_processes": 1,
+    "measured_exchanges": 3,
+    "worker_pids": [],
+    "worker_boot_nonces": [],
+    "reset_applied_all": null,
+    "n_session_certs": 0
+   },
+   "gpu1": {
+    "before": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "after": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "util_max_during": 0,
+    "busy": false
+   },
+   "eligible_level": "screen",
+   "verdict": "ELIGIBLE_SCREEN",
+   "ineligible_reason": null
+  },
+  {
+   "schema": "s19-batch-atlas-row-v1",
+   "route": "CUDA_R0",
+   "batch": 32,
+   "device": "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f",
+   "backend": "CUDA0",
+   "layer_range": [
+    0,
+    48
+   ],
+   "host_layer_start": 0,
+   "model_hashes": {
+    "full": "bac4e29337273d1cb41aa36f4209ebcf63baa1162e6ab4dc55f6034b3d69b35a",
+    "head": null
+   },
+   "binary_hashes": {
+    "host": "da12f9255d2e7acf276c3803cbfab2e7e2aaed1ed50230a43bd8bd1f79f2c8f7",
+    "phone": null
+   },
+   "context_envelope": {
+    "context": 16,
+    "max_prefill": 8,
+    "n_gen": 8,
+    "prompt_sha256": "c544378e66bf7a3d6640824b9e4cc28deaef2e35a424772b56b95d27c17fe6c8"
+   },
+   "support": true,
+   "memory_ok": true,
+   "oom": false,
+   "selected_gpu_peak_mib": 26131,
+   "correctness": {
+    "control_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "route_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "exact_match": true
+   },
+   "placement": {
+    "scheduled_placement_ok": true,
+    "missing_buffer": 0,
+    "cpu_get_rows_only": true,
+    "compute_nodes": 156128
+   },
+   "p50_us": 458181,
+   "p95_us": 463130,
+   "p99_us": 463950,
+   "latency_us": {
+    "p50": 458181.0,
+    "p95": 463130.0,
+    "p99": 463950.8,
+    "route_wall_samples": [
+     460736,
+     459150,
+     457181,
+     458181,
+     457401,
+     464156,
+     457830
+    ]
+   },
+   "throughput_tok_s": 558.7311564643667,
+   "thermal": {
+    "phone_start_c": null,
+    "phone_end_c": null
+   },
+   "process_evidence": {
+    "screen_processes": 7,
+    "measured_exchanges": 7,
+    "worker_pids": [],
+    "worker_boot_nonces": [],
+    "reset_applied_all": null,
+    "n_session_certs": 0
+   },
+   "gpu1": {
+    "before": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "after": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "util_max_during": 1,
+    "busy": false
+   },
+   "eligible_level": "eligible",
+   "verdict": "ELIGIBLE",
+   "ineligible_reason": null
+  },
+  {
+   "schema": "s19-batch-atlas-row-v1",
+   "route": "CUDA_R0",
+   "batch": 48,
+   "device": "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f",
+   "backend": "CUDA0",
+   "layer_range": [
+    0,
+    48
+   ],
+   "host_layer_start": 0,
+   "model_hashes": {
+    "full": "bac4e29337273d1cb41aa36f4209ebcf63baa1162e6ab4dc55f6034b3d69b35a",
+    "head": null
+   },
+   "binary_hashes": {
+    "host": "da12f9255d2e7acf276c3803cbfab2e7e2aaed1ed50230a43bd8bd1f79f2c8f7",
+    "phone": null
+   },
+   "context_envelope": {
+    "context": 16,
+    "max_prefill": 8,
+    "n_gen": 8,
+    "prompt_sha256": "c544378e66bf7a3d6640824b9e4cc28deaef2e35a424772b56b95d27c17fe6c8"
+   },
+   "support": true,
+   "memory_ok": true,
+   "oom": false,
+   "selected_gpu_peak_mib": 27616,
+   "correctness": {
+    "control_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "route_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "exact_match": true
+   },
+   "placement": {
+    "scheduled_placement_ok": true,
+    "missing_buffer": 0,
+    "cpu_get_rows_only": true,
+    "compute_nodes": 156128
+   },
+   "p50_us": 506725,
+   "p95_us": 509554,
+   "p99_us": 510213,
+   "latency_us": {
+    "p50": 506725.0,
+    "p95": 509554.5,
+    "p99": 510213.3,
+    "route_wall_samples": [
+     507633,
+     506526,
+     505837,
+     505414,
+     506725,
+     506890,
+     510378
+    ]
+   },
+   "throughput_tok_s": 757.8074892693276,
+   "thermal": {
+    "phone_start_c": null,
+    "phone_end_c": null
+   },
+   "process_evidence": {
+    "screen_processes": 7,
+    "measured_exchanges": 7,
+    "worker_pids": [],
+    "worker_boot_nonces": [],
+    "reset_applied_all": null,
+    "n_session_certs": 0
+   },
+   "gpu1": {
+    "before": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "after": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "util_max_during": 0,
+    "busy": false
+   },
+   "eligible_level": "eligible",
+   "verdict": "ELIGIBLE",
+   "ineligible_reason": null
+  },
+  {
+   "schema": "s19-batch-atlas-row-v1",
+   "route": "CUDA_R0",
+   "batch": 64,
+   "device": "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f",
+   "backend": "CUDA0",
+   "layer_range": [
+    0,
+    48
+   ],
+   "host_layer_start": 0,
+   "model_hashes": {
+    "full": "bac4e29337273d1cb41aa36f4209ebcf63baa1162e6ab4dc55f6034b3d69b35a",
+    "head": null
+   },
+   "binary_hashes": {
+    "host": "da12f9255d2e7acf276c3803cbfab2e7e2aaed1ed50230a43bd8bd1f79f2c8f7",
+    "phone": null
+   },
+   "context_envelope": {
+    "context": 16,
+    "max_prefill": 8,
+    "n_gen": 8,
+    "prompt_sha256": "c544378e66bf7a3d6640824b9e4cc28deaef2e35a424772b56b95d27c17fe6c8"
+   },
+   "support": true,
+   "memory_ok": true,
+   "oom": false,
+   "selected_gpu_peak_mib": 29101,
+   "correctness": {
+    "control_token_ids": [
+     107,
+     45518,
+     107,
+     101,
+     1509,
+     7412,
+     611,
+     659
+    ],
+    "route_token_ids": [
+     107,
+     45518,
+     107,
+     101,
+     1509,
+     7412,
+     611,
+     659
+    ],
+    "exact_match": true
+   },
+   "placement": {
+    "scheduled_placement_ok": true,
+    "missing_buffer": 0,
+    "cpu_get_rows_only": true,
+    "compute_nodes": 156128
+   },
+   "p50_us": 589134,
+   "p95_us": 594867,
+   "p99_us": 596648,
+   "latency_us": {
+    "p50": 589134.0,
+    "p95": 594867.7,
+    "p99": 596648.74,
+    "route_wall_samples": [
+     589187,
+     588406,
+     597094,
+     589134,
+     588341,
+     587892,
+     589673
+    ]
+   },
+   "throughput_tok_s": 869.0722314447986,
+   "thermal": {
+    "phone_start_c": null,
+    "phone_end_c": null
+   },
+   "process_evidence": {
+    "screen_processes": 7,
+    "measured_exchanges": 7,
+    "worker_pids": [],
+    "worker_boot_nonces": [],
+    "reset_applied_all": null,
+    "n_session_certs": 0
+   },
+   "gpu1": {
+    "before": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "after": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "util_max_during": 0,
+    "busy": false
+   },
+   "eligible_level": "eligible",
+   "verdict": "ELIGIBLE",
+   "ineligible_reason": null
+  },
+  {
+   "schema": "s19-batch-atlas-row-v1",
+   "route": "OP12_R1",
+   "batch": 4,
+   "device": "5ae7a43d",
+   "backend": "HTP0",
+   "layer_range": [
+    0,
+    6
+   ],
+   "host_layer_start": 6,
+   "model_hashes": {
+    "full": "bac4e29337273d1cb41aa36f4209ebcf63baa1162e6ab4dc55f6034b3d69b35a",
+    "head": "d507b7bb453242dff12ba1ce0add53189755b8a9a2b960743ead1578d8f1a6b5"
+   },
+   "binary_hashes": {
+    "host": "da12f9255d2e7acf276c3803cbfab2e7e2aaed1ed50230a43bd8bd1f79f2c8f7",
+    "phone": "d26075bcf64e90ee04e51c2f86188d709e4c2906add252d209014ad1e046646c"
+   },
+   "context_envelope": {
+    "context": 16,
+    "max_prefill": 8,
+    "n_gen": 8,
+    "prompt_sha256": "c544378e66bf7a3d6640824b9e4cc28deaef2e35a424772b56b95d27c17fe6c8"
+   },
+   "support": true,
+   "memory_ok": true,
+   "oom": false,
+   "selected_gpu_peak_mib": 20884,
+   "correctness": {
+    "control_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "route_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "exact_match": true
+   },
+   "placement": {
+    "scheduled_placement_ok": true,
+    "missing_buffer": 0,
+    "cpu_get_rows_only": true,
+    "compute_nodes": 39008
+   },
+   "p50_us": 2220065,
+   "p95_us": 2263333,
+   "p99_us": 2267179,
+   "latency_us": {
+    "p50": 2220065.0,
+    "p95": 2263333.4,
+    "p99": 2267179.48,
+    "route_wall_samples": [
+     2268141,
+     2220065,
+     2104412
+    ]
+   },
+   "throughput_tok_s": 14.413992383105901,
+   "thermal": {
+    "phone_start_c": 28.3,
+    "phone_end_c": 31.8
+   },
+   "process_evidence": {
+    "screen_processes": 1,
+    "measured_exchanges": 3,
+    "worker_pids": [
+     "9702",
+     "9704"
+    ],
+    "worker_boot_nonces": [
+     "6e72ae7c602f3fdd"
+    ],
+    "reset_applied_all": true,
+    "n_session_certs": 4
+   },
+   "gpu1": {
+    "before": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "after": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "util_max_during": 1,
+    "busy": false
+   },
+   "eligible_level": "screen",
+   "verdict": "ELIGIBLE_SCREEN",
+   "ineligible_reason": null
+  },
+  {
+   "schema": "s19-batch-atlas-row-v1",
+   "route": "OP12_R1",
+   "batch": 8,
+   "device": "5ae7a43d",
+   "backend": "HTP0",
+   "layer_range": [
+    0,
+    6
+   ],
+   "host_layer_start": 6,
+   "model_hashes": {
+    "full": "bac4e29337273d1cb41aa36f4209ebcf63baa1162e6ab4dc55f6034b3d69b35a",
+    "head": "d507b7bb453242dff12ba1ce0add53189755b8a9a2b960743ead1578d8f1a6b5"
+   },
+   "binary_hashes": {
+    "host": "da12f9255d2e7acf276c3803cbfab2e7e2aaed1ed50230a43bd8bd1f79f2c8f7",
+    "phone": "d26075bcf64e90ee04e51c2f86188d709e4c2906add252d209014ad1e046646c"
+   },
+   "context_envelope": {
+    "context": 16,
+    "max_prefill": 8,
+    "n_gen": 8,
+    "prompt_sha256": "c544378e66bf7a3d6640824b9e4cc28deaef2e35a424772b56b95d27c17fe6c8"
+   },
+   "support": true,
+   "memory_ok": true,
+   "oom": false,
+   "selected_gpu_peak_mib": 21215,
+   "correctness": {
+    "control_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "route_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "exact_match": true
+   },
+   "placement": {
+    "scheduled_placement_ok": true,
+    "missing_buffer": 0,
+    "cpu_get_rows_only": true,
+    "compute_nodes": 39008
+   },
+   "p50_us": 3297265,
+   "p95_us": 3301207,
+   "p99_us": 3301558,
+   "latency_us": {
+    "p50": 3297265.0,
+    "p95": 3301207.9,
+    "p99": 3301558.38,
+    "route_wall_samples": [
+     3297265,
+     3288526,
+     3301646
+    ]
+   },
+   "throughput_tok_s": 19.410026188371273,
+   "thermal": {
+    "phone_start_c": 31.0,
+    "phone_end_c": 32.5
+   },
+   "process_evidence": {
+    "screen_processes": 1,
+    "measured_exchanges": 3,
+    "worker_pids": [
+     "10279",
+     "10282"
+    ],
+    "worker_boot_nonces": [
+     "64af093ccd2d2302"
+    ],
+    "reset_applied_all": true,
+    "n_session_certs": 4
+   },
+   "gpu1": {
+    "before": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "after": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "util_max_during": 0,
+    "busy": false
+   },
+   "eligible_level": "screen",
+   "verdict": "ELIGIBLE_SCREEN",
+   "ineligible_reason": null
+  },
+  {
+   "schema": "s19-batch-atlas-row-v1",
+   "route": "OP12_R1",
+   "batch": 16,
+   "device": "5ae7a43d",
+   "backend": "HTP0",
+   "layer_range": [
+    0,
+    6
+   ],
+   "host_layer_start": 6,
+   "model_hashes": {
+    "full": "bac4e29337273d1cb41aa36f4209ebcf63baa1162e6ab4dc55f6034b3d69b35a",
+    "head": "d507b7bb453242dff12ba1ce0add53189755b8a9a2b960743ead1578d8f1a6b5"
+   },
+   "binary_hashes": {
+    "host": "da12f9255d2e7acf276c3803cbfab2e7e2aaed1ed50230a43bd8bd1f79f2c8f7",
+    "phone": "d26075bcf64e90ee04e51c2f86188d709e4c2906add252d209014ad1e046646c"
+   },
+   "context_envelope": {
+    "context": 16,
+    "max_prefill": 8,
+    "n_gen": 8,
+    "prompt_sha256": "c544378e66bf7a3d6640824b9e4cc28deaef2e35a424772b56b95d27c17fe6c8"
+   },
+   "support": false,
+   "memory_ok": true,
+   "oom": false,
+   "selected_gpu_peak_mib": 21869,
+   "correctness": {
+    "control_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "route_token_ids": [],
+    "exact_match": false
+   },
+   "placement": {
+    "scheduled_placement_ok": true,
+    "missing_buffer": 0,
+    "cpu_get_rows_only": true,
+    "compute_nodes": 0
+   },
+   "p50_us": 0,
+   "p95_us": 0,
+   "p99_us": 0,
+   "latency_us": {
+    "p50": 0.0,
+    "p95": 0.0,
+    "p99": 0.0,
+    "route_wall_samples": []
+   },
+   "throughput_tok_s": 0.0,
+   "thermal": {
+    "phone_start_c": 31.4,
+    "phone_end_c": 32.5
+   },
+   "process_evidence": {
+    "screen_processes": 1,
+    "measured_exchanges": 0,
+    "worker_pids": [
+     "14140"
+    ],
+    "worker_boot_nonces": [],
+    "reset_applied_all": null,
+    "n_session_certs": 0
+   },
+   "gpu1": {
+    "before": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "after": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "util_max_during": 1,
+    "busy": false
+   },
+   "eligible_level": "screen",
+   "verdict": "INELIGIBLE",
+   "ineligible_reason": "unsupported"
+  },
+  {
+   "schema": "s19-batch-atlas-row-v1",
+   "route": "OP12_R1",
+   "batch": 24,
+   "device": "5ae7a43d",
+   "backend": "HTP0",
+   "layer_range": [
+    0,
+    6
+   ],
+   "host_layer_start": 6,
+   "model_hashes": {
+    "full": "bac4e29337273d1cb41aa36f4209ebcf63baa1162e6ab4dc55f6034b3d69b35a",
+    "head": "d507b7bb453242dff12ba1ce0add53189755b8a9a2b960743ead1578d8f1a6b5"
+   },
+   "binary_hashes": {
+    "host": "da12f9255d2e7acf276c3803cbfab2e7e2aaed1ed50230a43bd8bd1f79f2c8f7",
+    "phone": "d26075bcf64e90ee04e51c2f86188d709e4c2906add252d209014ad1e046646c"
+   },
+   "context_envelope": {
+    "context": 16,
+    "max_prefill": 8,
+    "n_gen": 8,
+    "prompt_sha256": "c544378e66bf7a3d6640824b9e4cc28deaef2e35a424772b56b95d27c17fe6c8"
+   },
+   "support": true,
+   "memory_ok": true,
+   "oom": false,
+   "selected_gpu_peak_mib": 22543,
+   "correctness": {
+    "control_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "route_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "exact_match": true
+   },
+   "placement": {
+    "scheduled_placement_ok": true,
+    "missing_buffer": 0,
+    "cpu_get_rows_only": true,
+    "compute_nodes": 117024
+   },
+   "p50_us": 7176762,
+   "p95_us": 7188967,
+   "p99_us": 7189709,
+   "latency_us": {
+    "p50": 7176762.0,
+    "p95": 7188967.8,
+    "p99": 7189709.56,
+    "route_wall_samples": [
+     7187577,
+     7165383,
+     7167237,
+     7169233,
+     7181136,
+     7156794,
+     7182526,
+     7176762,
+     7189895
+    ]
+   },
+   "throughput_tok_s": 26.753012012938424,
+   "thermal": {
+    "phone_start_c": 29.0,
+    "phone_end_c": 33.7
+   },
+   "process_evidence": {
+    "screen_processes": 3,
+    "measured_exchanges": 9,
+    "worker_pids": [
+     "15700",
+     "15702",
+     "15757",
+     "15759",
+     "15783",
+     "15785"
+    ],
+    "worker_boot_nonces": [
+     "5dc1f886f97b102a",
+     "5e6611519f9acd11",
+     "802a4305426916e6"
+    ],
+    "reset_applied_all": true,
+    "n_session_certs": 12
+   },
+   "gpu1": {
+    "before": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "after": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "util_max_during": 0,
+    "busy": false
+   },
+   "eligible_level": "eligible",
+   "verdict": "ELIGIBLE",
+   "ineligible_reason": null
+  },
+  {
+   "schema": "s19-batch-atlas-row-v1",
+   "route": "OP12_R1",
+   "batch": 32,
+   "device": "5ae7a43d",
+   "backend": "HTP0",
+   "layer_range": [
+    0,
+    6
+   ],
+   "host_layer_start": 6,
+   "model_hashes": {
+    "full": "bac4e29337273d1cb41aa36f4209ebcf63baa1162e6ab4dc55f6034b3d69b35a",
+    "head": "d507b7bb453242dff12ba1ce0add53189755b8a9a2b960743ead1578d8f1a6b5"
+   },
+   "binary_hashes": {
+    "host": "da12f9255d2e7acf276c3803cbfab2e7e2aaed1ed50230a43bd8bd1f79f2c8f7",
+    "phone": "d26075bcf64e90ee04e51c2f86188d709e4c2906add252d209014ad1e046646c"
+   },
+   "context_envelope": {
+    "context": 16,
+    "max_prefill": 8,
+    "n_gen": 8,
+    "prompt_sha256": "c544378e66bf7a3d6640824b9e4cc28deaef2e35a424772b56b95d27c17fe6c8"
+   },
+   "support": false,
+   "memory_ok": true,
+   "oom": false,
+   "selected_gpu_peak_mib": 23113,
+   "correctness": {
+    "control_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "route_token_ids": [],
+    "exact_match": false
+   },
+   "placement": {
+    "scheduled_placement_ok": true,
+    "missing_buffer": 0,
+    "cpu_get_rows_only": true,
+    "compute_nodes": 0
+   },
+   "p50_us": 0,
+   "p95_us": 0,
+   "p99_us": 0,
+   "latency_us": {
+    "p50": 0.0,
+    "p95": 0.0,
+    "p99": 0.0,
+    "route_wall_samples": []
+   },
+   "throughput_tok_s": 0.0,
+   "thermal": {
+    "phone_start_c": 32.1,
+    "phone_end_c": 32.5
+   },
+   "process_evidence": {
+    "screen_processes": 1,
+    "measured_exchanges": 0,
+    "worker_pids": [
+     "14714"
+    ],
+    "worker_boot_nonces": [],
+    "reset_applied_all": null,
+    "n_session_certs": 0
+   },
+   "gpu1": {
+    "before": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "after": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "util_max_during": 0,
+    "busy": false
+   },
+   "eligible_level": "screen",
+   "verdict": "INELIGIBLE",
+   "ineligible_reason": "unsupported"
+  },
+  {
+   "schema": "s19-batch-atlas-row-v1",
+   "route": "OP12_R1",
+   "batch": 48,
+   "device": "5ae7a43d",
+   "backend": "HTP0",
+   "layer_range": [
+    0,
+    6
+   ],
+   "host_layer_start": 6,
+   "model_hashes": {
+    "full": "bac4e29337273d1cb41aa36f4209ebcf63baa1162e6ab4dc55f6034b3d69b35a",
+    "head": "d507b7bb453242dff12ba1ce0add53189755b8a9a2b960743ead1578d8f1a6b5"
+   },
+   "binary_hashes": {
+    "host": "da12f9255d2e7acf276c3803cbfab2e7e2aaed1ed50230a43bd8bd1f79f2c8f7",
+    "phone": "d26075bcf64e90ee04e51c2f86188d709e4c2906add252d209014ad1e046646c"
+   },
+   "context_envelope": {
+    "context": 16,
+    "max_prefill": 8,
+    "n_gen": 8,
+    "prompt_sha256": "c544378e66bf7a3d6640824b9e4cc28deaef2e35a424772b56b95d27c17fe6c8"
+   },
+   "support": true,
+   "memory_ok": true,
+   "oom": false,
+   "selected_gpu_peak_mib": 24517,
+   "correctness": {
+    "control_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "route_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "exact_match": true
+   },
+   "placement": {
+    "scheduled_placement_ok": true,
+    "missing_buffer": 0,
+    "cpu_get_rows_only": true,
+    "compute_nodes": 39008
+   },
+   "p50_us": 12950195,
+   "p95_us": 12956964,
+   "p99_us": 12957566,
+   "latency_us": {
+    "p50": 12950195.0,
+    "p95": 12956964.8,
+    "p99": 12957566.56,
+    "route_wall_samples": [
+     12950195,
+     12957717,
+     12946113
+    ]
+   },
+   "throughput_tok_s": 29.65206315426138,
+   "thermal": {
+    "phone_start_c": 31.8,
+    "phone_end_c": 34.5
+   },
+   "process_evidence": {
+    "screen_processes": 1,
+    "measured_exchanges": 3,
+    "worker_pids": [
+     "13027",
+     "13029"
+    ],
+    "worker_boot_nonces": [
+     "f3ebe62ae80308ce"
+    ],
+    "reset_applied_all": true,
+    "n_session_certs": 4
+   },
+   "gpu1": {
+    "before": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "after": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "util_max_during": 1,
+    "busy": false
+   },
+   "eligible_level": "screen",
+   "verdict": "ELIGIBLE_SCREEN",
+   "ineligible_reason": null
+  },
+  {
+   "schema": "s19-batch-atlas-row-v1",
+   "route": "OP12_R1",
+   "batch": 64,
+   "device": "5ae7a43d",
+   "backend": "HTP0",
+   "layer_range": [
+    0,
+    6
+   ],
+   "host_layer_start": 6,
+   "model_hashes": {
+    "full": "bac4e29337273d1cb41aa36f4209ebcf63baa1162e6ab4dc55f6034b3d69b35a",
+    "head": "d507b7bb453242dff12ba1ce0add53189755b8a9a2b960743ead1578d8f1a6b5"
+   },
+   "binary_hashes": {
+    "host": "da12f9255d2e7acf276c3803cbfab2e7e2aaed1ed50230a43bd8bd1f79f2c8f7",
+    "phone": "d26075bcf64e90ee04e51c2f86188d709e4c2906add252d209014ad1e046646c"
+   },
+   "context_envelope": {
+    "context": 16,
+    "max_prefill": 8,
+    "n_gen": 8,
+    "prompt_sha256": "c544378e66bf7a3d6640824b9e4cc28deaef2e35a424772b56b95d27c17fe6c8"
+   },
+   "support": true,
+   "memory_ok": true,
+   "oom": false,
+   "selected_gpu_peak_mib": 25833,
+   "correctness": {
+    "control_token_ids": [
+     107,
+     45518,
+     107,
+     101,
+     1509,
+     7412,
+     611,
+     659
+    ],
+    "route_token_ids": [
+     107,
+     45518,
+     107,
+     101,
+     1509,
+     7412,
+     611,
+     659
+    ],
+    "exact_match": true
+   },
+   "placement": {
+    "scheduled_placement_ok": true,
+    "missing_buffer": 0,
+    "cpu_get_rows_only": true,
+    "compute_nodes": 39008
+   },
+   "p50_us": 16832730,
+   "p95_us": 16866798,
+   "p99_us": 16869826,
+   "latency_us": {
+    "p50": 16832730.0,
+    "p95": 16866798.6,
+    "p99": 16869826.92,
+    "route_wall_samples": [
+     16831560,
+     16870584,
+     16832730
+    ]
+   },
+   "throughput_tok_s": 30.416931775178472,
+   "thermal": {
+    "phone_start_c": 33.7,
+    "phone_end_c": 34.1
+   },
+   "process_evidence": {
+    "screen_processes": 1,
+    "measured_exchanges": 3,
+    "worker_pids": [
+     "13647",
+     "13649"
+    ],
+    "worker_boot_nonces": [
+     "9b3f1299b77063c9"
+    ],
+    "reset_applied_all": true,
+    "n_session_certs": 4
+   },
+   "gpu1": {
+    "before": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "after": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "util_max_during": 0,
+    "busy": false
+   },
+   "eligible_level": "screen",
+   "verdict": "ELIGIBLE_SCREEN",
+   "ineligible_reason": null
+  },
+  {
+   "schema": "s19-batch-atlas-row-v1",
+   "route": "OP15_R1",
+   "batch": 4,
+   "device": "3C15AU002CL00000",
+   "backend": "HTP0",
+   "layer_range": [
+    0,
+    8
+   ],
+   "host_layer_start": 8,
+   "model_hashes": {
+    "full": "bac4e29337273d1cb41aa36f4209ebcf63baa1162e6ab4dc55f6034b3d69b35a",
+    "head": "a74845294bc1a3cba6ac26c747615d64d9127c904aae04c43c7ea2ebc1ea25c8"
+   },
+   "binary_hashes": {
+    "host": "da12f9255d2e7acf276c3803cbfab2e7e2aaed1ed50230a43bd8bd1f79f2c8f7",
+    "phone": "d26075bcf64e90ee04e51c2f86188d709e4c2906add252d209014ad1e046646c"
+   },
+   "context_envelope": {
+    "context": 16,
+    "max_prefill": 8,
+    "n_gen": 8,
+    "prompt_sha256": "c544378e66bf7a3d6640824b9e4cc28deaef2e35a424772b56b95d27c17fe6c8"
+   },
+   "support": true,
+   "memory_ok": true,
+   "oom": false,
+   "selected_gpu_peak_mib": 20013,
+   "correctness": {
+    "control_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "route_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "exact_match": true
+   },
+   "placement": {
+    "scheduled_placement_ok": true,
+    "missing_buffer": 0,
+    "cpu_get_rows_only": true,
+    "compute_nodes": 37152
+   },
+   "p50_us": 1388126,
+   "p95_us": 1390385,
+   "p99_us": 1390586,
+   "latency_us": {
+    "p50": 1388126.0,
+    "p95": 1390385.9,
+    "p99": 1390586.78,
+    "route_wall_samples": [
+     1388126,
+     1346296,
+     1390637
+    ]
+   },
+   "throughput_tok_s": 23.05266236638461,
+   "thermal": {
+    "phone_start_c": 27.9,
+    "phone_end_c": 31.4
+   },
+   "process_evidence": {
+    "screen_processes": 1,
+    "measured_exchanges": 3,
+    "worker_pids": [
+     "19554",
+     "19556"
+    ],
+    "worker_boot_nonces": [
+     "fd49dfff3d32eb91"
+    ],
+    "reset_applied_all": true,
+    "n_session_certs": 4
+   },
+   "gpu1": {
+    "before": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "after": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "util_max_during": 0,
+    "busy": false
+   },
+   "eligible_level": "screen",
+   "verdict": "ELIGIBLE_SCREEN",
+   "ineligible_reason": null
+  },
+  {
+   "schema": "s19-batch-atlas-row-v1",
+   "route": "OP15_R1",
+   "batch": 8,
+   "device": "3C15AU002CL00000",
+   "backend": "HTP0",
+   "layer_range": [
+    0,
+    8
+   ],
+   "host_layer_start": 8,
+   "model_hashes": {
+    "full": "bac4e29337273d1cb41aa36f4209ebcf63baa1162e6ab4dc55f6034b3d69b35a",
+    "head": "a74845294bc1a3cba6ac26c747615d64d9127c904aae04c43c7ea2ebc1ea25c8"
+   },
+   "binary_hashes": {
+    "host": "da12f9255d2e7acf276c3803cbfab2e7e2aaed1ed50230a43bd8bd1f79f2c8f7",
+    "phone": "d26075bcf64e90ee04e51c2f86188d709e4c2906add252d209014ad1e046646c"
+   },
+   "context_envelope": {
+    "context": 16,
+    "max_prefill": 8,
+    "n_gen": 8,
+    "prompt_sha256": "c544378e66bf7a3d6640824b9e4cc28deaef2e35a424772b56b95d27c17fe6c8"
+   },
+   "support": true,
+   "memory_ok": true,
+   "oom": false,
+   "selected_gpu_peak_mib": 20325,
+   "correctness": {
+    "control_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "route_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "exact_match": true
+   },
+   "placement": {
+    "scheduled_placement_ok": true,
+    "missing_buffer": 0,
+    "cpu_get_rows_only": true,
+    "compute_nodes": 37152
+   },
+   "p50_us": 1988282,
+   "p95_us": 1995367,
+   "p99_us": 1995997,
+   "latency_us": {
+    "p50": 1988282.0,
+    "p95": 1995367.7,
+    "p99": 1995997.54,
+    "route_wall_samples": [
+     1996155,
+     1988282,
+     1987243
+    ]
+   },
+   "throughput_tok_s": 32.1885929661889,
+   "thermal": {
+    "phone_start_c": 29.8,
+    "phone_end_c": 32.1
+   },
+   "process_evidence": {
+    "screen_processes": 1,
+    "measured_exchanges": 3,
+    "worker_pids": [
+     "20021",
+     "20023"
+    ],
+    "worker_boot_nonces": [
+     "3e6640a29df261ed"
+    ],
+    "reset_applied_all": true,
+    "n_session_certs": 4
+   },
+   "gpu1": {
+    "before": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "after": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "util_max_during": 0,
+    "busy": false
+   },
+   "eligible_level": "screen",
+   "verdict": "ELIGIBLE_SCREEN",
+   "ineligible_reason": null
+  },
+  {
+   "schema": "s19-batch-atlas-row-v1",
+   "route": "OP15_R1",
+   "batch": 16,
+   "device": "3C15AU002CL00000",
+   "backend": "HTP0",
+   "layer_range": [
+    0,
+    8
+   ],
+   "host_layer_start": 8,
+   "model_hashes": {
+    "full": "bac4e29337273d1cb41aa36f4209ebcf63baa1162e6ab4dc55f6034b3d69b35a",
+    "head": "a74845294bc1a3cba6ac26c747615d64d9127c904aae04c43c7ea2ebc1ea25c8"
+   },
+   "binary_hashes": {
+    "host": "da12f9255d2e7acf276c3803cbfab2e7e2aaed1ed50230a43bd8bd1f79f2c8f7",
+    "phone": "d26075bcf64e90ee04e51c2f86188d709e4c2906add252d209014ad1e046646c"
+   },
+   "context_envelope": {
+    "context": 16,
+    "max_prefill": 8,
+    "n_gen": 8,
+    "prompt_sha256": "c544378e66bf7a3d6640824b9e4cc28deaef2e35a424772b56b95d27c17fe6c8"
+   },
+   "support": true,
+   "memory_ok": true,
+   "oom": false,
+   "selected_gpu_peak_mib": 20947,
+   "correctness": {
+    "control_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "route_token_ids": [
+     107,
+     45518,
+     107,
+     101,
+     1509,
+     7412,
+     611,
+     659
+    ],
+    "exact_match": false
+   },
+   "placement": {
+    "scheduled_placement_ok": true,
+    "missing_buffer": 0,
+    "cpu_get_rows_only": true,
+    "compute_nodes": 37152
+   },
+   "p50_us": 2242863,
+   "p95_us": 2246278,
+   "p99_us": 2246582,
+   "latency_us": {
+    "p50": 2242863.0,
+    "p95": 2246278.5,
+    "p99": 2246582.1,
+    "route_wall_samples": [
+     2242863,
+     2242191,
+     2246658
+    ]
+   },
+   "throughput_tok_s": 57.06991465818466,
+   "thermal": {
+    "phone_start_c": 30.2,
+    "phone_end_c": 32.5
+   },
+   "process_evidence": {
+    "screen_processes": 1,
+    "measured_exchanges": 3,
+    "worker_pids": [
+     "20489",
+     "20491"
+    ],
+    "worker_boot_nonces": [
+     "672b3d3e27f48c72"
+    ],
+    "reset_applied_all": true,
+    "n_session_certs": 4
+   },
+   "gpu1": {
+    "before": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "after": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "util_max_during": 0,
+    "busy": false
+   },
+   "eligible_level": "screen",
+   "verdict": "INELIGIBLE",
+   "ineligible_reason": "inexact_tokens"
+  },
+  {
+   "schema": "s19-batch-atlas-row-v1",
+   "route": "OP15_R1",
+   "batch": 24,
+   "device": "3C15AU002CL00000",
+   "backend": "HTP0",
+   "layer_range": [
+    0,
+    8
+   ],
+   "host_layer_start": 8,
+   "model_hashes": {
+    "full": "bac4e29337273d1cb41aa36f4209ebcf63baa1162e6ab4dc55f6034b3d69b35a",
+    "head": "a74845294bc1a3cba6ac26c747615d64d9127c904aae04c43c7ea2ebc1ea25c8"
+   },
+   "binary_hashes": {
+    "host": "da12f9255d2e7acf276c3803cbfab2e7e2aaed1ed50230a43bd8bd1f79f2c8f7",
+    "phone": "d26075bcf64e90ee04e51c2f86188d709e4c2906add252d209014ad1e046646c"
+   },
+   "context_envelope": {
+    "context": 16,
+    "max_prefill": 8,
+    "n_gen": 8,
+    "prompt_sha256": "c544378e66bf7a3d6640824b9e4cc28deaef2e35a424772b56b95d27c17fe6c8"
+   },
+   "support": true,
+   "memory_ok": true,
+   "oom": false,
+   "selected_gpu_peak_mib": 21595,
+   "correctness": {
+    "control_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "route_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "exact_match": true
+   },
+   "placement": {
+    "scheduled_placement_ok": true,
+    "missing_buffer": 0,
+    "cpu_get_rows_only": true,
+    "compute_nodes": 111456
+   },
+   "p50_us": 2451938,
+   "p95_us": 2483518,
+   "p99_us": 2484274,
+   "latency_us": {
+    "p50": 2451938.0,
+    "p95": 2483518.8,
+    "p99": 2484274.96,
+    "route_wall_samples": [
+     2451321,
+     2450797,
+     2450896,
+     2446907,
+     2455009,
+     2451938,
+     2482101,
+     2484464,
+     2478821
+    ]
+   },
+   "throughput_tok_s": 78.30540576474608,
+   "thermal": {
+    "phone_start_c": 27.9,
+    "phone_end_c": 32.9
+   },
+   "process_evidence": {
+    "screen_processes": 3,
+    "measured_exchanges": 9,
+    "worker_pids": [
+     "24052",
+     "24054",
+     "24085",
+     "24087",
+     "24118",
+     "24120"
+    ],
+    "worker_boot_nonces": [
+     "1fa684d202828178",
+     "f895e56337c11145",
+     "f9adfb0292c9259e"
+    ],
+    "reset_applied_all": true,
+    "n_session_certs": 12
+   },
+   "gpu1": {
+    "before": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "after": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "util_max_during": 1,
+    "busy": false
+   },
+   "eligible_level": "eligible",
+   "verdict": "ELIGIBLE",
+   "ineligible_reason": null
+  },
+  {
+   "schema": "s19-batch-atlas-row-v1",
+   "route": "OP15_R1",
+   "batch": 32,
+   "device": "3C15AU002CL00000",
+   "backend": "HTP0",
+   "layer_range": [
+    0,
+    8
+   ],
+   "host_layer_start": 8,
+   "model_hashes": {
+    "full": "bac4e29337273d1cb41aa36f4209ebcf63baa1162e6ab4dc55f6034b3d69b35a",
+    "head": "a74845294bc1a3cba6ac26c747615d64d9127c904aae04c43c7ea2ebc1ea25c8"
+   },
+   "binary_hashes": {
+    "host": "da12f9255d2e7acf276c3803cbfab2e7e2aaed1ed50230a43bd8bd1f79f2c8f7",
+    "phone": "d26075bcf64e90ee04e51c2f86188d709e4c2906add252d209014ad1e046646c"
+   },
+   "context_envelope": {
+    "context": 16,
+    "max_prefill": 8,
+    "n_gen": 8,
+    "prompt_sha256": "c544378e66bf7a3d6640824b9e4cc28deaef2e35a424772b56b95d27c17fe6c8"
+   },
+   "support": true,
+   "memory_ok": true,
+   "oom": false,
+   "selected_gpu_peak_mib": 22219,
+   "correctness": {
+    "control_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "route_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "exact_match": true
+   },
+   "placement": {
+    "scheduled_placement_ok": true,
+    "missing_buffer": 0,
+    "cpu_get_rows_only": true,
+    "compute_nodes": 111456
+   },
+   "p50_us": 2729629,
+   "p95_us": 2740292,
+   "p99_us": 2740489,
+   "latency_us": {
+    "p50": 2729629.0,
+    "p95": 2740292.6,
+    "p99": 2740489.72,
+    "route_wall_samples": [
+     2718637,
+     2723678,
+     2733144,
+     2734524,
+     2729629,
+     2740539,
+     2684327,
+     2694151,
+     2739923
+    ]
+   },
+   "throughput_tok_s": 93.78563900075798,
+   "thermal": {
+    "phone_start_c": 31.0,
+    "phone_end_c": 34.5
+   },
+   "process_evidence": {
+    "screen_processes": 3,
+    "measured_exchanges": 9,
+    "worker_pids": [
+     "24540",
+     "24542",
+     "24568",
+     "24570",
+     "24596",
+     "24598"
+    ],
+    "worker_boot_nonces": [
+     "609c4f7a2f8fe4d2",
+     "7baeeb53a8e48c59",
+     "ec0e211cacee63ee"
+    ],
+    "reset_applied_all": true,
+    "n_session_certs": 12
+   },
+   "gpu1": {
+    "before": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "after": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "util_max_during": 1,
+    "busy": false
+   },
+   "eligible_level": "eligible",
+   "verdict": "ELIGIBLE",
+   "ineligible_reason": null
+  },
+  {
+   "schema": "s19-batch-atlas-row-v1",
+   "route": "OP15_R1",
+   "batch": 48,
+   "device": "3C15AU002CL00000",
+   "backend": "HTP0",
+   "layer_range": [
+    0,
+    8
+   ],
+   "host_layer_start": 8,
+   "model_hashes": {
+    "full": "bac4e29337273d1cb41aa36f4209ebcf63baa1162e6ab4dc55f6034b3d69b35a",
+    "head": "a74845294bc1a3cba6ac26c747615d64d9127c904aae04c43c7ea2ebc1ea25c8"
+   },
+   "binary_hashes": {
+    "host": "da12f9255d2e7acf276c3803cbfab2e7e2aaed1ed50230a43bd8bd1f79f2c8f7",
+    "phone": "d26075bcf64e90ee04e51c2f86188d709e4c2906add252d209014ad1e046646c"
+   },
+   "context_envelope": {
+    "context": 16,
+    "max_prefill": 8,
+    "n_gen": 8,
+    "prompt_sha256": "c544378e66bf7a3d6640824b9e4cc28deaef2e35a424772b56b95d27c17fe6c8"
+   },
+   "support": true,
+   "memory_ok": true,
+   "oom": false,
+   "selected_gpu_peak_mib": 23471,
+   "correctness": {
+    "control_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "route_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "exact_match": true
+   },
+   "placement": {
+    "scheduled_placement_ok": true,
+    "missing_buffer": 0,
+    "cpu_get_rows_only": true,
+    "compute_nodes": 111456
+   },
+   "p50_us": 3121153,
+   "p95_us": 3155294,
+   "p99_us": 3168678,
+   "latency_us": {
+    "p50": 3121153.0,
+    "p95": 3155294.6,
+    "p99": 3168678.92,
+    "route_wall_samples": [
+     3130199,
+     3128086,
+     3124525,
+     3117083,
+     3121153,
+     3172025,
+     3112078,
+     3115963,
+     3104830
+    ]
+   },
+   "throughput_tok_s": 123.0314566443875,
+   "thermal": {
+    "phone_start_c": 32.1,
+    "phone_end_c": 34.9
+   },
+   "process_evidence": {
+    "screen_processes": 3,
+    "measured_exchanges": 9,
+    "worker_pids": [
+     "25266",
+     "25268",
+     "25288",
+     "25290",
+     "25315",
+     "25317"
+    ],
+    "worker_boot_nonces": [
+     "1ca239a46269445a",
+     "5534243110d9c24b",
+     "939ea372c4734d08"
+    ],
+    "reset_applied_all": true,
+    "n_session_certs": 12
+   },
+   "gpu1": {
+    "before": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "after": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "util_max_during": 1,
+    "busy": false
+   },
+   "eligible_level": "eligible",
+   "verdict": "ELIGIBLE",
+   "ineligible_reason": null
+  },
+  {
+   "schema": "s19-batch-atlas-row-v1",
+   "route": "OP15_R1",
+   "batch": 64,
+   "device": "3C15AU002CL00000",
+   "backend": "HTP0",
+   "layer_range": [
+    0,
+    8
+   ],
+   "host_layer_start": 8,
+   "model_hashes": {
+    "full": "bac4e29337273d1cb41aa36f4209ebcf63baa1162e6ab4dc55f6034b3d69b35a",
+    "head": "a74845294bc1a3cba6ac26c747615d64d9127c904aae04c43c7ea2ebc1ea25c8"
+   },
+   "binary_hashes": {
+    "host": "da12f9255d2e7acf276c3803cbfab2e7e2aaed1ed50230a43bd8bd1f79f2c8f7",
+    "phone": "d26075bcf64e90ee04e51c2f86188d709e4c2906add252d209014ad1e046646c"
+   },
+   "context_envelope": {
+    "context": 16,
+    "max_prefill": 8,
+    "n_gen": 8,
+    "prompt_sha256": "c544378e66bf7a3d6640824b9e4cc28deaef2e35a424772b56b95d27c17fe6c8"
+   },
+   "support": true,
+   "memory_ok": true,
+   "oom": false,
+   "selected_gpu_peak_mib": 24720,
+   "correctness": {
+    "control_token_ids": [
+     107,
+     45518,
+     107,
+     101,
+     1509,
+     7412,
+     611,
+     659
+    ],
+    "route_token_ids": [
+     45518,
+     107,
+     100,
+     45518,
+     107,
+     101,
+     1509,
+     7412
+    ],
+    "exact_match": false
+   },
+   "placement": {
+    "scheduled_placement_ok": true,
+    "missing_buffer": 0,
+    "cpu_get_rows_only": true,
+    "compute_nodes": 37152
+   },
+   "p50_us": 3585712,
+   "p95_us": 3587107,
+   "p99_us": 3587231,
+   "latency_us": {
+    "p50": 3585712.0,
+    "p95": 3587107.0,
+    "p99": 3587231.0,
+    "route_wall_samples": [
+     3587262,
+     3571852,
+     3585712
+    ]
+   },
+   "throughput_tok_s": 142.7889356423494,
+   "thermal": {
+    "phone_start_c": 32.1,
+    "phone_end_c": 34.5
+   },
+   "process_evidence": {
+    "screen_processes": 1,
+    "measured_exchanges": 3,
+    "worker_pids": [
+     "22204",
+     "22206"
+    ],
+    "worker_boot_nonces": [
+     "4b517767bef75ce5"
+    ],
+    "reset_applied_all": true,
+    "n_session_certs": 4
+   },
+   "gpu1": {
+    "before": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "after": {
+     "mem_mib": 61,
+     "util": 0
+    },
+    "util_max_during": 0,
+    "busy": false
+   },
+   "eligible_level": "screen",
+   "verdict": "INELIGIBLE",
+   "ineligible_reason": "inexact_tokens"
+  }
+ ],
+ "summary": {
+  "CUDA_R0": {
+   "eligible_batches": [
+    4,
+    8,
+    16,
+    24,
+    32,
+    48,
+    64
+   ],
+   "peak_throughput_tok_s": 869.1,
+   "knee_batch": 64,
+   "knee_and_adjacent": [
+    48,
+    64
+   ],
+   "throughput_by_batch": {
+    "4": 100.8,
+    "8": 194.3,
+    "16": 350.5,
+    "24": 462.3,
+    "32": 558.7,
+    "48": 757.8,
+    "64": 869.1
+   },
+   "p50_ms_by_batch": {
+    "4": 317.3,
+    "8": 329.4,
+    "16": 365.2,
+    "24": 415.4,
+    "32": 458.2,
+    "48": 506.7,
+    "64": 589.1
+   },
+   "peak_gpu_mib_by_batch": {
+    "4": 23525,
+    "8": 23897,
+    "16": 24635,
+    "24": 25397,
+    "32": 26131,
+    "48": 27616,
+    "64": 29101
+   }
+  },
+  "OP15_R1": {
+   "eligible_batches": [
+    4,
+    8,
+    24,
+    32,
+    48
+   ],
+   "peak_throughput_tok_s": 123.0,
+   "knee_batch": 48,
+   "knee_and_adjacent": [
+    32,
+    48
+   ],
+   "throughput_by_batch": {
+    "4": 23.1,
+    "8": 32.2,
+    "24": 78.3,
+    "32": 93.8,
+    "48": 123.0
+   },
+   "p50_ms_by_batch": {
+    "4": 1388.1,
+    "8": 1988.3,
+    "24": 2451.9,
+    "32": 2729.6,
+    "48": 3121.2
+   },
+   "peak_gpu_mib_by_batch": {
+    "4": 20013,
+    "8": 20325,
+    "24": 21595,
+    "32": 22219,
+    "48": 23471
+   }
+  },
+  "OP12_R1": {
+   "eligible_batches": [
+    4,
+    8,
+    24,
+    48,
+    64
+   ],
+   "peak_throughput_tok_s": 30.4,
+   "knee_batch": 48,
+   "knee_and_adjacent": [
+    24,
+    48,
+    64
+   ],
+   "throughput_by_batch": {
+    "4": 14.4,
+    "8": 19.4,
+    "24": 26.8,
+    "48": 29.7,
+    "64": 30.4
+   },
+   "p50_ms_by_batch": {
+    "4": 2220.1,
+    "8": 3297.3,
+    "24": 7176.8,
+    "48": 12950.2,
+    "64": 16832.7
+   },
+   "peak_gpu_mib_by_batch": {
+    "4": 20884,
+    "8": 21215,
+    "24": 22543,
+    "48": 24517,
+    "64": 25833
+   }
+  }
+ }
+}

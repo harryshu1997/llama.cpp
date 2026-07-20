@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Q-PIM Progress — S18 Two-Phone R1</title>
+<style>
+  :root{
+    --ink:#14202e;
+    --paper:#ffffff;
+    --panel:#f6f7f9;
+    --panel2:#eef1f5;
+    --line:#d5dbe3;
+    --muted:#5b6775;
+    --server:#2f6fb0;
+    --server-l:#c6dbef;
+    --op15:#c07a2b;
+    --op15-l:#f0dcbe;
+    --op12:#6f7f36;
+    --op12-l:#dce3c4;
+    --accent:#20776a;
+    --pass:#2e7d5b;
+    --fail:#bf4238;
+    --idle:#b8c0cb;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Times New Roman",serif;
+    --sans:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:#2b3240;
+    font-family:var(--sans);
+    color:var(--ink);
+    overflow:hidden;
+  }
+  /* Stage: fixed 1280x720, scaled to viewport */
+  #viewport{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+  #stage{
+    width:1280px;height:720px;position:relative;flex:none;
+    transform-origin:center center;
+  }
+  .slide{
+    position:absolute;inset:0;
+    background:var(--paper);
+    display:none;
+    flex-direction:column;
+    padding:34px 52px 26px 52px;
+  }
+  .slide.active{display:flex}
+
+  /* Header */
+  .head{display:flex;align-items:baseline;justify-content:space-between;border-bottom:2px solid var(--ink);padding-bottom:12px}
+  .wordmark{font-family:var(--serif);font-weight:700;letter-spacing:.5px;color:var(--ink)}
+  .s-title .wordmark{font-size:52px;line-height:1}
+  .s-title .sub{font-family:var(--serif);font-size:21px;color:var(--muted);font-style:italic;margin-top:5px}
+  .head .wordmark.small{font-size:30px}
+  .head .kicker{font-size:16px;color:var(--muted);font-family:var(--sans);letter-spacing:.4px;text-transform:uppercase}
+  .head h2{font-family:var(--serif);font-size:27px;font-weight:600;color:var(--ink)}
+  .pagenum{font-family:var(--mono);font-size:14px;color:var(--muted)}
+
+  code,.mono{font-family:var(--mono)}
+  .mono{font-size:.94em}
+
+  /* Footer */
+  .foot{margin-top:auto;padding-top:10px;border-top:1px solid var(--line);
+    display:flex;gap:12px;align-items:center;
+    font-size:12.5px;color:var(--muted)}
+  .foot .brand{font-family:var(--serif);font-weight:600;color:var(--ink);flex:none}
+  .foot .scope{font-style:italic}
+  .foot .sep{flex:none;color:var(--line)}
+
+  .badge{display:inline-block;font-family:var(--mono);font-size:12px;font-weight:600;
+    padding:2px 9px;border-radius:3px;letter-spacing:.3px}
+  .badge.pass{background:#e2f1e9;color:var(--pass);border:1px solid #b9dcca}
+  .badge.fail{background:#f7e3e1;color:var(--fail);border:1px solid #e6c0bc}
+  .badge.diag{background:#eef1f5;color:var(--muted);border:1px solid var(--line)}
+
+  /* ===== Slide 1 ===== */
+  .compare{display:grid;grid-template-columns:1fr 1fr;gap:26px;margin-top:14px;flex:1;min-height:0}
+  .panel{border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:14px 20px;display:flex;flex-direction:column;min-height:0}
+  .panel.qpim{background:#f3f8f7;border-color:#bcd8d2}
+  .panel h3{font-family:var(--serif);font-size:20px;margin-bottom:3px}
+  .panel .lede{font-size:13.5px;color:var(--muted);line-height:1.38;margin-bottom:8px;min-height:34px}
+  .panel .diagram{flex:1;display:flex;align-items:center;justify-content:center}
+  .tag{display:inline-block;font-size:11px;font-family:var(--mono);padding:1px 7px;border-radius:3px;font-weight:600}
+  .tag.conv{background:#e7ecf3;color:var(--server)}
+  .tag.nov{background:#dcece8;color:var(--accent)}
+
+  .novbox{margin-top:12px;flex:none;border:1.5px solid var(--accent);border-left-width:6px;border-radius:7px;
+    background:#f2f8f6;padding:11px 20px;display:flex;gap:20px;align-items:center}
+  .novbox .lab{font-family:var(--serif);font-weight:700;font-size:14px;color:var(--accent);
+    writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:2px;text-transform:uppercase;flex:none}
+  .novbox p{font-size:15px;line-height:1.45}
+  .novbox b{color:var(--ink)}
+  .novbox .clar{font-size:12.5px;color:var(--muted);margin-top:5px;font-style:italic}
+
+  /* ===== Slide 2 ===== */
+  .grid2{display:grid;grid-template-columns:1.05fr 1fr;gap:22px;margin-top:16px;flex:1;min-height:0}
+  .card{border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:14px 16px}
+  .card h4{font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:10px;font-weight:700}
+  .kv{font-size:13px;line-height:1.5}
+  .kv .row{display:flex;gap:8px;padding:3px 0;border-bottom:1px dotted var(--line)}
+  .kv .row:last-child{border-bottom:none}
+  .kv .k{color:var(--muted);flex:none;width:112px}
+  .kv .v{color:var(--ink);font-weight:500}
+  .identity{display:flex;gap:10px;margin-top:12px}
+  .idcell{flex:1;text-align:center;border:1px solid var(--line);border-radius:6px;background:#fff;padding:8px 4px}
+  .idcell .n{font-family:var(--mono);font-size:19px;font-weight:700;color:var(--ink)}
+  .idcell .l{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.2}
+
+  .note{font-size:11.5px;color:var(--muted);line-height:1.4;margin-top:8px;font-style:italic}
+
+  /* ===== Slide 3 ===== */
+  .charts{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:auto auto;gap:16px 22px;margin-top:14px}
+  .chart{border:1px solid var(--line);border-radius:8px;padding:12px 16px 10px;background:var(--panel)}
+  .chart .ct{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px}
+  .chart .ct h4{font-size:14.5px;font-weight:700;color:var(--ink)}
+  .chart .sub{font-size:11.5px;color:var(--muted)}
+  .verdict-row{display:flex;gap:16px;align-items:stretch;margin-top:14px}
+  .verdict{flex:none;background:var(--ink);color:#fff;border-radius:8px;padding:12px 18px;display:flex;flex-direction:column;justify-content:center}
+  .verdict .vl{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#9fb0c4}
+  .verdict .vs{font-family:var(--mono);font-size:17px;font-weight:700;margin-top:4px;color:#fff}
+  .verdict .badge{margin-top:8px;align-self:flex-start}
+  .next{flex:1;border:1.5px solid var(--server);border-left-width:6px;border-radius:8px;background:#f2f6fb;padding:11px 16px}
+  .next h4{font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--server);margin-bottom:4px}
+  .next p{font-size:13.5px;line-height:1.46;color:var(--ink)}
+  .next b{color:var(--ink)}
+
+  /* nav */
+  #nav{position:fixed;bottom:12px;right:14px;
+    display:flex;gap:8px;align-items:center;z-index:20;
+    background:rgba(20,32,46,.72);padding:5px 10px;border-radius:18px;backdrop-filter:blur(4px)}
+  #nav button{background:none;border:none;color:#cfd8e3;font-size:16px;cursor:pointer;padding:2px 6px;line-height:1}
+  #nav button:hover{color:#fff}
+  .dot{width:8px;height:8px;border-radius:50%;background:#66748a;cursor:pointer}
+  .dot.on{background:#fff}
+  @media print{
+    body{background:#fff;overflow:visible}
+    #nav{display:none}
+    #viewport{position:static;display:block}
+    #stage{transform:none!important}
+    .slide{display:flex!important;page-break-after:always;position:relative;box-shadow:none}
+  }
+</style>
+</head>
+<body>
+<div id="viewport">
+  <div id="stage">
+
+  <!-- ================= SLIDE 1 ================= -->
+  <section class="slide active" id="s1">
+    <div class="head s-title">
+      <div>
+        <div class="wordmark">Q-PIM</div>
+        <div class="sub">Phones as active PIM-style far memory for mixed-model server scheduling</div>
+      </div>
+      <div style="text-align:right">
+        <div class="kicker">Motivation &amp; Novelty</div>
+        <div class="pagenum">1 / 3</div>
+      </div>
+    </div>
+
+    <div class="compare">
+      <div class="panel">
+        <span class="tag conv" style="margin-bottom:6px">CONVENTIONAL</span>
+        <h3>One GPU, one contended queue</h3>
+        <div class="lede">All mixed requests compete for a single GPU. Batching follows only model-local queues; a low-priority burst delays high-priority service.</div>
+        <div class="diagram">
+          <svg viewBox="0 0 520 300" width="100%" height="100%" font-family="var(--sans)">
+            <!-- request sources -->
+            <g font-size="13">
+              <rect x="8" y="30" width="150" height="34" rx="5" fill="#fff" stroke="#e6c0bc"/>
+              <text x="83" y="52" text-anchor="middle" fill="#bf4238" font-weight="600">BGE • high priority</text>
+              <rect x="8" y="132" width="150" height="34" rx="5" fill="#fff" stroke="var(--line)"/>
+              <text x="83" y="154" text-anchor="middle" fill="var(--muted)">Gemma • low priority</text>
+              <rect x="8" y="234" width="150" height="34" rx="5" fill="#fff" stroke="var(--line)"/>
+              <text x="83" y="256" text-anchor="middle" fill="var(--muted)">Gemma • low priority</text>
+            </g>
+            <!-- converging arrows -->
+            <g stroke="var(--muted)" stroke-width="1.6" fill="none">
+              <path d="M158 47 C 250 47, 250 138, 320 148"/>
+              <path d="M158 149 L 320 149"/>
+              <path d="M158 251 C 250 251, 250 160, 320 150"/>
+            </g>
+            <!-- single queue -->
+            <g>
+              <rect x="322" y="120" width="30" height="60" fill="var(--panel2)" stroke="var(--line)"/>
+              <rect x="326" y="126" width="22" height="9" fill="#e6c0bc"/>
+              <rect x="326" y="138" width="22" height="9" fill="var(--idle)"/>
+              <rect x="326" y="150" width="22" height="9" fill="var(--idle)"/>
+              <rect x="326" y="162" width="22" height="9" fill="#e6c0bc"/>
+              <text x="337" y="196" text-anchor="middle" font-size="11" fill="var(--muted)">queue</text>
+            </g>
+            <path d="M352 150 L 396 150" stroke="var(--muted)" stroke-width="1.6"/>
+            <polygon points="396,145 408,150 396,155" fill="var(--muted)"/>
+            <!-- single GPU -->
+            <rect x="410" y="112" width="98" height="76" rx="6" fill="var(--server-l)" stroke="var(--server)" stroke-width="1.6"/>
+            <text x="459" y="146" text-anchor="middle" font-size="15" font-weight="700" fill="var(--server)">A6000</text>
+            <text x="459" y="166" text-anchor="middle" font-size="11" fill="var(--server)">single GPU</text>
+          </svg>
+        </div>
+      </div>
+
+      <div class="panel qpim">
+        <span class="tag nov" style="margin-bottom:6px">Q-PIM</span>
+        <h3>Slow-loop residency + fast-loop routing</h3>
+        <div class="lede">A slow loop keeps model / operator-island weights resident on phones. A fast loop routes each request to a server or phone island.</div>
+        <div class="diagram">
+          <svg viewBox="0 0 520 300" width="100%" height="100%" font-family="var(--sans)">
+            <!-- fast loop selector -->
+            <rect x="150" y="118" width="128" height="64" rx="7" fill="#fff" stroke="var(--accent)" stroke-width="1.8"/>
+            <text x="214" y="140" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--accent)">fast loop</text>
+            <text x="214" y="157" text-anchor="middle" font-size="9.5" fill="var(--muted)">priority · SLO · batch-ready</text>
+            <text x="214" y="170" text-anchor="middle" font-size="9.5" fill="var(--muted)">route credits · capability</text>
+            <!-- slow loop annotation -->
+            <g>
+              <rect x="150" y="16" width="220" height="26" rx="5" fill="#eaf3f0" stroke="#bcd8d2"/>
+              <text x="260" y="33" text-anchor="middle" font-size="11" fill="var(--accent)">slow loop → resident phone weight islands</text>
+            </g>
+            <!-- inputs -->
+            <g font-size="11.5">
+              <rect x="8" y="120" width="112" height="26" rx="5" fill="#fff" stroke="#e6c0bc"/>
+              <text x="64" y="137" text-anchor="middle" fill="#bf4238" font-weight="600">BGE  high-pri</text>
+              <rect x="8" y="154" width="112" height="26" rx="5" fill="#fff" stroke="var(--line)"/>
+              <text x="64" y="171" text-anchor="middle" fill="var(--muted)">Gemma low-pri</text>
+            </g>
+            <path d="M120 133 L 149 140" stroke="var(--muted)" stroke-width="1.5" fill="none"/>
+            <path d="M120 167 L 149 160" stroke="var(--muted)" stroke-width="1.5" fill="none"/>
+            <!-- routes out -->
+            <g stroke-width="1.8" fill="none">
+              <path d="M278 132 C 330 118, 360 70, 408 62" stroke="var(--server)"/>
+              <path d="M278 158 C 330 175, 360 205, 408 205" stroke="var(--op15)"/>
+              <path d="M278 165 C 330 210, 360 262, 408 262" stroke="var(--op12)"/>
+            </g>
+            <!-- destinations -->
+            <rect x="410" y="36" width="102" height="52" rx="6" fill="var(--server-l)" stroke="var(--server)" stroke-width="1.6"/>
+            <text x="461" y="58" text-anchor="middle" font-size="13" font-weight="700" fill="var(--server)">A6000</text>
+            <text x="461" y="75" text-anchor="middle" font-size="10" fill="var(--server)">high-pri BGE</text>
+
+            <rect x="410" y="182" width="102" height="46" rx="6" fill="var(--op15-l)" stroke="var(--op15)" stroke-width="1.6"/>
+            <text x="461" y="202" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--op15)">OP15 HTP</text>
+            <text x="461" y="218" text-anchor="middle" font-size="10" fill="var(--op15)">Gemma prefix [0,8)</text>
+
+            <rect x="410" y="240" width="102" height="46" rx="6" fill="var(--op12-l)" stroke="var(--op12)" stroke-width="1.6"/>
+            <text x="461" y="260" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--op12)">OP12 HTP</text>
+            <text x="461" y="276" text-anchor="middle" font-size="10" fill="var(--op12)">Gemma prefix [0,6)</text>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <div class="novbox">
+      <div class="lab">Novelty</div>
+      <div>
+        <p><b>Mixed-model virtual-queue scheduling across heterogeneous resident operator islands</b>, with SLO-aware batching and fail-closed physical route certificates — one A6000 sustains high-priority BGE while OP15 and OP12 independently process low-priority Gemma prefixes.</p>
+        <div class="clar">Phones are PIM-style <b>active far memory</b> that computes on resident weights — <b>not</b> coherent server memory.</div>
+      </div>
+    </div>
+
+    <div class="foot">
+      <span class="brand">Q-PIM · S18</span><span class="sep">|</span><span class="scope">Energy boundary: selected A6000 GPU board only. Phone, USB, host-wall, and total-system energy remain unknown.</span>
+    </div>
+  </section>
+
+  <!-- ================= SLIDE 2 ================= -->
+  <section class="slide" id="s2">
+    <div class="head">
+      <div><span class="wordmark small">Q-PIM</span></div>
+      <div style="text-align:center;flex:1">
+        <div class="kicker">Real three-device experiment · S18 two-phone R1</div>
+        <h2>One selected A6000 + OP15 HTP + OP12 HTP</h2>
+      </div>
+      <div class="pagenum">2 / 3</div>
+    </div>
+
+    <div class="grid2">
+      <!-- left: hardware + timeline -->
+      <div style="display:flex;flex-direction:column;gap:12px;min-height:0">
+        <div class="card" style="padding:12px 14px">
+          <h4>Hardware &amp; routes</h4>
+          <svg viewBox="0 0 560 128" width="100%" height="128" font-family="var(--sans)">
+            <!-- host -->
+            <rect x="6" y="46" width="86" height="40" rx="6" fill="#fff" stroke="var(--line)"/>
+            <text x="49" y="64" text-anchor="middle" font-size="12" font-weight="700" fill="var(--ink)">Host</text>
+            <text x="49" y="79" text-anchor="middle" font-size="9.5" fill="var(--muted)">scheduler</text>
+            <!-- A6000 GPU0 selected -->
+            <rect x="150" y="6" width="150" height="44" rx="6" fill="var(--server-l)" stroke="var(--server)" stroke-width="1.8"/>
+            <text x="225" y="25" text-anchor="middle" font-size="13" font-weight="700" fill="var(--server)">A6000 · GPU0</text>
+            <text x="225" y="40" text-anchor="middle" font-size="10" fill="var(--server)">selected · BGE + Gemma tails</text>
+            <!-- GPU1 idle -->
+            <rect x="150" y="58" width="150" height="30" rx="6" fill="#f2f4f7" stroke="var(--idle)" stroke-dasharray="4 3"/>
+            <text x="225" y="77" text-anchor="middle" font-size="11" fill="var(--muted)">A6000 · GPU1 — idle</text>
+            <!-- OP15 -->
+            <rect x="360" y="6" width="150" height="40" rx="6" fill="var(--op15-l)" stroke="var(--op15)" stroke-width="1.8"/>
+            <text x="435" y="24" text-anchor="middle" font-size="12" font-weight="700" fill="var(--op15)">OP15 · HTP</text>
+            <text x="435" y="39" text-anchor="middle" font-size="9.5" fill="var(--op15)">Gemma [0,8) B32 → CUDA [8,48)</text>
+            <!-- OP12 -->
+            <rect x="360" y="52" width="150" height="40" rx="6" fill="var(--op12-l)" stroke="var(--op12)" stroke-width="1.8"/>
+            <text x="435" y="70" text-anchor="middle" font-size="12" font-weight="700" fill="var(--op12)">OP12 · HTP</text>
+            <text x="435" y="85" text-anchor="middle" font-size="9.5" fill="var(--op12)">Gemma [0,6) B32 → CUDA [6,48)</text>
+            <!-- links -->
+            <g stroke-width="1.5" fill="none">
+              <path d="M92 60 L 150 40" stroke="var(--server)"/>
+              <path d="M92 66 L 360 26" stroke="var(--op15)"/>
+              <path d="M92 72 L 360 72" stroke="var(--op12)"/>
+            </g>
+            <text x="120" y="112" font-size="9.5" fill="var(--muted)">WiFi commands ↓   ·   USB results ↑   ·   disjoint requests, no shared KV</text>
+          </svg>
+        </div>
+
+        <div class="card" style="flex:1;min-height:0;display:flex;flex-direction:column">
+          <div style="display:flex;justify-content:space-between;align-items:baseline">
+            <h4 style="margin-bottom:6px">P4 treatment timeline — paid BGE window ≈ 84 s</h4>
+            <span style="font-size:10.5px;color:var(--muted)">continuous high-pri BGE hides phone latency</span>
+          </div>
+          <svg viewBox="0 0 560 200" width="100%" height="100%" preserveAspectRatio="xMidYMid meet" font-family="var(--sans)" font-size="10.5">
+            <!-- lane labels -->
+            <text x="4" y="26" fill="var(--server)" font-weight="600">A6000 BGE</text>
+            <text x="4" y="62" fill="var(--server)" font-weight="600">A6000 tails</text>
+            <text x="4" y="98" fill="var(--op15)" font-weight="600">OP15 [0,8)</text>
+            <text x="4" y="134" fill="var(--op12)" font-weight="600">OP12 [0,6)</text>
+            <!-- time axis -->
+            <g>
+              <line x1="92" y1="176" x2="548" y2="176" stroke="var(--line)"/>
+              <g fill="var(--muted)" font-size="9">
+                <line x1="92"  y1="176" x2="92"  y2="181" stroke="var(--line)"/><text x="92"  y="192" text-anchor="middle">0</text>
+                <line x1="201" y1="176" x2="201" y2="181" stroke="var(--line)"/><text x="201" y="192" text-anchor="middle">20</text>
+                <line x1="309" y1="176" x2="309" y2="181" stroke="var(--line)"/><text x="309" y="192" text-anchor="middle">40</text>
+                <line x1="418" y1="176" x2="418" y2="181" stroke="var(--line)"/><text x="418" y="192" text-anchor="middle">60</text>
+                <line x1="527" y1="176" x2="527" y2="181" stroke="var(--line)"/><text x="527" y="192" text-anchor="middle">80 s</text>
+              </g>
+            </g>
+            <!-- BGE continuous -->
+            <rect x="92" y="14" width="456" height="16" rx="3" fill="var(--server)"/>
+            <text x="320" y="26" text-anchor="middle" fill="#fff" font-size="9.5">BGE-small-en-v1.5 · CUDA B16 · continuous  (GPU1 idle)</text>
+            <!-- A6000 tails: six round tail blocks -->
+            <g fill="var(--server-l)" stroke="var(--server)" stroke-width="0.8">
+              <rect x="100" y="50" width="30" height="16" rx="2"/>
+              <rect x="175" y="50" width="30" height="16" rx="2"/>
+              <rect x="250" y="50" width="30" height="16" rx="2"/>
+              <rect x="325" y="50" width="30" height="16" rx="2"/>
+              <rect x="400" y="50" width="30" height="16" rx="2"/>
+              <rect x="475" y="50" width="30" height="16" rx="2"/>
+            </g>
+            <!-- OP15: six rounds (tight then loose) -->
+            <g fill="var(--op15)">
+              <rect x="100" y="86" width="26" height="16" rx="2"/>
+              <rect x="175" y="86" width="26" height="16" rx="2"/>
+              <rect x="250" y="86" width="26" height="16" rx="2"/>
+              <rect x="325" y="86" width="26" height="16" rx="2"/>
+              <rect x="400" y="86" width="26" height="16" rx="2"/>
+              <rect x="475" y="86" width="26" height="16" rx="2"/>
+            </g>
+            <!-- OP12: only two certified exchanges -->
+            <g fill="var(--op12)">
+              <rect x="100" y="122" width="26" height="16" rx="2"/>
+              <rect x="175" y="122" width="26" height="16" rx="2"/>
+            </g>
+            <text x="214" y="134" fill="var(--muted)" font-size="9">← 2 certified exchanges; later loose-SLO groups → OP15</text>
+            <!-- overlap bracket spanning the two concurrent phone rounds -->
+            <g stroke="var(--accent)" stroke-width="1.2" fill="none">
+              <path d="M100 84 L92 84 L92 140 L100 140"/>
+            </g>
+            <text x="96" y="156" text-anchor="middle" fill="var(--accent)" font-size="9" font-weight="600">overlap</text>
+            <text x="214" y="156" fill="var(--accent)" font-size="9">OP15 ∥ OP12 overlap = 3.049 s median (first two rounds)</text>
+          </svg>
+          <div class="note" style="margin-top:2px">Round widths reflect measured route medians (OP15 2.875 s, OP12 9.412 s), not to global time scale; block count = six rounds/row.</div>
+        </div>
+      </div>
+
+      <!-- right: workload spec + identity -->
+      <div style="display:flex;flex-direction:column;gap:12px;min-height:0">
+        <div class="card">
+          <h4>Frozen workload</h4>
+          <div class="kv">
+            <div class="row"><span class="k">High priority</span><span class="v">BGE-small-en-v1.5 · CUDA <b>B16</b> · continuous through paid window</span></div>
+            <div class="row"><span class="k">Low priority</span><span class="v">Gemma-4-12B · 6 rounds · 64 req/round · 8 gen tokens/req</span></div>
+            <div class="row"><span class="k">P0 control</span><span class="v">CUDA full-model <b>B32 + B32</b> sequential per round</span></div>
+            <div class="row"><span class="k">P4 · R1</span><span class="v">OP15 [0,8) &amp; OP12 [0,6) own independent B32 groups with separate CUDA tails</span></div>
+            <div class="row"><span class="k">OP12 credit</span><span class="v">exactly <b>2</b> certified exchanges; later loose-SLO groups redirected to OP15</span></div>
+            <div class="row"><span class="k">SLO classes</span><span class="v"><span class="tag" style="background:var(--op15-l);color:var(--op15)">tight 5 s</span> &nbsp; <span class="tag" style="background:var(--op12-l);color:var(--op12)">loose 12 s</span> &nbsp;<span style="color:var(--muted);font-size:11px">(synthetic)</span></span></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h4>Exact per-row work identity — every one of six rows</h4>
+          <div class="identity">
+            <div class="idcell"><div class="n">339,440</div><div class="l">BGE encodes</div></div>
+            <div class="idcell"><div class="n">384</div><div class="l">Gemma requests</div></div>
+            <div class="idcell"><div class="n">3,072</div><div class="l">Gemma tokens</div></div>
+          </div>
+          <div class="note">Three rotated matched pairs — P0,P4 / P4,P0 / P0,P4. Model preparation and loading occur outside the paid BGE interval.</div>
+        </div>
+
+        <div class="card" style="flex:1;background:#f2f8f6;border-color:#bcd8d2">
+          <h4 style="color:var(--accent)">Independently replayed</h4>
+          <div style="font-size:13px;line-height:1.5;color:var(--ink)">
+            All generated tokens, placement records, session epochs, resets, overlap, and artifact hashes were re-opened by a separate validator and reproduced the report digest
+            <span class="mono" style="font-size:11px;color:var(--muted)">sha256:df76f205…0e63fbf5</span>.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="foot">
+      <span class="brand">Q-PIM · S18</span><span class="sep">|</span><span class="scope">Energy boundary: selected A6000 GPU board only. Phone, USB, host-wall, and total-system energy remain unknown.</span>
+    </div>
+  </section>
+
+  <!-- ================= SLIDE 3 ================= -->
+  <section class="slide" id="s3">
+    <div class="head">
+      <div><span class="wordmark small">Q-PIM</span></div>
+      <div style="text-align:center;flex:1">
+        <div class="kicker">Measured result &amp; next gate</div>
+        <h2>Mechanics pass, selected-GPU relief insufficient</h2>
+      </div>
+      <div class="pagenum">3 / 3</div>
+    </div>
+
+    <div class="charts">
+      <!-- Chart 1: BGE p95 -->
+      <div class="chart">
+        <div class="ct"><h4>1 · High-priority BGE p95</h4><span class="badge pass">PASS · 1.0005×</span></div>
+        <div class="sub">P4 / P0 median ≤ 1.05 gate — service is preserved</div>
+        <svg viewBox="0 0 480 118" width="100%" height="112" font-family="var(--sans)" font-size="11">
+          <!-- axis 0..4200 us, x baseline 44..300 -->
+          <g stroke="var(--line)"><line x1="60" y1="12" x2="60" y2="92"/><line x1="60" y1="92" x2="300" y2="92"/></g>
+          <g fill="var(--muted)" font-size="9" text-anchor="end">
+            <text x="55" y="95">0</text><text x="55" y="15">4200</text>
+          </g>
+          <!-- P0 -->
+          <rect x="90" y="18.3" width="60" height="73.7" fill="var(--server)"/>
+          <text x="120" y="106" text-anchor="middle" fill="var(--ink)">P0 control</text>
+          <text x="120" y="13" text-anchor="middle" fill="var(--ink)" font-weight="700" font-size="12">3,875</text>
+          <!-- P4 -->
+          <rect x="200" y="18.2" width="60" height="73.8" fill="var(--op15)"/>
+          <text x="230" y="106" text-anchor="middle" fill="var(--ink)">P4 two-phone</text>
+          <text x="230" y="13" text-anchor="middle" fill="var(--ink)" font-weight="700" font-size="12">3,877</text>
+          <text x="360" y="52" fill="var(--muted)" font-size="10.5">µs (median</text>
+          <text x="360" y="66" fill="var(--muted)" font-size="10.5">of 6 rows)</text>
+        </svg>
+      </div>
+
+      <!-- Chart 2: class completion -->
+      <div class="chart">
+        <div class="ct"><h4>2 · Low-priority class completion</h4><span class="badge pass">PASS</span></div>
+        <div class="sub">median &amp; max vs SLO limit (dashed)</div>
+        <svg viewBox="0 0 480 118" width="100%" height="112" font-family="var(--sans)" font-size="11">
+          <!-- axis 0..13 s, baseline y=92, x 60..430; scale 26.9 px/s -->
+          <g stroke="var(--line)"><line x1="60" y1="12" x2="60" y2="92"/><line x1="60" y1="92" x2="440" y2="92"/></g>
+          <g fill="var(--muted)" font-size="9" text-anchor="end"><text x="55" y="95">0</text></g>
+          <!-- gridlines for 5 and 12 -->
+          <g font-size="9" fill="var(--muted)">
+            <!-- 5s limit line y = 92 - 5*5.9=62.5 -->
+            <line x1="60" y1="62.5" x2="255" y2="62.5" stroke="var(--op15)" stroke-dasharray="4 3"/>
+            <text x="150" y="59" fill="var(--op15)">tight limit 5 s</text>
+            <!-- 12s limit line y=92-12*5.9=21.2 -->
+            <line x1="250" y1="21.2" x2="440" y2="21.2" stroke="var(--op12)" stroke-dasharray="4 3"/>
+            <text x="345" y="18" fill="var(--op12)">loose limit 12 s</text>
+          </g>
+          <!-- TIGHT group: median 2.956 (h=17.4), max 3.140 (h=18.5) -->
+          <rect x="95" y="74.6" width="34" height="17.4" fill="var(--op15)"/>
+          <rect x="135" y="73.5" width="34" height="18.5" fill="var(--op15-l)" stroke="var(--op15)" stroke-width="0.8"/>
+          <text x="112" y="70" text-anchor="middle" font-size="9.5" fill="var(--ink)" font-weight="600">2.956</text>
+          <text x="152" y="69" text-anchor="middle" font-size="9.5" fill="var(--muted)">3.140</text>
+          <text x="132" y="106" text-anchor="middle" fill="var(--op15)" font-weight="600">tight (OP15)</text>
+          <!-- LOOSE group: median 5.908 (h=34.9), max 9.703 (h=57.2) -->
+          <rect x="285" y="57.1" width="34" height="34.9" fill="var(--op12)"/>
+          <rect x="325" y="34.8" width="34" height="57.2" fill="var(--op12-l)" stroke="var(--op12)" stroke-width="0.8"/>
+          <text x="302" y="53" text-anchor="middle" font-size="9.5" fill="var(--ink)" font-weight="600">5.908</text>
+          <text x="342" y="30" text-anchor="middle" font-size="9.5" fill="var(--muted)">9.703</text>
+          <text x="322" y="106" text-anchor="middle" fill="var(--op12)" font-weight="600">loose (OP12/OP15)</text>
+          <!-- legend -->
+          <rect x="392" y="70" width="10" height="10" fill="var(--op12)"/><text x="406" y="79" font-size="9" fill="var(--muted)">median</text>
+          <rect x="392" y="83" width="10" height="10" fill="#fff" stroke="var(--muted)"/><text x="406" y="92" font-size="9" fill="var(--muted)">max</text>
+        </svg>
+      </div>
+
+      <!-- Chart 3: energy savings -->
+      <div class="chart">
+        <div class="ct"><h4>3 · Selected-GPU board saving</h4><span class="badge fail">FAIL · &lt; 10%</span></div>
+        <div class="sub">per-pair raw saving vs 10% gate (dashed) · board-only diagnostic</div>
+        <svg viewBox="0 0 480 118" width="100%" height="112" font-family="var(--sans)" font-size="11">
+          <!-- axis 0..10 %, baseline y=92 x 60..360; scale 7.5 px/% -->
+          <g stroke="var(--line)"><line x1="60" y1="12" x2="60" y2="92"/><line x1="60" y1="92" x2="365" y2="92"/></g>
+          <g fill="var(--muted)" font-size="9" text-anchor="end"><text x="55" y="95">0%</text><text x="55" y="15">10%</text></g>
+          <!-- gate line at 10% (y=12) -->
+          <line x1="60" y1="14.5" x2="365" y2="14.5" stroke="var(--fail)" stroke-dasharray="5 3"/>
+          <text x="365" y="26" text-anchor="end" fill="var(--fail)" font-size="9.5">10% claim gate</text>
+          <!-- bars: 0.342, 0.610, 0.075 % -> h=2.6,4.6,0.6 -->
+          <rect x="95" y="89.4" width="46" height="2.6" fill="var(--server)"/>
+          <text x="118" y="86" text-anchor="middle" font-size="9.5" fill="var(--ink)">0.342%</text>
+          <text x="118" y="106" text-anchor="middle" font-size="9.5" fill="var(--muted)">pair 0</text>
+          <rect x="165" y="87.4" width="46" height="4.6" fill="var(--server)"/>
+          <text x="188" y="84" text-anchor="middle" font-size="9.5" fill="var(--ink)">0.610%</text>
+          <text x="188" y="106" text-anchor="middle" font-size="9.5" fill="var(--muted)">pair 1</text>
+          <rect x="235" y="91.4" width="46" height="0.6" fill="var(--server)"/>
+          <text x="258" y="86" text-anchor="middle" font-size="9.5" fill="var(--ink)">0.075%</text>
+          <text x="258" y="106" text-anchor="middle" font-size="9.5" fill="var(--muted)">pair 2</text>
+          <!-- annotation -->
+          <g font-size="10">
+            <text x="315" y="58" fill="var(--ink)" font-weight="700">median 0.342%</text>
+            <text x="315" y="73" fill="var(--fail)">lower bound −764.1 J</text>
+            <text x="315" y="86" fill="var(--muted)" font-size="9">(uncertainty-adjusted)</text>
+          </g>
+        </svg>
+      </div>
+
+      <!-- Chart 4: peak memory -->
+      <div class="chart">
+        <div class="ct"><h4>4 · Peak selected-GPU memory</h4><span class="badge diag">DIAGNOSTIC</span></div>
+        <div class="sub">two resident CUDA tails raise peak HBM (+19.1 GiB)</div>
+        <svg viewBox="0 0 480 118" width="100%" height="112" font-family="var(--sans)" font-size="11">
+          <!-- axis 0..48000 MiB, baseline y=92, x 60..300, scale 0.001667 px/MiB *80 -> 80px full; use h = v/48000*80 -->
+          <g stroke="var(--line)"><line x1="60" y1="12" x2="60" y2="92"/><line x1="60" y1="92" x2="300" y2="92"/></g>
+          <g fill="var(--muted)" font-size="9" text-anchor="end"><text x="55" y="95">0</text><text x="55" y="15">48k</text></g>
+          <!-- P0 26555 -> h=44.3 -->
+          <rect x="95" y="47.7" width="58" height="44.3" fill="var(--server)"/>
+          <text x="124" y="42" text-anchor="middle" font-weight="700" font-size="12" fill="var(--ink)">26,555</text>
+          <text x="124" y="106" text-anchor="middle" fill="var(--ink)">P0 control</text>
+          <!-- P4 45674 -> h=76.1 -->
+          <rect x="200" y="15.9" width="58" height="76.1" fill="var(--op15)"/>
+          <text x="229" y="11" text-anchor="middle" font-weight="700" font-size="12" fill="var(--ink)">45,674</text>
+          <text x="229" y="106" text-anchor="middle" fill="var(--ink)">P4 two-phone</text>
+          <text x="360" y="48" fill="var(--muted)" font-size="10.5">MiB peak</text>
+          <text x="360" y="63" fill="var(--fail)" font-size="10.5">rises,</text>
+          <text x="360" y="77" fill="var(--fail)" font-size="10.5">not falls</text>
+        </svg>
+      </div>
+    </div>
+
+    <div class="verdict-row">
+      <div class="verdict">
+        <span class="vl">Verdict</span>
+        <span class="vs">S18_R1_FLEET_MECHANICS_PASS_RELIEF_INSUFFICIENT</span>
+        <span class="badge diag" style="background:#26364a;color:#9fb0c4;border-color:#3a4c63">concurrency proven · not yet an energy win</span>
+      </div>
+      <div class="next">
+        <h4>Next implementation</h4>
+        <p>One persistent <b>route-selectable <span class="mono">[6,48)</span> CUDA superset tail</b> accepting <b>OP12 at layer 6</b> and <b>OP15 at layer 8</b>, with isolated ingress / KV state. It removes the duplicated <span class="mono">[8,48)</span> weights and turns the proven concurrency mechanism into an <b>HBM-capacity benefit</b> before the energy test is repeated.</p>
+      </div>
+    </div>
+
+    <div class="foot">
+      <span class="brand">Q-PIM · S18</span><span class="sep">|</span><span class="scope">Energy boundary: selected A6000 GPU board only. Phone, USB, host-wall, and total-system energy remain unknown.</span>
+    </div>
+  </section>
+
+  </div><!-- /stage -->
+</div><!-- /viewport -->
+
+<div id="nav">
+  <button id="prev" aria-label="Previous">◀</button>
+  <span class="dot on" data-i="0"></span>
+  <span class="dot" data-i="1"></span>
+  <span class="dot" data-i="2"></span>
+  <button id="next" aria-label="Next">▶</button>
+</div>
+
+<script>
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var dots = Array.prototype.slice.call(document.querySelectorAll('.dot'));
+  var cur = 0;
+  function show(i){
+    cur = Math.max(0, Math.min(slides.length-1, i));
+    slides.forEach(function(s,k){ s.classList.toggle('active', k===cur); });
+    dots.forEach(function(d,k){ d.classList.toggle('on', k===cur); });
+  }
+  document.getElementById('prev').onclick = function(){ show(cur-1); };
+  document.getElementById('next').onclick = function(){ show(cur+1); };
+  dots.forEach(function(d){ d.onclick = function(){ show(parseInt(d.dataset.i,10)); }; });
+  document.addEventListener('keydown', function(e){
+    if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' ') { show(cur+1); e.preventDefault(); }
+    else if(e.key==='ArrowLeft'||e.key==='PageUp') { show(cur-1); e.preventDefault(); }
+    else if(e.key==='Home'){ show(0); } else if(e.key==='End'){ show(slides.length-1); }
+  });
+  // scale stage to viewport, preserve 16:9
+  function fit(){
+    var s = Math.min(window.innerWidth/1280, window.innerHeight/720);
+    document.getElementById('stage').style.transform = 'scale(' + s + ')';
+  }
+  window.addEventListener('resize', fit);
+  fit();
+</script>
+</body>
+</html>

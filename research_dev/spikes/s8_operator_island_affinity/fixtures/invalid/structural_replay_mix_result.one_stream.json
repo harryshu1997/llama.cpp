@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "kind": "structural_replay_mix",
+  "trace": "mix-v1.jsonl",
+  "record_count": 6,
+  "record_limit": 20000,
+  "order_preserved": true,
+  "first_order_key": [0, 0, 0],
+  "last_order_key": [2000500, 1, 2],
+  "bindings": {
+    "trace_sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "sidecar_canonical_sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "mix_config_sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "structural_replay_code_sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "recompose_verified": false,
+    "sidecar_file_sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "artifact_file_sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "artifact_run_id": "mix-abc",
+    "streams": [ { "rank": 0, "source": "burstgpt-v2", "record_count": 3, "input_output_sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "input_manifest_sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000" } ]
+  },
+  "total_demand": { "input_tokens": 37, "output_tokens": 18, "images": 0, "audio_ms": 0, "retrieved_chunks": 3 },
+  "services": [
+    { "service": "rag_qa", "service_dag_sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "request_count": 3,
+      "demand": { "input_tokens": 19, "output_tokens": 11, "images": 0, "audio_ms": 0, "retrieved_chunks": 3 },
+      "stages": [ { "node_id": "query_embed", "op_class": "query_embed", "demand_scope": "covered_request_demand_not_stage_work",
+        "request_count": 3, "demand": { "input_tokens": 19, "output_tokens": 11, "images": 0, "audio_ms": 0, "retrieved_chunks": 3 } } ] }
+  ]
+}

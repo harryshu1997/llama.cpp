@@ -5,6 +5,7 @@
   ],
   "build_revision": "synthetic-e2a-build-0",
   "chain_id": "chain.s10.e2a.synthetic",
+  "commitment_namespace": "lazyllm.s10.e2a.synthetic",
   "declared_order": [
     "OPTIMIZED_SERVER_ONLY_CONTROL",
     "Q_PIM_TREATMENT",
@@ -40,14 +41,23 @@
   "model_digest": "24f2b6068e47caa3df21ed535e26c8d299b4e933367a2ece137e710f31739dc8",
   "n_pairs": 8,
   "order_digest": "a820622cb59b956243fdbf5c31984107172784f63d462e9dd96fcec6619507ca",
+  "phone_device_ids": [
+    "phone.op15"
+  ],
   "plan_id": "plan.s10.e2a.synthetic",
   "policy_digest_control": "ded3a74d106b9aa02407a840d8d5d985260968fcaed3ca1d05c6f1ca5f287a4f",
   "policy_digest_treatment": "5f2695d6035857bf89327b912bbb04864ebfa4f478c1ae527097c6a77a91909c",
-  "record_sha256": "f24fe286edf9a8d458dbe5fd6d5dff6cf14072596f731331231d7917e8161d40",
-  "request_set_manifest_sha256": "0c748f658f1c8db04f1c392e2429be7b1703df466cfe88312f37f968b80834fc",
+  "record_sha256": "874802c38720c4528abf691d52442819a8e26a98f3856878d86c3ad467ba8e41",
+  "request_set_manifest_sha256": "ac9bf09d32f38697ac3c836bd7d127455ee5bf045fd1a803592a34d53e0977cc",
+  "route_schedule_digest_control": "9609fc3d3f8d7e242f42d799105b2678399ee2af19eb639b19470c276601e9cb",
+  "route_schedule_digest_treatment": "da2d3b042db1e924a6769b2db870cb939d35eb5b420a7dcbdefbbbf33fa2f62d",
   "sampler_digest": "55dc7d0db9bb2df80997c13b264881a5e1a5d738b2b03acf1b20bdcdfb1620a0",
-  "schema_version": 2,
+  "schema_version": 4,
   "scope": "GPU_BOARD",
+  "server_device_ids": [
+    "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f"
+  ],
+  "server_wall_capability_record_sha256": null,
   "set_id": "set.s10.e2a.synthetic",
   "slo_policy_digest": "17972eecf35e4c0bf8b8238c232753dd60adc68e112c0d9b40a7813cefd4a192",
   "slots": [

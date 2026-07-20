@@ -1,0 +1,346 @@
+{
+  "edges": [
+    {
+      "edge_id": "e.lease.prefetch",
+      "edge_kind": "CONTROL",
+      "from_action_id": "a.lease",
+      "payload_id": null,
+      "request_ids": [],
+      "to_action_id": "a.prefetch"
+    },
+    {
+      "edge_id": "e.prefetch.h2d",
+      "edge_kind": "CONTROL",
+      "from_action_id": "a.prefetch",
+      "payload_id": null,
+      "request_ids": [],
+      "to_action_id": "a.h2d"
+    },
+    {
+      "edge_id": "e.h2d.exec",
+      "edge_kind": "DATA",
+      "from_action_id": "a.h2d",
+      "payload_id": "server.input",
+      "request_ids": [
+        "req.0",
+        "req.1",
+        "req.2"
+      ],
+      "to_action_id": "a.exec"
+    },
+    {
+      "edge_id": "e.lease.submit.0",
+      "edge_kind": "CONTROL",
+      "from_action_id": "a.lease",
+      "payload_id": null,
+      "request_ids": [
+        "req.0"
+      ],
+      "to_action_id": "a.submit.0"
+    },
+    {
+      "edge_id": "e.submit.0.exec",
+      "edge_kind": "CONTROL",
+      "from_action_id": "a.submit.0",
+      "payload_id": null,
+      "request_ids": [
+        "req.0"
+      ],
+      "to_action_id": "a.exec"
+    },
+    {
+      "edge_id": "e.lease.submit.1",
+      "edge_kind": "CONTROL",
+      "from_action_id": "a.lease",
+      "payload_id": null,
+      "request_ids": [
+        "req.1"
+      ],
+      "to_action_id": "a.submit.1"
+    },
+    {
+      "edge_id": "e.submit.1.exec",
+      "edge_kind": "CONTROL",
+      "from_action_id": "a.submit.1",
+      "payload_id": null,
+      "request_ids": [
+        "req.1"
+      ],
+      "to_action_id": "a.exec"
+    },
+    {
+      "edge_id": "e.lease.submit.2",
+      "edge_kind": "CONTROL",
+      "from_action_id": "a.lease",
+      "payload_id": null,
+      "request_ids": [
+        "req.2"
+      ],
+      "to_action_id": "a.submit.2"
+    },
+    {
+      "edge_id": "e.submit.2.exec",
+      "edge_kind": "CONTROL",
+      "from_action_id": "a.submit.2",
+      "payload_id": null,
+      "request_ids": [
+        "req.2"
+      ],
+      "to_action_id": "a.exec"
+    },
+    {
+      "edge_id": "e.exec.d2h",
+      "edge_kind": "DATA",
+      "from_action_id": "a.exec",
+      "payload_id": "server.output",
+      "request_ids": [
+        "req.0",
+        "req.1",
+        "req.2"
+      ],
+      "to_action_id": "a.d2h"
+    },
+    {
+      "edge_id": "e.d2h.result",
+      "edge_kind": "DATA",
+      "from_action_id": "a.d2h",
+      "payload_id": "server.result",
+      "request_ids": [
+        "req.0",
+        "req.1",
+        "req.2"
+      ],
+      "to_action_id": "a.result"
+    },
+    {
+      "edge_id": "e.result.cleanup",
+      "edge_kind": "CONTROL",
+      "from_action_id": "a.result",
+      "payload_id": null,
+      "request_ids": [],
+      "to_action_id": "a.cleanup"
+    },
+    {
+      "edge_id": "e.cleanup.release",
+      "edge_kind": "CONTROL",
+      "from_action_id": "a.cleanup",
+      "payload_id": null,
+      "request_ids": [],
+      "to_action_id": "a.release"
+    },
+    {
+      "edge_id": "e.release.drain",
+      "edge_kind": "CONTROL",
+      "from_action_id": "a.release",
+      "payload_id": null,
+      "request_ids": [],
+      "to_action_id": "a.drain"
+    }
+  ],
+  "kind": "RouteSchedule",
+  "model_digest": "24f2b6068e47caa3df21ed535e26c8d299b4e933367a2ece137e710f31739dc8",
+  "nodes": [
+    {
+      "action_id": "a.lease",
+      "action_kind": "LEASE_ACQUIRE",
+      "backend_kind": "CONTROL",
+      "device_identity": "host.control",
+      "duration_requirement": "POSITIVE",
+      "execution_domain": "CONTROL",
+      "input_requirement": "ZERO",
+      "lease_requirement": "REQUIRED",
+      "model_digest": null,
+      "operator_island_digest": null,
+      "output_requirement": "ZERO",
+      "request_ids": []
+    },
+    {
+      "action_id": "a.prefetch",
+      "action_kind": "PREFETCH",
+      "backend_kind": "CUDA",
+      "device_identity": "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f",
+      "duration_requirement": "POSITIVE",
+      "execution_domain": "SERVER",
+      "input_requirement": "ZERO",
+      "lease_requirement": "REQUIRED",
+      "model_digest": null,
+      "operator_island_digest": null,
+      "output_requirement": "ZERO",
+      "request_ids": []
+    },
+    {
+      "action_id": "a.h2d",
+      "action_kind": "H2D",
+      "backend_kind": "CUDA",
+      "device_identity": "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f",
+      "duration_requirement": "POSITIVE",
+      "execution_domain": "SERVER",
+      "input_requirement": "POSITIVE",
+      "lease_requirement": "REQUIRED",
+      "model_digest": null,
+      "operator_island_digest": null,
+      "output_requirement": "ZERO",
+      "request_ids": [
+        "req.0",
+        "req.1",
+        "req.2"
+      ]
+    },
+    {
+      "action_id": "a.submit.0",
+      "action_kind": "QUEUE_SUBMIT",
+      "backend_kind": "CONTROL",
+      "device_identity": "host.control",
+      "duration_requirement": "NONNEGATIVE",
+      "execution_domain": "CONTROL",
+      "input_requirement": "ZERO",
+      "lease_requirement": "REQUIRED",
+      "model_digest": null,
+      "operator_island_digest": null,
+      "output_requirement": "ZERO",
+      "request_ids": [
+        "req.0"
+      ]
+    },
+    {
+      "action_id": "a.submit.1",
+      "action_kind": "QUEUE_SUBMIT",
+      "backend_kind": "CONTROL",
+      "device_identity": "host.control",
+      "duration_requirement": "NONNEGATIVE",
+      "execution_domain": "CONTROL",
+      "input_requirement": "ZERO",
+      "lease_requirement": "REQUIRED",
+      "model_digest": null,
+      "operator_island_digest": null,
+      "output_requirement": "ZERO",
+      "request_ids": [
+        "req.1"
+      ]
+    },
+    {
+      "action_id": "a.submit.2",
+      "action_kind": "QUEUE_SUBMIT",
+      "backend_kind": "CONTROL",
+      "device_identity": "host.control",
+      "duration_requirement": "NONNEGATIVE",
+      "execution_domain": "CONTROL",
+      "input_requirement": "ZERO",
+      "lease_requirement": "REQUIRED",
+      "model_digest": null,
+      "operator_island_digest": null,
+      "output_requirement": "ZERO",
+      "request_ids": [
+        "req.2"
+      ]
+    },
+    {
+      "action_id": "a.exec",
+      "action_kind": "EXEC",
+      "backend_kind": "CUDA",
+      "device_identity": "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f",
+      "duration_requirement": "POSITIVE",
+      "execution_domain": "SERVER",
+      "input_requirement": "POSITIVE",
+      "lease_requirement": "REQUIRED",
+      "model_digest": "24f2b6068e47caa3df21ed535e26c8d299b4e933367a2ece137e710f31739dc8",
+      "operator_island_digest": "4d5ad80fbd1cedcfad05961d1c2356e7b7f805a6f0b1891fc66ca2c5198ca108",
+      "output_requirement": "POSITIVE",
+      "request_ids": [
+        "req.0",
+        "req.1",
+        "req.2"
+      ]
+    },
+    {
+      "action_id": "a.d2h",
+      "action_kind": "D2H",
+      "backend_kind": "CUDA",
+      "device_identity": "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f",
+      "duration_requirement": "POSITIVE",
+      "execution_domain": "SERVER",
+      "input_requirement": "ZERO",
+      "lease_requirement": "REQUIRED",
+      "model_digest": null,
+      "operator_island_digest": null,
+      "output_requirement": "POSITIVE",
+      "request_ids": [
+        "req.0",
+        "req.1",
+        "req.2"
+      ]
+    },
+    {
+      "action_id": "a.result",
+      "action_kind": "RESULT_EMIT",
+      "backend_kind": "CONTROL",
+      "device_identity": "host.control",
+      "duration_requirement": "POSITIVE",
+      "execution_domain": "CONTROL",
+      "input_requirement": "ZERO",
+      "lease_requirement": "REQUIRED",
+      "model_digest": null,
+      "operator_island_digest": null,
+      "output_requirement": "ZERO",
+      "request_ids": [
+        "req.0",
+        "req.1",
+        "req.2"
+      ]
+    },
+    {
+      "action_id": "a.cleanup",
+      "action_kind": "CLEANUP",
+      "backend_kind": "CUDA",
+      "device_identity": "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f",
+      "duration_requirement": "POSITIVE",
+      "execution_domain": "SERVER",
+      "input_requirement": "ZERO",
+      "lease_requirement": "REQUIRED",
+      "model_digest": null,
+      "operator_island_digest": null,
+      "output_requirement": "ZERO",
+      "request_ids": []
+    },
+    {
+      "action_id": "a.release",
+      "action_kind": "LEASE_RELEASE",
+      "backend_kind": "CONTROL",
+      "device_identity": "host.control",
+      "duration_requirement": "POSITIVE",
+      "execution_domain": "CONTROL",
+      "input_requirement": "ZERO",
+      "lease_requirement": "REQUIRED",
+      "model_digest": null,
+      "operator_island_digest": null,
+      "output_requirement": "ZERO",
+      "request_ids": []
+    },
+    {
+      "action_id": "a.drain",
+      "action_kind": "QUEUE_DRAIN",
+      "backend_kind": "CONTROL",
+      "device_identity": "host.control",
+      "duration_requirement": "POSITIVE",
+      "execution_domain": "CONTROL",
+      "input_requirement": "ZERO",
+      "lease_requirement": "FORBIDDEN",
+      "model_digest": null,
+      "operator_island_digest": null,
+      "output_requirement": "ZERO",
+      "request_ids": []
+    }
+  ],
+  "phone_assisted_request_ids": [],
+  "phone_device_ids": [
+    "phone.op15"
+  ],
+  "record_sha256": "9609fc3d3f8d7e242f42d799105b2678399ee2af19eb639b19470c276601e9cb",
+  "request_set_manifest_sha256": "ac9bf09d32f38697ac3c836bd7d127455ee5bf045fd1a803592a34d53e0977cc",
+  "role": "OPTIMIZED_SERVER_ONLY_CONTROL",
+  "route_id": "route.control.synthetic",
+  "schema_version": 4,
+  "server_device_ids": [
+    "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f"
+  ]
+}

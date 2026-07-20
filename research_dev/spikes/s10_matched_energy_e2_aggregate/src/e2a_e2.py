@@ -3,9 +3,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import pathlib
 import sys
+import threading
 import types
 
 import e2a_canon as pinned_canon
@@ -105,3 +107,17 @@ comparator = _execute("comparator", {
     "e2_canon": e2_canon,
     "integrator": integrator,
 })
+
+_ARTIFACT_READER_LOCK = threading.RLock()
+
+
+@contextlib.contextmanager
+def artifact_reader(reader):
+    """Make frozen E2 consume the resolver's already secured read-once buffers."""
+    with _ARTIFACT_READER_LOCK:
+        previous = integrator.read_verified_artifact
+        integrator.read_verified_artifact = reader
+        try:
+            yield
+        finally:
+            integrator.read_verified_artifact = previous

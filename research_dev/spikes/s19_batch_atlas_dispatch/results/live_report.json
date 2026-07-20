@@ -1,0 +1,46 @@
+{
+ "schema": "s19-live-report-v1",
+ "decision_log": {
+  "decisions": 209,
+  "conservation": {
+   "total": 190,
+   "terminal": 190,
+   "missing": [],
+   "extra": [],
+   "duplicates": [],
+   "conserved": true,
+   "by_outcome": {
+    "completed": 188,
+    "terminal_failure": 2
+   }
+  },
+  "reason_codes": [
+   "conserve_shutdown",
+   "deadline_release",
+   "form_largest_useful",
+   "no_phone_credit",
+   "r0_fallback",
+   "split_microbatch",
+   "wait_for_batch"
+  ]
+ },
+ "device_proof": {
+  "device_exchanges": 6,
+  "all_ok": true,
+  "all_token_match": true,
+  "all_placement_ok": true,
+  "concurrent_common_batch": 8,
+  "concurrent_overlap_us": 12376349,
+  "distinct_batches_executed": [
+   8,
+   16,
+   32
+  ],
+  "routes_executed": [
+   "CUDA_R0",
+   "OP12_R1",
+   "OP15_R1"
+  ]
+ },
+ "verdict": "S19_CP2_VARIABLE_COHORT_BATCHING_MECHANICS_PASS"
+}

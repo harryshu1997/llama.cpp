@@ -94,6 +94,11 @@ def check_artifact_manifest(m):
         for i, o in enumerate(outs):
             if not o.get("sidecar_manifest_sha256"):
                 e.append(f"normalize output[{i}] missing sidecar_manifest_sha256")
+        gates = m.get("gate_results", {})
+        for gate in ("atomic_run_publish", "direct_source_execution",
+                     "source_snapshot_verified"):
+            if gates.get(gate) is not True:
+                e.append(f"normalize artifact missing true gate {gate}")
     return e
 
 

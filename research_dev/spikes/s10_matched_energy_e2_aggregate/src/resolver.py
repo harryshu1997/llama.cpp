@@ -20,6 +20,7 @@ import contextvars
 import json
 import os
 import pathlib
+import stat
 import subprocess
 
 import anchors
@@ -50,7 +51,9 @@ GATE_CONSTANTS = {
 GATE_CONSTANTS_DIGEST = canon.digest(GATE_CONSTANTS)
 
 MIN_PAIRS = GATE_CONSTANTS["MIN_PAIRS"]
-ACTIVE_SCHEMA_VERSION = 2
+ACTIVE_SCHEMA_VERSION = 4
+CONTROL_ROLE = "OPTIMIZED_SERVER_ONLY_CONTROL"
+TREATMENT_ROLE = "Q_PIM_TREATMENT"
 
 # A ledger entry status that is anything but OK poisons the whole set. INELIGIBLE
 # is listed explicitly because it is the drop channel nobody guards: it is neither
@@ -105,6 +108,7 @@ def _fail(code, message):
 
 
 _RESOLVED_REQUESTS_CAPABILITY = object()
+_RESOLVED_ROUTE_CAPABILITY = object()
 
 
 class _ResolvedRequests:
@@ -121,6 +125,24 @@ class _ResolvedRequests:
         self._capability = capability
 
 
+class _ResolvedRoute:
+    """Route evidence issued only after resolve_route_schedule validates it."""
+
+    __slots__ = ("_canonical", "_capability")
+
+    def __init__(self, record, capability):
+        if capability is not _RESOLVED_ROUTE_CAPABILITY:
+            raise TypeError("resolved route evidence is resolver-issued")
+        self._canonical = canon.canonical(record)
+        self._capability = capability
+
+    def _snapshot(self):
+        return canon.loads_strict(self._canonical.decode("ascii"))
+
+    def __getitem__(self, key):
+        return self._snapshot()[key]
+
+
 def _require_resolved_requests(value, what):
     if type(value) is not _ResolvedRequests or \
             value._capability is not _RESOLVED_REQUESTS_CAPABILITY:
@@ -130,76 +152,197 @@ def _require_resolved_requests(value, what):
     return value
 
 
+def _require_resolved_route(value, what):
+    if type(value) is not _ResolvedRoute or \
+            value._capability is not _RESOLVED_ROUTE_CAPABILITY:
+        _fail("E_UNRESOLVED_ROUTE",
+              f"{what} route must be the resolver-issued object returned by "
+              "resolve_route_schedule")
+    record = value._snapshot()
+    if record["record_sha256"] != canon.record_digest(record):
+        _fail("E_ROUTE_ARTIFACT",
+              f"{what} resolver-issued route bytes fail their record digest")
+    return record
+
+
 # ---------------------------------------------------------------------------
 # trusted root and read-once IO
 # ---------------------------------------------------------------------------
 
-def derive_trusted_root(bundle_path):
-    """The trusted root is DERIVED from the bundle's own location.
+def _absolute_lexical(path):
+    return pathlib.Path(os.path.abspath(os.fspath(path)))
 
-    Never a parameter. A caller-supplied root lets the producer point the
-    resolver at a directory it staged for the occasion, which turns every
-    path check below into decoration.
-    """
-    resolved = pathlib.Path(bundle_path).resolve(strict=True)
-    if not resolved.is_file():
-        _fail("E_ROOT_NOT_DERIVED", f"{bundle_path} is not a regular file")
-    return resolved.parent
+
+def derive_trusted_root(bundle_path):
+    """Derive the evidence root lexically; the context opens it securely."""
+    absolute = _absolute_lexical(bundle_path)
+    if not absolute.name:
+        _fail("E_ROOT_NOT_DERIVED", f"{bundle_path!r} has no bundle filename")
+    return absolute.parent
+
+
+def _normalize_relative(path_text):
+    if not isinstance(path_text, str) or not path_text:
+        _fail("E_PATH", "artifact path must be a non-empty string")
+    if "\x00" in path_text:
+        _fail("E_PATH", "artifact path contains NUL")
+    if path_text.startswith("/"):
+        _fail("E_PATH", f"artifact path {path_text!r} is absolute")
+    parts = path_text.split("/")
+    if any(part in ("", ".", "..") for part in parts):
+        _fail("E_PATH",
+              f"artifact path {path_text!r} has an empty, dot, or parent component")
+    return tuple(parts)
+
+
+def _map_open_error(path_text, exc):
+    if exc.errno in (getattr(os, "ELOOP", 40), getattr(os, "EXDEV", 18),
+                     getattr(os, "ENOTDIR", 20)):
+        _fail("E_PATH", f"artifact path {path_text!r} escapes or uses a symlink")
+    if exc.errno in (getattr(os, "ENOENT", 2),
+                     getattr(os, "EACCES", 13), getattr(os, "EPERM", 1)):
+        _fail("E_MISSING", f"artifact {path_text!r} is unreadable: {exc}")
+    _fail("E_MISSING", f"artifact {path_text!r} cannot be opened: {exc}")
+
+
+def _open_directory_absolute(path):
+    """Open an absolute directory without following any path component."""
+    absolute = _absolute_lexical(path)
+    if not absolute.is_absolute():
+        _fail("E_PLATFORM", f"trusted root {path!r} is not absolute")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    current = os.open("/", flags)
+    try:
+        for part in absolute.parts[1:]:
+            try:
+                child = os.open(part, flags, dir_fd=current)
+            except OSError as exc:
+                _map_open_error(str(absolute), exc)
+            os.close(current)
+            current = child
+        return current
+    except Exception:
+        os.close(current)
+        raise
+
+
+def _root_handle(trusted_root):
+    root_path = str(_absolute_lexical(trusted_root))
+    state = _RESOLUTION_CONTEXT.get()
+    if state is not None and state.get("root_path") == root_path:
+        return state["root_fd"], state["root_identity"], False
+    root_fd = _open_directory_absolute(root_path)
+    info = os.fstat(root_fd)
+    return root_fd, (info.st_dev, info.st_ino), True
+
+
+def _open_artifact(path_text, trusted_root):
+    """Open beneath a pinned root dirfd; no pathname is checked then reopened."""
+    parts = _normalize_relative(path_text)
+    root_fd, root_identity, close_root = _root_handle(trusted_root)
+    parent = os.dup(root_fd)
+    root_dev = root_identity[0]
+    try:
+        dir_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+        for part in parts[:-1]:
+            try:
+                child = os.open(part, dir_flags, dir_fd=parent)
+            except OSError as exc:
+                _map_open_error(path_text, exc)
+            child_info = os.fstat(child)
+            if child_info.st_dev != root_dev:
+                os.close(child)
+                _fail("E_PATH", f"artifact path {path_text!r} crosses a mount point")
+            os.close(parent)
+            parent = child
+        flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK
+        try:
+            fd = os.open(parts[-1], flags, dir_fd=parent)
+        except OSError as exc:
+            _map_open_error(path_text, exc)
+        return fd, root_identity, "/".join(parts)
+    finally:
+        os.close(parent)
+        if close_root:
+            os.close(root_fd)
+
+
+def _read_secure(path_text, trusted_root):
+    fd, root_identity, normalized = _open_artifact(path_text, trusted_root)
+    try:
+        before = os.fstat(fd)
+        if not stat.S_ISREG(before.st_mode):
+            _fail("E_MISSING", f"artifact {path_text!r} is not a regular file")
+        if before.st_nlink != 1:
+            _fail("E_HARDLINK",
+                  f"artifact {path_text!r} has {before.st_nlink} links; an aliased "
+                  "file can be replaced through another name")
+        chunks = []
+        while True:
+            chunk = os.read(fd, 1024 * 1024)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        after = os.fstat(fd)
+        fingerprint = lambda info: (
+            info.st_dev, info.st_ino, info.st_size, info.st_nlink,
+            info.st_mtime_ns, info.st_ctime_ns,
+        )
+        if fingerprint(before) != fingerprint(after):
+            _fail("E_CHANGED",
+                  f"artifact {path_text!r} changed while it was being read")
+        return (pathlib.Path(_absolute_lexical(trusted_root)) / normalized,
+                root_identity, normalized, b"".join(chunks))
+    except OSError as exc:
+        _fail("E_MISSING", f"artifact {path_text!r} is unreadable: {exc}")
+    finally:
+        os.close(fd)
 
 
 def resolve_path(path_text, trusted_root):
-    """Resolve a relative path inside the trusted root. No traversal, no links."""
-    trusted_root = pathlib.Path(trusted_root).resolve()
-    if not isinstance(path_text, str) or not path_text:
-        _fail("E_PATH", "artifact path must be a non-empty string")
-    candidate = pathlib.Path(path_text)
-    if candidate.is_absolute():
-        _fail("E_PATH", f"artifact path {path_text!r} is absolute")
-    if ".." in candidate.parts:
-        _fail("E_PATH", f"artifact path {path_text!r} traverses upward")
-    probe = trusted_root
-    for part in candidate.parts:
-        probe = probe / part
-        if probe.is_symlink():
-            _fail("E_PATH",
-                  f"artifact path component {probe.name!r} is a symlink; its "
-                  f"target can be repointed after validation")
-    try:
-        resolved = (trusted_root / candidate).resolve(strict=True)
-    except (OSError, RuntimeError) as exc:
-        _fail("E_MISSING", f"artifact {path_text!r} is unreadable: {exc}")
-    if not str(resolved).startswith(str(trusted_root) + os.sep):
-        _fail("E_PATH", f"artifact {path_text!r} resolves outside the trusted root")
-    if not resolved.is_file():
-        _fail("E_MISSING", f"artifact {path_text!r} is not a regular file")
+    """Compatibility helper backed by the same secure dirfd walk."""
+    resolved, _root_identity, _normalized, _data = _read_secure(
+        path_text, trusted_root)
     return resolved
 
 
 @contextlib.contextmanager
-def resolution_context():
-    """Create one read-once and path-ownership scope for a bundle."""
-    state = {"reads": {}, "owners": {}}
+def resolution_context(trusted_root=None):
+    """Create one read-once scope and optionally pin its root directory inode."""
+    state = {"reads": {}, "owners": {}, "root_fd": None, "root_path": None,
+             "root_identity": None}
+    if trusted_root is not None:
+        root_path = str(_absolute_lexical(trusted_root))
+        root_fd = _open_directory_absolute(root_path)
+        info = os.fstat(root_fd)
+        state.update({"root_fd": root_fd, "root_path": root_path,
+                      "root_identity": (info.st_dev, info.st_ino)})
     token = _RESOLUTION_CONTEXT.set(state)
     try:
         yield state
     finally:
         _RESOLUTION_CONTEXT.reset(token)
+        if state["root_fd"] is not None:
+            os.close(state["root_fd"])
 
 
 def claim_evidence_path(path_text, owner, trusted_root):
     """Give one canonical evidence path to exactly one run-specific owner."""
+    normalized = "/".join(_normalize_relative(path_text))
     state = _RESOLUTION_CONTEXT.get()
     if state is None:
-        return resolve_path(path_text, trusted_root)
-    resolved = resolve_path(path_text, trusted_root)
-    key = str(resolved)
+        return pathlib.Path(_absolute_lexical(trusted_root)) / normalized
+    root_path = str(_absolute_lexical(trusted_root))
+    if state.get("root_path") not in (None, root_path):
+        _fail("E_PATH", "one resolution context cannot span two trusted roots")
+    key = (root_path, normalized)
     previous = state["owners"].get(key)
     if previous is not None and previous != owner:
         _fail("E_EVIDENCE_PATH_REUSE",
               f"canonical path {path_text!r} is claimed by both {previous!r} "
               f"and {owner!r}")
     state["owners"][key] = owner
-    return resolved
+    return pathlib.Path(root_path) / normalized
 
 
 def read_once(path_text, declared_sha256, trusted_root):
@@ -211,34 +354,19 @@ def read_once(path_text, declared_sha256, trusted_root):
     parse must both come from it. O_NOFOLLOW closes the last-component swap;
     st_nlink == 1 refuses a hardlinked alias that can be replaced under us.
     """
-    resolved = resolve_path(path_text, trusted_root)
+    normalized = "/".join(_normalize_relative(path_text))
     state = _RESOLUTION_CONTEXT.get()
-    key = str(resolved)
+    root_path = str(_absolute_lexical(trusted_root))
+    key = (root_path, normalized)
     if state is not None and key in state["reads"]:
         previous_digest, data = state["reads"][key]
         if previous_digest != declared_sha256:
             _fail("E_PATH_DIGEST_CONFLICT",
                   f"canonical path {path_text!r} was first bound to "
                   f"{previous_digest} and is now declared as {declared_sha256}")
-        return resolved, data
-    try:
-        fd = os.open(resolved, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
-    except OSError as exc:
-        _fail("E_MISSING", f"artifact {path_text!r} is unopenable: {exc}")
-    try:
-        info = os.fstat(fd)
-        if info.st_nlink != 1:
-            _fail("E_HARDLINK",
-                  f"artifact {path_text!r} has {info.st_nlink} links; an aliased "
-                  f"file can be replaced through another name after validation")
-        with os.fdopen(fd, "rb") as handle:
-            data = handle.read()
-    except OSError as exc:
-        try:
-            os.close(fd)
-        except OSError:
-            pass
-        _fail("E_MISSING", f"artifact {path_text!r} is unreadable: {exc}")
+        return pathlib.Path(root_path) / normalized, data
+    resolved, _root_identity, _normalized, data = _read_secure(
+        normalized, trusted_root)
     actual = canon.sha256_bytes(data)
     if actual != declared_sha256:
         _fail("E_HASH",
@@ -247,6 +375,23 @@ def read_once(path_text, declared_sha256, trusted_root):
     if state is not None:
         state["reads"][key] = (declared_sha256, data)
     return resolved, data
+
+
+def read_unbound_once(path_text, trusted_root):
+    """Bootstrap the bundle index from one secure buffer without a self-hash."""
+    normalized = "/".join(_normalize_relative(path_text))
+    state = _RESOLUTION_CONTEXT.get()
+    root_path = str(_absolute_lexical(trusted_root))
+    key = (root_path, normalized)
+    if state is not None and key in state["reads"]:
+        digest, data = state["reads"][key]
+        return pathlib.Path(root_path) / normalized, digest, data
+    resolved, _root_identity, _normalized, data = _read_secure(
+        normalized, trusted_root)
+    digest = canon.sha256_bytes(data)
+    if state is not None:
+        state["reads"][key] = (digest, data)
+    return resolved, digest, data
 
 
 def parse_once(data, what):
@@ -361,6 +506,65 @@ def _check_bools(record, fields, what):
 # anchors
 # ---------------------------------------------------------------------------
 
+COMMITMENT_PROOF_FIELDS = frozenset({
+    "schema", "experiment_identity", "commitment_namespace", "log_identity",
+    "log_checkpoint_sha256", "identity_binding_sha256", "enumeration_status",
+    "committed_plan_count", "committed_plan_sha256s",
+    "committed_plan_set_sha256",
+})
+
+
+def _resolve_commitment_proof(receipt, plan, trusted_root, what):
+    if receipt["experiment_identity"] != plan["experiment_identity"]:
+        _fail("E_ANCHOR_IDENTITY",
+              f"{what} experiment identity does not match the anchored plan")
+    if receipt["commitment_namespace"] != plan["commitment_namespace"]:
+        _fail("E_ANCHOR_IDENTITY",
+              f"{what} commitment namespace does not match the anchored plan")
+    _path, data = read_once(receipt["commitment_proof_path"],
+                            receipt["commitment_proof_sha256"], trusted_root)
+    proof = parse_once(data, f"{what} commitment proof")
+    if not isinstance(proof, dict) or set(proof) != COMMITMENT_PROOF_FIELDS:
+        _fail("E_ANCHOR_COMPLETENESS",
+              f"{what} commitment proof has the wrong fields")
+    if proof["schema"] != "e2a.commitment-proof.v4":
+        _fail("E_ANCHOR_COMPLETENESS",
+              f"{what} commitment proof has unknown schema {proof['schema']!r}")
+    try:
+        canon.check_integers(proof, f"{what} commitment proof")
+    except ValueError as exc:
+        _fail("E_TYPE", str(exc))
+    for field in (
+            "experiment_identity", "commitment_namespace", "log_identity",
+            "log_checkpoint_sha256", "identity_binding_sha256",
+            "enumeration_status", "committed_plan_count",
+            "committed_plan_set_sha256"):
+        if proof[field] != receipt[field]:
+            _fail("E_ANCHOR_COMPLETENESS",
+                  f"{what} authenticated {field} disagrees with its proof")
+    plans = proof["committed_plan_sha256s"]
+    if not isinstance(plans, list) or \
+            any(not isinstance(item, str) for item in plans):
+        _fail("E_ANCHOR_COMPLETENESS",
+              f"{what} committed plan set is not a digest array")
+    if len(plans) != len(set(plans)):
+        _fail("E_ANCHOR_COMPLETENESS",
+              f"{what} commitment enumeration repeats a plan digest")
+    if receipt["enumeration_status"] != "COMPLETE":
+        _fail("E_ANCHOR_COMPLETENESS",
+              f"{what} enumeration status is {receipt['enumeration_status']}")
+    if receipt["committed_plan_count"] != len(plans):
+        _fail("E_ANCHOR_COMPLETENESS",
+              f"{what} count does not match the enumerated plan set")
+    if receipt["committed_plan_set_sha256"] != canon.digest(plans):
+        _fail("E_ANCHOR_COMPLETENESS",
+              f"{what} plan-set digest does not cover the enumeration")
+    if plans != [plan["record_sha256"]]:
+        _fail("E_ANCHOR_COMPLETENESS",
+              f"{what} must enumerate exactly the one resolved plan")
+    return proof
+
+
 def _resolve_anchor_common(receipt, kind, plan, trusted_root, expect_digest,
                            what):
     """Validate bindings, invoke the verifier, then apply policy gates."""
@@ -417,6 +621,7 @@ def _resolve_anchor_common(receipt, kind, plan, trusted_root, expect_digest,
             _fail("E_ANCHOR_VERIFY",
                   f"{what}.{field}={receipt[field]!r} disagrees with the "
                   f"authenticated token value {verified[field]!r}")
+    _resolve_commitment_proof(receipt, plan, trusted_root, what)
     try:
         anchors.check_precedence_supported(receipt, verified)
     except anchors.AnchorError as exc:
@@ -445,6 +650,10 @@ def bind_plan_anchor(receipt, plan):
     if receipt["anchored_digest"] != plan["record_sha256"] or \
             receipt["message_imprint_sha256"] != plan["record_sha256"]:
         _fail("E_ANCHOR_BINDING", "plan anchor does not bind the resolved plan")
+    if receipt["experiment_identity"] != plan["experiment_identity"] or \
+            receipt["commitment_namespace"] != plan["commitment_namespace"]:
+        _fail("E_ANCHOR_IDENTITY",
+              "plan anchor names another experiment identity or namespace")
     return receipt
 
 
@@ -475,6 +684,17 @@ def bind_close_anchor(receipt, plan, plan_anchor, ledger):
     if receipt["anchor_kind"] != plan_anchor["anchor_kind"]:
         _fail("E_ANCHOR_BINDING",
               "plan and close receipts use different anchor mechanisms")
+    for field in (
+            "experiment_identity", "commitment_namespace", "log_identity",
+            "identity_binding_sha256", "enumeration_status",
+            "committed_plan_count", "committed_plan_set_sha256"):
+        if receipt[field] != plan_anchor[field]:
+            _fail("E_ANCHOR_BINDING",
+                  f"plan and close receipts disagree on {field}")
+    if receipt["experiment_identity"] != plan["experiment_identity"] or \
+            receipt["commitment_namespace"] != plan["commitment_namespace"]:
+        _fail("E_ANCHOR_IDENTITY",
+              "ledger close names another experiment identity or namespace")
     if receipt["anchor_time_utc_us"] < plan_anchor["anchor_time_utc_us"]:
         _fail("E_ANCHOR_ORDER", "ledger close predates the plan anchor")
     if receipt["anchored_digest"] != ledger["record_sha256"] or \
@@ -495,6 +715,231 @@ def resolve_close_anchor(receipt, plan, plan_anchor, ledger, trusted_root):
 # ---------------------------------------------------------------------------
 # plan
 # ---------------------------------------------------------------------------
+
+def _route_reachable(adjacency, source, target):
+    pending = [source]
+    seen = set()
+    while pending:
+        current = pending.pop()
+        if current == target:
+            return True
+        if current in seen:
+            continue
+        seen.add(current)
+        pending.extend(adjacency.get(current, ()))
+    return False
+
+
+def resolve_route_schedule(record, plan, manifest, expected_role):
+    """Resolve the exact action DAG committed by the anchored plan."""
+    gate_record("route", record, f"{expected_role} route schedule")
+    if record["role"] != expected_role:
+        _fail("E_ROUTE_BINDING",
+              f"route {record['route_id']!r} has role {record['role']!r}, "
+              f"expected {expected_role!r}")
+    expected_digest = (
+        plan["route_schedule_digest_control"]
+        if expected_role == CONTROL_ROLE
+        else plan["route_schedule_digest_treatment"])
+    if record["record_sha256"] != expected_digest:
+        _fail("E_ROUTE_ARTIFACT",
+              f"route {record['route_id']!r} is not the record committed by "
+              "the anchored plan")
+    bindings = {
+        "request_set_manifest_sha256": manifest["record_sha256"],
+        "model_digest": plan["model_digest"],
+        "server_device_ids": plan["server_device_ids"],
+        "phone_device_ids": plan["phone_device_ids"],
+    }
+    for field, expected in bindings.items():
+        if record[field] != expected:
+            _fail("E_ROUTE_BINDING",
+                  f"route {record['route_id']!r} {field} does not match the plan")
+
+    manifest_requests = {
+        entry["request_id"] for entry in manifest["entries"]
+    }
+    assisted = record["phone_assisted_request_ids"]
+    if len(assisted) != len(set(assisted)) or \
+            not set(assisted).issubset(manifest_requests):
+        _fail("E_ROUTE_REQUEST",
+              "phone-assisted request IDs are duplicated or absent from the "
+              "resolved manifest")
+
+    nodes = {}
+    for node in record["nodes"]:
+        action_id = node["action_id"]
+        if action_id in nodes:
+            _fail("E_ROUTE_NODE_DUPLICATE",
+                  f"route repeats action_id {action_id!r}")
+        nodes[action_id] = node
+        requests = node["request_ids"]
+        if len(requests) != len(set(requests)) or \
+                not set(requests).issubset(manifest_requests):
+            _fail("E_ROUTE_REQUEST",
+                  f"route node {action_id!r} names an unknown or repeated request")
+        domain = node["execution_domain"]
+        device = node["device_identity"]
+        backend = node["backend_kind"]
+        if domain == "SERVER" and device not in plan["server_device_ids"]:
+            _fail("E_ROUTE_BINDING",
+                  f"server node {action_id!r} names unplanned device {device!r}")
+        if domain == "PHONE" and device not in plan["phone_device_ids"]:
+            _fail("E_ROUTE_BINDING",
+                  f"phone node {action_id!r} names unplanned device {device!r}")
+        if device in plan["phone_device_ids"] and domain != "PHONE":
+            _fail("E_CONTROL_PHONE",
+                  f"node {action_id!r} disguises a phone device as {domain}")
+        if backend in ("HTP", "OPENCL") and domain != "PHONE":
+            _fail("E_CONTROL_PHONE",
+                  f"node {action_id!r} uses phone backend {backend} outside PHONE")
+        if node["action_kind"] == "EXEC":
+            if node["operator_island_digest"] is None or \
+                    node["model_digest"] != plan["model_digest"]:
+                _fail("E_ROUTE_BINDING",
+                      f"EXEC node {action_id!r} lacks model/island identity")
+            if domain == "PHONE" and backend not in ("HTP", "OPENCL"):
+                _fail("E_ROUTE_BINDING",
+                      f"phone EXEC node {action_id!r} uses {backend}")
+            if domain == "SERVER" and backend not in ("HOST_CPU", "CUDA"):
+                _fail("E_ROUTE_BINDING",
+                      f"server EXEC node {action_id!r} uses {backend}")
+        elif node["operator_island_digest"] is not None or \
+                node["model_digest"] is not None:
+            _fail("E_ROUTE_BINDING",
+                  f"non-EXEC node {action_id!r} carries compute identity")
+
+    edges = {}
+    adjacency = {}
+    indegree = {action_id: 0 for action_id in nodes}
+    for edge in record["edges"]:
+        edge_id = edge["edge_id"]
+        if edge_id in edges:
+            _fail("E_ROUTE_EDGE_DUPLICATE",
+                  f"route repeats edge_id {edge_id!r}")
+        edges[edge_id] = edge
+        source = edge["from_action_id"]
+        target = edge["to_action_id"]
+        if source not in nodes or target not in nodes or source == target:
+            _fail("E_ROUTE_EDGE",
+                  f"edge {edge_id!r} has a missing or self endpoint")
+        requests = edge["request_ids"]
+        if len(requests) != len(set(requests)) or \
+                not set(requests).issubset(manifest_requests):
+            _fail("E_ROUTE_REQUEST",
+                  f"edge {edge_id!r} names an unknown or repeated request")
+        if edge["edge_kind"] == "DATA":
+            if edge["payload_id"] is None or not requests:
+                _fail("E_ROUTE_EDGE",
+                      f"DATA edge {edge_id!r} lacks payload/request identity")
+            if not set(requests).issubset(nodes[source]["request_ids"]) or \
+                    not set(requests).issubset(nodes[target]["request_ids"]):
+                _fail("E_ROUTE_REQUEST",
+                      f"DATA edge {edge_id!r} is not covered by both endpoints")
+        elif edge["payload_id"] is not None:
+            _fail("E_ROUTE_EDGE",
+                  f"CONTROL edge {edge_id!r} carries a payload identity")
+        adjacency.setdefault(source, []).append(target)
+        indegree[target] += 1
+
+    ready = sorted(action_id for action_id, degree in indegree.items()
+                   if degree == 0)
+    visited = 0
+    while ready:
+        current = ready.pop()
+        visited += 1
+        for target in adjacency.get(current, ()):
+            indegree[target] -= 1
+            if indegree[target] == 0:
+                ready.append(target)
+    if visited != len(nodes):
+        _fail("E_ROUTE_CYCLE", "route action graph contains a cycle")
+
+    result_nodes = [
+        node for node in nodes.values()
+        if node["action_kind"] == "RESULT_EMIT"
+    ]
+    for request_id in manifest_requests:
+        matching = [
+            node for node in result_nodes if request_id in node["request_ids"]
+        ]
+        if len(matching) != 1:
+            _fail("E_ROUTE_REQUEST",
+                  f"request {request_id!r} has {len(matching)} result nodes")
+
+    if expected_role == CONTROL_ROLE:
+        if assisted:
+            _fail("E_CONTROL_PHONE",
+                  "server-only control declares phone-assisted requests")
+        if any(node["execution_domain"] == "PHONE" or
+               node["device_identity"] in plan["phone_device_ids"] or
+               node["backend_kind"] in ("HTP", "OPENCL")
+               for node in nodes.values()):
+            _fail("E_CONTROL_PHONE",
+                  "server-only control contains a disguised phone node")
+        return _ResolvedRoute(record, _RESOLVED_ROUTE_CAPABILITY)
+
+    if not assisted:
+        _fail("E_PHONE_RESULT_PATH",
+              "Q-PIM treatment declares no phone-assisted request")
+    data_adjacency = {}
+    for edge in edges.values():
+        if edge["edge_kind"] != "DATA":
+            continue
+        for request_id in edge["request_ids"]:
+            data_adjacency.setdefault(request_id, {}).setdefault(
+                edge["from_action_id"], []).append(edge["to_action_id"])
+    for request_id in assisted:
+        result = next(
+            node for node in result_nodes
+            if request_id in node["request_ids"])
+        valid_path = False
+        phone_execs = [
+            node for node in nodes.values()
+            if node["action_kind"] == "EXEC" and
+            node["execution_domain"] == "PHONE" and
+            request_id in node["request_ids"] and
+            node["backend_kind"] in ("HTP", "OPENCL") and
+            node["input_requirement"] == "POSITIVE" and
+            node["output_requirement"] == "POSITIVE" and
+            node["duration_requirement"] == "POSITIVE"
+        ]
+        for execution in phone_execs:
+            device = execution["device_identity"]
+            h2d_nodes = [
+                node for node in nodes.values()
+                if node["action_kind"] == "H2D" and
+                node["execution_domain"] == "PHONE" and
+                node["device_identity"] == device and
+                request_id in node["request_ids"] and
+                node["input_requirement"] == "POSITIVE" and
+                node["duration_requirement"] == "POSITIVE"
+            ]
+            d2h_nodes = [
+                node for node in nodes.values()
+                if node["action_kind"] == "D2H" and
+                node["execution_domain"] == "PHONE" and
+                node["device_identity"] == device and
+                request_id in node["request_ids"] and
+                node["output_requirement"] == "POSITIVE" and
+                node["duration_requirement"] == "POSITIVE"
+            ]
+            graph = data_adjacency.get(request_id, {})
+            if any(_route_reachable(graph, h2d["action_id"],
+                                    execution["action_id"]) and
+                   _route_reachable(graph, execution["action_id"],
+                                    d2h["action_id"]) and
+                   _route_reachable(graph, d2h["action_id"],
+                                    result["action_id"])
+                   for h2d in h2d_nodes for d2h in d2h_nodes):
+                valid_path = True
+                break
+        if not valid_path:
+            _fail("E_PHONE_RESULT_PATH",
+                  f"request {request_id!r} has no committed "
+                  "H2D -> phone EXEC -> D2H -> result data path")
+    return _ResolvedRoute(record, _RESOLVED_ROUTE_CAPABILITY)
+
 
 def resolve_plan(plan, trusted_root):
     """Validate the PreRunPlan's internal structure. No ranges, no retries."""
@@ -556,6 +1001,22 @@ def resolve_plan(plan, trusted_root):
         _fail("E_SAME_POLICY",
               "plan gives control and treatment the same policy digest; "
               "comparing a policy against itself measures noise")
+    if plan["route_schedule_digest_control"] == \
+            plan["route_schedule_digest_treatment"]:
+        _fail("E_ROUTE_BINDING",
+              "control and treatment pin the same route schedule")
+    if plan["warmup_count"] != 0:
+        _fail("E_WARMUP_UNBOUND",
+              "E2A v4 supports no hidden or unlogged warmups; nonzero warmups "
+              "require a future ledger-backed warmup contract")
+    server_devices = set(plan["server_device_ids"])
+    phone_devices = set(plan["phone_device_ids"])
+    if server_devices & phone_devices:
+        _fail("E_ROUTE_BINDING",
+              "server and phone device identities must be disjoint")
+    if not server_devices or not phone_devices:
+        _fail("E_ROUTE_BINDING",
+              "the plan must name at least one server and one phone device")
 
     # The typed instrument gate, applied to the PLAN and not only to each
     # timeline. The plan is the anchored commitment: if it can pair NVML_BOARD
@@ -573,6 +1034,13 @@ def resolve_plan(plan, trusted_root):
         _fail("E_SCOPE",
               "a GPU_BOARD plan must name the board(s) it will measure; this "
               "host has more than one board")
+    if plan["scope"] == "SERVER_WALL":
+        if plan["server_wall_capability_record_sha256"] is None:
+            _fail("E_INCOMPLETE_WALL",
+                  "a SERVER_WALL plan must pin a ServerWallCapability record")
+    elif plan["server_wall_capability_record_sha256"] is not None:
+        _fail("E_SCOPE",
+              "a GPU_BOARD plan must not carry a server-wall capability")
     return plan
 
 
@@ -772,7 +1240,8 @@ def lifecycle_state_digest(actions, when):
     })
 
 
-def resolve_lifecycle(record, timeline, plan_slot=None, resolved_outputs=None):
+def resolve_lifecycle(record, timeline, plan_slot=None, resolved_outputs=None,
+                      plan=None, route=None):
     """Every action bound, closed, and inside the paid window.
 
     Why this is an ENERGY check and not bookkeeping: energy is integrated over
@@ -785,7 +1254,16 @@ def resolve_lifecycle(record, timeline, plan_slot=None, resolved_outputs=None):
     """
     resolved_outputs = _require_resolved_requests(
         resolved_outputs, "lifecycle")
+    if plan is None or route is None:
+        _fail("E_ROUTE_BINDING",
+              "E2A v4 lifecycle validation requires the anchored plan and "
+              "resolved route schedule")
+    route = _require_resolved_route(route, "lifecycle")
     gate_record("lifecycle", record, "lifecycle")
+    if record["set_id"] != plan["set_id"] or \
+            record["set_id"] != resolved_outputs.record["set_id"]:
+        _fail("E_LIFECYCLE_BINDING",
+              "lifecycle set_id does not match the resolved plan and requests")
     if record["timeline_id"] != timeline["timeline_id"]:
         _fail("E_LIFECYCLE_BINDING", "lifecycle names a different timeline")
     if record["run_nonce"] != timeline["run_nonce"]:
@@ -801,12 +1279,99 @@ def resolve_lifecycle(record, timeline, plan_slot=None, resolved_outputs=None):
               "lifecycle window does not match the timeline window")
 
     actions = record["actions"]
+    expected_route = (
+        plan["route_schedule_digest_control"]
+        if timeline["role"] == "OPTIMIZED_SERVER_ONLY_CONTROL"
+        else plan["route_schedule_digest_treatment"])
+    if route["record_sha256"] != expected_route or \
+            route["role"] != timeline["role"]:
+        _fail("E_ROUTE_BINDING",
+              "lifecycle route does not match the anchored role")
+    server_devices = set(plan["server_device_ids"])
+    phone_devices = set(plan["phone_device_ids"])
+    route_nodes = {
+        node["action_id"]: node for node in route["nodes"]
+    }
     by_id = {}
     for action in actions:
         what = f"action {action['action_id']}"
         if action["action_id"] in by_id:
             _fail("E_LIFECYCLE_ORDER", f"duplicate {what}")
+        node = route_nodes.get(action["action_id"])
+        if node is None:
+            _fail("E_ROUTE_NODE_EXTRA",
+                  f"{what} is absent from the anchored route schedule")
         by_id[action["action_id"]] = action
+        if action["route_schedule_digest"] != expected_route:
+            _fail("E_ROUTE_BINDING",
+                  f"{what} does not bind the anchored route schedule")
+        exact_fields = (
+            "action_kind", "execution_domain", "device_identity",
+            "backend_kind", "operator_island_digest", "model_digest",
+        )
+        for field in exact_fields:
+            if action[field] != node[field]:
+                _fail("E_ROUTE_NODE_MISMATCH",
+                      f"{what}.{field} does not match the anchored route node")
+        if set(action["request_ids"]) != set(node["request_ids"]) or \
+                len(action["request_ids"]) != len(node["request_ids"]):
+            _fail("E_ROUTE_NODE_MISMATCH",
+                  f"{what} request set does not match the anchored route node")
+        for field, requirement in (
+                ("input_bytes", node["input_requirement"]),
+                ("output_bytes", node["output_requirement"])):
+            value = action[field]
+            if requirement == "ZERO" and value != 0:
+                _fail("E_ROUTE_NODE_MISMATCH",
+                      f"{what}.{field} must be zero")
+            if requirement == "POSITIVE" and value <= 0:
+                _fail("E_ROUTE_NODE_MISMATCH",
+                      f"{what}.{field} must be positive")
+        if node["lease_requirement"] == "REQUIRED" and \
+                action["lease_id"] is None:
+            _fail("E_ROUTE_NODE_MISMATCH",
+                  f"{what} must name a resource lease")
+        if node["lease_requirement"] == "FORBIDDEN" and \
+                action["lease_id"] is not None:
+            _fail("E_ROUTE_NODE_MISMATCH",
+                  f"{what} must not name a resource lease")
+        if action["action_kind"] == "WARMUP":
+            _fail("E_WARMUP_UNBOUND",
+                  "E2A v4 permits no lifecycle WARMUP action without a "
+                  "ledger-backed warmup contract")
+        if action["execution_domain"] == "SERVER" and \
+                action["device_identity"] not in server_devices:
+            _fail("E_ROUTE_BINDING",
+                  f"{what} names unplanned server device "
+                  f"{action['device_identity']!r}")
+        if action["execution_domain"] == "PHONE" and \
+                action["device_identity"] not in phone_devices:
+            _fail("E_ROUTE_BINDING",
+                  f"{what} names unplanned phone device "
+                  f"{action['device_identity']!r}")
+        if action["action_kind"] == "EXEC":
+            if action["operator_island_digest"] is None or \
+                    action["model_digest"] != plan["model_digest"]:
+                _fail("E_ROUTE_BINDING",
+                      f"{what} does not bind a model-specific operator island")
+            if action["execution_domain"] == "PHONE":
+                if action["backend_kind"] not in ("HTP", "OPENCL"):
+                    _fail("E_ROUTE_BINDING",
+                          f"{what} uses invalid phone backend "
+                          f"{action['backend_kind']}")
+            elif action["execution_domain"] == "SERVER":
+                if action["backend_kind"] not in ("HOST_CPU", "CUDA"):
+                    _fail("E_ROUTE_BINDING",
+                          f"{what} uses invalid server backend "
+                          f"{action['backend_kind']}")
+            else:
+                _fail("E_ROUTE_BINDING",
+                      f"{what} EXEC has non-compute domain "
+                      f"{action['execution_domain']}")
+        elif action["operator_island_digest"] is not None or \
+                action["model_digest"] is not None:
+            _fail("E_ROUTE_BINDING",
+                  f"{what} is not EXEC but carries compute identity")
         for field in ("enqueue_us", "start_us", "end_us", "ack_us"):
             if not canon.is_int(action[field]):
                 _fail("E_TYPE", f"{what}.{field} is not an integer")
@@ -815,6 +1380,16 @@ def resolve_lifecycle(record, timeline, plan_slot=None, resolved_outputs=None):
             _fail("E_LIFECYCLE_ORDER",
                   f"{what} timestamps are not ordered "
                   f"enqueue<=start<=end<=ack")
+        if node["duration_requirement"] == "POSITIVE" and \
+                action["end_us"] <= action["start_us"]:
+            _fail("E_ACTION_DURATION",
+                  f"{what} must have positive execution duration")
+        if (action["action_kind"] == "EXEC" or
+                action["action_kind"] in ("H2D", "D2H") and
+                (action["input_bytes"] > 0 or action["output_bytes"] > 0)) and \
+                action["end_us"] <= action["start_us"]:
+            _fail("E_ACTION_DURATION",
+                  f"{what} cannot claim nonzero work at zero duration")
         if action["state"] != "COMPLETE":
             _fail("E_LIFECYCLE_OPEN",
                   f"{what} ended in {action['state']}; a failed or canceled action "
@@ -833,6 +1408,23 @@ def resolve_lifecycle(record, timeline, plan_slot=None, resolved_outputs=None):
                       f"{end} us; deferring work past the end marker moves its "
                       f"energy off the bill")
 
+    missing_actions = sorted(set(route_nodes) - set(by_id))
+    if missing_actions:
+        _fail("E_ROUTE_NODE_MISSING",
+              f"lifecycle omits anchored route actions {missing_actions[:4]}")
+
+    route_edges = {
+        (edge["from_action_id"], edge["to_action_id"])
+        for edge in route["edges"]
+    }
+    for edge in route["edges"]:
+        source = by_id[edge["from_action_id"]]
+        target = by_id[edge["to_action_id"]]
+        if source["ack_us"] > target["start_us"]:
+            _fail("E_ROUTE_EDGE_ORDER",
+                  f"route edge {edge['edge_id']!r} runs "
+                  f"{target['action_id']!r} before {source['action_id']!r} ACK")
+
     for action in actions:
         parent_id = action["parent_action_id"]
         if parent_id is None:
@@ -845,6 +1437,10 @@ def resolve_lifecycle(record, timeline, plan_slot=None, resolved_outputs=None):
             _fail("E_LIFECYCLE_ORDER",
                   f"action {action['action_id']} starts before parent {parent_id} "
                   "is acknowledged")
+        if (parent_id, action["action_id"]) not in route_edges:
+            _fail("E_ROUTE_EDGE",
+                  f"action {action['action_id']} parent {parent_id!r} is absent "
+                  "from the anchored route DAG")
 
     required_kinds = {"EXEC", "RESULT_EMIT"}
     kinds = {action["action_kind"] for action in actions}
@@ -852,6 +1448,45 @@ def resolve_lifecycle(record, timeline, plan_slot=None, resolved_outputs=None):
     if missing_kinds:
         _fail("E_LIFECYCLE_CAUSAL",
               f"lifecycle has no required actions {missing_kinds}")
+
+    phone_execs = [
+        action for action in actions
+        if action["action_kind"] == "EXEC" and
+        action["execution_domain"] == "PHONE"
+    ]
+    if timeline["role"] == "OPTIMIZED_SERVER_ONLY_CONTROL":
+        if any(action["execution_domain"] == "PHONE" for action in actions):
+            _fail("E_ROUTE_BINDING",
+                  "server-only control contains a phone action")
+    elif not phone_execs:
+        _fail("E_PHONE_EXEC_MISSING",
+              "Q-PIM treatment has no complete phone EXEC action")
+    for execution in phone_execs:
+        if not execution["request_ids"] or execution["input_bytes"] <= 0 or \
+                execution["output_bytes"] <= 0:
+            _fail("E_PHONE_EXEC_MISSING",
+                  f"phone EXEC {execution['action_id']!r} has no request-covered "
+                  "input and output work")
+        h2d = [
+            action for action in actions
+            if action["action_kind"] == "H2D" and
+            action["execution_domain"] == "PHONE" and
+            action["device_identity"] == execution["device_identity"] and
+            action["input_bytes"] > 0 and
+            action["ack_us"] <= execution["start_us"]
+        ]
+        d2h = [
+            action for action in actions
+            if action["action_kind"] == "D2H" and
+            action["execution_domain"] == "PHONE" and
+            action["device_identity"] == execution["device_identity"] and
+            action["output_bytes"] > 0 and
+            execution["ack_us"] <= action["start_us"]
+        ]
+        if not h2d or not d2h:
+            _fail("E_PHONE_TRANSFER_MISSING",
+                  f"phone EXEC {execution['action_id']!r} is not bracketed by "
+                  "phone H2D and D2H actions")
 
     timing = resolved_outputs.timing
     expected_requests = set(timing)
@@ -970,7 +1605,13 @@ def resolve_lifecycle(record, timeline, plan_slot=None, resolved_outputs=None):
     for work in actions:
         if work["action_kind"] in lease_boundary_kinds:
             continue
+        if work["lease_id"] is None:
+            _fail("E_LEASE_COVERAGE",
+                  f"{work['action_kind']} action {work['action_id']!r} has no "
+                  "resource lease identity")
         covered = any(
+            acquire["lease_id"] == work["lease_id"] and
+            release["lease_id"] == work["lease_id"] and
             acquire["ack_us"] <= work["start_us"] and
             work["ack_us"] <= release["start_us"]
             for acquire, release in lease_intervals)
@@ -1086,7 +1727,8 @@ def resolve_manifest(manifest, plan):
 OUTPUT_FIELDS = frozenset({
     "schema", "timeline_id", "run_nonce", "request_id", "model_digest",
     "tokenizer_digest", "sampling_mode", "seed", "arrival_us", "dispatched_us",
-    "token_events", "stop_reason",
+    "input_sha256", "prompt_token_ids_sha256", "decode_params_digest",
+    "stop_set_digest", "token_events", "stop_reason",
 })
 
 
@@ -1098,8 +1740,8 @@ def resolve_output_artifact(item, entry, timeline, trusted_root, what):
                             item["output_artifact_sha256"], trusted_root)
     output = parse_once(data, f"{what} output {item['request_id']}")
     if not isinstance(output, dict) or set(output) != OUTPUT_FIELDS:
-        _fail("E_OUTPUT_FORMAT", "output artifact does not match e2a.output.v2")
-    if output["schema"] != "e2a.output.v2":
+        _fail("E_OUTPUT_FORMAT", "output artifact does not match e2a.output.v4")
+    if output["schema"] != "e2a.output.v4":
         _fail("E_OUTPUT_FORMAT", f"unknown output schema {output['schema']!r}")
     try:
         canon.check_integers(output, f"{what} output {item['request_id']}")
@@ -1116,6 +1758,10 @@ def resolve_output_artifact(item, entry, timeline, trusted_root, what):
         "tokenizer_digest": entry["tokenizer_digest"],
         "sampling_mode": entry["sampling_mode"],
         "seed": entry["seed"],
+        "input_sha256": entry["input_sha256"],
+        "prompt_token_ids_sha256": entry["prompt_token_ids_sha256"],
+        "decode_params_digest": entry["decode_params_digest"],
+        "stop_set_digest": entry["stop_set_digest"],
         "arrival_us": expected_arrival,
         "dispatched_us": item["dispatched_us"],
         "stop_reason": item["stop_reason"],
@@ -1238,6 +1884,17 @@ def resolve_requests(manifest, outcome_record, timeline, trusted_root, what,
         if item["realized_sampling_mode"] != entry["sampling_mode"]:
             _fail("E_SAMPLING_MISMATCH",
                   f"{what} request {rid} sampling mode drifted")
+        realized_bindings = {
+            "realized_input_sha256": "input_sha256",
+            "realized_prompt_token_ids_sha256": "prompt_token_ids_sha256",
+            "realized_decode_params_digest": "decode_params_digest",
+            "realized_stop_set_digest": "stop_set_digest",
+        }
+        for realized_field, manifest_field in realized_bindings.items():
+            if item[realized_field] != entry[manifest_field]:
+                _fail("E_REQUEST_BINDING",
+                      f"{what} request {rid} {realized_field} does not match "
+                      f"manifest {manifest_field}")
         if entry["sampling_mode"] != "GREEDY":
             _fail("E_SAMPLING_REFUSED",
                   f"{what} request {rid} is SAMPLED; E2A can only certify "

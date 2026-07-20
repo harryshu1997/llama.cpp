@@ -35,6 +35,10 @@ raw source file (outside git)
 
 Every step is a pure function of (source bytes, committed normalization config).
 No wall clock, no locale, no hash-map iteration order, no floating time, no PRNG.
+The certifying entrypoint is direct source execution only:
+`python3 normalize_trace.py ...`. Imported execution is rejected with
+`E_EXECUTION_PROVENANCE`, preventing a stale bytecode cache from being bound as
+if it were the source code that ran.
 
 ## 2. Source-specific parsing contract
 
@@ -50,6 +54,11 @@ Common rules (both sources):
 - CSV dialect: RFC 4180 -- comma delimiter, `"` quoting, `""` escapes a quote, no
   comment character. A blank line is REJECTED (not skipped). Field whitespace is
   significant and NOT trimmed.
+- JSONL blank rows are rejected except for the source-pinned RAGPulse terminal
+  condition: the exact pinned file ends in `\n\n`, so its config sets
+  `blank_row:"reject_except_single_terminal"`. This accepts exactly one empty
+  final physical line. Interior blank lines and two or more terminal blank lines
+  still fail closed.
 - Integer grammar: token/count fields match `^[0-9]+$` (no sign, decimal point, or
   exponent); anything else fails closed.
 - Timestamp grammar: epoch-seconds fields match `^[0-9]+(\.[0-9]+)?$`. Conversion
@@ -104,6 +113,9 @@ subsections below are a human summary and defer to the config on any detail.
   concatenation, in the committed key order `[sys_prompt, passages_ids, history,
   web_search, user_input]`, of `"{key}:{id}"` for each int id in each list
   (in-list order preserved). `passages_ids`/`web_search` may be empty.
+- The pinned bytes end with exactly `\n\n`: 7106 JSON records plus one empty
+  terminal physical line. The source-specific config permits that one terminal
+  line only; it is not emitted as a record.
 - RAGPulse supplies arrival/length/hash-locality ONLY (no query/document text);
   payload fixtures for the embedding funnel are labeled synthetic
   (EMBEDDING_MODEL_FUNNEL.md section 3.2).
@@ -280,6 +292,13 @@ Bind every normalized output to the full set (schemas `trace_manifest` +
 - `output_sha256` (canonical JSONL bytes);
 - the sidecar-manifest hash, recorded by the run's `artifact_manifest`
   (`outputs[].sidecar_manifest_sha256`).
+
+The implementation first copies the raw source into a temporary snapshot and
+verifies the pinned size, hash, line count, and header on that snapshot. Both
+normalization passes read only the verified snapshot. It stages every requested
+JSONL, sidecar, and `normalize.artifact.json` in one sibling directory, fsyncs
+the complete set, and publishes the run with one directory rename. Existing
+output directories are never overwritten.
 
 A mixed output additionally binds EVERY component via `streams[]`
 (`input_output_sha256` + `input_manifest_sha256` per component). A normalized

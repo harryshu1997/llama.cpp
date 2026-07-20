@@ -1,0 +1,7 @@
+{"arrival_us":0,"deadline_us":550000,"event_id":"a0","island_id":"island_a_head","model_id":"model_a_generation","priority_class":1,"provenance":"semi_synthetic"}
+{"arrival_us":0,"deadline_us":550000,"event_id":"a1","island_id":"island_a_head","model_id":"model_a_generation","priority_class":1,"provenance":"semi_synthetic"}
+{"arrival_us":0,"deadline_us":550000,"event_id":"a2","island_id":"island_a_head","model_id":"model_a_generation","priority_class":1,"provenance":"semi_synthetic"}
+{"arrival_us":0,"deadline_us":550000,"event_id":"a3","island_id":"island_a_head","model_id":"model_a_generation","priority_class":1,"provenance":"semi_synthetic"}
+{"arrival_us":160000,"deadline_us":700000,"event_id":"b0","island_id":"island_b_encoder","model_id":"model_b_embedding","priority_class":1,"provenance":"semi_synthetic"}
+{"arrival_us":161000,"deadline_us":700000,"event_id":"b1","island_id":"island_b_encoder","model_id":"model_b_embedding","priority_class":1,"provenance":"semi_synthetic"}
+{"arrival_us":162000,"deadline_us":700000,"event_id":"b2","island_id":"island_b_encoder","model_id":"model_b_embedding","priority_class":1,"provenance":"semi_synthetic"}

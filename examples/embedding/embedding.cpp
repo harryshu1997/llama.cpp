@@ -6,10 +6,71 @@
 #include <clocale>
 #include <ctime>
 #include <algorithm>
+#include <cerrno>
+#include <chrono>
+#include <climits>
+#include <cmath>
+#include <cstdlib>
+#include <cstring>
+#include <map>
 
 #if defined(_MSC_VER)
 #pragma warning(disable: 4244 4267) // possible loss of data
 #endif
+
+// Scheduled-placement tally observed through cb_eval (same contract as layersplit's
+// PLACEMENTCERT). Runs before backend execution: evidence of scheduled placement,
+// not a per-kernel execution proof. Used by the env-gated BGEPROF bench mode only.
+struct bge_placement_tally {
+    long long compute_nodes                = 0;
+    long long missing_buffer_compute_nodes = 0;
+    std::map<std::string, long long> compute_by_buffer_type;
+    std::map<std::string, std::map<std::string, long long>> compute_by_op_and_buffer;
+};
+
+static bge_placement_tally g_bge_placement;
+
+static bool bge_parse_env_int(const char * text, int minimum, int & value) {
+    if (text == nullptr || *text == '\0') {
+        return false;
+    }
+    errno = 0;
+    char * end = nullptr;
+    const long parsed = strtol(text, &end, 10);
+    if (errno != 0 || end == text || *end != '\0' || parsed < minimum || parsed > INT_MAX) {
+        return false;
+    }
+    value = (int) parsed;
+    return true;
+}
+
+static bool bge_placement_is_metadata(enum ggml_op op) {
+    switch (op) {
+        case GGML_OP_NONE: case GGML_OP_RESHAPE: case GGML_OP_VIEW:
+        case GGML_OP_PERMUTE: case GGML_OP_TRANSPOSE: return true;
+        default: return false;
+    }
+}
+
+static bool bge_placement_eval_cb(struct ggml_tensor * t, bool ask, void * user_data) {
+    if (!ask || t == nullptr || user_data == nullptr) {
+        return false;  // observe-only
+    }
+    if (bge_placement_is_metadata(t->op) ||
+        t->op == GGML_OP_DUP || t->op == GGML_OP_CPY || t->op == GGML_OP_CONT) {
+        return false;
+    }
+    bge_placement_tally * pt = (bge_placement_tally *) user_data;
+    const char * bname = t->buffer ? ggml_backend_buft_name(ggml_backend_buffer_get_type(t->buffer)) : "NONE";
+    const std::string buffer_type = bname ? bname : "NONE";
+    ++pt->compute_nodes;
+    ++pt->compute_by_buffer_type[buffer_type];
+    ++pt->compute_by_op_and_buffer[ggml_op_name(t->op)][buffer_type];
+    if (t->buffer == nullptr) {
+        ++pt->missing_buffer_compute_nodes;
+    }
+    return false;
+}
 
 static std::vector<std::string> split_lines(const std::string & s, const std::string & separator = "\n") {
     std::vector<std::string> lines;
@@ -34,7 +95,7 @@ static void batch_add_seq(llama_batch & batch, const std::vector<int32_t> & toke
     }
 }
 
-static void batch_decode(llama_context * ctx, llama_batch & batch, float * output, int n_seq, int n_embd_out, int embd_norm) {
+static bool batch_decode(llama_context * ctx, llama_batch & batch, float * output, int n_seq, int n_embd_out, int embd_norm) {
     const enum llama_pooling_type pooling_type = llama_pooling_type(ctx);
 
     // clear previous kv_cache values (irrelevant for embeddings)
@@ -44,6 +105,7 @@ static void batch_decode(llama_context * ctx, llama_batch & batch, float * outpu
     LOG_INF("%s: n_tokens = %d, n_seq = %d\n", __func__, batch.n_tokens, n_seq);
     if (llama_decode(ctx, batch) < 0) {
         LOG_ERR("%s : failed to process\n", __func__);
+        return false;
     }
 
     for (int i = 0; i < batch.n_tokens; i++) {
@@ -69,6 +131,7 @@ static void batch_decode(llama_context * ctx, llama_batch & batch, float * outpu
         float * out = output + embd_pos * n_embd_out;
         common_embd_normalize(embd, out, n_embd_out, embd_norm);
     }
+    return true;
 }
 
 // plain, pipe-friendly output: one embedding per line
@@ -132,6 +195,12 @@ int main(int argc, char ** argv) {
 
     llama_backend_init();
     llama_numa_init(params.numa);
+
+    // observe scheduled placement in bench mode (PLACEMENTCERT emitted after timing)
+    if (getenv("BGEPROF_REPS")) {
+        params.cb_eval = bge_placement_eval_cb;
+        params.cb_eval_user_data = &g_bge_placement;
+    }
 
     // load the model
     auto llama_init = common_init_from_params(params);
@@ -259,6 +328,107 @@ int main(int argc, char ** argv) {
     std::vector<float> embeddings(n_embd_count * n_embd_out, 0);
     float * emb = embeddings.data();
 
+    // measurement-only bench mode (env-gated; no behavior change when BGEPROF_REPS is unset).
+    // times repeated encodes of all prompts as one batch of n_prompts parallel sequences;
+    // load, tokenize, and warmup are excluded from the timed interval. one BGEPROF json line to stdout.
+    if (const char * reps_env = getenv("BGEPROF_REPS")) {
+        int reps = 0;
+        int warmup = 3;
+        const char * warmup_env = getenv("BGEPROF_WARMUP");
+        if (!bge_parse_env_int(reps_env, 1, reps) ||
+            (warmup_env != nullptr && !bge_parse_env_int(warmup_env, 0, warmup))) {
+            LOG_ERR("bgeprof: invalid BGEPROF_REPS or BGEPROF_WARMUP\n");
+            return 2;
+        }
+        if (reps > 0) {
+            uint64_t total_toks = 0;
+            for (const auto & inp : inputs) total_toks += inp.size();
+            if (pooling_type == LLAMA_POOLING_TYPE_NONE || total_toks > n_batch || n_prompts > n_seq_max) {
+                LOG_ERR("bgeprof: needs pooling and n_prompts(%d)<=n_seq_max(%d), tokens(%llu)<=n_batch(%llu)\n",
+                        n_prompts, n_seq_max, (unsigned long long) total_toks, (unsigned long long) n_batch);
+                return 1;
+            }
+            common_batch_clear(batch);
+            for (int i = 0; i < n_prompts; i++) batch_add_seq(batch, inputs[i], i);
+            for (int w = 0; w < warmup; w++) {
+                if (!batch_decode(ctx, batch, emb, n_prompts, n_embd_out, params.embd_normalize)) {
+                    return 2;
+                }
+            }
+            if (getenv("BGEPROF_WAIT_FOR_GO")) {
+                fprintf(stderr, "BGEPROF_READY {\"batch\":%d,\"reps\":%d}\n", n_prompts, reps);
+                fflush(stderr);
+                char line[32];
+                if (!fgets(line, sizeof(line), stdin) ||
+                    (strcmp(line, "GO\n") != 0 && strcmp(line, "GO\r\n") != 0)) {
+                    LOG_ERR("bgeprof: expected GO line\n");
+                    return 2;
+                }
+            }
+
+            std::vector<double> samples_us;
+            samples_us.reserve(reps);
+            const auto paid_start = std::chrono::system_clock::now();
+            for (int r = 0; r < reps; r++) {
+                const auto t0 = std::chrono::steady_clock::now();
+                if (!batch_decode(ctx, batch, emb, n_prompts, n_embd_out, params.embd_normalize)) {
+                    return 2;
+                }
+                const auto t1 = std::chrono::steady_clock::now();
+                samples_us.push_back(std::chrono::duration<double, std::micro>(t1 - t0).count());
+            }
+            const auto paid_end = std::chrono::system_clock::now();
+            const double paid_start_s = std::chrono::duration<double>(paid_start.time_since_epoch()).count();
+            const double paid_end_s   = std::chrono::duration<double>(paid_end.time_since_epoch()).count();
+            bool finite = true;
+            for (int j = 0; j < n_prompts * n_embd_out; j++) if (!std::isfinite(emb[j])) finite = false;
+
+            // one clean cert-decode: reset the tally so node counts are per-graph, not accumulated
+            g_bge_placement = bge_placement_tally{};
+            if (!batch_decode(ctx, batch, emb, n_prompts, n_embd_out, params.embd_normalize)) {
+                return 2;
+            }
+            {
+                const auto & pt = g_bge_placement;
+                const char * status = pt.compute_nodes == 0 ? "PLACEMENT_NO_COMPUTE"
+                    : pt.missing_buffer_compute_nodes != 0 ? "PLACEMENT_MISSING_BUFFER"
+                    : "SCHEDULED_PLACEMENT_OK";
+                fprintf(stderr, "PLACEMENTCERT {\"compute_nodes\":%lld,\"missing_buffer_compute_nodes\":%lld,\"by_buffer\":{",
+                        pt.compute_nodes, pt.missing_buffer_compute_nodes);
+                bool first = true;
+                for (const auto & kv : pt.compute_by_buffer_type) {
+                    fprintf(stderr, "%s\"%s\":%lld", first ? "" : ",", kv.first.c_str(), kv.second);
+                    first = false;
+                }
+                fprintf(stderr, "},\"non_htp_ops\":[");
+                first = true;
+                for (const auto & op_kv : pt.compute_by_op_and_buffer) {
+                    for (const auto & buf_kv : op_kv.second) {
+                        if (buf_kv.first.find("HTP") == std::string::npos &&
+                            buf_kv.first.find("CUDA") == std::string::npos) {
+                            fprintf(stderr, "%s\"%s@%s:%lld\"", first ? "" : ",",
+                                    op_kv.first.c_str(), buf_kv.first.c_str(), buf_kv.second);
+                            first = false;
+                        }
+                    }
+                }
+                fprintf(stderr, "],\"status\":\"%s\"}\n", status);
+            }
+
+            printf("BGEPROF {\"batch\":%d,\"total_tokens\":%llu,\"n_embd\":%d,\"reps\":%d,\"paid_start_s\":%.9f,\"paid_end_s\":%.9f,\"finite\":%s,\"emb0\":[",
+                   n_prompts, (unsigned long long) total_toks, n_embd_out, reps,
+                   paid_start_s, paid_end_s, finite ? "true" : "false");
+            for (int i = 0; i < n_embd_out; i++) printf("%s%.7f", i ? "," : "", emb[i]);
+            printf("],\"us\":[");
+            for (size_t i = 0; i < samples_us.size(); i++) printf("%s%.3f", i ? "," : "", samples_us[i]);
+            printf("]}\n");
+            fflush(stdout);
+            llama_batch_free(batch);
+            llama_backend_free();
+            return finite ? 0 : 2;
+        }
+    }
+
     // break into batches
     int e = 0; // number of embeddings already stored
     int s = 0; // number of prompts in current batch
@@ -271,7 +441,9 @@ int main(int argc, char ** argv) {
         // encode if at capacity
         if (batch.n_tokens + n_toks > n_batch || s >= n_seq_max) {
             float * out = emb + e * n_embd_out;
-            batch_decode(ctx, batch, out, s, n_embd_out, params.embd_normalize);
+            if (!batch_decode(ctx, batch, out, s, n_embd_out, params.embd_normalize)) {
+                return 1;
+            }
             e += pooling_type == LLAMA_POOLING_TYPE_NONE ? batch.n_tokens : s;
             s = 0;
             common_batch_clear(batch);
@@ -284,7 +456,9 @@ int main(int argc, char ** argv) {
 
     // final batch
     float * out = emb + e * n_embd_out;
-    batch_decode(ctx, batch, out, s, n_embd_out, params.embd_normalize);
+    if (!batch_decode(ctx, batch, out, s, n_embd_out, params.embd_normalize)) {
+        return 1;
+    }
 
     if (params.embd_out.empty()) {
         LOG("\n");

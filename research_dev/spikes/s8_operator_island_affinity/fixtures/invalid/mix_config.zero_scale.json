@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "provenance": "semi_synthetic",
+  "mix_id": "mix-v1",
+  "streams": [
+    { "rank": 0, "source": "burstgpt-v2", "source_revision": "v2.0",
+      "component_trace": "burstgpt-v2.median.jsonl", "scale_num": 1, "scale_den": 0, "offset_us": 0,
+      "input_output_sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+      "input_manifest_sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000002" },
+    { "rank": 1, "source": "ragpulse", "source_revision": "abc",
+      "component_trace": "ragpulse.median.jsonl", "scale_num": 1, "scale_den": 1, "offset_us": 0,
+      "input_output_sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000003",
+      "input_manifest_sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000004" }
+  ]
+}

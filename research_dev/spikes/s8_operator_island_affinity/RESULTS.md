@@ -1,13 +1,100 @@
 # S8-V0 Results
 
-Status: V0b-P0 (source pinning + final Gate-A input contract) COMPLETE. The
-normalizer and server-only replay are NOT implemented (P0 stops before them). MW1
-atlas and the oracle remain BLOCKED until Gate A passes. No mixed-workload
-capacity or energy claim. Nothing committed or pushed.
+Status: V0b-P1 real-component normalization and structural replay COMPLETE.
+Deterministic mixed-trace composition is NOT implemented, so the mixed-workload
+Gate A remains BLOCKED. MW1 atlas and the oracle remain BLOCKED. No capacity,
+latency, or energy claim. Nothing committed or pushed.
+
+## Gate-A structural replay result (2026-07-16)
+
+`structural_replay.py` implements the strictly structural consumer in
+`NORMALIZATION_SPEC.md` section 13 for real component traces. It reads immutable
+byte snapshots, verifies the raw source against its pinned config, validates
+every request/sidecar/artifact/DAG/result schema, checks window semantics and
+canonical arrival order, verifies every sibling output plus the artifact replay
+digest, and accounts only observed demand. Before a certifying CLI result is
+emitted, it reruns the pinned normalizer from the raw source in isolated Python
+mode and byte-compares the complete JSONL/sidecar/artifact bundle. It does not
+read a model profile or emit latency, capacity, power, or energy.
+
+Real replays pass for the current-code BurstGPT median and all four RAGPulse
+windows under `scratchpad/s8_gate_a_p1_20260716_r4/`:
+
+| source/scenario | rows | input tokens | output tokens | retrieved chunks |
+|---|---:|---:|---:|---:|
+| BurstGPT median | 165 | 79095 | 18989 | 0 |
+| RAGPulse low | 2 | 6976 | 761 | 12 |
+| RAGPulse median | 12 | 33816 | 2606 | 60 |
+| RAGPulse high | 27 | 65891 | 6994 | 97 |
+| RAGPulse burst | 50 | 142115 | 12304 | 229 |
+
+The Burst median contains 152 API requests and 13 conversation requests. The
+RAG median structural output reproduced byte-for-byte from the independently
+re-normalized component bundle. Structural replay tests pass `32/32`;
+normalizer tests pass `24/24`; all 17 schemas compile under jsonschema and AJV;
+the existing 52 schema fixtures and 15 semantic fixtures still pass. The final
+structural reader is
+`sha256:4ac6c29a5927e36612109364a91271e3eb9eb112992a7b7791124e99bb784761`;
+the Burst and RAG median structural outputs are
+`sha256:083d985c6692b6cf6c3f8ec081acc61bec555def072ca7aabb1c58994f0568ab`
+and
+`sha256:c86e6b25a6f0228040272dce8f1a2fa1e3d72e918805e8fd4efb49bf8a995c5e`.
+
+The reader explicitly rejects `semi_synthetic` inputs because the frozen mix
+composition transform has not been implemented. Therefore the honest verdict
+is:
+
+```text
+REAL_COMPONENT_GATE_A_PASS
+MIX_COMPOSITION_NOT_IMPLEMENTED
+MIXED_WORKLOAD_GATE_A_BLOCKED
+```
+
+## V0b-P1 normalizer result (2026-07-16)
+
+`normalize_trace.py` now implements the frozen BurstGPT CSV and RAGPulse JSONL
+contracts. It verifies a temporary immutable source snapshot, selects exact
+integer low/median/high/burst windows, emits canonical ASCII JSONL, persists
+hash-bound trace and artifact manifests, and atomically publishes the complete
+run directory. Certifying runs require direct CLI source execution; imported
+execution fails closed. The pinned RAGPulse source's exact final `\n\n` required
+one narrow contract repair: permit its single terminal blank line only, while
+still rejecting interior or multiple blank lines.
+
+Current-code RAG and Burst artifacts are under
+`scratchpad/s8_gate_a_p1_20260716_r4/`. Both component normalizations were run
+twice and reproduced byte-for-byte.
+
+| source/scenario | selected bin | rows | output SHA-256 |
+|---|---:|---:|---|
+| BurstGPT median | 22706 | 165 | `3c57cdcb0ec79fcd3f64bacfc17c7acd8da68a1448724660aa7f0c69d5eecf46` |
+| RAGPulse low | 629 | 2 | `c9edd08aaccdbfbb7f40de1b57223606d8fd595ca47150c37706cb870e0878af` |
+| RAGPulse median | 146 | 12 | `ce4add9579ce2f172df58157c4535a38d59bae2fb6fe5b108cfcea9ebd420d1e` |
+| RAGPulse high | 10 | 27 | `e68034324558761d408687ace7a1a96cd343b861e199dd6f0decb576b98e7548` |
+| RAGPulse burst | 5 | 50 | `01439f5c16c5fe320289286e1481ed2fbe406629908bac8f016a94380767d83d` |
+
+The full scans verified BurstGPT `5,344,021` records / `9,874` non-empty
+15-minute bins / zero timestamp inversions, and RAGPulse `7,106` records / `583`
+bins / one inversion / one permitted terminal blank. The current normalizer code
+bundle is `sha256:75eb9df302b3fddbb14fe9028be2331d57e69d32153f52e3ca61549749d91e6b`.
+RAGPulse's complete current-code run reproduced byte-for-byte in a second direct
+CLI run.
+
+Verification: normalizer `24/24`; schema fixtures `52/52` under jsonschema and
+AJV; semantic fixtures `15/15`; every final request, trace sidecar, and artifact
+manifest validates; stored output hashes recompute exactly. Adversarial
+regressions cover immutable-source use, partial-stage failure, existing-output
+preflight, persisted artifact binding, JSON `-0`, unsupported JSON source-field
+mapping, direct-source execution, and mid-run code changes.
+
+The real-component portion of Gate A is complete. Mixed composition remains
+unimplemented and fail-closed. No runtime, scheduler, model, backend, or kernel
+file was changed by this checkpoint.
 
 ## Verdict
 
-`PENDING` -- Gates A, B, C are NOT RUN. Progression: V0a draft -> V0a-R (10
+`PARTIAL` -- real-component Gate A passes; mixed Gate A, B, and C do not.
+Progression: V0a draft -> V0a-R (10
 findings) -> V0a-R2 (executable machine-validated schemas) -> V0b-P0 (real
 sources pinned + inspected, per-source configs frozen, mix/quantile/hash semantics
 frozen, server-only replay defined). The DECISION_CONTRACT + its schemas stay
@@ -133,12 +220,10 @@ one-request merged); mixed attention without per-layer vector.
 
 ## Gates
 
-- Gate A (trace): NOT RUN (the normalizer + server-only replay are P1, not P0).
-  The Gate-A INPUT contract is now executable: both sources are pinned + inspected
-  (SOURCE_PINS.md), parsing/mappings/timestamp-policy are frozen in validated
-  configs, windows/quantiles/mix/hash-preimages are frozen in NORMALIZATION_SPEC +
-  SCHEMA_CONTRACT, and schema + semantic validators pass. Datasets are held
-  OUTSIDE git.
+- Gate A (trace): REAL COMPONENTS PASS; MIX BLOCKED. Both pinned sources
+  normalize deterministically and replay structurally from raw source through
+  validated DAG demand accounting. The mix transform remains specified but is
+  not implemented; `semi_synthetic` replay fails closed.
 - Gate B (atlas): NOT MET. Only device-ambiguous blk.2 B1/C512 correctness POINTS
   exist; no island has a 7-process persisted latency row, matched server control,
   post-transfer SLO feasibility, or measured server relief; RAG/vision have no
@@ -147,10 +232,10 @@ one-request merged); mixed attention without per-layer vector.
 
 ## Claim boundary
 
-- P0 pinned + inspected the two real sources and froze the input contract. It did
-  NOT implement the normalizer, server-only replay, simulator, downloader daemon,
-  embprof, MW1 measurement, or oracle. No runtime/model/graph/KV/scheduler/backend/
-  kernel/S6/S7 file was edited.
+- P0 pinned and inspected the sources; P1 now implements real-component
+  normalization and structural replay. It does not implement mixed composition,
+  inference replay, a downloader daemon, embprof, MW1 measurement, or an oracle.
+  No runtime/model/graph/KV/scheduler/backend/kernel/S6/S7 file was edited.
 - No energy inferred from latency; energy DEFERRED.
 - Missing measurements are UNKNOWN/ineligible, never estimated as passing.
 - No S6/S7 verdict or support policy changed.
@@ -159,16 +244,16 @@ one-request merged); mixed attention without per-layer vector.
 
 ## Next (human review before proceeding)
 
-V0b-P1 / Gate A ONLY: implement the normalizer against the frozen configs +
-NORMALIZATION_SPEC, add the parser-level negative tests, run the structural
-server-only replay (section 13), prove byte-identical `output_sha256`
-re-normalization, compute Gate A, then stop. MW1 profiling (including `embprof`)
-and the oracle stay blocked until Gate A passes; the DECISION_CONTRACT stays
-DRAFT-BLOCKED until its 6 unresolved items are settled at the start of V0c.
+Implement the deterministic mixed-component transform already frozen in
+`NORMALIZATION_SPEC`, bind every input trace and sidecar, and run the same
+structural replay. In parallel, the S12 exact-profile audit may define the
+minimum varied-payload measurement atlas, but no real trace may receive a
+latency until an exact profile row exists. The DECISION_CONTRACT remains
+DRAFT-BLOCKED until its six V0c items are resolved.
 
 ## Remaining blockers
 
-- Gate A not yet computed (needs the P1 normalizer + replay).
+- Mixed Gate A is blocked on the unimplemented composition transform.
 - Gate B not met (no persisted phone island row; second service class unproven --
   EMBEDDING_MODEL_FUNNEL Gate 1 is the likely blocker).
 - Gate C not run.

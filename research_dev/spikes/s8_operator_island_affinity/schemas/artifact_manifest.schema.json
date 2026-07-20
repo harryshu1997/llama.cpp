@@ -48,11 +48,21 @@
       "$comment": "kind=normalize must bind at least one output, each carrying a non-null sidecar_manifest_sha256",
       "if": { "properties": { "kind": { "const": "normalize" } }, "required": ["kind"] },
       "then": {
+        "required": ["gate_results"],
         "properties": {
           "outputs": {
             "type": "array",
             "minItems": 1,
             "items": { "required": ["sidecar_manifest_sha256"], "properties": { "sidecar_manifest_sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" } } }
+          },
+          "gate_results": {
+            "type": "object",
+            "properties": {
+              "atomic_run_publish": { "const": true },
+              "direct_source_execution": { "const": true },
+              "source_snapshot_verified": { "const": true }
+            },
+            "required": ["atomic_run_publish", "direct_source_execution", "source_snapshot_verified"]
           }
         }
       }

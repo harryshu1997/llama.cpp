@@ -1,0 +1,76 @@
+{
+  "schema": "s14-batch-sweep-ext-v1",
+  "scope": "OP15_HTP0_BATCHED_HEAD_THROUGHPUT_ONLY_PHONE_ENERGY_UNKNOWN",
+  "head": "[0,8)",
+  "n_gen": 8,
+  "flash_attn": "on",
+  "device": {
+    "serial": "3C15AU002CL00000",
+    "soc": "SM8850",
+    "hexagon": "v81",
+    "backend": "HTP0"
+  },
+  "note": "extends stage_d_batch_scaling.json (b1..b32) to find saturation; throughput = batch*n_gen/(stage_a_us_p50/1e6)",
+  "measured": [
+    {
+      "batch": 32,
+      "status": "SCHEDULED_PLACEMENT_OK",
+      "stage_a_us_p50": 2275362,
+      "forward_ms": 284.4,
+      "throughput_tok_s": 112.5,
+      "htp0_weight_mib": 3454.24,
+      "htp0_ops": 61248,
+      "missing_buffer_compute_nodes": 0,
+      "token_ids": [
+        107,
+        100,
+        45518,
+        107,
+        101,
+        1509,
+        7412,
+        611
+      ]
+    },
+    {
+      "batch": 48,
+      "status": "SCHEDULED_PLACEMENT_OK",
+      "stage_a_us_p50": 2589978,
+      "forward_ms": 323.7,
+      "throughput_tok_s": 148.3,
+      "htp0_weight_mib": 3454.24,
+      "htp0_ops": 90944,
+      "missing_buffer_compute_nodes": 0,
+      "token_ids": [
+        107,
+        100,
+        45518,
+        107,
+        101,
+        1509,
+        7412,
+        611
+      ]
+    },
+    {
+      "batch": 64,
+      "status": "SCHEDULED_PLACEMENT_OK",
+      "stage_a_us_p50": 3063461,
+      "forward_ms": 382.9,
+      "throughput_tok_s": 167.1,
+      "htp0_weight_mib": 3454.24,
+      "htp0_ops": 120640,
+      "missing_buffer_compute_nodes": 0,
+      "token_ids": [
+        107,
+        100,
+        45518,
+        107,
+        101,
+        1509,
+        7412,
+        611
+      ]
+    }
+  ]
+}

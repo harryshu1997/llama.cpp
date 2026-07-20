@@ -1,0 +1,206 @@
+{
+  "schema": "s14-pipe3-device-v2",
+  "status": "CERTIFIED_3DEVICE_TOKEN_CORRECT_MECHANICS",
+  "certified": true,
+  "label": "token-correct 3-device MECHANICS only; no latency/energy/throughput claim",
+  "checks": {
+    "host_returncode_zero": true,
+    "result_rows_present": true,
+    "op15_head_cert_ok": true,
+    "op12_mid_cert_ok": true,
+    "ranges_match_topology": true,
+    "token_match_stream0": true,
+    "all_streams_match_reference": true
+  },
+  "cert_reasons_op15": [],
+  "cert_reasons_op12": [],
+  "scope": "3DEVICE_PIPELINE_MECHANICS_TOKEN_CORRECTNESS; GPU_BOARD_ENERGY_SEPARATE; PHONE_ENERGY_UNKNOWN",
+  "layer_split": {
+    "op15_head": [
+      0,
+      8
+    ],
+    "op12_mid": [
+      8,
+      12
+    ],
+    "host_tail": [
+      12,
+      48
+    ],
+    "depth_offloaded_frac": 0.25
+  },
+  "route": "A0_OP15_OP12",
+  "batch": 1,
+  "n_gen": 8,
+  "n_requests_measured": 1,
+  "ref_kind": "single-stream",
+  "ref_token_ids": [
+    108,
+    45518,
+    107,
+    100,
+    45518,
+    107,
+    101,
+    28925
+  ],
+  "route_token_ids": [
+    108,
+    45518,
+    107,
+    100,
+    45518,
+    107,
+    101,
+    28925
+  ],
+  "token_match": true,
+  "op15_head": {
+    "placement_status": "SCHEDULED_PLACEMENT_OK",
+    "missing_buffer_compute_nodes": 0,
+    "htp0_weight_mib": 3454.24,
+    "stage_a_us_p50": 791151,
+    "hexagon": "v81"
+  },
+  "op12_mid": {
+    "placement_status": "SCHEDULED_PLACEMENT_OK",
+    "missing_buffer_compute_nodes": 0,
+    "htp0_weight_mib": 1744.0,
+    "stage_b_us_p50": 611238,
+    "hexagon": "v75"
+  },
+  "host_tail": {
+    "host_us_p50": 236414
+  },
+  "request_wall_us_p50": 1638848,
+  "op15_cert": {
+    "schema": "layersplit-scheduled-placement-v2",
+    "role": "phone_stage",
+    "mode": "stagenet",
+    "layer_start": 0,
+    "layer_end": 8,
+    "n_layer": 48,
+    "pid": 3569,
+    "run_rc": 0,
+    "compute_nodes": 3728,
+    "copy_nodes": 0,
+    "metadata_nodes": 1536,
+    "missing_buffer_compute_nodes": 0,
+    "compute_by_buffer_type": {
+      "CPU": 16,
+      "HTP0": 3712
+    },
+    "compute_by_op": {
+      "ADD": 256,
+      "FLASH_ATTN_EXT": 128,
+      "GET_ROWS": 16,
+      "GLU": 128,
+      "MUL": 896,
+      "MUL_MAT": 880,
+      "RMS_NORM": 896,
+      "ROPE": 256,
+      "SCALE": 16,
+      "SET_ROWS": 256
+    },
+    "compute_by_op_and_buffer": {
+      "ADD": {
+        "HTP0": 256
+      },
+      "FLASH_ATTN_EXT": {
+        "HTP0": 128
+      },
+      "GET_ROWS": {
+        "CPU": 16
+      },
+      "GLU": {
+        "HTP0": 128
+      },
+      "MUL": {
+        "HTP0": 896
+      },
+      "MUL_MAT": {
+        "HTP0": 880
+      },
+      "RMS_NORM": {
+        "HTP0": 896
+      },
+      "ROPE": {
+        "HTP0": 256
+      },
+      "SCALE": {
+        "HTP0": 16
+      },
+      "SET_ROWS": {
+        "HTP0": 256
+      }
+    },
+    "copy_by_buffer_type": {},
+    "status": "SCHEDULED_PLACEMENT_OK"
+  },
+  "op12_cert": {
+    "schema": "layersplit-scheduled-placement-v2",
+    "role": "phone_stage",
+    "mode": "stagenet",
+    "layer_start": 8,
+    "layer_end": 12,
+    "n_layer": 48,
+    "pid": 8563,
+    "run_rc": 0,
+    "compute_nodes": 1968,
+    "copy_nodes": 128,
+    "metadata_nodes": 832,
+    "missing_buffer_compute_nodes": 0,
+    "compute_by_buffer_type": {
+      "HTP0": 1968
+    },
+    "compute_by_op": {
+      "ADD": 128,
+      "GLU": 64,
+      "MUL": 448,
+      "MUL_MAT": 560,
+      "RMS_NORM": 448,
+      "ROPE": 128,
+      "SET_ROWS": 128,
+      "SOFT_MAX": 64
+    },
+    "compute_by_op_and_buffer": {
+      "ADD": {
+        "HTP0": 128
+      },
+      "GLU": {
+        "HTP0": 64
+      },
+      "MUL": {
+        "HTP0": 448
+      },
+      "MUL_MAT": {
+        "HTP0": 560
+      },
+      "RMS_NORM": {
+        "HTP0": 448
+      },
+      "ROPE": {
+        "HTP0": 128
+      },
+      "SET_ROWS": {
+        "HTP0": 128
+      },
+      "SOFT_MAX": {
+        "HTP0": 64
+      }
+    },
+    "copy_by_buffer_type": {
+      "HTP0": 128
+    },
+    "status": "SCHEDULED_PLACEMENT_OK"
+  },
+  "op15_buffers_mib": {
+    "CPU_Mapped": 1920.0,
+    "HTP0": 3454.24
+  },
+  "op12_buffers_mib": {
+    "HTP0": 1744.0
+  },
+  "host_returncode": 0
+}

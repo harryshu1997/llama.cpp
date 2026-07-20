@@ -20,7 +20,7 @@
   "raw_artifact_sha256": "457ed3ea7d22ac1d49159dd021319de28a94920312050d7367602e1549f18cca",
   "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
   "role": "Q_PIM_TREATMENT",
-  "route_schedule_digest": "74fab39d591850d3c60fcfa9fadaff1b915c6b20de09f099b61b50952697bc7f",
+  "route_schedule_digest": "da2d3b042db1e924a6769b2db870cb939d35eb5b420a7dcbdefbbbf33fa2f62d",
   "run_nonce": "run.tl.slot09",
   "schema": "e2.execution.v2",
   "slo_policy_digest": "17972eecf35e4c0bf8b8238c232753dd60adc68e112c0d9b40a7813cefd4a192",

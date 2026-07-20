@@ -23,8 +23,11 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cerrno>
 #include <cfloat>
+#include <climits>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <cmath>
 #include <functional>
@@ -2139,6 +2142,59 @@ llama_memory_i * llama_model::create_memory(const llama_memory_params & params, 
                     llama_kv_cache::layer_filter_cb filter = nullptr;
                     llama_memory_i::layer_reuse_cb reuse = nullptr;
                     llama_kv_cache::layer_share_cb share = nullptr;
+
+                    if (arch == LLM_ARCH_GEMMA4) {
+                        const char * env_start = getenv("LLAMA_LAYER_START");
+                        const char * env_end   = getenv("LLAMA_LAYER_END");
+                        if (env_start || env_end) {
+                            auto parse_layer = [](const char * text, int fallback, int & value) {
+                                if (!text) {
+                                    value = fallback;
+                                    return true;
+                                }
+                                errno = 0;
+                                char * end = nullptr;
+                                const long parsed = strtol(text, &end, 10);
+                                if (errno != 0 || end == text || *end != '\0' ||
+                                    parsed < 0 || parsed > INT_MAX) {
+                                    return false;
+                                }
+                                value = (int) parsed;
+                                return true;
+                            };
+
+                            int layer_start = 0;
+                            int layer_end = (int) hparams.n_layer();
+                            if (!parse_layer(env_start, 0, layer_start) ||
+                                !parse_layer(env_end, (int) hparams.n_layer(), layer_end) ||
+                                layer_start >= layer_end ||
+                                layer_end > (int) hparams.n_layer()) {
+                                throw std::runtime_error(
+                                        "Gemma 4 LayerSplit has an invalid layer range");
+                            }
+
+                            if (hparams.n_layer_kv_from_start < (int32_t) hparams.n_layer_all) {
+                                for (int il = layer_start; il < layer_end; ++il) {
+                                    if (il < hparams.n_layer_kv_from_start) {
+                                        continue;
+                                    }
+                                    const int source = hparams.n_layer_kv_from_start -
+                                            (hparams.is_swa(il) ? 2 : 1);
+                                    if (source < layer_start || source >= layer_end) {
+                                        throw std::runtime_error(
+                                                "Gemma 4 LayerSplit cuts across a shared-KV dependency");
+                                    }
+                                }
+                            }
+
+                            filter = [layer_start, layer_end](uint32_t il) {
+                                return il >= (uint32_t) layer_start && il < (uint32_t) layer_end;
+                            };
+                            LLAMA_LOG_INFO(
+                                    "%s: Gemma 4 LayerSplit KV range = [%d, %d)\n",
+                                    __func__, layer_start, layer_end);
+                        }
+                    }
 
                     if (arch == LLM_ARCH_GEMMA3N || arch == LLM_ARCH_GEMMA4) {
                         reuse = [&](uint32_t il) {

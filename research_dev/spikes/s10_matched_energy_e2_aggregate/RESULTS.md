@@ -1,6 +1,118 @@
 # S10-E2A Results
 
-## Current R2 verdict - 2026-07-16
+## Current R4 verdict - 2026-07-16
+
+    E2A_R4_ROUTE_DAG_MECHANICS_PASS_PHYSICAL_CLAIM_BLOCKED
+
+This section supersedes R3. No measurement was run and no physical energy or
+relief label is authorized.
+
+A final adversarial audit reproduced two critical claim-path defects after R3:
+
+1. the plan's route digests were opaque labels, so the lifecycle action set
+   could change after the plan was anchored; and
+2. decorative phone work could pass while a separate server EXEC covered every
+   request and produced the result.
+
+R4 closes both under active schema version 4:
+
+- the bundle securely resolves exact control and treatment `RouteSchedule`
+  records whose record digests are pinned by the anchored plan;
+- each route freezes its exact action IDs, devices, backends, operator islands,
+  model, request sets, byte/duration requirements, lease requirements, and
+  control/data dependency edges;
+- the lifecycle must contain exactly those actions and match every immutable
+  node field; missing and extra work fail separately;
+- resolver-issued route evidence stores canonical bytes, so mutating the
+  caller's route dictionary after validation cannot change lifecycle policy;
+- every declared route edge is replayed as an ACK-before-start constraint; and
+- each phone-assisted request needs a committed DATA path from phone H2D through
+  HTP/OpenCL execution and phone D2H into RESULT_EMIT. A server continuation is
+  allowed only downstream of that D2H.
+
+The audit's exact exploit is a regression: appending a CUDA EXEC that actually
+covers all requests is rejected as `E_ROUTE_NODE_EXTRA`. Zero-duration phone
+execution is `E_ACTION_DURATION`; removing the D2H-to-result path is
+`E_PHONE_RESULT_PATH`. A valid phone-D2H-to-server-continuation route passes.
+
+Verification:
+
+```text
+E2A unit/adversarial tests       215/215 PASS
+R4 targeted regressions          14/14 PASS
+E2A CLI negatives                42/42 PASS
+fixture determinism              05b679d52d36e014ea0ed1114f692620
+                                 65aed2862ea7007568a3a8d0ba736962
+E1/E2 pinned baseline files      45/28 unchanged before and after E2A
+production fixture               refused at E_ANCHOR_TRUST_ROOT
+```
+
+The physical blockers are unchanged: no pinned independent trust root, no
+registered cryptographic verifier, no witnessed launcher binding hardware
+execution to the committed route, no calibrated server-wall instrument, and no
+real matched acquisition run. R4 proves internal evidence coherence, not that a
+producer-authored acquisition record describes reality.
+
+## Historical R3 verdict (superseded by R4) - 2026-07-16
+
+    E2A_R3_INTERNAL_CLAIM_PATH_PASS_PHYSICAL_CLAIM_BLOCKED
+
+This section superseded R2 but was later invalidated by the two R4 route findings
+above. No measurement was run and no physical energy or relief label was
+authorized.
+
+Independent review reproduced eight claim-path defects after R2. R3 closes them
+under active schema version 3:
+
+- a `SERVER_WALL` bundle must resolve the plan-pinned E2 wall-capability record,
+  and E2's coverage, proof, provenance, and uncertainty checks run for every
+  timeline;
+- the plan pins distinct control/treatment route digests and exact server/phone
+  identities; control forbids phone actions, while treatment requires request-
+  covered phone `EXEC` on HTP/OpenCL bracketed by nonzero H2D/D2H;
+- input, prompt-token, decode-parameter, and stop-set digests are carried by the
+  run-specific output artifact and must match both manifest and outcome records;
+- bundle slots are schema/type checked and duplicate indices are rejected before
+  dictionary conversion;
+- nonzero warmups and lifecycle `WARMUP` actions fail closed until a future
+  ledger-backed warmup contract exists;
+- lifecycle set identity and exact resource-lease identity are joined; and
+- artifact reads use a retained root dirfd and component-wise `openat` with
+  `O_NOFOLLOW`, and frozen E2 consumes those same secured buffers.
+
+The anchor API now carries authenticated experiment identity, namespace,
+checkpoint, identity binding, completeness status, plan count, and complete plan-
+set digest. The commitment proof must enumerate exactly the resolved plan. TSA
+root, leaf, and policy pins are all enforced when provisioned.
+
+Verification:
+
+```text
+E2A unit/adversarial tests       201/201 PASS
+R3 targeted regressions          18/18 PASS
+E2A CLI negatives                39/39 PASS
+fixture determinism              e0b40223cbb7a0196704a1e44529a573
+                                 5345e4496de87a757fa056456d6cef71
+E2 official suite                152 tests + 30 CLI negatives PASS
+E1 official suite                201 tests + 39 evidence negatives
+                                 + 18 CLI negatives PASS
+E1 differential                  1187 compared, 0 mismatches
+E1/E2 pinned baseline files      45/28 unchanged before and after E2A
+production fixture               refused at E_ANCHOR_TRUST_ROOT
+```
+
+The remaining blockers are now explicit and external to this mechanics slice:
+no pinned independent trust root, no registered cryptographic verifier, no
+witnessed launcher that orders authenticated external commitment time before
+each local monotonic attempt, no calibrated server-wall instrument, and no real
+matched acquisition run. The E2 wall-capability v1 record itself deliberately
+refuses measured claims as uncertified.
+
+R3 still cannot prove that a fabricated acquisition artifact describes reality.
+It makes the required identities and routes attributable and checkable; the
+future witnessed launcher and instrument boundary must make them observable.
+
+## Historical R2 verdict (superseded by R3) - 2026-07-16
 
     E2A_R2_TARGETED_MECHANICS_PASS_PHYSICAL_CLAIM_BLOCKED
 

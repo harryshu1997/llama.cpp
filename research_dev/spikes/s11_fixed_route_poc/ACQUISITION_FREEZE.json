@@ -1,0 +1,68 @@
+{
+  "schema": "s11-e0-acquisition-freeze-v1",
+  "created_utc": "2026-07-17T06:18:57Z",
+  "formal_claim_authorized": false,
+  "scope": "GPU_BOARD_DIAGNOSTIC",
+  "git_head": "5e92adf00622c73f0cc5890ed64e083a93b1a8d2",
+  "acquisition_runner_sha256": "07eb9b3f663a6c9d77159953f7d7a297efdd69e81f3ffcabb62bbde03dbad5a3",
+  "calibration": {
+    "plan_path": "scratchpad/s11_e0_readiness_512_faoff_20260717/plan.json",
+    "plan_sha256": "cf466082d8c726f920696f09fc773a87930f0e8d176304e398cc8df1d7cbbda9",
+    "summary_path": "scratchpad/s11_e0_readiness_512_faoff_20260717/summary.json",
+    "summary_sha256": "2c8e5c045c187ed6d61ab32a3563957af4e7f57c51fb070db7a78172ff6d8b13",
+    "runner_sha256": "db41766b00d253eb4210dc61496c23d0bcb02cf2c6040c5bb6dd67337aac4911",
+    "layersplit_source_sha256": "41596a075fc8072c6540d58e36fe0bcfa2e792fc3b4e480c228c1f1721e000a7"
+  },
+  "workload": {
+    "model_sha256": "bac4e29337273d1cb41aa36f4209ebcf63baa1162e6ab4dc55f6034b3d69b35a",
+    "prompt": "In one sentence, explain why batching improves accelerator utilization.",
+    "chat": true,
+    "batch_size": 8,
+    "requests_per_timeline": 512,
+    "generated_tokens_per_request": 32,
+    "warmup_groups": 2,
+    "driver_context_per_sequence": 96,
+    "driver_max_prefill_tokens": 64,
+    "sampling": "greedy_argmax"
+  },
+  "routes": {
+    "control": "SERVER_ONLY",
+    "treatment": "A0_OP15",
+    "gpu_uuid": "GPU-431a4567-fa90-7a73-625a-2ee6e7b5eaaf",
+    "phone_serial": "3C15AU002CL00000",
+    "phone_layer_range": [0, 2],
+    "phone_backend": "HTP0",
+    "phone_flash_attention": "DISABLED",
+    "phone_model_sha256": "45d894d090f27889914b2cd8e5f4b7dbfe376d1ded7194d70efdcb79200ada49",
+    "host_binary_sha256": "f682f66eb889c21bfb4f90496cb86a4003bd89fc09fd97703c4bfd598a2cf4f0",
+    "phone_binary_sha256": "ba6ab706de4424c4199486832f602b3844871cb7ca8515ab59b240f547c521dd"
+  },
+  "frozen_gates": {
+    "pairs": 8,
+    "p95_group_wall_slo_us": 3500000,
+    "minimum_independent_power_updates": 100,
+    "maximum_power_sample_gap_us": 250000,
+    "minimum_conservative_gpu_board_relief_percent": 10,
+    "exact_token_ids_required": true,
+    "placement_certificate_required": true,
+    "phone_thermal_logger_required": true
+  },
+  "calibration_outcome": {
+    "completed_requests_per_route": 512,
+    "exact_work": true,
+    "control_window_us": 85083773,
+    "treatment_window_us": 198723975,
+    "control_p95_group_wall_us": 1331642,
+    "treatment_p95_group_wall_us": 3235782,
+    "gpu_ready_memory_relief_mib": 888,
+    "phone_thermal_status": 0,
+    "phone_hmx_max_millic": 49200,
+    "energy_status": "NOT_MEASURED"
+  },
+  "limitations": [
+    "This freeze has no independent enumerable pre-registration anchor.",
+    "NVML covers one GPU board, not server-wall or total-system energy.",
+    "Phone and USB energy remain unknown.",
+    "The treatment is slower and is evaluated only under the frozen latency SLO."
+  ]
+}

@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "s10-e2a-route-schedule-v4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "route_id",
+    "role",
+    "request_set_manifest_sha256",
+    "model_digest",
+    "server_device_ids",
+    "phone_device_ids",
+    "phone_assisted_request_ids",
+    "nodes",
+    "edges",
+    "record_sha256"
+  ],
+  "$defs": {
+    "ident": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[\\x21-\\x7e]+$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "nullable_sha256": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/sha256"}
+      ]
+    },
+    "nullable_ident": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/ident"}
+      ]
+    },
+    "role": {
+      "enum": [
+        "OPTIMIZED_SERVER_ONLY_CONTROL",
+        "Q_PIM_TREATMENT"
+      ]
+    },
+    "request_ids": {
+      "type": "array",
+      "maxItems": 4096,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/ident"}
+    }
+  },
+  "properties": {
+    "schema_version": {"const": 4},
+    "kind": {"const": "RouteSchedule"},
+    "route_id": {"$ref": "#/$defs/ident"},
+    "role": {"$ref": "#/$defs/role"},
+    "request_set_manifest_sha256": {"$ref": "#/$defs/sha256"},
+    "model_digest": {"$ref": "#/$defs/sha256"},
+    "server_device_ids": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/ident"}
+    },
+    "phone_device_ids": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/ident"}
+    },
+    "phone_assisted_request_ids": {"$ref": "#/$defs/request_ids"},
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8192,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "action_id",
+          "action_kind",
+          "execution_domain",
+          "device_identity",
+          "backend_kind",
+          "operator_island_digest",
+          "model_digest",
+          "request_ids",
+          "input_requirement",
+          "output_requirement",
+          "duration_requirement",
+          "lease_requirement"
+        ],
+        "properties": {
+          "action_id": {"$ref": "#/$defs/ident"},
+          "action_kind": {
+            "enum": [
+              "PREFETCH",
+              "H2D",
+              "D2H",
+              "EXEC",
+              "RESULT_EMIT",
+              "CLEANUP",
+              "LEASE_ACQUIRE",
+              "LEASE_RELEASE",
+              "QUEUE_SUBMIT",
+              "QUEUE_DRAIN"
+            ]
+          },
+          "execution_domain": {
+            "enum": ["SERVER", "PHONE", "TRANSPORT", "CONTROL"]
+          },
+          "device_identity": {"$ref": "#/$defs/ident"},
+          "backend_kind": {
+            "enum": [
+              "HOST_CPU",
+              "CUDA",
+              "HTP",
+              "OPENCL",
+              "USB_BULK",
+              "CONTROL"
+            ]
+          },
+          "operator_island_digest": {"$ref": "#/$defs/nullable_sha256"},
+          "model_digest": {"$ref": "#/$defs/nullable_sha256"},
+          "request_ids": {"$ref": "#/$defs/request_ids"},
+          "input_requirement": {
+            "enum": ["ZERO", "POSITIVE", "ANY"]
+          },
+          "output_requirement": {
+            "enum": ["ZERO", "POSITIVE", "ANY"]
+          },
+          "duration_requirement": {
+            "enum": ["NONNEGATIVE", "POSITIVE"]
+          },
+          "lease_requirement": {
+            "enum": ["REQUIRED", "FORBIDDEN"]
+          }
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "maxItems": 16384,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "edge_id",
+          "from_action_id",
+          "to_action_id",
+          "edge_kind",
+          "payload_id",
+          "request_ids"
+        ],
+        "properties": {
+          "edge_id": {"$ref": "#/$defs/ident"},
+          "from_action_id": {"$ref": "#/$defs/ident"},
+          "to_action_id": {"$ref": "#/$defs/ident"},
+          "edge_kind": {"enum": ["CONTROL", "DATA"]},
+          "payload_id": {"$ref": "#/$defs/nullable_ident"},
+          "request_ids": {"$ref": "#/$defs/request_ids"}
+        }
+      }
+    },
+    "record_sha256": {"$ref": "#/$defs/sha256"}
+  }
+}

@@ -1,0 +1,538 @@
+{
+  "artifacts": {
+    "combined-real-boundary.f32": {
+      "bytes": 983040,
+      "path": "frozen-auto-results/combined-real-boundary.f32",
+      "sha256": "d0010a6a5c6ed4d410f25aa05b3209008b1abc866eb5bf5f1ebe52e74d6e18dc"
+    },
+    "combined-tokens.json": {
+      "bytes": 302,
+      "path": "frozen-auto-results/combined-tokens.json",
+      "sha256": "7688d6ecbf6b0699b488e6fa0304bc6a25cca921571b454f561351b82876b5f2"
+    },
+    "cuda.b64.f32": {
+      "bytes": 983040,
+      "path": "frozen-auto-results/cuda.b64.f32",
+      "sha256": "7f4c9ec24097f5262ccd16c838506cf67541e5dcb02154ca8164628a16935543"
+    },
+    "cuda.log": {
+      "bytes": 31117,
+      "path": "frozen-auto-results/cuda.log",
+      "sha256": "750c1893afa693b14bc5dbee03944c94149138e082510b42fce07d6f342eedc4"
+    },
+    "cuda.split32.f32": {
+      "bytes": 983040,
+      "path": "frozen-auto-results/cuda.split32.f32",
+      "sha256": "3c19fa35b0e8f5d7d2dc672ae04342eb9299903b72771b80f9da9d3e94079b6d"
+    },
+    "htp.b64.f32": {
+      "bytes": 983040,
+      "path": "frozen-auto-results/htp.b64.f32",
+      "sha256": "436237b0a9709b14d9f43202accc43f01a39f0d0019fd1484c18b8843bcb50fb"
+    },
+    "htp.log": {
+      "bytes": 31472,
+      "path": "frozen-auto-results/htp.log",
+      "sha256": "5a84050f3ba92b403ba4c14ee6be50b0326e30ec882a507a76ff6582e8948292"
+    },
+    "htp.split32.f32": {
+      "bytes": 983040,
+      "path": "frozen-auto-results/htp.split32.f32",
+      "sha256": "436237b0a9709b14d9f43202accc43f01a39f0d0019fd1484c18b8843bcb50fb"
+    },
+    "op12-head.f32": {
+      "bytes": 491520,
+      "path": "frozen-auto-results/op12-head.f32",
+      "sha256": "c46ba426d6f3fa57efb24777851b1e97fd165475e3be9cac48a005f9df410487"
+    },
+    "op12-head.log": {
+      "bytes": 31905,
+      "path": "frozen-auto-results/op12-head.log",
+      "sha256": "5f12489e1c5ab034d9949d14a42e8af12e5ffdb41bbed725e5f7e598434e3ab2"
+    },
+    "op15-head.f32": {
+      "bytes": 491520,
+      "path": "frozen-auto-results/op15-head.f32",
+      "sha256": "ba7b0bc230b584da4a9c44ed7081c4cde18bb2a99bbfdf1384069056af3f4f06"
+    },
+    "op15-head.log": {
+      "bytes": 31772,
+      "path": "frozen-auto-results/op15-head.log",
+      "sha256": "80a75068cfdb87af34d34ea34f155974c5ae006a57be3b40c0e6a773ab215531"
+    }
+  },
+  "attention_route": "auto",
+  "checks": {
+    "head_outputs_finite": true,
+    "head_placement_valid": true,
+    "head_shards_identical": true,
+    "head_workers_complete": true,
+    "htp_b64_vs_2xb32": true,
+    "htp_coalescing_faster": true,
+    "htp_vs_cuda_b64": false,
+    "middle_outputs_finite": true,
+    "middle_placement_valid": true,
+    "middle_repeat_stable": true,
+    "middle_workers_complete": true
+  },
+  "cross_backend": {
+    "b64_argmax_mismatches": 1,
+    "b64_rel_l2": 0.00900088108906526
+  },
+  "failure": null,
+  "heads": {
+    "op12": {
+      "binary_sha256": "269c24baa0484bb2345bec5267c36cb0a18d19f5a918fad568bad85a15ff42ab",
+      "elapsed_us": 1115868,
+      "error": null,
+      "finite": true,
+      "hello": {
+        "layer_end": 6,
+        "layer_start": 0,
+        "magic": 1280529458,
+        "n_batch": 32,
+        "n_ctx_seq": 256,
+        "n_embd": 3840,
+        "n_layer": 48,
+        "n_seq_max": 32,
+        "n_ubatch": 32,
+        "version": 1
+      },
+      "name": "op12",
+      "placement": {
+        "compute_by_buffer_type": {
+          "CPU": 2,
+          "HTP0": 372
+        },
+        "compute_by_op": {
+          "ADD": 24,
+          "GET_ROWS": 2,
+          "GLU": 12,
+          "MUL": 84,
+          "MUL_MAT": 106,
+          "RMS_NORM": 84,
+          "ROPE": 24,
+          "SCALE": 2,
+          "SET_ROWS": 24,
+          "SOFT_MAX": 12
+        },
+        "compute_by_op_and_buffer": {
+          "ADD": {
+            "HTP0": 24
+          },
+          "GET_ROWS": {
+            "CPU": 2
+          },
+          "GLU": {
+            "HTP0": 12
+          },
+          "MUL": {
+            "HTP0": 84
+          },
+          "MUL_MAT": {
+            "HTP0": 106
+          },
+          "RMS_NORM": {
+            "HTP0": 84
+          },
+          "ROPE": {
+            "HTP0": 24
+          },
+          "SCALE": {
+            "HTP0": 2
+          },
+          "SET_ROWS": {
+            "HTP0": 24
+          },
+          "SOFT_MAX": {
+            "HTP0": 12
+          }
+        },
+        "compute_nodes": 374,
+        "copy_by_buffer_type": {
+          "HTP0": 24
+        },
+        "copy_nodes": 24,
+        "layer_end": 6,
+        "layer_start": 0,
+        "metadata_nodes": 180,
+        "missing_buffer_compute_nodes": 0,
+        "mode": "stagenet",
+        "n_layer": 48,
+        "pid": 14521,
+        "role": "phone_stage",
+        "run_rc": 0,
+        "schema": "layersplit-scheduled-placement-v2",
+        "status": "SCHEDULED_PLACEMENT_OK"
+      },
+      "placement_problems": [],
+      "returncode": 0,
+      "shard_sha256": "d507b7bb453242dff12ba1ce0add53189755b8a9a2b960743ead1578d8f1a6b5",
+      "tokens": [
+        2,
+        133,
+        264,
+        395,
+        526,
+        657,
+        788,
+        919,
+        1050,
+        1181,
+        1312,
+        1443,
+        1574,
+        1705,
+        1836,
+        1967,
+        2098,
+        2229,
+        2360,
+        2491,
+        2622,
+        2753,
+        2884,
+        3015,
+        3146,
+        3277,
+        3408,
+        3539,
+        3670,
+        3801,
+        3932,
+        4063
+      ]
+    },
+    "op15": {
+      "binary_sha256": "269c24baa0484bb2345bec5267c36cb0a18d19f5a918fad568bad85a15ff42ab",
+      "elapsed_us": 254065,
+      "error": null,
+      "finite": true,
+      "hello": {
+        "layer_end": 6,
+        "layer_start": 0,
+        "magic": 1280529458,
+        "n_batch": 32,
+        "n_ctx_seq": 256,
+        "n_embd": 3840,
+        "n_layer": 48,
+        "n_seq_max": 32,
+        "n_ubatch": 32,
+        "version": 1
+      },
+      "name": "op15",
+      "placement": {
+        "compute_by_buffer_type": {
+          "CPU": 2,
+          "HTP0": 348
+        },
+        "compute_by_op": {
+          "ADD": 24,
+          "FLASH_ATTN_EXT": 12,
+          "GET_ROWS": 2,
+          "GLU": 12,
+          "MUL": 84,
+          "MUL_MAT": 82,
+          "RMS_NORM": 84,
+          "ROPE": 24,
+          "SCALE": 2,
+          "SET_ROWS": 24
+        },
+        "compute_by_op_and_buffer": {
+          "ADD": {
+            "HTP0": 24
+          },
+          "FLASH_ATTN_EXT": {
+            "HTP0": 12
+          },
+          "GET_ROWS": {
+            "CPU": 2
+          },
+          "GLU": {
+            "HTP0": 12
+          },
+          "MUL": {
+            "HTP0": 84
+          },
+          "MUL_MAT": {
+            "HTP0": 82
+          },
+          "RMS_NORM": {
+            "HTP0": 84
+          },
+          "ROPE": {
+            "HTP0": 24
+          },
+          "SCALE": {
+            "HTP0": 2
+          },
+          "SET_ROWS": {
+            "HTP0": 24
+          }
+        },
+        "compute_nodes": 350,
+        "copy_by_buffer_type": {},
+        "copy_nodes": 0,
+        "layer_end": 6,
+        "layer_start": 0,
+        "metadata_nodes": 168,
+        "missing_buffer_compute_nodes": 0,
+        "mode": "stagenet",
+        "n_layer": 48,
+        "pid": 28771,
+        "role": "phone_stage",
+        "run_rc": 0,
+        "schema": "layersplit-scheduled-placement-v2",
+        "status": "SCHEDULED_PLACEMENT_OK"
+      },
+      "placement_problems": [],
+      "returncode": 0,
+      "shard_sha256": "d507b7bb453242dff12ba1ce0add53189755b8a9a2b960743ead1578d8f1a6b5",
+      "tokens": [
+        2,
+        133,
+        264,
+        395,
+        526,
+        657,
+        788,
+        919,
+        1050,
+        1181,
+        1312,
+        1443,
+        1574,
+        1705,
+        1836,
+        1967,
+        2098,
+        2229,
+        2360,
+        2491,
+        2622,
+        2753,
+        2884,
+        3015,
+        3146,
+        3277,
+        3408,
+        3539,
+        3670,
+        3801,
+        3932,
+        4063
+      ]
+    }
+  },
+  "identity": {
+    "harness": {
+      "bytes": 10988,
+      "path": "frozen-auto-results/executed-source/run_cp1_real_boundary.py",
+      "sha256": "f8f1ad8133f762889dc687223662fe0a53aa8f9917aa6983c59fc4dd0f196ac4"
+    },
+    "host_binary": {
+      "bytes": 488768,
+      "path": "/home/myid/zs89458/Documents/llama.cpp-release/build-cuda/bin/llama-layersplit",
+      "sha256": "da12f9255d2e7acf276c3803cbfab2e7e2aaed1ed50230a43bd8bd1f79f2c8f7"
+    },
+    "middle_harness": {
+      "bytes": 21142,
+      "path": "frozen-auto-results/executed-source/run_cp1_middle.py",
+      "sha256": "3cc0ba088bb832dfc28a69bef4552538898b4db815625e1b0dedc22e486beb85"
+    },
+    "middle_shard": {
+      "bytes": 2741158560,
+      "path": "/home/myid/zs89458/Documents/models/12b-f16-mid-6-12.gguf",
+      "sha256": "e4fdd28f0f5fef0692a3c93c6308ea48ac971a97428f17199ecbc921020b1c36"
+    }
+  },
+  "middles": {
+    "cuda": {
+      "attention_route": "auto",
+      "b64_p50_us": 9817,
+      "b64_us": [
+        13698,
+        9817,
+        8733
+      ],
+      "b64_vs_split_argmax_mismatches": 1,
+      "b64_vs_split_rel_l2": 0.014648928008802868,
+      "coalesce_speedup": 1.4289497809921565,
+      "error": null,
+      "finite": true,
+      "hello": {
+        "layer_end": 12,
+        "layer_start": 6,
+        "magic": 1280529458,
+        "n_batch": 64,
+        "n_ctx_seq": 256,
+        "n_embd": 3840,
+        "n_layer": 48,
+        "n_seq_max": 64,
+        "n_ubatch": 64,
+        "version": 1
+      },
+      "kind": "cuda",
+      "placement": {
+        "compute_by_buffer_type": {
+          "CUDA0": 2076
+        },
+        "compute_by_op": {
+          "ADD": 144,
+          "FLASH_ATTN_EXT": 72,
+          "GLU": 72,
+          "MUL": 504,
+          "MUL_MAT": 492,
+          "RMS_NORM": 504,
+          "ROPE": 144,
+          "SET_ROWS": 144
+        },
+        "compute_by_op_and_buffer": {
+          "ADD": {
+            "CUDA0": 144
+          },
+          "FLASH_ATTN_EXT": {
+            "CUDA0": 72
+          },
+          "GLU": {
+            "CUDA0": 72
+          },
+          "MUL": {
+            "CUDA0": 504
+          },
+          "MUL_MAT": {
+            "CUDA0": 492
+          },
+          "RMS_NORM": {
+            "CUDA0": 504
+          },
+          "ROPE": {
+            "CUDA0": 144
+          },
+          "SET_ROWS": {
+            "CUDA0": 144
+          }
+        },
+        "compute_nodes": 2076,
+        "copy_by_buffer_type": {},
+        "copy_nodes": 0,
+        "layer_end": 12,
+        "layer_start": 6,
+        "metadata_nodes": 1008,
+        "missing_buffer_compute_nodes": 0,
+        "mode": "stagenet",
+        "n_layer": 48,
+        "pid": 3863897,
+        "role": "phone_stage",
+        "run_rc": 0,
+        "schema": "layersplit-scheduled-placement-v2",
+        "status": "SCHEDULED_PLACEMENT_OK"
+      },
+      "placement_problems": [],
+      "repeat_rel_l2_max": 0.0,
+      "returncode": 0,
+      "split32_p50_us": 14028,
+      "split32_us": [
+        13674,
+        14213,
+        14028
+      ]
+    },
+    "htp": {
+      "attention_route": "auto",
+      "b64_p50_us": 281185,
+      "b64_us": [
+        282611,
+        281185,
+        279327
+      ],
+      "b64_vs_split_argmax_mismatches": 0,
+      "b64_vs_split_rel_l2": 0.0,
+      "coalesce_speedup": 1.5305795117093728,
+      "error": null,
+      "finite": true,
+      "hello": {
+        "layer_end": 12,
+        "layer_start": 6,
+        "magic": 1280529458,
+        "n_batch": 64,
+        "n_ctx_seq": 256,
+        "n_embd": 3840,
+        "n_layer": 48,
+        "n_seq_max": 64,
+        "n_ubatch": 64,
+        "version": 1
+      },
+      "kind": "htp",
+      "placement": {
+        "compute_by_buffer_type": {
+          "HTP0": 2076
+        },
+        "compute_by_op": {
+          "ADD": 144,
+          "FLASH_ATTN_EXT": 72,
+          "GLU": 72,
+          "MUL": 504,
+          "MUL_MAT": 492,
+          "RMS_NORM": 504,
+          "ROPE": 144,
+          "SET_ROWS": 144
+        },
+        "compute_by_op_and_buffer": {
+          "ADD": {
+            "HTP0": 144
+          },
+          "FLASH_ATTN_EXT": {
+            "HTP0": 72
+          },
+          "GLU": {
+            "HTP0": 72
+          },
+          "MUL": {
+            "HTP0": 504
+          },
+          "MUL_MAT": {
+            "HTP0": 492
+          },
+          "RMS_NORM": {
+            "HTP0": 504
+          },
+          "ROPE": {
+            "HTP0": 144
+          },
+          "SET_ROWS": {
+            "HTP0": 144
+          }
+        },
+        "compute_nodes": 2076,
+        "copy_by_buffer_type": {},
+        "copy_nodes": 0,
+        "layer_end": 12,
+        "layer_start": 6,
+        "metadata_nodes": 1008,
+        "missing_buffer_compute_nodes": 0,
+        "mode": "stagenet",
+        "n_layer": 48,
+        "pid": 28805,
+        "role": "phone_stage",
+        "run_rc": 0,
+        "schema": "layersplit-scheduled-placement-v2",
+        "status": "SCHEDULED_PLACEMENT_OK"
+      },
+      "placement_problems": [],
+      "repeat_rel_l2_max": 0.0,
+      "returncode": 0,
+      "split32_p50_us": 430376,
+      "split32_us": [
+        427600,
+        430806,
+        430376
+      ]
+    }
+  },
+  "phone_energy": "UNKNOWN",
+  "schema": "s17-real-boundary-middle-screen-v1",
+  "scope": "REAL_PHONE_BOUNDARY_AND_OP15_MIDDLE_MECHANICS_NO_PIPELINE_OR_ENERGY_CLAIM",
+  "status": "CP1_REAL_BOUNDARY_FAIL",
+  "total_system_energy": "UNKNOWN"
+}

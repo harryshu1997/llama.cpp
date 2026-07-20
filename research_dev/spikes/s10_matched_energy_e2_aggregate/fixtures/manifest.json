@@ -61,9 +61,9 @@
   ],
   "kind": "RequestSetManifest",
   "manifest_id": "manifest.s10.e2a.synthetic",
-  "record_sha256": "0c748f658f1c8db04f1c392e2429be7b1703df466cfe88312f37f968b80834fc",
+  "record_sha256": "ac9bf09d32f38697ac3c836bd7d127455ee5bf045fd1a803592a34d53e0977cc",
   "sampler_digest": "55dc7d0db9bb2df80997c13b264881a5e1a5d738b2b03acf1b20bdcdfb1620a0",
-  "schema_version": 2,
+  "schema_version": 4,
   "set_id": "set.s10.e2a.synthetic",
   "work_vector": {
     "max_generated_tokens": 192,

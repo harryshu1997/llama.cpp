@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "s10-e2a-bundle-v4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "plan_path",
+    "plan_sha256",
+    "plan_anchor_path",
+    "plan_anchor_sha256",
+    "ledger_path",
+    "ledger_sha256",
+    "ledger_close_path",
+    "ledger_close_sha256",
+    "manifest_path",
+    "manifest_sha256",
+    "route_control_path",
+    "route_control_sha256",
+    "route_treatment_path",
+    "route_treatment_sha256",
+    "server_wall_capability_path",
+    "server_wall_capability_sha256",
+    "slots"
+  ],
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[\\x21-\\x7e]+$"
+    },
+    "nullable_path": {
+      "oneOf": [{"type": "null"}, {"$ref": "#/$defs/path"}]
+    },
+    "nullable_sha256": {
+      "oneOf": [{"type": "null"}, {"$ref": "#/$defs/sha256"}]
+    },
+    "slot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "slot_index",
+        "timeline_path",
+        "timeline_sha256",
+        "lifecycle_path",
+        "lifecycle_sha256",
+        "outcomes_path",
+        "outcomes_sha256"
+      ],
+      "properties": {
+        "slot_index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 511
+        },
+        "timeline_path": {"$ref": "#/$defs/path"},
+        "timeline_sha256": {"$ref": "#/$defs/sha256"},
+        "lifecycle_path": {"$ref": "#/$defs/path"},
+        "lifecycle_sha256": {"$ref": "#/$defs/sha256"},
+        "outcomes_path": {"$ref": "#/$defs/path"},
+        "outcomes_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    }
+  },
+  "properties": {
+    "schema_version": {"const": 4},
+    "kind": {"const": "E2ABundle"},
+    "plan_path": {"$ref": "#/$defs/path"},
+    "plan_sha256": {"$ref": "#/$defs/sha256"},
+    "plan_anchor_path": {"$ref": "#/$defs/path"},
+    "plan_anchor_sha256": {"$ref": "#/$defs/sha256"},
+    "ledger_path": {"$ref": "#/$defs/path"},
+    "ledger_sha256": {"$ref": "#/$defs/sha256"},
+    "ledger_close_path": {"$ref": "#/$defs/path"},
+    "ledger_close_sha256": {"$ref": "#/$defs/sha256"},
+    "manifest_path": {"$ref": "#/$defs/path"},
+    "manifest_sha256": {"$ref": "#/$defs/sha256"},
+    "route_control_path": {"$ref": "#/$defs/path"},
+    "route_control_sha256": {"$ref": "#/$defs/sha256"},
+    "route_treatment_path": {"$ref": "#/$defs/path"},
+    "route_treatment_sha256": {"$ref": "#/$defs/sha256"},
+    "server_wall_capability_path": {"$ref": "#/$defs/nullable_path"},
+    "server_wall_capability_sha256": {"$ref": "#/$defs/nullable_sha256"},
+    "slots": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 512,
+      "items": {"$ref": "#/$defs/slot"}
+    }
+  }
+}

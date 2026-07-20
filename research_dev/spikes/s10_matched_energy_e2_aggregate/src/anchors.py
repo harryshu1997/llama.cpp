@@ -179,6 +179,15 @@ VERIFIED_TOKEN_FIELDS = frozenset({
     "tsa_policy_oid",
     "trust_root_id",
     "trust_root_sha256",
+    "experiment_identity",
+    "commitment_namespace",
+    "log_identity",
+    "log_checkpoint_sha256",
+    "identity_binding_sha256",
+    "commitment_proof_sha256",
+    "enumeration_status",
+    "committed_plan_count",
+    "committed_plan_set_sha256",
 })
 
 
@@ -192,7 +201,7 @@ def check_verifier_available(anchor_kind, verifier_kind=None):
     if not matches:
         raise AnchorError(
             "E_ANCHOR_NO_VERIFIER",
-            f"E2A v2 implements no verifier for {anchor_kind}/"
+            f"E2A v4 implements no verifier for {anchor_kind}/"
             f"{verifier_kind or '*'}: it types anchor "
             f"capability but parses no token, checks no signature, and validates "
             f"no inclusion proof. A receipt whose cryptography nobody checked is "
@@ -348,6 +357,16 @@ def check_trust_root(record):
         raise AnchorError(
             "E_ANCHOR_TRUST_ROOT",
             "trust_root_sha256 does not match the pinned root")
+    if FROZEN_TSA_LEAF_SHA256 is None or \
+            record.get("tsa_leaf_cert_sha256") != FROZEN_TSA_LEAF_SHA256:
+        raise AnchorError(
+            "E_ANCHOR_TRUST_ROOT",
+            "tsa_leaf_cert_sha256 does not match a pinned leaf certificate")
+    if FROZEN_TSA_POLICY_OID is None or \
+            record.get("tsa_policy_oid") != FROZEN_TSA_POLICY_OID:
+        raise AnchorError(
+            "E_ANCHOR_TRUST_ROOT",
+            "tsa_policy_oid does not match the pinned timestamp policy")
     return True
 
 

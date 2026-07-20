@@ -1,13 +1,17 @@
 {
   "arrival_us": 225920000,
+  "decode_params_digest": "bc64432fcb819778dbe63a4e182159f5f535ae021b0b71cc20edc4978f603939",
   "dispatched_us": 226000000,
+  "input_sha256": "c8af5390f58ef586871fd7c0d57716127c5c5cd49fb1d0fb31e49e0c4e58d826",
   "model_digest": "24f2b6068e47caa3df21ed535e26c8d299b4e933367a2ece137e710f31739dc8",
+  "prompt_token_ids_sha256": "21c0abb683f1e907b390969d1ce5cb291adaae9eaae34fafb09658300a3ecb20",
   "request_id": "req.0",
   "run_nonce": "run.tl.slot08",
   "sampling_mode": "GREEDY",
-  "schema": "e2a.output.v2",
+  "schema": "e2a.output.v4",
   "seed": 1234,
   "stop_reason": "EOS",
+  "stop_set_digest": "6abb9537ce96e899b5129f8b1c4452a3c177462b5803009ec4e62309d095917e",
   "timeline_id": "tl.slot08",
   "token_events": [
     {

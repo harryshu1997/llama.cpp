@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "service": "rag_qa",
+  "provenance": "real_decomposed",
+  "nodes": [
+    { "node_id": "query_embed", "op_class": "query_embed", "depends_on": [], "state_policy": "stateless", "phone_candidate": true },
+    { "node_id": "retrieve", "op_class": "retrieval_cpu", "depends_on": ["query_embed"], "state_policy": "stateless", "phone_candidate": false },
+    { "node_id": "rerank", "op_class": "rerank", "depends_on": ["retrieve"], "state_policy": "stateless", "phone_candidate": true },
+    { "node_id": "context_assembly", "op_class": "context_asm_cpu", "depends_on": ["rerank"], "state_policy": "stateless", "phone_candidate": false },
+    { "node_id": "prefill", "op_class": "llm_prefill", "depends_on": ["context_assembly"], "state_policy": "rebuildable", "phone_candidate": true },
+    { "node_id": "decode", "op_class": "llm_decode", "depends_on": ["prefill"], "state_policy": "sticky", "phone_candidate": true },
+    { "node_id": "sample", "op_class": "sample", "depends_on": ["decode"], "state_policy": "stateless", "phone_candidate": false },
+    { "node_id": "detokenize", "op_class": "detokenize", "depends_on": ["sample"], "state_policy": "stateless", "phone_candidate": false }
+  ]
+}

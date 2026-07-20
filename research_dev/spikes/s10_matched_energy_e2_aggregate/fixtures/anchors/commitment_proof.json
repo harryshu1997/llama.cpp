@@ -1,0 +1,14 @@
+{
+  "commitment_namespace": "lazyllm.s10.e2a.synthetic",
+  "committed_plan_count": 1,
+  "committed_plan_set_sha256": "8a2ea4028a0c9e2037248aee1bd6e273075f2e3f62927182727beab952ce0ebe",
+  "committed_plan_sha256s": [
+    "874802c38720c4528abf691d52442819a8e26a98f3856878d86c3ad467ba8e41"
+  ],
+  "enumeration_status": "COMPLETE",
+  "experiment_identity": "s10.e2a.mechanics",
+  "identity_binding_sha256": "b92ddb2dd5d46db5925e659722602f875de8440f0cfd7ca154b11124821bf899",
+  "log_checkpoint_sha256": "38318b73f67a75ba94f70442d94923b22d8fc44b7c4cfa3356bba318d7229162",
+  "log_identity": "synthetic-log",
+  "schema": "e2a.commitment-proof.v4"
+}

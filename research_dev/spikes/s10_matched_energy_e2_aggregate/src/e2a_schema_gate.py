@@ -33,6 +33,8 @@ SCHEMA_NAMES = {
     "ledger": "attempt_ledger",
     "lifecycle": "lifecycle_record",
     "aggregate": "aggregate_comparison",
+    "bundle": "bundle",
+    "route": "route_schedule",
 }
 
 REF_KEYS = ("$ref", "$dynamicRef", "$recursiveRef")
@@ -75,7 +77,7 @@ def main():
         if not isinstance(document, dict):
             raise ValueError("document must be an object")
         version = document.get("schema_version")
-        if type(version) is not int or version not in (1, 2):
+        if type(version) is not int or version not in (1, 2, 3, 4):
             raise ValueError(f"unsupported schema_version {version!r}")
         schema_path = (ROOT / "schemas" /
                        f"{SCHEMA_NAMES[kind]}.v{version}.schema.json")

@@ -1,0 +1,75 @@
+{
+  "schema": "s14-bge-server-control-v3",
+  "checkpoint": "A",
+  "scope": "A6000_GPU_BOARD BGE encode latency/throughput; phone latency+energy OUT OF SCOPE",
+  "selected_gpu_uuid": "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f",
+  "second_gpu_uuid": "GPU-431a4567-fa90-7a73-625a-2ee6e7b5eaaf",
+  "second_gpu_idle_at_endpoints": true,
+  "model": "bge-small-en-v1.5-f16",
+  "model_sha256": "4cd429b83d2805e4028d96f6174b153bc87657808ba9f3b3c4f84d374b481e03",
+  "flash_attn": "off (explicit softmax; no CPU fallback)",
+  "bench": {
+    "procs": 1,
+    "reps_per_proc": 2,
+    "warmup": 1,
+    "method": "env-gated BGEPROF loop; load/tokenize/warmup excluded"
+  },
+  "correctness_cuda_vs_cpu": {
+    "32": {
+      "cuda_vs_cpu_cosine": 0.999999,
+      "n_embd": 384,
+      "seq_len_exact": 31
+    }
+  },
+  "cosine_gate": 0.999,
+  "artifacts": {
+    "bge_server_prof.py": "bf7abeba10892610145523e759713d77a160d5af292299d47620cb19dd22ff5b",
+    "embedding.cpp": "ac2b999f1d93bb4861073ec3673134d16477feae490d86f7daaf8870e1b95ae3",
+    "llama_embedding_cuda": "fa3fc4d32d9eea638fb216ecc17bf5eb86a0f4a01f655e8faab927e74563724c",
+    "llama_embedding_cpu": "b15ae26bc34f944ca86d0d4958256128ad377da7ee1bc1ae8ed23bb61b6cd594"
+  },
+  "shapes": [
+    {
+      "seq_len_target": 32,
+      "seq_len_exact": 31,
+      "batch": 1,
+      "ok_procs": 1,
+      "n_samples": 2,
+      "lat_us_p50": 3024.78,
+      "lat_us_p95": 4547.17,
+      "lat_us_p99": 4682.5,
+      "lat_us_mean": 3024.78,
+      "cov": 0.5592,
+      "throughput_enc_s": 330.6,
+      "placement_status": "SCHEDULED_PLACEMENT_OK",
+      "placement_compute_by_buffer": {
+        "CUDA0": 296,
+        "CUDA_Host": 2
+      },
+      "placement_non_cuda_ops": []
+    }
+  ],
+  "throughput_knee_measured": {},
+  "roofline_analytic": {
+    "a6000_ridge_flop_per_byte": 201.8,
+    "weight_bytes_f16": 42467328,
+    "geometry": "fa_off_no_cache_attention_over_total_batch_tokens",
+    "classification": "UNCLASSIFIED_USE_MEASURED_KNEE",
+    "note": "weight-only arithmetic intensity is an optimistic upper bound; it omits activation, mask, and intermediate traffic and cannot prove compute-bound. The executed graph performs masked cross-sequence attention work.",
+    "points": [
+      {
+        "seq_len_target": 32,
+        "seq_len_exact": 31,
+        "batch": 1,
+        "total_tokens": 31,
+        "useful_fwd_gflops": 1.33,
+        "executed_fwd_gflops": 1.33,
+        "masked_excess_gflops": 0.0,
+        "weight_only_ai_upper_bound": 31.4,
+        "regime": "UNCLASSIFIED_USE_MEASURED_KNEE"
+      }
+    ]
+  },
+  "failures": [],
+  "n_failures": 0
+}

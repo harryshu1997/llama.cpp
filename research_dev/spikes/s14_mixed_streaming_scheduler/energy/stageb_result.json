@@ -1,0 +1,403 @@
+{
+  "schema": "s14-stage-b-deep-head-placement-v1",
+  "scope": "OP15_HTP0_ISLAND_FEASIBILITY_PLACEMENT_AND_PHONE_STAGE_LATENCY_ONLY_PHONE_ENERGY_UNKNOWN",
+  "formal_claim": "DEEP_HEAD_PLACEMENT_CERT",
+  "device": {
+    "serial": "3C15AU002CL00000",
+    "soc": "SM8850",
+    "hexagon": "v81",
+    "backend": "HTP0"
+  },
+  "phone_binary_sha256": "ba6ab706de4424c4199486832f602b3844871cb7ca8515ab59b240f547c521dd",
+  "host_binary": "/home/myid/zs89458/Documents/llama.cpp-release/build-cuda/bin/llama-layersplit",
+  "model": "gemma-4-12b-it-f16",
+  "n_layer": 48,
+  "batch": 1,
+  "n_gen": 8,
+  "requests": 12,
+  "warmups": 3,
+  "decode_no_fa": false,
+  "reference_token_ids": [
+    108,
+    45518,
+    107,
+    100,
+    45518,
+    107,
+    101,
+    28925
+  ],
+  "feasibility_summary": {
+    "max_feasible_head_k": 8,
+    "certified_k": [
+      2,
+      6,
+      8
+    ],
+    "dsp_abort_k": [
+      10,
+      12
+    ],
+    "dsp_single_buffer_cap_note": "HTP0 weight buffer must stay under ~4 GiB (2^32 B); k>=10 (>=4.3 GiB) aborts with dspqueue_read failed in flush_pending."
+  },
+  "per_k": [
+    {
+      "k": 2,
+      "layer_range": [
+        0,
+        2
+      ],
+      "shard": "/data/local/tmp/ls-npu/12b-f16-head-0-2.gguf",
+      "shard_sha256": "45d894d090f27889914b2cd8e5f4b7dbfe376d1ded7194d70efdcb79200ada49",
+      "hexagon_mbuf_mib": 3072,
+      "n_requests_measured": 12,
+      "batch": 1,
+      "n_gen": 8,
+      "placement_status": "SCHEDULED_PLACEMENT_OK",
+      "compute_htp0_nodes": 7080,
+      "compute_cpu_nodes": 120,
+      "missing_buffer_compute_nodes": 0,
+      "htp0_model_buffer_mib": 855.13,
+      "cpu_mapped_mib": 1920.0,
+      "phone_resident_total_mib": 2775.13,
+      "stage_a_us_p50": 442616,
+      "stage_a_us_min": 301175,
+      "stage_a_us_max": 467609,
+      "host_us_p50": 291916,
+      "request_wall_us_p50": 734327,
+      "token_ids": [
+        108,
+        45518,
+        107,
+        100,
+        45518,
+        107,
+        101,
+        28925
+      ],
+      "placement_cert": {
+        "schema": "layersplit-scheduled-placement-v2",
+        "role": "phone_stage",
+        "mode": "stagenet",
+        "layer_start": 0,
+        "layer_end": 2,
+        "n_layer": 48,
+        "pid": 7849,
+        "run_rc": 0,
+        "compute_nodes": 7200,
+        "copy_nodes": 0,
+        "metadata_nodes": 2880,
+        "missing_buffer_compute_nodes": 0,
+        "compute_by_buffer_type": {
+          "CPU": 120,
+          "HTP0": 7080
+        },
+        "compute_by_op": {
+          "ADD": 480,
+          "FLASH_ATTN_EXT": 240,
+          "GET_ROWS": 120,
+          "GLU": 240,
+          "MUL": 1680,
+          "MUL_MAT": 1680,
+          "RMS_NORM": 1680,
+          "ROPE": 480,
+          "SCALE": 120,
+          "SET_ROWS": 480
+        },
+        "compute_by_op_and_buffer": {
+          "ADD": {
+            "HTP0": 480
+          },
+          "FLASH_ATTN_EXT": {
+            "HTP0": 240
+          },
+          "GET_ROWS": {
+            "CPU": 120
+          },
+          "GLU": {
+            "HTP0": 240
+          },
+          "MUL": {
+            "HTP0": 1680
+          },
+          "MUL_MAT": {
+            "HTP0": 1680
+          },
+          "RMS_NORM": {
+            "HTP0": 1680
+          },
+          "ROPE": {
+            "HTP0": 480
+          },
+          "SCALE": {
+            "HTP0": 120
+          },
+          "SET_ROWS": {
+            "HTP0": 480
+          }
+        },
+        "copy_by_buffer_type": {},
+        "status": "SCHEDULED_PLACEMENT_OK"
+      },
+      "model_buffers_mib": {
+        "CPU_Mapped": 1920.0,
+        "HTP0": 855.13
+      },
+      "host_returncode": 0,
+      "token_match_vs_mono": true
+    },
+    {
+      "k": 6,
+      "layer_range": [
+        0,
+        6
+      ],
+      "shard": "/data/local/tmp/ls-npu/12b-f16-head-0-6.gguf",
+      "shard_sha256": "d507b7bb453242dff12ba1ce0add53189755b8a9a2b960743ead1578d8f1a6b5",
+      "hexagon_mbuf_mib": 3336,
+      "n_requests_measured": 12,
+      "batch": 1,
+      "n_gen": 8,
+      "placement_status": "SCHEDULED_PLACEMENT_OK",
+      "compute_htp0_nodes": 20880,
+      "compute_cpu_nodes": 120,
+      "missing_buffer_compute_nodes": 0,
+      "htp0_model_buffer_mib": 2599.12,
+      "cpu_mapped_mib": 1920.0,
+      "phone_resident_total_mib": 4519.12,
+      "stage_a_us_p50": 782703,
+      "stage_a_us_min": 683923,
+      "stage_a_us_max": 808878,
+      "host_us_p50": 269816,
+      "request_wall_us_p50": 1052554,
+      "token_ids": [
+        108,
+        45518,
+        107,
+        100,
+        45518,
+        107,
+        101,
+        28925
+      ],
+      "placement_cert": {
+        "schema": "layersplit-scheduled-placement-v2",
+        "role": "phone_stage",
+        "mode": "stagenet",
+        "layer_start": 0,
+        "layer_end": 6,
+        "n_layer": 48,
+        "pid": 7894,
+        "run_rc": 0,
+        "compute_nodes": 21000,
+        "copy_nodes": 0,
+        "metadata_nodes": 8640,
+        "missing_buffer_compute_nodes": 0,
+        "compute_by_buffer_type": {
+          "CPU": 120,
+          "HTP0": 20880
+        },
+        "compute_by_op": {
+          "ADD": 1440,
+          "FLASH_ATTN_EXT": 720,
+          "GET_ROWS": 120,
+          "GLU": 720,
+          "MUL": 5040,
+          "MUL_MAT": 4920,
+          "RMS_NORM": 5040,
+          "ROPE": 1440,
+          "SCALE": 120,
+          "SET_ROWS": 1440
+        },
+        "compute_by_op_and_buffer": {
+          "ADD": {
+            "HTP0": 1440
+          },
+          "FLASH_ATTN_EXT": {
+            "HTP0": 720
+          },
+          "GET_ROWS": {
+            "CPU": 120
+          },
+          "GLU": {
+            "HTP0": 720
+          },
+          "MUL": {
+            "HTP0": 5040
+          },
+          "MUL_MAT": {
+            "HTP0": 4920
+          },
+          "RMS_NORM": {
+            "HTP0": 5040
+          },
+          "ROPE": {
+            "HTP0": 1440
+          },
+          "SCALE": {
+            "HTP0": 120
+          },
+          "SET_ROWS": {
+            "HTP0": 1440
+          }
+        },
+        "copy_by_buffer_type": {},
+        "status": "SCHEDULED_PLACEMENT_OK"
+      },
+      "model_buffers_mib": {
+        "CPU_Mapped": 1920.0,
+        "HTP0": 2599.12
+      },
+      "host_returncode": 0,
+      "token_match_vs_mono": true
+    },
+    {
+      "k": 8,
+      "layer_range": [
+        0,
+        8
+      ],
+      "shard": "/data/local/tmp/ls-npu/12b-f16-head-0-8.gguf",
+      "shard_sha256": "a74845294bc1a3cba6ac26c747615d64d9127c904aae04c43c7ea2ebc1ea25c8",
+      "hexagon_mbuf_mib": 4192,
+      "n_requests_measured": 12,
+      "batch": 1,
+      "n_gen": 8,
+      "placement_status": "SCHEDULED_PLACEMENT_OK",
+      "compute_htp0_nodes": 27840,
+      "compute_cpu_nodes": 120,
+      "missing_buffer_compute_nodes": 0,
+      "htp0_model_buffer_mib": 3454.24,
+      "cpu_mapped_mib": 1920.0,
+      "phone_resident_total_mib": 5374.24,
+      "stage_a_us_p50": 934148,
+      "stage_a_us_min": 850527,
+      "stage_a_us_max": 974259,
+      "host_us_p50": 258627,
+      "request_wall_us_p50": 1192421,
+      "token_ids": [
+        108,
+        45518,
+        107,
+        100,
+        45518,
+        107,
+        101,
+        28925
+      ],
+      "placement_cert": {
+        "schema": "layersplit-scheduled-placement-v2",
+        "role": "phone_stage",
+        "mode": "stagenet",
+        "layer_start": 0,
+        "layer_end": 8,
+        "n_layer": 48,
+        "pid": 7933,
+        "run_rc": 0,
+        "compute_nodes": 27960,
+        "copy_nodes": 0,
+        "metadata_nodes": 11520,
+        "missing_buffer_compute_nodes": 0,
+        "compute_by_buffer_type": {
+          "CPU": 120,
+          "HTP0": 27840
+        },
+        "compute_by_op": {
+          "ADD": 1920,
+          "FLASH_ATTN_EXT": 960,
+          "GET_ROWS": 120,
+          "GLU": 960,
+          "MUL": 6720,
+          "MUL_MAT": 6600,
+          "RMS_NORM": 6720,
+          "ROPE": 1920,
+          "SCALE": 120,
+          "SET_ROWS": 1920
+        },
+        "compute_by_op_and_buffer": {
+          "ADD": {
+            "HTP0": 1920
+          },
+          "FLASH_ATTN_EXT": {
+            "HTP0": 960
+          },
+          "GET_ROWS": {
+            "CPU": 120
+          },
+          "GLU": {
+            "HTP0": 960
+          },
+          "MUL": {
+            "HTP0": 6720
+          },
+          "MUL_MAT": {
+            "HTP0": 6600
+          },
+          "RMS_NORM": {
+            "HTP0": 6720
+          },
+          "ROPE": {
+            "HTP0": 1920
+          },
+          "SCALE": {
+            "HTP0": 120
+          },
+          "SET_ROWS": {
+            "HTP0": 1920
+          }
+        },
+        "copy_by_buffer_type": {},
+        "status": "SCHEDULED_PLACEMENT_OK"
+      },
+      "model_buffers_mib": {
+        "CPU_Mapped": 1920.0,
+        "HTP0": 3454.24
+      },
+      "host_returncode": 0,
+      "token_match_vs_mono": true
+    },
+    {
+      "k": 10,
+      "layer_range": [
+        0,
+        10
+      ],
+      "shard": "/data/local/tmp/ls-npu/12b-f16-head-0-10.gguf",
+      "shard_sha256": "82f187140f0ed666536c34827f7b9c4f204aa80d8b17f0631ac038055acf3ca1",
+      "hexagon_mbuf_mib": 5048,
+      "placement_status": "DSP_QUEUE_ABORT",
+      "infeasible_reason": "ggml-hexagon dspqueue_read failed 0x0000002e in flush_pending (HTP0 weight buffer 4309 MiB exceeds the ~4 GiB DSP single-buffer cap)",
+      "htp0_model_buffer_mib": 4309.36,
+      "cpu_mapped_mib": 1920.0,
+      "phone_resident_total_mib": 6229.36,
+      "loaded_ok": true,
+      "host_returncode": 3
+    },
+    {
+      "k": 12,
+      "layer_range": [
+        0,
+        12
+      ],
+      "shard": "/data/local/tmp/ls-npu/12b-f16-head-0-12.gguf",
+      "shard_sha256": "dbe1158cee4204691b204b75f5dfa7cb93d4be4662e2a4b117b516722b1d8998",
+      "hexagon_mbuf_mib": 5904,
+      "placement_status": "DSP_QUEUE_ABORT",
+      "infeasible_reason": "ggml-hexagon dspqueue_read failed 0x0000002e in flush_pending (HTP0 weight buffer 5198 MiB exceeds the ~4 GiB DSP single-buffer cap)",
+      "htp0_model_buffer_mib": 5198.24,
+      "cpu_mapped_mib": 1920.0,
+      "phone_resident_total_mib": 7118.24,
+      "loaded_ok": true,
+      "host_returncode": 3
+    }
+  ],
+  "caveats": [
+    "OP15/HTP0 island feasibility + placement + phone-side stage latency ONLY.",
+    "Phone ENERGY is UNKNOWN (no phone power instrument on this host).",
+    "token_embd (f16) is CPU_Mapped (declared GET_ROWS exception), NOT a fallback failure; SCHEDULED_PLACEMENT_OK with missing_buffer=0 is the no-fallback certificate.",
+    "stage_a_us is the phone head time measured over adb/USB incremental decode; it includes the USB relay, so it is an UPPER bound on the on-device head compute.",
+    "DSP single-buffer cap: the HTP0 weight buffer must stay < ~4 GiB. Heads k>=10 LOAD but abort on the first forward (dspqueue_read failed in flush_pending). Max feasible single-phone head is [0,8) (HTP0 buffer 3454 MiB). [0,12) (the 22.8% Stage-A ceiling) is NOT realisable as one single-phone island here.",
+    "measured single-stream (batch=1), matching the frozen S11-E0 GREEDY_SINGLE_STREAM method. Batched multi-seq HTP decode is a separate known hang (S1); GGML_DECODE_NO_FA forces the non-FA path which ALSO hangs the global-attention layers (>=5) on v81, so FA is left ON.",
+    "This makes the feasible islands dispatch-ELIGIBLE; it does not by itself prove a total-system energy saving (see Stage D overlap)."
+  ]
+}

@@ -39,8 +39,6 @@ OUT = ROOT / "fixtures"
 WORKLOAD = canon.digest({"workload": "s10_e2a_synthetic"})
 TRACE = canon.digest({"trace": "s10_e2a_synthetic"})
 SLO = canon.digest({"slo_policy": "s10_e2a_synthetic"})
-SCHEDULE_CONTROL = canon.digest({"schedule": "control"})
-SCHEDULE_TREATMENT = canon.digest({"schedule": "treatment"})
 POLICY_CONTROL = canon.digest({"policy": "OPTIMIZED_SERVER_ONLY_CONTROL"})
 POLICY_TREATMENT = canon.digest({"policy": "Q_PIM_TREATMENT"})
 NORMALIZER = canon.digest({"normalizer": "e2.zoh.left_edge.v1"})
@@ -51,8 +49,12 @@ STOP_SET = canon.digest({"stop": ["<eos>"]})
 DECODE_PARAMS = canon.digest({"decode": "greedy-synthetic"})
 CLOCK_EPOCH = "boot-synthetic-e2a-0000"
 BOARD = "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f"
+PHONE = "phone.op15"
+USB_LINK = "usb.bus006"
+CONTROL_DEVICE = "host.control"
 SET_ID = "set.s10.e2a.synthetic"
 CHAIN_ID = "chain.s10.e2a.synthetic"
+COMMITMENT_NAMESPACE = "lazyllm.s10.e2a.synthetic"
 
 N_PAIRS = 8
 WINDOW_US = 20_000_000
@@ -65,6 +67,118 @@ N_REQUESTS = 3
 
 CONTROL_ROLE = "OPTIMIZED_SERVER_ONLY_CONTROL"
 TREATMENT_ROLE = "Q_PIM_TREATMENT"
+
+
+def route_schedule(man, role):
+    request_ids = [entry["request_id"] for entry in man["entries"]]
+    treatment = role == TREATMENT_ROLE
+    compute_domain = "PHONE" if treatment else "SERVER"
+    compute_device = PHONE if treatment else BOARD
+    compute_backend = "HTP" if treatment else "CUDA"
+    transfer_backend = "USB_BULK" if treatment else "CUDA"
+    island = canon.digest({
+        "island": "gemma.synthetic.decode",
+        "role": role,
+    })
+
+    def node(action_id, action_kind, domain, device, backend, requests,
+             input_requirement="ZERO", output_requirement="ZERO",
+             duration_requirement="POSITIVE", lease_requirement="REQUIRED",
+             operator_island_digest=None, model_digest=None):
+        return {
+            "action_id": action_id,
+            "action_kind": action_kind,
+            "execution_domain": domain,
+            "device_identity": device,
+            "backend_kind": backend,
+            "operator_island_digest": operator_island_digest,
+            "model_digest": model_digest,
+            "request_ids": requests,
+            "input_requirement": input_requirement,
+            "output_requirement": output_requirement,
+            "duration_requirement": duration_requirement,
+            "lease_requirement": lease_requirement,
+        }
+
+    nodes = [
+        node("a.lease", "LEASE_ACQUIRE", "CONTROL", CONTROL_DEVICE,
+             "CONTROL", []),
+        node("a.prefetch", "PREFETCH", compute_domain, compute_device,
+             compute_backend, []),
+        node("a.h2d", "H2D", compute_domain, compute_device,
+             transfer_backend, request_ids, input_requirement="POSITIVE"),
+    ]
+    for index, request_id in enumerate(request_ids):
+        nodes.append(
+            node(f"a.submit.{index}", "QUEUE_SUBMIT", "CONTROL",
+                 CONTROL_DEVICE, "CONTROL", [request_id],
+                 duration_requirement="NONNEGATIVE"))
+    nodes.extend([
+        node("a.exec", "EXEC", compute_domain, compute_device, compute_backend,
+             request_ids, input_requirement="POSITIVE",
+             output_requirement="POSITIVE",
+             operator_island_digest=island, model_digest=MODEL),
+        node("a.d2h", "D2H", compute_domain, compute_device, transfer_backend,
+             request_ids, output_requirement="POSITIVE"),
+        node("a.result", "RESULT_EMIT", "CONTROL", CONTROL_DEVICE, "CONTROL",
+             request_ids),
+        node("a.cleanup", "CLEANUP", compute_domain, compute_device,
+             compute_backend, []),
+        node("a.release", "LEASE_RELEASE", "CONTROL", CONTROL_DEVICE,
+             "CONTROL", []),
+        node("a.drain", "QUEUE_DRAIN", "CONTROL", CONTROL_DEVICE, "CONTROL",
+             [], lease_requirement="FORBIDDEN"),
+    ])
+
+    def edge(edge_id, source, target, kind, requests=None, payload_id=None):
+        return {
+            "edge_id": edge_id,
+            "from_action_id": source,
+            "to_action_id": target,
+            "edge_kind": kind,
+            "payload_id": payload_id,
+            "request_ids": requests or [],
+        }
+
+    route_prefix = "phone" if treatment else "server"
+    edges = [
+        edge("e.lease.prefetch", "a.lease", "a.prefetch", "CONTROL"),
+        edge("e.prefetch.h2d", "a.prefetch", "a.h2d", "CONTROL"),
+        edge("e.h2d.exec", "a.h2d", "a.exec", "DATA",
+             request_ids, f"{route_prefix}.input"),
+    ]
+    for index, request_id in enumerate(request_ids):
+        edges.append(
+            edge(f"e.lease.submit.{index}", "a.lease", f"a.submit.{index}",
+                 "CONTROL", [request_id]))
+        edges.append(
+            edge(f"e.submit.{index}.exec", f"a.submit.{index}", "a.exec",
+                 "CONTROL", [request_id]))
+    edges.extend([
+        edge("e.exec.d2h", "a.exec", "a.d2h", "DATA",
+             request_ids, f"{route_prefix}.output"),
+        edge("e.d2h.result", "a.d2h", "a.result", "DATA",
+             request_ids, f"{route_prefix}.result"),
+        edge("e.result.cleanup", "a.result", "a.cleanup", "CONTROL"),
+        edge("e.cleanup.release", "a.cleanup", "a.release", "CONTROL"),
+        edge("e.release.drain", "a.release", "a.drain", "CONTROL"),
+    ])
+    record = {
+        "schema_version": 4,
+        "kind": "RouteSchedule",
+        "route_id": ("route.treatment.synthetic" if treatment
+                     else "route.control.synthetic"),
+        "role": role,
+        "request_set_manifest_sha256": man["record_sha256"],
+        "model_digest": MODEL,
+        "server_device_ids": [BOARD],
+        "phone_device_ids": [PHONE],
+        "phone_assisted_request_ids": request_ids if treatment else [],
+        "nodes": nodes,
+        "edges": edges,
+        "record_sha256": "",
+    }
+    return canon.seal(record)
 
 
 def role_for(slot_index):
@@ -94,7 +208,7 @@ def make_samples(power_mw, start_us, window_us, period_us):
     return samples
 
 
-def timeline(slot_index, power_mw, uncertainty_mw=UNCERTAINTY_MW,
+def timeline(slot_index, power_mw, route, uncertainty_mw=UNCERTAINTY_MW,
              provenance="SYNTHETIC", instrument_kind="SYNTHETIC"):
     role = role_for(slot_index)
     # Slots start at stride 1, not 0: the ledger records a SLOT_OPEN before each
@@ -119,8 +233,7 @@ def timeline(slot_index, power_mw, uncertainty_mw=UNCERTAINTY_MW,
         "workload_digest": WORKLOAD,
         "trace_digest": TRACE,
         "slo_policy_digest": SLO,
-        "route_schedule_digest": (SCHEDULE_CONTROL if role == CONTROL_ROLE
-                                  else SCHEDULE_TREATMENT),
+        "route_schedule_digest": route["record_sha256"],
         "offered_work": N_REQUESTS,
         "completed_work": N_REQUESTS,
         "outcomes": {"met": N_REQUESTS, "tardy": 0, "rejected": 0, "canceled": 0},
@@ -198,7 +311,7 @@ def manifest():
             {k: v for k, v in entry.items() if k != "entry_sha256"})
         entries.append(entry)
     record = {
-        "schema_version": 2,
+        "schema_version": 4,
         "kind": "RequestSetManifest",
         "manifest_id": "manifest.s10.e2a.synthetic",
         "set_id": SET_ID,
@@ -231,7 +344,7 @@ def outcomes_for(slot_index, tl, man):
             for position, token_id in enumerate(token_ids)
         ]
         output = {
-            "schema": "e2a.output.v2",
+            "schema": "e2a.output.v4",
             "timeline_id": tl["timeline_id"],
             "run_nonce": tl["run_nonce"],
             "request_id": rid,
@@ -239,6 +352,10 @@ def outcomes_for(slot_index, tl, man):
             "tokenizer_digest": entry["tokenizer_digest"],
             "sampling_mode": entry["sampling_mode"],
             "seed": entry["seed"],
+            "input_sha256": entry["input_sha256"],
+            "prompt_token_ids_sha256": entry["prompt_token_ids_sha256"],
+            "decode_params_digest": entry["decode_params_digest"],
+            "stop_set_digest": entry["stop_set_digest"],
             "arrival_us": arrival_us,
             "dispatched_us": dispatched_us,
             "token_events": token_events,
@@ -254,6 +371,11 @@ def outcomes_for(slot_index, tl, man):
             "weights_transform_id": "IDENTITY",
             "realized_seed": entry["seed"],
             "realized_sampling_mode": "GREEDY",
+            "realized_input_sha256": entry["input_sha256"],
+            "realized_prompt_token_ids_sha256":
+                entry["prompt_token_ids_sha256"],
+            "realized_decode_params_digest": entry["decode_params_digest"],
+            "realized_stop_set_digest": entry["stop_set_digest"],
             "realized_output_tokens": 48,
             "stop_reason": "EOS",
             "terminal_outcome": "met",
@@ -272,7 +394,7 @@ def outcomes_for(slot_index, tl, man):
             },
         })
     record = {
-        "schema_version": 2,
+        "schema_version": 4,
         "kind": "RequestOutcomeRecord",
         "outcome_set_id": f"outcomes.slot{slot_index:02d}",
         "set_id": SET_ID,
@@ -287,7 +409,7 @@ def outcomes_for(slot_index, tl, man):
     return canon.seal(record), artifacts
 
 
-def lifecycle_for(slot_index, tl, man):
+def lifecycle_for(slot_index, tl, man, route):
     start = tl["window_start_us"]
     end = tl["window_end_us"]
     actions = [
@@ -342,16 +464,39 @@ def lifecycle_for(slot_index, tl, man):
          "ack_us": end - 600_000, "lease_id": None, "parent_action_id": None},
     ])
     request_ids = [f"req.{index}" for index in range(N_REQUESTS)]
+    nodes = {node["action_id"]: node for node in route["nodes"]}
+    incoming = {}
+    for edge in route["edges"]:
+        incoming.setdefault(edge["to_action_id"], []).append(
+            edge["from_action_id"])
     for action in actions:
-        if action["action_kind"] in ("EXEC", "RESULT_EMIT"):
+        if action["action_kind"] in ("H2D", "EXEC", "D2H", "RESULT_EMIT"):
             action["request_ids"] = request_ids
         elif action["action_kind"] == "QUEUE_SUBMIT":
             index = int(action["action_id"].rsplit(".", 1)[1])
             action["request_ids"] = [request_ids[index]]
         else:
             action["request_ids"] = []
+        node = nodes[action["action_id"]]
+        action["parent_action_id"] = (
+            sorted(incoming.get(action["action_id"], []))[0]
+            if incoming.get(action["action_id"]) else None)
+        action["route_schedule_digest"] = route["record_sha256"]
+        action["execution_domain"] = node["execution_domain"]
+        action["device_identity"] = node["device_identity"]
+        action["backend_kind"] = node["backend_kind"]
+        action["operator_island_digest"] = node["operator_island_digest"]
+        action["model_digest"] = node["model_digest"]
+        action["input_bytes"] = (
+            8 * 1024 * 1024
+            if action["action_kind"] == "H2D"
+            else 4096 if node["input_requirement"] == "POSITIVE" else 0)
+        action["output_bytes"] = (
+            4096 if node["output_requirement"] == "POSITIVE" else 0)
+        action["lease_id"] = (
+            "lease.0" if node["lease_requirement"] == "REQUIRED" else None)
     record = {
-        "schema_version": 2,
+        "schema_version": 4,
         "kind": "LifecycleRecord",
         "lifecycle_id": f"lc.slot{slot_index:02d}",
         "set_id": SET_ID,
@@ -369,7 +514,7 @@ def lifecycle_for(slot_index, tl, man):
     return canon.seal(record)
 
 
-def plan(man, timelines, lifecycles):
+def plan(man, timelines, lifecycles, routes):
     slots = []
     for slot_index in range(2 * N_PAIRS):
         slots.append({
@@ -385,7 +530,7 @@ def plan(man, timelines, lifecycles):
         })
     declared_order = [role_for(index) for index in range(2 * N_PAIRS)]
     record = {
-        "schema_version": 2,
+        "schema_version": 4,
         "kind": "PreRunPlan",
         "plan_id": "plan.s10.e2a.synthetic",
         "chain_id": CHAIN_ID,
@@ -405,6 +550,13 @@ def plan(man, timelines, lifecycles):
         "slo_policy_digest": SLO,
         "policy_digest_control": POLICY_CONTROL,
         "policy_digest_treatment": POLICY_TREATMENT,
+        "route_schedule_digest_control":
+            routes[CONTROL_ROLE]["record_sha256"],
+        "route_schedule_digest_treatment":
+            routes[TREATMENT_ROLE]["record_sha256"],
+        "server_device_ids": [BOARD],
+        "phone_device_ids": [PHONE],
+        "commitment_namespace": COMMITMENT_NAMESPACE,
         "model_digest": MODEL,
         "tokenizer_digest": TOKENIZER,
         "sampler_digest": SAMPLER,
@@ -417,6 +569,7 @@ def plan(man, timelines, lifecycles):
         "board_uuids": [BOARD],
         "included_rails": [f"{BOARD}/BOARD"],
         "excluded_rails": ["SERVER/USB_VBUS", "PHONE/BATTERY"],
+        "server_wall_capability_record_sha256": None,
         "record_sha256": "",
     }
     return canon.seal(record)
@@ -475,7 +628,7 @@ def ledger(pln, plan_anchor, timelines, lifecycles, outcomes):
                lifecycles[slot_index]["drain_acknowledged_us"])
     append("SET_SEAL", -1, (2 * N_PAIRS + 2) * SLOT_STRIDE_US)
     record = {
-        "schema_version": 2,
+        "schema_version": 4,
         "kind": "AttemptLedger",
         "ledger_id": "ledger.s10.e2a.synthetic",
         "chain_id": CHAIN_ID,
@@ -488,7 +641,7 @@ def ledger(pln, plan_anchor, timelines, lifecycles, outcomes):
     return canon.seal(record)
 
 
-def anchor_receipt(pln, anchor_kind="RFC3161_TSA",
+def anchor_receipt(pln, proof_digest, anchor_kind="RFC3161_TSA",
                    trust_root_custodian="THIRD_PARTY_CA",
                    pin_location="E2A_FROZEN_CONSTANT"):
     """A receipt that is as strong as this host can make one.
@@ -500,13 +653,15 @@ def anchor_receipt(pln, anchor_kind="RFC3161_TSA",
     E_ANCHOR_NOT_INDEPENDENT, about one it does.
     """
     record = {
-        "schema_version": 2,
+        "schema_version": 4,
         "kind": "PlanAnchorReceipt",
         "anchor_id": "anchor.plan.s10.e2a.synthetic",
         "anchor_kind": anchor_kind,
         "chain_id": CHAIN_ID,
         "set_id": SET_ID,
         "plan_id": pln["plan_id"],
+        "experiment_identity": pln["experiment_identity"],
+        "commitment_namespace": pln["commitment_namespace"],
         "anchored_digest": pln["record_sha256"],
         "message_imprint_sha256": pln["record_sha256"],
         "token_hash_algorithm": "sha256",
@@ -521,6 +676,16 @@ def anchor_receipt(pln, anchor_kind="RFC3161_TSA",
         "trust_root_sha256": canon.digest({"root": "synthetic-tsa"}),
         "trust_root_pin_location": pin_location,
         "trust_root_custodian": trust_root_custodian,
+        "log_identity": "synthetic-log",
+        "log_checkpoint_sha256": canon.digest({"checkpoint": 1}),
+        "identity_binding_sha256": canon.digest({
+            "identity": pln["experiment_identity"],
+        }),
+        "commitment_proof_path": "anchors/commitment_proof.json",
+        "commitment_proof_sha256": proof_digest,
+        "enumeration_status": "COMPLETE",
+        "committed_plan_count": 1,
+        "committed_plan_set_sha256": canon.digest([pln["record_sha256"]]),
         "verifier_kind": "OPENSSL_TS_VERIFY",
         "provenance": "MEASURED",
         "status": "OK",
@@ -530,14 +695,17 @@ def anchor_receipt(pln, anchor_kind="RFC3161_TSA",
     return canon.seal(record)
 
 
-def close_receipt(pln, anchor, led, anchor_kind="RFC3161_TSA"):
+def close_receipt(pln, anchor, led, proof_digest,
+                  anchor_kind="RFC3161_TSA"):
     record = {
-        "schema_version": 2,
+        "schema_version": 4,
         "kind": "LedgerCloseReceipt",
         "close_id": "anchor.close.s10.e2a.synthetic",
         "anchor_kind": anchor_kind,
         "chain_id": CHAIN_ID,
         "set_id": SET_ID,
+        "experiment_identity": pln["experiment_identity"],
+        "commitment_namespace": pln["commitment_namespace"],
         "plan_anchor_id": anchor["anchor_id"],
         "plan_anchor_record_sha256": anchor["record_sha256"],
         "attempt_ledger_sha256": led["record_sha256"],
@@ -556,6 +724,14 @@ def close_receipt(pln, anchor, led, anchor_kind="RFC3161_TSA"):
         "trust_root_sha256": canon.digest({"root": "synthetic-tsa"}),
         "trust_root_pin_location": "E2A_FROZEN_CONSTANT",
         "trust_root_custodian": "THIRD_PARTY_CA",
+        "log_identity": anchor["log_identity"],
+        "log_checkpoint_sha256": anchor["log_checkpoint_sha256"],
+        "identity_binding_sha256": anchor["identity_binding_sha256"],
+        "commitment_proof_path": anchor["commitment_proof_path"],
+        "commitment_proof_sha256": proof_digest,
+        "enumeration_status": anchor["enumeration_status"],
+        "committed_plan_count": anchor["committed_plan_count"],
+        "committed_plan_set_sha256": anchor["committed_plan_set_sha256"],
         "verifier_kind": "OPENSSL_TS_VERIFY",
         "provenance": "MEASURED",
         "status": "OK",
@@ -590,8 +766,20 @@ def generate():
         TOKEN_DIGESTS[name] = canon.sha256_bytes(blob)
 
     man = manifest()
-    _write(OUT / "manifest.json",
-           json.dumps(man, indent=2, sort_keys=True) + "\n")
+    manifest_text = json.dumps(man, indent=2, sort_keys=True) + "\n"
+    _write(OUT / "manifest.json", manifest_text)
+
+    routes = {
+        CONTROL_ROLE: route_schedule(man, CONTROL_ROLE),
+        TREATMENT_ROLE: route_schedule(man, TREATMENT_ROLE),
+    }
+    route_texts = {}
+    for role, name in ((CONTROL_ROLE, "route_control.json"),
+                       (TREATMENT_ROLE, "route_treatment.json")):
+        route_text = json.dumps(
+            routes[role], indent=2, sort_keys=True) + "\n"
+        route_texts[role] = route_text
+        _write(OUT / "routes" / name, route_text)
 
     timelines = {}
     lifecycles = {}
@@ -600,7 +788,8 @@ def generate():
     for slot_index in range(2 * N_PAIRS):
         role = role_for(slot_index)
         power = CONTROL_MW if role == CONTROL_ROLE else TREATMENT_MW
-        tl, raw_text, execution_text = timeline(slot_index, power)
+        route = routes[role]
+        tl, raw_text, execution_text = timeline(slot_index, power, route)
         timelines[slot_index] = tl
         _write(OUT / "raw" / f"{tl['timeline_id']}.json", raw_text)
         _write(OUT / "execution" / f"{tl['timeline_id']}.json", execution_text)
@@ -608,7 +797,7 @@ def generate():
         tl_path = OUT / "timelines" / f"{tl['timeline_id']}.json"
         _write(tl_path, tl_text)
 
-        lc = lifecycle_for(slot_index, tl, man)
+        lc = lifecycle_for(slot_index, tl, man, route)
         lifecycles[slot_index] = lc
         lc_text = json.dumps(lc, indent=2, sort_keys=True) + "\n"
         _write(OUT / "lifecycle" / f"{lc['lifecycle_id']}.json", lc_text)
@@ -630,11 +819,29 @@ def generate():
             "outcomes_sha256": canon.sha256_bytes(ro_text.encode("ascii")),
         })
 
-    pln = plan(man, timelines, lifecycles)
+    pln = plan(man, timelines, lifecycles, routes)
     plan_text = json.dumps(pln, indent=2, sort_keys=True) + "\n"
     _write(OUT / "plan.json", plan_text)
 
-    anchor = anchor_receipt(pln)
+    proof = {
+        "schema": "e2a.commitment-proof.v4",
+        "experiment_identity": pln["experiment_identity"],
+        "commitment_namespace": pln["commitment_namespace"],
+        "log_identity": "synthetic-log",
+        "log_checkpoint_sha256": canon.digest({"checkpoint": 1}),
+        "identity_binding_sha256": canon.digest({
+            "identity": pln["experiment_identity"],
+        }),
+        "enumeration_status": "COMPLETE",
+        "committed_plan_count": 1,
+        "committed_plan_sha256s": [pln["record_sha256"]],
+        "committed_plan_set_sha256": canon.digest([pln["record_sha256"]]),
+    }
+    proof_text = json.dumps(proof, indent=2, sort_keys=True) + "\n"
+    _write(OUT / "anchors" / "commitment_proof.json", proof_text)
+    proof_digest = canon.sha256_bytes(proof_text.encode("ascii"))
+
+    anchor = anchor_receipt(pln, proof_digest)
     anchor_text = json.dumps(anchor, indent=2, sort_keys=True) + "\n"
     _write(OUT / "plan_anchor.json", anchor_text)
 
@@ -642,12 +849,13 @@ def generate():
     ledger_text = json.dumps(led, indent=2, sort_keys=True) + "\n"
     _write(OUT / "ledger.json", ledger_text)
 
-    close = close_receipt(pln, anchor, led)
+    close = close_receipt(pln, anchor, led, proof_digest)
     close_text = json.dumps(close, indent=2, sort_keys=True) + "\n"
     _write(OUT / "ledger_close.json", close_text)
 
     index = {
-        "schema": "e2a.bundle.v2",
+        "schema_version": 4,
+        "kind": "E2ABundle",
         "plan_path": "plan.json",
         "plan_sha256": canon.sha256_bytes(plan_text.encode("ascii")),
         "plan_anchor_path": "plan_anchor.json",
@@ -657,14 +865,22 @@ def generate():
         "ledger_close_path": "ledger_close.json",
         "ledger_close_sha256": canon.sha256_bytes(close_text.encode("ascii")),
         "manifest_path": "manifest.json",
-        "manifest_sha256": canon.sha256_bytes(
-            (json.dumps(man, indent=2, sort_keys=True) + "\n").encode("ascii")),
+        "manifest_sha256": canon.sha256_bytes(manifest_text.encode("ascii")),
+        "route_control_path": "routes/route_control.json",
+        "route_control_sha256": canon.sha256_bytes(
+            route_texts[CONTROL_ROLE].encode("ascii")),
+        "route_treatment_path": "routes/route_treatment.json",
+        "route_treatment_sha256": canon.sha256_bytes(
+            route_texts[TREATMENT_ROLE].encode("ascii")),
+        "server_wall_capability_path": None,
+        "server_wall_capability_sha256": None,
         "slots": slot_index_entries,
     }
     _write(OUT / "bundle.json",
            json.dumps(index, indent=2, sort_keys=True) + "\n")
     return {"plan": pln, "ledger": led, "manifest": man, "anchor": anchor,
-            "close": close, "timelines": timelines, "index": index}
+            "close": close, "timelines": timelines, "routes": routes,
+            "index": index}
 
 
 def main(argv=None):

@@ -1,0 +1,1402 @@
+{
+  "artifact_manifest_sha256": "0c40dca213c16a4431beeb539cfb64343be2a92899a18df1a4d1ca066c2354b9",
+  "certified": true,
+  "deployments": {
+    "op12": {
+      "device_boot_id": "295e2329-ad9b-4abf-b526-fd79aad28e22",
+      "files": {
+        "libc++_shared.so": "77a34d3f03b17709f3f6473f37cb7795314e51fa3e5e652b5c37d53cfd05c754",
+        "libggml-base.so": "e51895f6ae45589c91eac862bfd24997097c2fbf4e2228767b497f9b7485872c",
+        "libggml-cpu.so": "00741a30f03f9c91d68f2ff78b7bfc1be8516993d98fd9bee748a129be47f6bb",
+        "libggml-hexagon.so": "d10238a4e6676bd780420586df575f7d5cd49c78707c498020e3b0f34d1c8f12",
+        "libggml-htp-v75.so": "39c952422e4012abd32ac25a1fba44dfa8a6877e3c84bb968ab964913ae7a2ba",
+        "libggml-opencl.so": "70fca0359ffc50d52c591fd04829ca92f1561e19f10c1be059324f3c61a963c9",
+        "libggml.so": "5d5c200754697e4149f90400fc4b47a63c2dc801c5ced500764db400c46a7372",
+        "libllama-common.so": "2dff6b8f63b43f4178e1b3ed5b4680a790ad7ec9f8256dd2e50de51e7c31c67b",
+        "libllama.so": "4dd5bd8cd2a52f82ddb8fc753885c50dee264d40e101d738facfcb2ef9851640",
+        "llama-layersplit": "2494f191515ca576cacd8c411de79fa8985f719cba2a11cd6371aa6e1024be9f"
+      },
+      "shard_sha256": "d507b7bb453242dff12ba1ce0add53189755b8a9a2b960743ead1578d8f1a6b5"
+    },
+    "op15": {
+      "device_boot_id": "65582fc7-4801-4d81-b171-3cb37e93b7fb",
+      "files": {
+        "libc++_shared.so": "77a34d3f03b17709f3f6473f37cb7795314e51fa3e5e652b5c37d53cfd05c754",
+        "libggml-base.so": "e51895f6ae45589c91eac862bfd24997097c2fbf4e2228767b497f9b7485872c",
+        "libggml-cpu.so": "00741a30f03f9c91d68f2ff78b7bfc1be8516993d98fd9bee748a129be47f6bb",
+        "libggml-hexagon.so": "d10238a4e6676bd780420586df575f7d5cd49c78707c498020e3b0f34d1c8f12",
+        "libggml-htp-v81.so": "bbaf7ee312e488a35afcc2db194b44f02e0eb93d0c09f4ae9c1de21742635f94",
+        "libggml-opencl.so": "70fca0359ffc50d52c591fd04829ca92f1561e19f10c1be059324f3c61a963c9",
+        "libggml.so": "5d5c200754697e4149f90400fc4b47a63c2dc801c5ced500764db400c46a7372",
+        "libllama-common.so": "2dff6b8f63b43f4178e1b3ed5b4680a790ad7ec9f8256dd2e50de51e7c31c67b",
+        "libllama.so": "4dd5bd8cd2a52f82ddb8fc753885c50dee264d40e101d738facfcb2ef9851640",
+        "llama-layersplit": "2494f191515ca576cacd8c411de79fa8985f719cba2a11cd6371aa6e1024be9f"
+      },
+      "shard_sha256": "d507b7bb453242dff12ba1ce0add53189755b8a9a2b960743ead1578d8f1a6b5"
+    }
+  },
+  "energy_scope": "UNKNOWN",
+  "gpu_inventory": [
+    "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f, 580.159.03",
+    "GPU-431a4567-fa90-7a73-625a-2ee6e7b5eaaf, 580.159.03"
+  ],
+  "harness_sha256": "4f814fdc0a4b883301bfa8e6caac0471b304eb901fa882aa80064156062d2652",
+  "host_boot_id": "60cb683b-1898-41eb-aca2-24b1a77a5a3b",
+  "model": {
+    "path": "/home/myid/zs89458/Documents/models/gemma-4-12B-it-f16.gguf",
+    "sha256": "bac4e29337273d1cb41aa36f4209ebcf63baa1162e6ab4dc55f6034b3d69b35a"
+  },
+  "problems": [],
+  "reference_tokens": [
+    107,
+    45518,
+    107,
+    100,
+    45518,
+    107,
+    101,
+    818,
+    7217,
+    7412,
+    3730,
+    1547,
+    529,
+    496,
+    20284,
+    2760
+  ],
+  "route_wall_cov": 0.017722632039311563,
+  "route_wall_us": [
+    2800261,
+    2671747,
+    2697170,
+    2668840,
+    2654039,
+    2659800,
+    2663142
+  ],
+  "schema": "s15-persistence-gate-v2",
+  "scope": "REAL_DEVICE_CORRECTNESS_PLACEMENT_PERSISTENCE_LATENCY_ONLY_ENERGY_UNKNOWN",
+  "sessions": [
+    {
+      "elapsed_us": 6770809,
+      "index": 1,
+      "log_sha256": "5a0ac6177b90fadf415250468f71d3835999c2d672735c9cb1ff57e6b0dfa218",
+      "returncode": 0,
+      "rows": [
+        {
+          "batch_index": 0,
+          "batch_size": 1,
+          "decode_us": 1936218,
+          "eog": 0,
+          "generated_tokens": 16,
+          "host_us": 1118326,
+          "prefill_us": 270737,
+          "prompt_tokens": 11,
+          "request_index": 0,
+          "request_wall_us": 2800261,
+          "requested_tokens": 16,
+          "route": "A0_PHONE_FLEET_TAIL_B1",
+          "stage_a_us": 1088629,
+          "stage_b_us": 0,
+          "status": "ok",
+          "stream_index": 0,
+          "token_ids": [
+            107,
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            818,
+            7217,
+            7412,
+            3730,
+            1547,
+            529,
+            496,
+            20284,
+            2760
+          ]
+        },
+        {
+          "batch_index": 1,
+          "batch_size": 1,
+          "decode_us": 2516786,
+          "eog": 0,
+          "generated_tokens": 16,
+          "host_us": 1118326,
+          "prefill_us": 275167,
+          "prompt_tokens": 11,
+          "request_index": 1,
+          "request_wall_us": 2800261,
+          "requested_tokens": 16,
+          "route": "A0_PHONE_FLEET_TAIL_B1",
+          "stage_a_us": 1673627,
+          "stage_b_us": 0,
+          "status": "ok",
+          "stream_index": 1,
+          "token_ids": [
+            107,
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            818,
+            7217,
+            7412,
+            3730,
+            1547,
+            529,
+            496,
+            20284,
+            2760
+          ]
+        }
+      ],
+      "session_end": "detach"
+    },
+    {
+      "elapsed_us": 6577541,
+      "index": 2,
+      "log_sha256": "71c15cd3386e0ba3337c6d57740ad12fd3756d1b9cfdd1ff86964ae2ec58eeac",
+      "returncode": 0,
+      "rows": [
+        {
+          "batch_index": 0,
+          "batch_size": 1,
+          "decode_us": 1889963,
+          "eog": 0,
+          "generated_tokens": 16,
+          "host_us": 1117736,
+          "prefill_us": 259322,
+          "prompt_tokens": 11,
+          "request_index": 0,
+          "request_wall_us": 2671747,
+          "requested_tokens": 16,
+          "route": "A0_PHONE_FLEET_TAIL_B1",
+          "stage_a_us": 1031549,
+          "stage_b_us": 0,
+          "status": "ok",
+          "stream_index": 0,
+          "token_ids": [
+            107,
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            818,
+            7217,
+            7412,
+            3730,
+            1547,
+            529,
+            496,
+            20284,
+            2760
+          ]
+        },
+        {
+          "batch_index": 1,
+          "batch_size": 1,
+          "decode_us": 2398364,
+          "eog": 0,
+          "generated_tokens": 16,
+          "host_us": 1117736,
+          "prefill_us": 265392,
+          "prompt_tokens": 11,
+          "request_index": 1,
+          "request_wall_us": 2671747,
+          "requested_tokens": 16,
+          "route": "A0_PHONE_FLEET_TAIL_B1",
+          "stage_a_us": 1546020,
+          "stage_b_us": 0,
+          "status": "ok",
+          "stream_index": 1,
+          "token_ids": [
+            107,
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            818,
+            7217,
+            7412,
+            3730,
+            1547,
+            529,
+            496,
+            20284,
+            2760
+          ]
+        }
+      ],
+      "session_end": "detach"
+    },
+    {
+      "elapsed_us": 6686164,
+      "index": 3,
+      "log_sha256": "e3021185ca8e3fd4bf4e3dc20b2d5b1717f4a0452fbd1177bc7004d060c5f680",
+      "returncode": 0,
+      "rows": [
+        {
+          "batch_index": 0,
+          "batch_size": 1,
+          "decode_us": 1925619,
+          "eog": 0,
+          "generated_tokens": 16,
+          "host_us": 1116270,
+          "prefill_us": 258465,
+          "prompt_tokens": 11,
+          "request_index": 0,
+          "request_wall_us": 2697170,
+          "requested_tokens": 16,
+          "route": "A0_PHONE_FLEET_TAIL_B1",
+          "stage_a_us": 1067814,
+          "stage_b_us": 0,
+          "status": "ok",
+          "stream_index": 0,
+          "token_ids": [
+            107,
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            818,
+            7217,
+            7412,
+            3730,
+            1547,
+            529,
+            496,
+            20284,
+            2760
+          ]
+        },
+        {
+          "batch_index": 1,
+          "batch_size": 1,
+          "decode_us": 2427989,
+          "eog": 0,
+          "generated_tokens": 16,
+          "host_us": 1116270,
+          "prefill_us": 267057,
+          "prompt_tokens": 11,
+          "request_index": 1,
+          "request_wall_us": 2697170,
+          "requested_tokens": 16,
+          "route": "A0_PHONE_FLEET_TAIL_B1",
+          "stage_a_us": 1578776,
+          "stage_b_us": 0,
+          "status": "ok",
+          "stream_index": 1,
+          "token_ids": [
+            107,
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            818,
+            7217,
+            7412,
+            3730,
+            1547,
+            529,
+            496,
+            20284,
+            2760
+          ]
+        }
+      ],
+      "session_end": "detach"
+    },
+    {
+      "elapsed_us": 6594198,
+      "index": 4,
+      "log_sha256": "1e5e9779b120e79744f128b3e05ae73454ace61326ac1ba3180feb18e9a85eaf",
+      "returncode": 0,
+      "rows": [
+        {
+          "batch_index": 0,
+          "batch_size": 1,
+          "decode_us": 1933558,
+          "eog": 0,
+          "generated_tokens": 16,
+          "host_us": 1120246,
+          "prefill_us": 261822,
+          "prompt_tokens": 11,
+          "request_index": 0,
+          "request_wall_us": 2668840,
+          "requested_tokens": 16,
+          "route": "A0_PHONE_FLEET_TAIL_B1",
+          "stage_a_us": 1075134,
+          "stage_b_us": 0,
+          "status": "ok",
+          "stream_index": 0,
+          "token_ids": [
+            107,
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            818,
+            7217,
+            7412,
+            3730,
+            1547,
+            529,
+            496,
+            20284,
+            2760
+          ]
+        },
+        {
+          "batch_index": 1,
+          "batch_size": 1,
+          "decode_us": 2393924,
+          "eog": 0,
+          "generated_tokens": 16,
+          "host_us": 1120246,
+          "prefill_us": 264732,
+          "prompt_tokens": 11,
+          "request_index": 1,
+          "request_wall_us": 2668840,
+          "requested_tokens": 16,
+          "route": "A0_PHONE_FLEET_TAIL_B1",
+          "stage_a_us": 1538410,
+          "stage_b_us": 0,
+          "status": "ok",
+          "stream_index": 1,
+          "token_ids": [
+            107,
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            818,
+            7217,
+            7412,
+            3730,
+            1547,
+            529,
+            496,
+            20284,
+            2760
+          ]
+        }
+      ],
+      "session_end": "detach"
+    },
+    {
+      "elapsed_us": 6536030,
+      "index": 5,
+      "log_sha256": "57366ebf71d8ea4bff09cd5262b6ce8428fba0bad6e9ad6a4db0b9b64645ab67",
+      "returncode": 0,
+      "rows": [
+        {
+          "batch_index": 0,
+          "batch_size": 1,
+          "decode_us": 1723593,
+          "eog": 0,
+          "generated_tokens": 16,
+          "host_us": 1117074,
+          "prefill_us": 257868,
+          "prompt_tokens": 11,
+          "request_index": 0,
+          "request_wall_us": 2654039,
+          "requested_tokens": 16,
+          "route": "A0_PHONE_FLEET_TAIL_B1",
+          "stage_a_us": 864387,
+          "stage_b_us": 0,
+          "status": "ok",
+          "stream_index": 0,
+          "token_ids": [
+            107,
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            818,
+            7217,
+            7412,
+            3730,
+            1547,
+            529,
+            496,
+            20284,
+            2760
+          ]
+        },
+        {
+          "batch_index": 1,
+          "batch_size": 1,
+          "decode_us": 2386760,
+          "eog": 0,
+          "generated_tokens": 16,
+          "host_us": 1117074,
+          "prefill_us": 265096,
+          "prompt_tokens": 11,
+          "request_index": 1,
+          "request_wall_us": 2654039,
+          "requested_tokens": 16,
+          "route": "A0_PHONE_FLEET_TAIL_B1",
+          "stage_a_us": 1534782,
+          "stage_b_us": 0,
+          "status": "ok",
+          "stream_index": 1,
+          "token_ids": [
+            107,
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            818,
+            7217,
+            7412,
+            3730,
+            1547,
+            529,
+            496,
+            20284,
+            2760
+          ]
+        }
+      ],
+      "session_end": "detach"
+    },
+    {
+      "elapsed_us": 6582330,
+      "index": 6,
+      "log_sha256": "f27510288f511d29d632998375d0df31a99b78e1fd12ec67e317f74084e26282",
+      "returncode": 0,
+      "rows": [
+        {
+          "batch_index": 0,
+          "batch_size": 1,
+          "decode_us": 1891014,
+          "eog": 0,
+          "generated_tokens": 16,
+          "host_us": 1117923,
+          "prefill_us": 258158,
+          "prompt_tokens": 11,
+          "request_index": 0,
+          "request_wall_us": 2659800,
+          "requested_tokens": 16,
+          "route": "A0_PHONE_FLEET_TAIL_B1",
+          "stage_a_us": 1031249,
+          "stage_b_us": 0,
+          "status": "ok",
+          "stream_index": 0,
+          "token_ids": [
+            107,
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            818,
+            7217,
+            7412,
+            3730,
+            1547,
+            529,
+            496,
+            20284,
+            2760
+          ]
+        },
+        {
+          "batch_index": 1,
+          "batch_size": 1,
+          "decode_us": 2391871,
+          "eog": 0,
+          "generated_tokens": 16,
+          "host_us": 1117923,
+          "prefill_us": 265703,
+          "prompt_tokens": 11,
+          "request_index": 1,
+          "request_wall_us": 2659800,
+          "requested_tokens": 16,
+          "route": "A0_PHONE_FLEET_TAIL_B1",
+          "stage_a_us": 1539651,
+          "stage_b_us": 0,
+          "status": "ok",
+          "stream_index": 1,
+          "token_ids": [
+            107,
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            818,
+            7217,
+            7412,
+            3730,
+            1547,
+            529,
+            496,
+            20284,
+            2760
+          ]
+        }
+      ],
+      "session_end": "detach"
+    },
+    {
+      "elapsed_us": 6556712,
+      "index": 7,
+      "log_sha256": "5bc28acbdb967e5bd3f139212c1ed60760b2b9fcd9bc3c83d041488688981e63",
+      "returncode": 0,
+      "rows": [
+        {
+          "batch_index": 0,
+          "batch_size": 1,
+          "decode_us": 1897613,
+          "eog": 0,
+          "generated_tokens": 16,
+          "host_us": 1118753,
+          "prefill_us": 256122,
+          "prompt_tokens": 11,
+          "request_index": 0,
+          "request_wall_us": 2663142,
+          "requested_tokens": 16,
+          "route": "A0_PHONE_FLEET_TAIL_B1",
+          "stage_a_us": 1034982,
+          "stage_b_us": 0,
+          "status": "ok",
+          "stream_index": 0,
+          "token_ids": [
+            107,
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            818,
+            7217,
+            7412,
+            3730,
+            1547,
+            529,
+            496,
+            20284,
+            2760
+          ]
+        },
+        {
+          "batch_index": 1,
+          "batch_size": 1,
+          "decode_us": 2392047,
+          "eog": 0,
+          "generated_tokens": 16,
+          "host_us": 1118753,
+          "prefill_us": 264578,
+          "prompt_tokens": 11,
+          "request_index": 1,
+          "request_wall_us": 2663142,
+          "requested_tokens": 16,
+          "route": "A0_PHONE_FLEET_TAIL_B1",
+          "stage_a_us": 1537872,
+          "stage_b_us": 0,
+          "status": "ok",
+          "stream_index": 1,
+          "token_ids": [
+            107,
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            818,
+            7217,
+            7412,
+            3730,
+            1547,
+            529,
+            496,
+            20284,
+            2760
+          ]
+        }
+      ],
+      "session_end": "stop"
+    }
+  ],
+  "thermal": {
+    "op12": {
+      "end": {
+        "max_millic": 32100,
+        "sensors_millic": {
+          "nsphmx-0": 31800,
+          "nsphmx-1": 31000,
+          "nsphmx-2": 31000,
+          "nsphmx-3": 32100
+        },
+        "valid": true
+      },
+      "start": {
+        "max_millic": 30600,
+        "sensors_millic": {
+          "nsphmx-0": 30200,
+          "nsphmx-1": 29800,
+          "nsphmx-2": 29800,
+          "nsphmx-3": 30600
+        },
+        "valid": true
+      }
+    },
+    "op15": {
+      "end": {
+        "max_millic": 31000,
+        "sensors_millic": {
+          "nsphmx-0": 30200,
+          "nsphmx-1": 31000,
+          "nsphmx-2": 31000,
+          "nsphmx-3": 30600
+        },
+        "valid": true
+      },
+      "start": {
+        "max_millic": 28700,
+        "sensors_millic": {
+          "nsphmx-0": 27900,
+          "nsphmx-1": 28700,
+          "nsphmx-2": 28300,
+          "nsphmx-3": 28700
+        },
+        "valid": true
+      }
+    }
+  },
+  "verdict": "PERSISTENT_SESSION_REAL_GATE_PASS",
+  "worker_certificates": {
+    "op12": [
+      {
+        "compute_by_op_and_buffer": {
+          "ADD": {
+            "HTP0": 192
+          },
+          "GET_ROWS": {
+            "CPU": 16
+          },
+          "GLU": {
+            "HTP0": 96
+          },
+          "MUL": {
+            "HTP0": 672
+          },
+          "MUL_MAT": {
+            "HTP0": 848
+          },
+          "RMS_NORM": {
+            "HTP0": 672
+          },
+          "ROPE": {
+            "HTP0": 192
+          },
+          "SCALE": {
+            "HTP0": 16
+          },
+          "SET_ROWS": {
+            "HTP0": 192
+          },
+          "SOFT_MAX": {
+            "HTP0": 96
+          }
+        },
+        "device_boot_id": "295e2329-ad9b-4abf-b526-fd79aad28e22",
+        "expected_backend": "HTP0",
+        "layer_end": 6,
+        "layer_start": 0,
+        "missing_buffer_compute_nodes": 0,
+        "n_layer": 48,
+        "placement_status": "SCHEDULED_PLACEMENT_OK",
+        "proto_version": 2,
+        "reset_applied": true,
+        "schema": "ls-stagenet-session-v2",
+        "session_end": "DETACH",
+        "session_id": 1,
+        "steps_session": 26,
+        "steps_total": 26,
+        "worker_boot_nonce": "d14061a26ebebb02",
+        "worker_pid": 27695
+      },
+      {
+        "compute_by_op_and_buffer": {
+          "ADD": {
+            "HTP0": 192
+          },
+          "GET_ROWS": {
+            "CPU": 16
+          },
+          "GLU": {
+            "HTP0": 96
+          },
+          "MUL": {
+            "HTP0": 672
+          },
+          "MUL_MAT": {
+            "HTP0": 848
+          },
+          "RMS_NORM": {
+            "HTP0": 672
+          },
+          "ROPE": {
+            "HTP0": 192
+          },
+          "SCALE": {
+            "HTP0": 16
+          },
+          "SET_ROWS": {
+            "HTP0": 192
+          },
+          "SOFT_MAX": {
+            "HTP0": 96
+          }
+        },
+        "device_boot_id": "295e2329-ad9b-4abf-b526-fd79aad28e22",
+        "expected_backend": "HTP0",
+        "layer_end": 6,
+        "layer_start": 0,
+        "missing_buffer_compute_nodes": 0,
+        "n_layer": 48,
+        "placement_status": "SCHEDULED_PLACEMENT_OK",
+        "proto_version": 2,
+        "reset_applied": true,
+        "schema": "ls-stagenet-session-v2",
+        "session_end": "DETACH",
+        "session_id": 2,
+        "steps_session": 26,
+        "steps_total": 52,
+        "worker_boot_nonce": "d14061a26ebebb02",
+        "worker_pid": 27695
+      },
+      {
+        "compute_by_op_and_buffer": {
+          "ADD": {
+            "HTP0": 192
+          },
+          "GET_ROWS": {
+            "CPU": 16
+          },
+          "GLU": {
+            "HTP0": 96
+          },
+          "MUL": {
+            "HTP0": 672
+          },
+          "MUL_MAT": {
+            "HTP0": 848
+          },
+          "RMS_NORM": {
+            "HTP0": 672
+          },
+          "ROPE": {
+            "HTP0": 192
+          },
+          "SCALE": {
+            "HTP0": 16
+          },
+          "SET_ROWS": {
+            "HTP0": 192
+          },
+          "SOFT_MAX": {
+            "HTP0": 96
+          }
+        },
+        "device_boot_id": "295e2329-ad9b-4abf-b526-fd79aad28e22",
+        "expected_backend": "HTP0",
+        "layer_end": 6,
+        "layer_start": 0,
+        "missing_buffer_compute_nodes": 0,
+        "n_layer": 48,
+        "placement_status": "SCHEDULED_PLACEMENT_OK",
+        "proto_version": 2,
+        "reset_applied": true,
+        "schema": "ls-stagenet-session-v2",
+        "session_end": "DETACH",
+        "session_id": 3,
+        "steps_session": 26,
+        "steps_total": 78,
+        "worker_boot_nonce": "d14061a26ebebb02",
+        "worker_pid": 27695
+      },
+      {
+        "compute_by_op_and_buffer": {
+          "ADD": {
+            "HTP0": 192
+          },
+          "GET_ROWS": {
+            "CPU": 16
+          },
+          "GLU": {
+            "HTP0": 96
+          },
+          "MUL": {
+            "HTP0": 672
+          },
+          "MUL_MAT": {
+            "HTP0": 848
+          },
+          "RMS_NORM": {
+            "HTP0": 672
+          },
+          "ROPE": {
+            "HTP0": 192
+          },
+          "SCALE": {
+            "HTP0": 16
+          },
+          "SET_ROWS": {
+            "HTP0": 192
+          },
+          "SOFT_MAX": {
+            "HTP0": 96
+          }
+        },
+        "device_boot_id": "295e2329-ad9b-4abf-b526-fd79aad28e22",
+        "expected_backend": "HTP0",
+        "layer_end": 6,
+        "layer_start": 0,
+        "missing_buffer_compute_nodes": 0,
+        "n_layer": 48,
+        "placement_status": "SCHEDULED_PLACEMENT_OK",
+        "proto_version": 2,
+        "reset_applied": true,
+        "schema": "ls-stagenet-session-v2",
+        "session_end": "DETACH",
+        "session_id": 4,
+        "steps_session": 26,
+        "steps_total": 104,
+        "worker_boot_nonce": "d14061a26ebebb02",
+        "worker_pid": 27695
+      },
+      {
+        "compute_by_op_and_buffer": {
+          "ADD": {
+            "HTP0": 192
+          },
+          "GET_ROWS": {
+            "CPU": 16
+          },
+          "GLU": {
+            "HTP0": 96
+          },
+          "MUL": {
+            "HTP0": 672
+          },
+          "MUL_MAT": {
+            "HTP0": 848
+          },
+          "RMS_NORM": {
+            "HTP0": 672
+          },
+          "ROPE": {
+            "HTP0": 192
+          },
+          "SCALE": {
+            "HTP0": 16
+          },
+          "SET_ROWS": {
+            "HTP0": 192
+          },
+          "SOFT_MAX": {
+            "HTP0": 96
+          }
+        },
+        "device_boot_id": "295e2329-ad9b-4abf-b526-fd79aad28e22",
+        "expected_backend": "HTP0",
+        "layer_end": 6,
+        "layer_start": 0,
+        "missing_buffer_compute_nodes": 0,
+        "n_layer": 48,
+        "placement_status": "SCHEDULED_PLACEMENT_OK",
+        "proto_version": 2,
+        "reset_applied": true,
+        "schema": "ls-stagenet-session-v2",
+        "session_end": "DETACH",
+        "session_id": 5,
+        "steps_session": 26,
+        "steps_total": 130,
+        "worker_boot_nonce": "d14061a26ebebb02",
+        "worker_pid": 27695
+      },
+      {
+        "compute_by_op_and_buffer": {
+          "ADD": {
+            "HTP0": 192
+          },
+          "GET_ROWS": {
+            "CPU": 16
+          },
+          "GLU": {
+            "HTP0": 96
+          },
+          "MUL": {
+            "HTP0": 672
+          },
+          "MUL_MAT": {
+            "HTP0": 848
+          },
+          "RMS_NORM": {
+            "HTP0": 672
+          },
+          "ROPE": {
+            "HTP0": 192
+          },
+          "SCALE": {
+            "HTP0": 16
+          },
+          "SET_ROWS": {
+            "HTP0": 192
+          },
+          "SOFT_MAX": {
+            "HTP0": 96
+          }
+        },
+        "device_boot_id": "295e2329-ad9b-4abf-b526-fd79aad28e22",
+        "expected_backend": "HTP0",
+        "layer_end": 6,
+        "layer_start": 0,
+        "missing_buffer_compute_nodes": 0,
+        "n_layer": 48,
+        "placement_status": "SCHEDULED_PLACEMENT_OK",
+        "proto_version": 2,
+        "reset_applied": true,
+        "schema": "ls-stagenet-session-v2",
+        "session_end": "DETACH",
+        "session_id": 6,
+        "steps_session": 26,
+        "steps_total": 156,
+        "worker_boot_nonce": "d14061a26ebebb02",
+        "worker_pid": 27695
+      },
+      {
+        "compute_by_op_and_buffer": {
+          "ADD": {
+            "HTP0": 192
+          },
+          "GET_ROWS": {
+            "CPU": 16
+          },
+          "GLU": {
+            "HTP0": 96
+          },
+          "MUL": {
+            "HTP0": 672
+          },
+          "MUL_MAT": {
+            "HTP0": 848
+          },
+          "RMS_NORM": {
+            "HTP0": 672
+          },
+          "ROPE": {
+            "HTP0": 192
+          },
+          "SCALE": {
+            "HTP0": 16
+          },
+          "SET_ROWS": {
+            "HTP0": 192
+          },
+          "SOFT_MAX": {
+            "HTP0": 96
+          }
+        },
+        "device_boot_id": "295e2329-ad9b-4abf-b526-fd79aad28e22",
+        "expected_backend": "HTP0",
+        "layer_end": 6,
+        "layer_start": 0,
+        "missing_buffer_compute_nodes": 0,
+        "n_layer": 48,
+        "placement_status": "SCHEDULED_PLACEMENT_OK",
+        "proto_version": 2,
+        "reset_applied": false,
+        "schema": "ls-stagenet-session-v2",
+        "session_end": "STOP",
+        "session_id": 7,
+        "steps_session": 26,
+        "steps_total": 182,
+        "worker_boot_nonce": "d14061a26ebebb02",
+        "worker_pid": 27695
+      }
+    ],
+    "op15": [
+      {
+        "compute_by_op_and_buffer": {
+          "ADD": {
+            "HTP0": 192
+          },
+          "FLASH_ATTN_EXT": {
+            "HTP0": 96
+          },
+          "GET_ROWS": {
+            "CPU": 16
+          },
+          "GLU": {
+            "HTP0": 96
+          },
+          "MUL": {
+            "HTP0": 672
+          },
+          "MUL_MAT": {
+            "HTP0": 656
+          },
+          "RMS_NORM": {
+            "HTP0": 672
+          },
+          "ROPE": {
+            "HTP0": 192
+          },
+          "SCALE": {
+            "HTP0": 16
+          },
+          "SET_ROWS": {
+            "HTP0": 192
+          }
+        },
+        "device_boot_id": "65582fc7-4801-4d81-b171-3cb37e93b7fb",
+        "expected_backend": "HTP0",
+        "layer_end": 6,
+        "layer_start": 0,
+        "missing_buffer_compute_nodes": 0,
+        "n_layer": 48,
+        "placement_status": "SCHEDULED_PLACEMENT_OK",
+        "proto_version": 2,
+        "reset_applied": true,
+        "schema": "ls-stagenet-session-v2",
+        "session_end": "DETACH",
+        "session_id": 1,
+        "steps_session": 26,
+        "steps_total": 26,
+        "worker_boot_nonce": "7273b3f089c0ccfa",
+        "worker_pid": 24438
+      },
+      {
+        "compute_by_op_and_buffer": {
+          "ADD": {
+            "HTP0": 192
+          },
+          "FLASH_ATTN_EXT": {
+            "HTP0": 96
+          },
+          "GET_ROWS": {
+            "CPU": 16
+          },
+          "GLU": {
+            "HTP0": 96
+          },
+          "MUL": {
+            "HTP0": 672
+          },
+          "MUL_MAT": {
+            "HTP0": 656
+          },
+          "RMS_NORM": {
+            "HTP0": 672
+          },
+          "ROPE": {
+            "HTP0": 192
+          },
+          "SCALE": {
+            "HTP0": 16
+          },
+          "SET_ROWS": {
+            "HTP0": 192
+          }
+        },
+        "device_boot_id": "65582fc7-4801-4d81-b171-3cb37e93b7fb",
+        "expected_backend": "HTP0",
+        "layer_end": 6,
+        "layer_start": 0,
+        "missing_buffer_compute_nodes": 0,
+        "n_layer": 48,
+        "placement_status": "SCHEDULED_PLACEMENT_OK",
+        "proto_version": 2,
+        "reset_applied": true,
+        "schema": "ls-stagenet-session-v2",
+        "session_end": "DETACH",
+        "session_id": 2,
+        "steps_session": 26,
+        "steps_total": 52,
+        "worker_boot_nonce": "7273b3f089c0ccfa",
+        "worker_pid": 24438
+      },
+      {
+        "compute_by_op_and_buffer": {
+          "ADD": {
+            "HTP0": 192
+          },
+          "FLASH_ATTN_EXT": {
+            "HTP0": 96
+          },
+          "GET_ROWS": {
+            "CPU": 16
+          },
+          "GLU": {
+            "HTP0": 96
+          },
+          "MUL": {
+            "HTP0": 672
+          },
+          "MUL_MAT": {
+            "HTP0": 656
+          },
+          "RMS_NORM": {
+            "HTP0": 672
+          },
+          "ROPE": {
+            "HTP0": 192
+          },
+          "SCALE": {
+            "HTP0": 16
+          },
+          "SET_ROWS": {
+            "HTP0": 192
+          }
+        },
+        "device_boot_id": "65582fc7-4801-4d81-b171-3cb37e93b7fb",
+        "expected_backend": "HTP0",
+        "layer_end": 6,
+        "layer_start": 0,
+        "missing_buffer_compute_nodes": 0,
+        "n_layer": 48,
+        "placement_status": "SCHEDULED_PLACEMENT_OK",
+        "proto_version": 2,
+        "reset_applied": true,
+        "schema": "ls-stagenet-session-v2",
+        "session_end": "DETACH",
+        "session_id": 3,
+        "steps_session": 26,
+        "steps_total": 78,
+        "worker_boot_nonce": "7273b3f089c0ccfa",
+        "worker_pid": 24438
+      },
+      {
+        "compute_by_op_and_buffer": {
+          "ADD": {
+            "HTP0": 192
+          },
+          "FLASH_ATTN_EXT": {
+            "HTP0": 96
+          },
+          "GET_ROWS": {
+            "CPU": 16
+          },
+          "GLU": {
+            "HTP0": 96
+          },
+          "MUL": {
+            "HTP0": 672
+          },
+          "MUL_MAT": {
+            "HTP0": 656
+          },
+          "RMS_NORM": {
+            "HTP0": 672
+          },
+          "ROPE": {
+            "HTP0": 192
+          },
+          "SCALE": {
+            "HTP0": 16
+          },
+          "SET_ROWS": {
+            "HTP0": 192
+          }
+        },
+        "device_boot_id": "65582fc7-4801-4d81-b171-3cb37e93b7fb",
+        "expected_backend": "HTP0",
+        "layer_end": 6,
+        "layer_start": 0,
+        "missing_buffer_compute_nodes": 0,
+        "n_layer": 48,
+        "placement_status": "SCHEDULED_PLACEMENT_OK",
+        "proto_version": 2,
+        "reset_applied": true,
+        "schema": "ls-stagenet-session-v2",
+        "session_end": "DETACH",
+        "session_id": 4,
+        "steps_session": 26,
+        "steps_total": 104,
+        "worker_boot_nonce": "7273b3f089c0ccfa",
+        "worker_pid": 24438
+      },
+      {
+        "compute_by_op_and_buffer": {
+          "ADD": {
+            "HTP0": 192
+          },
+          "FLASH_ATTN_EXT": {
+            "HTP0": 96
+          },
+          "GET_ROWS": {
+            "CPU": 16
+          },
+          "GLU": {
+            "HTP0": 96
+          },
+          "MUL": {
+            "HTP0": 672
+          },
+          "MUL_MAT": {
+            "HTP0": 656
+          },
+          "RMS_NORM": {
+            "HTP0": 672
+          },
+          "ROPE": {
+            "HTP0": 192
+          },
+          "SCALE": {
+            "HTP0": 16
+          },
+          "SET_ROWS": {
+            "HTP0": 192
+          }
+        },
+        "device_boot_id": "65582fc7-4801-4d81-b171-3cb37e93b7fb",
+        "expected_backend": "HTP0",
+        "layer_end": 6,
+        "layer_start": 0,
+        "missing_buffer_compute_nodes": 0,
+        "n_layer": 48,
+        "placement_status": "SCHEDULED_PLACEMENT_OK",
+        "proto_version": 2,
+        "reset_applied": true,
+        "schema": "ls-stagenet-session-v2",
+        "session_end": "DETACH",
+        "session_id": 5,
+        "steps_session": 26,
+        "steps_total": 130,
+        "worker_boot_nonce": "7273b3f089c0ccfa",
+        "worker_pid": 24438
+      },
+      {
+        "compute_by_op_and_buffer": {
+          "ADD": {
+            "HTP0": 192
+          },
+          "FLASH_ATTN_EXT": {
+            "HTP0": 96
+          },
+          "GET_ROWS": {
+            "CPU": 16
+          },
+          "GLU": {
+            "HTP0": 96
+          },
+          "MUL": {
+            "HTP0": 672
+          },
+          "MUL_MAT": {
+            "HTP0": 656
+          },
+          "RMS_NORM": {
+            "HTP0": 672
+          },
+          "ROPE": {
+            "HTP0": 192
+          },
+          "SCALE": {
+            "HTP0": 16
+          },
+          "SET_ROWS": {
+            "HTP0": 192
+          }
+        },
+        "device_boot_id": "65582fc7-4801-4d81-b171-3cb37e93b7fb",
+        "expected_backend": "HTP0",
+        "layer_end": 6,
+        "layer_start": 0,
+        "missing_buffer_compute_nodes": 0,
+        "n_layer": 48,
+        "placement_status": "SCHEDULED_PLACEMENT_OK",
+        "proto_version": 2,
+        "reset_applied": true,
+        "schema": "ls-stagenet-session-v2",
+        "session_end": "DETACH",
+        "session_id": 6,
+        "steps_session": 26,
+        "steps_total": 156,
+        "worker_boot_nonce": "7273b3f089c0ccfa",
+        "worker_pid": 24438
+      },
+      {
+        "compute_by_op_and_buffer": {
+          "ADD": {
+            "HTP0": 192
+          },
+          "FLASH_ATTN_EXT": {
+            "HTP0": 96
+          },
+          "GET_ROWS": {
+            "CPU": 16
+          },
+          "GLU": {
+            "HTP0": 96
+          },
+          "MUL": {
+            "HTP0": 672
+          },
+          "MUL_MAT": {
+            "HTP0": 656
+          },
+          "RMS_NORM": {
+            "HTP0": 672
+          },
+          "ROPE": {
+            "HTP0": 192
+          },
+          "SCALE": {
+            "HTP0": 16
+          },
+          "SET_ROWS": {
+            "HTP0": 192
+          }
+        },
+        "device_boot_id": "65582fc7-4801-4d81-b171-3cb37e93b7fb",
+        "expected_backend": "HTP0",
+        "layer_end": 6,
+        "layer_start": 0,
+        "missing_buffer_compute_nodes": 0,
+        "n_layer": 48,
+        "placement_status": "SCHEDULED_PLACEMENT_OK",
+        "proto_version": 2,
+        "reset_applied": false,
+        "schema": "ls-stagenet-session-v2",
+        "session_end": "STOP",
+        "session_id": 7,
+        "steps_session": 26,
+        "steps_total": 182,
+        "worker_boot_nonce": "7273b3f089c0ccfa",
+        "worker_pid": 24438
+      }
+    ]
+  }
+}

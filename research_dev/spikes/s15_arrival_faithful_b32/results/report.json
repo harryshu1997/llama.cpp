@@ -1,0 +1,1006 @@
+{
+  "artifact_hashes_before_report": {
+    "process-0/host.command.json": "sha256:2ec2a98aabbdb9f7f1b701d3d26d897c765cff2cc0dfb527357212557e76af57",
+    "process-0/host.pre_prompt.stderr.bin": "sha256:9f3e9886e66de22eeb964e4d99653633604c59ce1e3611d3750b167ae3f24172",
+    "process-0/host.stderr.bin": "sha256:633977bc7a90a4bec3b8d31a2f100628863650cdb05766e081a855fc10d14120",
+    "process-0/host.stdout.bin": "sha256:186606503866f25f7710c8ca13124ca5b219bc7fe3bd19def95bb473975f58d9",
+    "process-0/phone.command.json": "sha256:66e5597ed64be41ae6ab5cb90dcc54d2a8a6ebdcc559674f5aa77758c7c87fb9",
+    "process-0/phone.stderr.bin": "sha256:c5d0a3524ef69628e416c0a1cfcee9649ae51c3704aacc9900d1cb715bd5a1cd",
+    "process-0/phone.stdout.bin": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "process-0/process.json": "sha256:813199b0e571b52b21f3f47ec67289afa566c594a2bede5573a46acc10d4a311",
+    "process-1/host.command.json": "sha256:2ec2a98aabbdb9f7f1b701d3d26d897c765cff2cc0dfb527357212557e76af57",
+    "process-1/host.pre_prompt.stderr.bin": "sha256:8f3f413b852e5d2241bf6fb1404d22b68ba75f38b04167794a345e6853406566",
+    "process-1/host.stderr.bin": "sha256:03433501e722358dad463e337292b9b5c239eeda355fe1c154b6df7db7c6585f",
+    "process-1/host.stdout.bin": "sha256:186606503866f25f7710c8ca13124ca5b219bc7fe3bd19def95bb473975f58d9",
+    "process-1/phone.command.json": "sha256:66e5597ed64be41ae6ab5cb90dcc54d2a8a6ebdcc559674f5aa77758c7c87fb9",
+    "process-1/phone.stderr.bin": "sha256:7752f64537996772526b723283d4e62d2c625c7082c04b19d771052dff62495c",
+    "process-1/phone.stdout.bin": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "process-1/process.json": "sha256:06007f15392282997fb85ede61920621498ebb7ed2738f5afa2ab1cdbfda368a",
+    "process-2/host.command.json": "sha256:2ec2a98aabbdb9f7f1b701d3d26d897c765cff2cc0dfb527357212557e76af57",
+    "process-2/host.pre_prompt.stderr.bin": "sha256:87a0fe4d2a8d3704bce893dba42a170ac1cb5dbcb5654f5cd623cff93e82da37",
+    "process-2/host.stderr.bin": "sha256:2fdea76e3b6341884a48a1a9de0bd0df70becfd06f817dd9380962dbcd57d4e1",
+    "process-2/host.stdout.bin": "sha256:186606503866f25f7710c8ca13124ca5b219bc7fe3bd19def95bb473975f58d9",
+    "process-2/phone.command.json": "sha256:66e5597ed64be41ae6ab5cb90dcc54d2a8a6ebdcc559674f5aa77758c7c87fb9",
+    "process-2/phone.stderr.bin": "sha256:172ff2881a7951727e3ef51962aed421a48b8893f0ba7f430c4263a6fea35414",
+    "process-2/phone.stdout.bin": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "process-2/process.json": "sha256:9e98a572bad6f292ecad2472231b170486dc9997b3b5df3799e5f143ae17a252",
+    "process-3/host.command.json": "sha256:2ec2a98aabbdb9f7f1b701d3d26d897c765cff2cc0dfb527357212557e76af57",
+    "process-3/host.pre_prompt.stderr.bin": "sha256:68841b2e2ff01cbea3b6ac3c31cb22c8783ab0b68d10e0129bcc511c8424b604",
+    "process-3/host.stderr.bin": "sha256:51eb2d1a2094547db7a63db3418920791a722d8362082d972b09427ce031b53c",
+    "process-3/host.stdout.bin": "sha256:186606503866f25f7710c8ca13124ca5b219bc7fe3bd19def95bb473975f58d9",
+    "process-3/phone.command.json": "sha256:66e5597ed64be41ae6ab5cb90dcc54d2a8a6ebdcc559674f5aa77758c7c87fb9",
+    "process-3/phone.stderr.bin": "sha256:3167c79f5449bee793f98e22bcf19616b292254e4d11865de9c94335b279e6c3",
+    "process-3/phone.stdout.bin": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "process-3/process.json": "sha256:4f28d0343872e789e787d75fcd83a3c4250637244dd484c39ca512c8eef03a83",
+    "process-4/host.command.json": "sha256:2ec2a98aabbdb9f7f1b701d3d26d897c765cff2cc0dfb527357212557e76af57",
+    "process-4/host.pre_prompt.stderr.bin": "sha256:9f3e9886e66de22eeb964e4d99653633604c59ce1e3611d3750b167ae3f24172",
+    "process-4/host.stderr.bin": "sha256:d15cd64b56460e048a33982fb00c3f4c06b27e52ac1c84fbb801769055deb5e2",
+    "process-4/host.stdout.bin": "sha256:186606503866f25f7710c8ca13124ca5b219bc7fe3bd19def95bb473975f58d9",
+    "process-4/phone.command.json": "sha256:66e5597ed64be41ae6ab5cb90dcc54d2a8a6ebdcc559674f5aa77758c7c87fb9",
+    "process-4/phone.stderr.bin": "sha256:8f08ed937283fd3b6146279edaa9cd9a2229e4dcd056364d1e513544383c79a8",
+    "process-4/phone.stdout.bin": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "process-4/process.json": "sha256:a04f96c528f13f1fac3ec768ce1cdcb4f561e124c208fc035dd93300bdca0ddd",
+    "process-5/host.command.json": "sha256:2ec2a98aabbdb9f7f1b701d3d26d897c765cff2cc0dfb527357212557e76af57",
+    "process-5/host.pre_prompt.stderr.bin": "sha256:5e6053817a6e1079bf5089944fc5dd2af34cff9c4a9bbd549ace9ed013807815",
+    "process-5/host.stderr.bin": "sha256:96afbf9408ed3df50034ca412a74120bcccb2b289efb6a62fa6d6c176be6abed",
+    "process-5/host.stdout.bin": "sha256:186606503866f25f7710c8ca13124ca5b219bc7fe3bd19def95bb473975f58d9",
+    "process-5/phone.command.json": "sha256:66e5597ed64be41ae6ab5cb90dcc54d2a8a6ebdcc559674f5aa77758c7c87fb9",
+    "process-5/phone.stderr.bin": "sha256:22f6aa5ab53c251ea62effe8f8dbe0a6d99aecf03c7592a3394ca7e76180acd4",
+    "process-5/phone.stdout.bin": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "process-5/process.json": "sha256:85b600323c38620ee16d5e84f5fcd48ab100506b1cc0516ebedaff73fc7dbe8c",
+    "process-6/host.command.json": "sha256:2ec2a98aabbdb9f7f1b701d3d26d897c765cff2cc0dfb527357212557e76af57",
+    "process-6/host.pre_prompt.stderr.bin": "sha256:fd05944e05e544f31a175d729e43ae85bdae9f5f4e63bb914f3ffc32af2af883",
+    "process-6/host.stderr.bin": "sha256:860a131c10b81d2f915bb1f3cbe6792d28449e1f162be10848e137737ce6e9f1",
+    "process-6/host.stdout.bin": "sha256:186606503866f25f7710c8ca13124ca5b219bc7fe3bd19def95bb473975f58d9",
+    "process-6/phone.command.json": "sha256:66e5597ed64be41ae6ab5cb90dcc54d2a8a6ebdcc559674f5aa77758c7c87fb9",
+    "process-6/phone.stderr.bin": "sha256:fe4a030697fc368490f5e20508d6da230b3276984628e9264935e6003fe79e77",
+    "process-6/phone.stdout.bin": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "process-6/process.json": "sha256:07b9c21bf226f78898058ce7641856b5ed2600040530b0b102883624913c91a9",
+    "reference.command.json": "sha256:d07e2bd38545dc0c5ae5c30ba03bcae11876b0d6c66f6fe7ac4cf29fc2cccb68",
+    "reference.stderr.bin": "sha256:670e2aed3da1457fef5979593ddfaa69a44c79409f2ff88a78f9ff91ee40781a",
+    "reference.stdout.bin": "sha256:186606503866f25f7710c8ca13124ca5b219bc7fe3bd19def95bb473975f58d9",
+    "thermal_stream.log": "sha256:152c0c65c3b406695ad1df7dc3993f8abfbac273a8d643940fd33ac6b2e4580f",
+    "thermal_stream.stderr.bin": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "cohort_sha256": "sha256:85e0614d31a6f35ad7d09c3b35b2ab4fa9ef2916bc4a1dcfc32d6f4c70a51ec4",
+  "completion_conservative_us": 3968367,
+  "completion_cov": 0.004620681125577909,
+  "completion_elapsed_us_by_process": [
+    3944399,
+    3939577,
+    3901898,
+    3941004,
+    3946008,
+    3968367,
+    3943267
+  ],
+  "completion_p50_us": 3943267,
+  "deployed": {
+    "/data/local/tmp/ls-npu/12b-f16-head-0-8.gguf": "sha256:a74845294bc1a3cba6ac26c747615d64d9127c904aae04c43c7ea2ebc1ea25c8",
+    "libc++_shared.so": "sha256:77a34d3f03b17709f3f6473f37cb7795314e51fa3e5e652b5c37d53cfd05c754",
+    "libggml-base.so": "sha256:e51895f6ae45589c91eac862bfd24997097c2fbf4e2228767b497f9b7485872c",
+    "libggml-cpu.so": "sha256:00741a30f03f9c91d68f2ff78b7bfc1be8516993d98fd9bee748a129be47f6bb",
+    "libggml-hexagon.so": "sha256:d10238a4e6676bd780420586df575f7d5cd49c78707c498020e3b0f34d1c8f12",
+    "libggml-htp-v81.so": "sha256:bbaf7ee312e488a35afcc2db194b44f02e0eb93d0c09f4ae9c1de21742635f94",
+    "libggml-opencl.so": "sha256:70fca0359ffc50d52c591fd04829ca92f1561e19f10c1be059324f3c61a963c9",
+    "libggml.so": "sha256:5d5c200754697e4149f90400fc4b47a63c2dc801c5ced500764db400c46a7372",
+    "libllama-common.so": "sha256:2dff6b8f63b43f4178e1b3ed5b4680a790ad7ec9f8256dd2e50de51e7c31c67b",
+    "libllama.so": "sha256:4dd5bd8cd2a52f82ddb8fc753885c50dee264d40e101d738facfcb2ef9851640",
+    "llama-layersplit": "sha256:2494f191515ca576cacd8c411de79fa8985f719cba2a11cd6371aa6e1024be9f"
+  },
+  "device_boot_id": "65582fc7-4801-4d81-b171-3cb37e93b7fb",
+  "energy_scope": "UNKNOWN",
+  "frozen_phone_manifest_sha256": "sha256:0c40dca213c16a4431beeb539cfb64343be2a92899a18df1a4d1ca066c2354b9",
+  "host_artifacts": {
+    "layersplit.cpp": "sha256:fd03e735eaa2b52b13bba6c6fb5e8c16726b7c54bcac74eaae5d9239d0a1bfde",
+    "libggml-base.so.0": "sha256:a16b28c301a3720fd36db521014a6b2bc7723f4b7f5d3c12d82f9d6afc5bbca9",
+    "libggml-cpu.so.0": "sha256:fd5fa003392105e99436d0423f7275538e29e240548dc9b4ab027d8427278f30",
+    "libggml-cuda.so.0": "sha256:2dfb224799de646ee441cd6cfd366f3c61f4822ff0bd818eaad06733b0c5eaa9",
+    "libggml.so.0": "sha256:75d5a036d8ae1f7e0a7b20fa9fcdd0047f16e39ac6454206339b9dde7f57f5f2",
+    "libllama-common.so.0": "sha256:f22dc05331902b84d4f7a743cbe044d1123e6edb6e8c8212793b475408f9c23d",
+    "libllama.so.0": "sha256:ed111b2e3b93833b319c507d80d42c3e8fcc7d0f0ea729ad7de2aa9858ab294d",
+    "llama-layersplit": "sha256:8910c81991999884572d9390077c0f18b76adf46b39eb021b23a736e1948f8f2"
+  },
+  "initial_thermal": {
+    "max_millic": 29800,
+    "sensors_millic": {
+      "nsphmx-0": 29400,
+      "nsphmx-1": 29800,
+      "nsphmx-2": 29800,
+      "nsphmx-3": 29800
+    },
+    "valid": true
+  },
+  "input_manifest_sha256": "sha256:ea1f2d47b8c6dec6096c8b95b6073181ecba6838d97741ca92ec2ceca6937858",
+  "problems": [],
+  "processes_required": 7,
+  "profile_id": "sha256:9fa84921ec2f90d2887d9ae0be6f785addd2ca64f2d99d98f4b446cd5e281a2d",
+  "profile_identity": {
+    "batch": 32,
+    "cohort_sha256": "sha256:85e0614d31a6f35ad7d09c3b35b2ab4fa9ef2916bc4a1dcfc32d6f4c70a51ec4",
+    "completion_elapsed_us_by_process": [
+      3944399,
+      3939577,
+      3901898,
+      3941004,
+      3946008,
+      3968367,
+      3943267
+    ],
+    "device_id": "op15:3C15AU002CL00000",
+    "host_artifacts": {
+      "layersplit.cpp": "sha256:fd03e735eaa2b52b13bba6c6fb5e8c16726b7c54bcac74eaae5d9239d0a1bfde",
+      "libggml-base.so.0": "sha256:a16b28c301a3720fd36db521014a6b2bc7723f4b7f5d3c12d82f9d6afc5bbca9",
+      "libggml-cpu.so.0": "sha256:fd5fa003392105e99436d0423f7275538e29e240548dc9b4ab027d8427278f30",
+      "libggml-cuda.so.0": "sha256:2dfb224799de646ee441cd6cfd366f3c61f4822ff0bd818eaad06733b0c5eaa9",
+      "libggml.so.0": "sha256:75d5a036d8ae1f7e0a7b20fa9fcdd0047f16e39ac6454206339b9dde7f57f5f2",
+      "libllama-common.so.0": "sha256:f22dc05331902b84d4f7a743cbe044d1123e6edb6e8c8212793b475408f9c23d",
+      "libllama.so.0": "sha256:ed111b2e3b93833b319c507d80d42c3e8fcc7d0f0ea729ad7de2aa9858ab294d",
+      "llama-layersplit": "sha256:8910c81991999884572d9390077c0f18b76adf46b39eb021b23a736e1948f8f2"
+    },
+    "input_manifest_sha256": "sha256:ea1f2d47b8c6dec6096c8b95b6073181ecba6838d97741ca92ec2ceca6937858",
+    "layer_range": [
+      0,
+      8
+    ],
+    "n_gen": 8,
+    "phone_worker_sha256": "sha256:2494f191515ca576cacd8c411de79fa8985f719cba2a11cd6371aa6e1024be9f",
+    "schema": "s15-post-load-b32-profile-identity-v1"
+  },
+  "prompt_visible_during_preflight": false,
+  "records": [
+    {
+      "completion_elapsed_us": 3944399,
+      "eligible": true,
+      "host_command": [
+        "/home/myid/zs89458/Documents/llama.cpp-release/build-cuda/bin/llama-layersplit",
+        "-m",
+        "/home/myid/zs89458/Documents/models/gemma-4-12B-it-f16.gguf",
+        "-ngl",
+        "99",
+        "--mode",
+        "pipedriver",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "5951",
+        "--prompt-after-load",
+        "-n",
+        "8",
+        "--driver-requests",
+        "32",
+        "--driver-warmup",
+        "0",
+        "--driver-batch",
+        "32",
+        "--driver-context",
+        "512",
+        "--driver-max-prefill",
+        "64"
+      ],
+      "host_exit_observed_ns": 461381485095110,
+      "paid_end_ns": 461381646125585,
+      "paid_start_ns": 461377701725838,
+      "phone_command": [
+        "adb",
+        "-s",
+        "3C15AU002CL00000",
+        "shell",
+        "cd /data/local/tmp/ls-s15-live && env LD_LIBRARY_PATH=. ADSP_LIBRARY_PATH=. GGML_HEXAGON_MBUF=4192 LLAMA_LAYER_END=8 LAYERSPLIT_PLACEMENT_CERT=1 ./llama-layersplit -m /data/local/tmp/ls-npu/12b-f16-head-0-8.gguf --devices HTP0 -ngl 99 --mode stagenet --port 5951 -n 8 --driver-batch 32 --driver-context 512 --driver-max-prefill 64"
+      ],
+      "phone_exit_observed_ns": 461381646125585,
+      "placement": {
+        "compute_by_op_and_buffer": {
+          "ADD": {
+            "HTP0": 128
+          },
+          "FLASH_ATTN_EXT": {
+            "HTP0": 64
+          },
+          "GET_ROWS": {
+            "CPU": 8
+          },
+          "GLU": {
+            "HTP0": 64
+          },
+          "MUL": {
+            "HTP0": 448
+          },
+          "MUL_MAT": {
+            "HTP0": 440
+          },
+          "RMS_NORM": {
+            "HTP0": 448
+          },
+          "ROPE": {
+            "HTP0": 128
+          },
+          "SCALE": {
+            "HTP0": 8
+          },
+          "SET_ROWS": {
+            "HTP0": 128
+          }
+        },
+        "layer_end": 8,
+        "layer_start": 0,
+        "missing_buffer_compute_nodes": 0,
+        "status": "SCHEDULED_PLACEMENT_OK"
+      },
+      "process_index": 0,
+      "prompt_in_argv": false,
+      "prompt_sha256": "sha256:c544378e66bf7a3d6640824b9e4cc28deaef2e35a424772b56b95d27c17fe6c8",
+      "prompt_submitted_ns": 461377701741478,
+      "ready_observed_ns": 461377701725438,
+      "route_wall_us_max": 2943821,
+      "schema": "s15-post-load-b32-process-v1",
+      "stream_count": 32,
+      "thermal_end": {
+        "max_millic": 35600,
+        "sample_age_us": 45645,
+        "sensors_millic": {
+          "nsphmx-0": 35200,
+          "nsphmx-1": 35200,
+          "nsphmx-2": 35600,
+          "nsphmx-3": 35600
+        },
+        "valid": true
+      },
+      "thermal_start": {
+        "max_millic": 30200,
+        "sample_age_us": 178019,
+        "sensors_millic": {
+          "nsphmx-0": 29400,
+          "nsphmx-1": 30200,
+          "nsphmx-2": 29800,
+          "nsphmx-3": 29800
+        },
+        "valid": true
+      },
+      "token_ids": [
+        45518,
+        107,
+        100,
+        45518,
+        107,
+        101,
+        1509,
+        7412
+      ]
+    },
+    {
+      "completion_elapsed_us": 3939577,
+      "eligible": true,
+      "host_command": [
+        "/home/myid/zs89458/Documents/llama.cpp-release/build-cuda/bin/llama-layersplit",
+        "-m",
+        "/home/myid/zs89458/Documents/models/gemma-4-12B-it-f16.gguf",
+        "-ngl",
+        "99",
+        "--mode",
+        "pipedriver",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "5951",
+        "--prompt-after-load",
+        "-n",
+        "8",
+        "--driver-requests",
+        "32",
+        "--driver-warmup",
+        "0",
+        "--driver-batch",
+        "32",
+        "--driver-context",
+        "512",
+        "--driver-max-prefill",
+        "64"
+      ],
+      "host_exit_observed_ns": 461401473748396,
+      "paid_end_ns": 461401612709254,
+      "paid_start_ns": 461397673131753,
+      "phone_command": [
+        "adb",
+        "-s",
+        "3C15AU002CL00000",
+        "shell",
+        "cd /data/local/tmp/ls-s15-live && env LD_LIBRARY_PATH=. ADSP_LIBRARY_PATH=. GGML_HEXAGON_MBUF=4192 LLAMA_LAYER_END=8 LAYERSPLIT_PLACEMENT_CERT=1 ./llama-layersplit -m /data/local/tmp/ls-npu/12b-f16-head-0-8.gguf --devices HTP0 -ngl 99 --mode stagenet --port 5951 -n 8 --driver-batch 32 --driver-context 512 --driver-max-prefill 64"
+      ],
+      "phone_exit_observed_ns": 461401612709254,
+      "placement": {
+        "compute_by_op_and_buffer": {
+          "ADD": {
+            "HTP0": 128
+          },
+          "FLASH_ATTN_EXT": {
+            "HTP0": 64
+          },
+          "GET_ROWS": {
+            "CPU": 8
+          },
+          "GLU": {
+            "HTP0": 64
+          },
+          "MUL": {
+            "HTP0": 448
+          },
+          "MUL_MAT": {
+            "HTP0": 440
+          },
+          "RMS_NORM": {
+            "HTP0": 448
+          },
+          "ROPE": {
+            "HTP0": 128
+          },
+          "SCALE": {
+            "HTP0": 8
+          },
+          "SET_ROWS": {
+            "HTP0": 128
+          }
+        },
+        "layer_end": 8,
+        "layer_start": 0,
+        "missing_buffer_compute_nodes": 0,
+        "status": "SCHEDULED_PLACEMENT_OK"
+      },
+      "process_index": 1,
+      "prompt_in_argv": false,
+      "prompt_sha256": "sha256:c544378e66bf7a3d6640824b9e4cc28deaef2e35a424772b56b95d27c17fe6c8",
+      "prompt_submitted_ns": 461397673144758,
+      "ready_observed_ns": 461397673131363,
+      "route_wall_us_max": 2946618,
+      "schema": "s15-post-load-b32-process-v1",
+      "stream_count": 32,
+      "thermal_end": {
+        "max_millic": 36400,
+        "sample_age_us": 181548,
+        "sensors_millic": {
+          "nsphmx-0": 36000,
+          "nsphmx-1": 36000,
+          "nsphmx-2": 36400,
+          "nsphmx-3": 36000
+        },
+        "valid": true
+      },
+      "thermal_start": {
+        "max_millic": 33700,
+        "sample_age_us": 311780,
+        "sensors_millic": {
+          "nsphmx-0": 32900,
+          "nsphmx-1": 33700,
+          "nsphmx-2": 33300,
+          "nsphmx-3": 33300
+        },
+        "valid": true
+      },
+      "token_ids": [
+        45518,
+        107,
+        100,
+        45518,
+        107,
+        101,
+        1509,
+        7412
+      ]
+    },
+    {
+      "completion_elapsed_us": 3901898,
+      "eligible": true,
+      "host_command": [
+        "/home/myid/zs89458/Documents/llama.cpp-release/build-cuda/bin/llama-layersplit",
+        "-m",
+        "/home/myid/zs89458/Documents/models/gemma-4-12B-it-f16.gguf",
+        "-ngl",
+        "99",
+        "--mode",
+        "pipedriver",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "5951",
+        "--prompt-after-load",
+        "-n",
+        "8",
+        "--driver-requests",
+        "32",
+        "--driver-warmup",
+        "0",
+        "--driver-batch",
+        "32",
+        "--driver-context",
+        "512",
+        "--driver-max-prefill",
+        "64"
+      ],
+      "host_exit_observed_ns": 461420577317874,
+      "paid_end_ns": 461420747195571,
+      "paid_start_ns": 461416845297357,
+      "phone_command": [
+        "adb",
+        "-s",
+        "3C15AU002CL00000",
+        "shell",
+        "cd /data/local/tmp/ls-s15-live && env LD_LIBRARY_PATH=. ADSP_LIBRARY_PATH=. GGML_HEXAGON_MBUF=4192 LLAMA_LAYER_END=8 LAYERSPLIT_PLACEMENT_CERT=1 ./llama-layersplit -m /data/local/tmp/ls-npu/12b-f16-head-0-8.gguf --devices HTP0 -ngl 99 --mode stagenet --port 5951 -n 8 --driver-batch 32 --driver-context 512 --driver-max-prefill 64"
+      ],
+      "phone_exit_observed_ns": 461420747195571,
+      "placement": {
+        "compute_by_op_and_buffer": {
+          "ADD": {
+            "HTP0": 128
+          },
+          "FLASH_ATTN_EXT": {
+            "HTP0": 64
+          },
+          "GET_ROWS": {
+            "CPU": 8
+          },
+          "GLU": {
+            "HTP0": 64
+          },
+          "MUL": {
+            "HTP0": 448
+          },
+          "MUL_MAT": {
+            "HTP0": 440
+          },
+          "RMS_NORM": {
+            "HTP0": 448
+          },
+          "ROPE": {
+            "HTP0": 128
+          },
+          "SCALE": {
+            "HTP0": 8
+          },
+          "SET_ROWS": {
+            "HTP0": 128
+          }
+        },
+        "layer_end": 8,
+        "layer_start": 0,
+        "missing_buffer_compute_nodes": 0,
+        "status": "SCHEDULED_PLACEMENT_OK"
+      },
+      "process_index": 2,
+      "prompt_in_argv": false,
+      "prompt_sha256": "sha256:c544378e66bf7a3d6640824b9e4cc28deaef2e35a424772b56b95d27c17fe6c8",
+      "prompt_submitted_ns": 461416845310612,
+      "ready_observed_ns": 461416845296956,
+      "route_wall_us_max": 2923181,
+      "schema": "s15-post-load-b32-process-v1",
+      "stream_count": 32,
+      "thermal_end": {
+        "max_millic": 37200,
+        "sample_age_us": 353139,
+        "sensors_millic": {
+          "nsphmx-0": 36800,
+          "nsphmx-1": 37200,
+          "nsphmx-2": 37200,
+          "nsphmx-3": 37200
+        },
+        "valid": true
+      },
+      "thermal_start": {
+        "max_millic": 34100,
+        "sample_age_us": 417694,
+        "sensors_millic": {
+          "nsphmx-0": 34100,
+          "nsphmx-1": 34100,
+          "nsphmx-2": 34100,
+          "nsphmx-3": 33700
+        },
+        "valid": true
+      },
+      "token_ids": [
+        45518,
+        107,
+        100,
+        45518,
+        107,
+        101,
+        1509,
+        7412
+      ]
+    },
+    {
+      "completion_elapsed_us": 3941004,
+      "eligible": true,
+      "host_command": [
+        "/home/myid/zs89458/Documents/llama.cpp-release/build-cuda/bin/llama-layersplit",
+        "-m",
+        "/home/myid/zs89458/Documents/models/gemma-4-12B-it-f16.gguf",
+        "-ngl",
+        "99",
+        "--mode",
+        "pipedriver",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "5951",
+        "--prompt-after-load",
+        "-n",
+        "8",
+        "--driver-requests",
+        "32",
+        "--driver-warmup",
+        "0",
+        "--driver-batch",
+        "32",
+        "--driver-context",
+        "512",
+        "--driver-max-prefill",
+        "64"
+      ],
+      "host_exit_observed_ns": 461439823798003,
+      "paid_end_ns": 461439990446664,
+      "paid_start_ns": 461436049441805,
+      "phone_command": [
+        "adb",
+        "-s",
+        "3C15AU002CL00000",
+        "shell",
+        "cd /data/local/tmp/ls-s15-live && env LD_LIBRARY_PATH=. ADSP_LIBRARY_PATH=. GGML_HEXAGON_MBUF=4192 LLAMA_LAYER_END=8 LAYERSPLIT_PLACEMENT_CERT=1 ./llama-layersplit -m /data/local/tmp/ls-npu/12b-f16-head-0-8.gguf --devices HTP0 -ngl 99 --mode stagenet --port 5951 -n 8 --driver-batch 32 --driver-context 512 --driver-max-prefill 64"
+      ],
+      "phone_exit_observed_ns": 461439990446664,
+      "placement": {
+        "compute_by_op_and_buffer": {
+          "ADD": {
+            "HTP0": 128
+          },
+          "FLASH_ATTN_EXT": {
+            "HTP0": 64
+          },
+          "GET_ROWS": {
+            "CPU": 8
+          },
+          "GLU": {
+            "HTP0": 64
+          },
+          "MUL": {
+            "HTP0": 448
+          },
+          "MUL_MAT": {
+            "HTP0": 440
+          },
+          "RMS_NORM": {
+            "HTP0": 448
+          },
+          "ROPE": {
+            "HTP0": 128
+          },
+          "SCALE": {
+            "HTP0": 8
+          },
+          "SET_ROWS": {
+            "HTP0": 128
+          }
+        },
+        "layer_end": 8,
+        "layer_start": 0,
+        "missing_buffer_compute_nodes": 0,
+        "status": "SCHEDULED_PLACEMENT_OK"
+      },
+      "process_index": 3,
+      "prompt_in_argv": false,
+      "prompt_sha256": "sha256:c544378e66bf7a3d6640824b9e4cc28deaef2e35a424772b56b95d27c17fe6c8",
+      "prompt_submitted_ns": 461436049456093,
+      "ready_observed_ns": 461436049441334,
+      "route_wall_us_max": 2936058,
+      "schema": "s15-post-load-b32-process-v1",
+      "stream_count": 32,
+      "thermal_end": {
+        "max_millic": 37200,
+        "sample_age_us": 216433,
+        "sensors_millic": {
+          "nsphmx-0": 36400,
+          "nsphmx-1": 37200,
+          "nsphmx-2": 36800,
+          "nsphmx-3": 36800
+        },
+        "valid": true
+      },
+      "thermal_start": {
+        "max_millic": 34100,
+        "sample_age_us": 142146,
+        "sensors_millic": {
+          "nsphmx-0": 33700,
+          "nsphmx-1": 34100,
+          "nsphmx-2": 33700,
+          "nsphmx-3": 33700
+        },
+        "valid": true
+      },
+      "token_ids": [
+        45518,
+        107,
+        100,
+        45518,
+        107,
+        101,
+        1509,
+        7412
+      ]
+    },
+    {
+      "completion_elapsed_us": 3946008,
+      "eligible": true,
+      "host_command": [
+        "/home/myid/zs89458/Documents/llama.cpp-release/build-cuda/bin/llama-layersplit",
+        "-m",
+        "/home/myid/zs89458/Documents/models/gemma-4-12B-it-f16.gguf",
+        "-ngl",
+        "99",
+        "--mode",
+        "pipedriver",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "5951",
+        "--prompt-after-load",
+        "-n",
+        "8",
+        "--driver-requests",
+        "32",
+        "--driver-warmup",
+        "0",
+        "--driver-batch",
+        "32",
+        "--driver-context",
+        "512",
+        "--driver-max-prefill",
+        "64"
+      ],
+      "host_exit_observed_ns": 461458932833428,
+      "paid_end_ns": 461459126877086,
+      "paid_start_ns": 461455180868964,
+      "phone_command": [
+        "adb",
+        "-s",
+        "3C15AU002CL00000",
+        "shell",
+        "cd /data/local/tmp/ls-s15-live && env LD_LIBRARY_PATH=. ADSP_LIBRARY_PATH=. GGML_HEXAGON_MBUF=4192 LLAMA_LAYER_END=8 LAYERSPLIT_PLACEMENT_CERT=1 ./llama-layersplit -m /data/local/tmp/ls-npu/12b-f16-head-0-8.gguf --devices HTP0 -ngl 99 --mode stagenet --port 5951 -n 8 --driver-batch 32 --driver-context 512 --driver-max-prefill 64"
+      ],
+      "phone_exit_observed_ns": 461459126877086,
+      "placement": {
+        "compute_by_op_and_buffer": {
+          "ADD": {
+            "HTP0": 128
+          },
+          "FLASH_ATTN_EXT": {
+            "HTP0": 64
+          },
+          "GET_ROWS": {
+            "CPU": 8
+          },
+          "GLU": {
+            "HTP0": 64
+          },
+          "MUL": {
+            "HTP0": 448
+          },
+          "MUL_MAT": {
+            "HTP0": 440
+          },
+          "RMS_NORM": {
+            "HTP0": 448
+          },
+          "ROPE": {
+            "HTP0": 128
+          },
+          "SCALE": {
+            "HTP0": 8
+          },
+          "SET_ROWS": {
+            "HTP0": 128
+          }
+        },
+        "layer_end": 8,
+        "layer_start": 0,
+        "missing_buffer_compute_nodes": 0,
+        "status": "SCHEDULED_PLACEMENT_OK"
+      },
+      "process_index": 4,
+      "prompt_in_argv": false,
+      "prompt_sha256": "sha256:c544378e66bf7a3d6640824b9e4cc28deaef2e35a424772b56b95d27c17fe6c8",
+      "prompt_submitted_ns": 461455180884774,
+      "ready_observed_ns": 461455180868543,
+      "route_wall_us_max": 2931441,
+      "schema": "s15-post-load-b32-process-v1",
+      "stream_count": 32,
+      "thermal_end": {
+        "max_millic": 37600,
+        "sample_age_us": 393401,
+        "sensors_millic": {
+          "nsphmx-0": 37200,
+          "nsphmx-1": 37600,
+          "nsphmx-2": 37600,
+          "nsphmx-3": 37200
+        },
+        "valid": true
+      },
+      "thermal_start": {
+        "max_millic": 34500,
+        "sample_age_us": 19663,
+        "sensors_millic": {
+          "nsphmx-0": 33700,
+          "nsphmx-1": 34500,
+          "nsphmx-2": 34500,
+          "nsphmx-3": 34100
+        },
+        "valid": true
+      },
+      "token_ids": [
+        45518,
+        107,
+        100,
+        45518,
+        107,
+        101,
+        1509,
+        7412
+      ]
+    },
+    {
+      "completion_elapsed_us": 3968367,
+      "eligible": true,
+      "host_command": [
+        "/home/myid/zs89458/Documents/llama.cpp-release/build-cuda/bin/llama-layersplit",
+        "-m",
+        "/home/myid/zs89458/Documents/models/gemma-4-12B-it-f16.gguf",
+        "-ngl",
+        "99",
+        "--mode",
+        "pipedriver",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "5951",
+        "--prompt-after-load",
+        "-n",
+        "8",
+        "--driver-requests",
+        "32",
+        "--driver-warmup",
+        "0",
+        "--driver-batch",
+        "32",
+        "--driver-context",
+        "512",
+        "--driver-max-prefill",
+        "64"
+      ],
+      "host_exit_observed_ns": 461478207692740,
+      "paid_end_ns": 461478413239724,
+      "paid_start_ns": 461474444872138,
+      "phone_command": [
+        "adb",
+        "-s",
+        "3C15AU002CL00000",
+        "shell",
+        "cd /data/local/tmp/ls-s15-live && env LD_LIBRARY_PATH=. ADSP_LIBRARY_PATH=. GGML_HEXAGON_MBUF=4192 LLAMA_LAYER_END=8 LAYERSPLIT_PLACEMENT_CERT=1 ./llama-layersplit -m /data/local/tmp/ls-npu/12b-f16-head-0-8.gguf --devices HTP0 -ngl 99 --mode stagenet --port 5951 -n 8 --driver-batch 32 --driver-context 512 --driver-max-prefill 64"
+      ],
+      "phone_exit_observed_ns": 461478413239724,
+      "placement": {
+        "compute_by_op_and_buffer": {
+          "ADD": {
+            "HTP0": 128
+          },
+          "FLASH_ATTN_EXT": {
+            "HTP0": 64
+          },
+          "GET_ROWS": {
+            "CPU": 8
+          },
+          "GLU": {
+            "HTP0": 64
+          },
+          "MUL": {
+            "HTP0": 448
+          },
+          "MUL_MAT": {
+            "HTP0": 440
+          },
+          "RMS_NORM": {
+            "HTP0": 448
+          },
+          "ROPE": {
+            "HTP0": 128
+          },
+          "SCALE": {
+            "HTP0": 8
+          },
+          "SET_ROWS": {
+            "HTP0": 128
+          }
+        },
+        "layer_end": 8,
+        "layer_start": 0,
+        "missing_buffer_compute_nodes": 0,
+        "status": "SCHEDULED_PLACEMENT_OK"
+      },
+      "process_index": 5,
+      "prompt_in_argv": false,
+      "prompt_sha256": "sha256:c544378e66bf7a3d6640824b9e4cc28deaef2e35a424772b56b95d27c17fe6c8",
+      "prompt_submitted_ns": 461474444885835,
+      "ready_observed_ns": 461474444871828,
+      "route_wall_us_max": 2944757,
+      "schema": "s15-post-load-b32-process-v1",
+      "stream_count": 32,
+      "thermal_end": {
+        "max_millic": 37200,
+        "sample_age_us": 309443,
+        "sensors_millic": {
+          "nsphmx-0": 36800,
+          "nsphmx-1": 37200,
+          "nsphmx-2": 37200,
+          "nsphmx-3": 36800
+        },
+        "valid": true
+      },
+      "thermal_start": {
+        "max_millic": 34900,
+        "sample_age_us": 198035,
+        "sensors_millic": {
+          "nsphmx-0": 34500,
+          "nsphmx-1": 34900,
+          "nsphmx-2": 34500,
+          "nsphmx-3": 34100
+        },
+        "valid": true
+      },
+      "token_ids": [
+        45518,
+        107,
+        100,
+        45518,
+        107,
+        101,
+        1509,
+        7412
+      ]
+    },
+    {
+      "completion_elapsed_us": 3943267,
+      "eligible": true,
+      "host_command": [
+        "/home/myid/zs89458/Documents/llama.cpp-release/build-cuda/bin/llama-layersplit",
+        "-m",
+        "/home/myid/zs89458/Documents/models/gemma-4-12B-it-f16.gguf",
+        "-ngl",
+        "99",
+        "--mode",
+        "pipedriver",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "5951",
+        "--prompt-after-load",
+        "-n",
+        "8",
+        "--driver-requests",
+        "32",
+        "--driver-warmup",
+        "0",
+        "--driver-batch",
+        "32",
+        "--driver-context",
+        "512",
+        "--driver-max-prefill",
+        "64"
+      ],
+      "host_exit_observed_ns": 461492854205251,
+      "paid_end_ns": 461493015956674,
+      "paid_start_ns": 461489072688919,
+      "phone_command": [
+        "adb",
+        "-s",
+        "3C15AU002CL00000",
+        "shell",
+        "cd /data/local/tmp/ls-s15-live && env LD_LIBRARY_PATH=. ADSP_LIBRARY_PATH=. GGML_HEXAGON_MBUF=4192 LLAMA_LAYER_END=8 LAYERSPLIT_PLACEMENT_CERT=1 ./llama-layersplit -m /data/local/tmp/ls-npu/12b-f16-head-0-8.gguf --devices HTP0 -ngl 99 --mode stagenet --port 5951 -n 8 --driver-batch 32 --driver-context 512 --driver-max-prefill 64"
+      ],
+      "phone_exit_observed_ns": 461493015956674,
+      "placement": {
+        "compute_by_op_and_buffer": {
+          "ADD": {
+            "HTP0": 128
+          },
+          "FLASH_ATTN_EXT": {
+            "HTP0": 64
+          },
+          "GET_ROWS": {
+            "CPU": 8
+          },
+          "GLU": {
+            "HTP0": 64
+          },
+          "MUL": {
+            "HTP0": 448
+          },
+          "MUL_MAT": {
+            "HTP0": 440
+          },
+          "RMS_NORM": {
+            "HTP0": 448
+          },
+          "ROPE": {
+            "HTP0": 128
+          },
+          "SCALE": {
+            "HTP0": 8
+          },
+          "SET_ROWS": {
+            "HTP0": 128
+          }
+        },
+        "layer_end": 8,
+        "layer_start": 0,
+        "missing_buffer_compute_nodes": 0,
+        "status": "SCHEDULED_PLACEMENT_OK"
+      },
+      "process_index": 6,
+      "prompt_in_argv": false,
+      "prompt_sha256": "sha256:c544378e66bf7a3d6640824b9e4cc28deaef2e35a424772b56b95d27c17fe6c8",
+      "prompt_submitted_ns": 461489072711513,
+      "ready_observed_ns": 461489072688449,
+      "route_wall_us_max": 2924873,
+      "schema": "s15-post-load-b32-process-v1",
+      "stream_count": 32,
+      "thermal_end": {
+        "max_millic": 38000,
+        "sample_age_us": 229727,
+        "sensors_millic": {
+          "nsphmx-0": 37600,
+          "nsphmx-1": 38000,
+          "nsphmx-2": 38000,
+          "nsphmx-3": 37600
+        },
+        "valid": true
+      },
+      "thermal_start": {
+        "max_millic": 34900,
+        "sample_age_us": 252438,
+        "sensors_millic": {
+          "nsphmx-0": 34500,
+          "nsphmx-1": 34900,
+          "nsphmx-2": 34500,
+          "nsphmx-3": 34900
+        },
+        "valid": true
+      },
+      "token_ids": [
+        45518,
+        107,
+        100,
+        45518,
+        107,
+        101,
+        1509,
+        7412
+      ]
+    }
+  ],
+  "reference_tokens": [
+    45518,
+    107,
+    100,
+    45518,
+    107,
+    101,
+    1509,
+    7412
+  ],
+  "remaining_deadline_budget_us": 4000000,
+  "schema": "s15-post-load-b32-recertification-v1",
+  "scope": "REAL_OP15_A6000_POST_LOAD_PROMPT_LATENCY_CORRECTNESS_PLACEMENT_ENERGY_UNKNOWN",
+  "thermal_paths": {
+    "nsphmx-0": "/sys/class/thermal/thermal_zone32",
+    "nsphmx-1": "/sys/class/thermal/thermal_zone33",
+    "nsphmx-2": "/sys/class/thermal/thermal_zone34",
+    "nsphmx-3": "/sys/class/thermal/thermal_zone35"
+  },
+  "verdict": "POST_LOAD_B32_ROUTE_CERTIFIED"
+}

@@ -50,6 +50,7 @@ from __future__ import annotations
 import pathlib
 
 import anchors
+import e2a_e2
 import e2a_canon as canon
 import resolver
 from e2a_e2 import comparator as e2_comparator
@@ -166,7 +167,8 @@ def decide_aggregate(totals, scope):
 
 def resolve_bundle(bundle_path):
     """Resolve one bundle under a single immutable artifact view."""
-    with resolver.resolution_context():
+    trusted_root = resolver.derive_trusted_root(bundle_path)
+    with resolver.resolution_context(trusted_root):
         return _resolve_bundle_in_context(bundle_path)
 
 
@@ -179,24 +181,24 @@ def _resolve_bundle_in_context(bundle_path):
     anything is unresolved -- is enforced by control flow, not by a flag.
     """
     trusted_root = resolver.derive_trusted_root(bundle_path)
-    _resolved, data = resolver.read_once(
-        pathlib.Path(bundle_path).name,
-        canon.sha256_bytes(pathlib.Path(bundle_path).read_bytes()),
-        trusted_root)
+    _resolved, _bundle_digest, data = resolver.read_unbound_once(
+        pathlib.Path(bundle_path).name, trusted_root)
     index = resolver.parse_once(data, "bundle index")
-    required = {"schema", "plan_path", "plan_sha256", "plan_anchor_path",
-                "plan_anchor_sha256", "ledger_path", "ledger_sha256",
-                "ledger_close_path", "ledger_close_sha256", "manifest_path",
-                "manifest_sha256", "slots"}
-    if not isinstance(index, dict) or set(index) != required:
-        _fail("E_SCHEMA", "bundle index does not match the e2a.bundle.v2 contract")
-    if index["schema"] != "e2a.bundle.v2":
-        _fail("E_SCHEMA", f"unknown bundle schema {index['schema']!r}")
+    if not isinstance(index, dict):
+        _fail("E_SCHEMA", "bundle index is not an object")
+    errors = resolver.schema_errors("bundle", index)
+    if errors:
+        _fail("E_SCHEMA", f"bundle index: {errors[0]}")
+    try:
+        canon.check_integers(index, "bundle index")
+    except ValueError as exc:
+        _fail("E_TYPE", str(exc))
 
     _r, plan_data = resolver.read_once(index["plan_path"], index["plan_sha256"],
                                        trusted_root)
     plan = resolver.parse_once(plan_data, "plan")
     resolver.resolve_plan(plan, trusted_root)
+    wall_capability = _resolve_wall_capability(index, plan, trusted_root)
 
     _r, anchor_data = resolver.read_once(index["plan_anchor_path"],
                                          index["plan_anchor_sha256"],
@@ -214,9 +216,11 @@ def _resolve_bundle_in_context(bundle_path):
                                            trusted_root)
     manifest = resolver.parse_once(manifest_data, "request set manifest")
     resolver.resolve_manifest(manifest, plan)
+    routes = _resolve_routes(index, plan, manifest, trusted_root)
 
     contributions, resolved = _resolve_slots(index, plan, terminal, manifest,
-                                             trusted_root)
+                                             trusted_root, wall_capability,
+                                             routes)
 
     # THE ANCHOR GATE, applied LAST of the resolution steps and before any label.
     #
@@ -238,8 +242,13 @@ def _resolve_bundle_in_context(bundle_path):
                                         trusted_root)
     close = resolver.parse_once(close_data, "ledger close")
     resolver.bind_close_anchor(close, plan, plan_anchor, ledger)
-    resolver.resolve_plan_anchor(plan_anchor, plan, trusted_root)
-    resolver.resolve_close_anchor(close, plan, plan_anchor, ledger, trusted_root)
+    plan_anchor_property = resolver.resolve_plan_anchor(
+        plan_anchor, plan, trusted_root)
+    close_anchor_property = resolver.resolve_close_anchor(
+        close, plan, plan_anchor, ledger, trusted_root)
+    if plan_anchor_property != close_anchor_property:
+        _fail("E_ANCHOR_PROPERTY",
+              "plan and close receipts resolve to different anchor properties")
 
     # The anchor gate is host-level: no bundle can fix it. Provenance is
     # bundle-level. Reporting the unfixable blocker first tells a reader that
@@ -247,7 +256,58 @@ def _resolve_bundle_in_context(bundle_path):
     check_provenance(resolved)
     return {"plan": plan, "plan_anchor": plan_anchor, "ledger": ledger,
             "ledger_close": close, "manifest": manifest,
-            "contributions": contributions, "trusted_root": trusted_root}
+            "contributions": contributions, "trusted_root": trusted_root,
+            "wall_capability": wall_capability,
+            "routes": routes,
+            "anchor_property": plan_anchor_property}
+
+
+def _resolve_wall_capability(index, plan, trusted_root):
+    path = index["server_wall_capability_path"]
+    digest = index["server_wall_capability_sha256"]
+    if plan["scope"] != "SERVER_WALL":
+        if path is not None or digest is not None:
+            _fail("E_SCOPE",
+                  "GPU_BOARD bundle carries a server-wall capability")
+        return None
+    if path is None or digest is None:
+        _fail("E_INCOMPLETE_WALL",
+              "SERVER_WALL bundle has no capability record")
+    resolver.claim_evidence_path(
+        path, ("server-wall-capability",), trusted_root)
+    _resolved, data = resolver.read_once(path, digest, trusted_root)
+    capability = resolver.parse_once(data, "server wall capability")
+    if not isinstance(capability, dict):
+        _fail("E_INCOMPLETE_WALL", "server wall capability is not an object")
+    if capability.get("record_sha256") != \
+            plan["server_wall_capability_record_sha256"]:
+        _fail("E_INCOMPLETE_WALL",
+              "plan does not pin the resolved server-wall capability")
+    proof_path = capability.get("coverage_proof_artifact_path")
+    if isinstance(proof_path, str):
+        resolver.claim_evidence_path(
+            proof_path, ("server-wall-capability-proof",), trusted_root)
+    return capability
+
+
+def _resolve_routes(index, plan, manifest, trusted_root):
+    routes = {}
+    for role, prefix in (
+            ("OPTIMIZED_SERVER_ONLY_CONTROL", "route_control"),
+            ("Q_PIM_TREATMENT", "route_treatment")):
+        path = index[f"{prefix}_path"]
+        digest = index[f"{prefix}_sha256"]
+        resolver.claim_evidence_path(
+            path, ("route-schedule", role), trusted_root)
+        _resolved, data = resolver.read_once(path, digest, trusted_root)
+        route = resolver.parse_once(data, f"{role} route schedule")
+        routes[role] = resolver.resolve_route_schedule(
+            route, plan, manifest, role)
+    if routes["OPTIMIZED_SERVER_ONLY_CONTROL"]["record_sha256"] == \
+            routes["Q_PIM_TREATMENT"]["record_sha256"]:
+        _fail("E_ROUTE_ARTIFACT",
+              "control and treatment resolve to the same route record")
+    return routes
 
 
 PLAN_TIMELINE_FIELDS = (
@@ -276,6 +336,13 @@ def _bind_timeline_to_plan(timeline, plan, plan_slot, slot_index):
     if timeline["policy_digest"] != expected_policy:
         _fail("E_PLAN_TIMELINE_BINDING",
               f"slot {slot_index} ran a policy the plan did not pin")
+    expected_route = (
+        plan["route_schedule_digest_control"]
+        if plan_slot["role"] == "OPTIMIZED_SERVER_ONLY_CONTROL"
+        else plan["route_schedule_digest_treatment"])
+    if timeline["route_schedule_digest"] != expected_route:
+        _fail("E_ROUTE_BINDING",
+              f"slot {slot_index} ran a route schedule the plan did not pin")
 
 
 def _check_global_slots(resolved):
@@ -303,7 +370,8 @@ def _check_global_slots(resolved):
                   f"slots {previous[2]} and {current[2]} overlap in time")
 
 
-def _resolve_slots(index, plan, terminal, manifest, trusted_root):
+def _resolve_slots(index, plan, terminal, manifest, trusted_root,
+                   wall_capability, routes):
     """Resolve all 2N slots into per-pair contributions.
 
     NOTE the absence of a try/except around the per-slot work. A refusal must
@@ -311,7 +379,22 @@ def _resolve_slots(index, plan, terminal, manifest, trusted_root):
     every failure into a silently smaller, and systematically more favourable,
     cohort.
     """
-    slots = {item["slot_index"]: item for item in index["slots"]}
+    raw_slots = index["slots"]
+    expected_count = 2 * plan["n_pairs"]
+    slots = {}
+    for position, item in enumerate(raw_slots):
+        slot_index = item["slot_index"]
+        if type(slot_index) is not int:
+            _fail("E_TYPE",
+                  f"bundle slot {position} index is not an integer")
+        if slot_index in slots:
+            _fail("E_SLOT_DUPLICATE",
+                  f"bundle repeats slot_index {slot_index}")
+        slots[slot_index] = item
+    if len(raw_slots) != expected_count:
+        _fail("E_SLOT_UNCOVERED",
+              f"bundle has {len(raw_slots)} slot entries; plan requires "
+              f"{expected_count}")
     if set(slots) != set(range(2 * plan["n_pairs"])):
         _fail("E_SLOT_UNCOVERED",
               f"the bundle supplies slots {sorted(slots)[:4]}... but the plan "
@@ -333,16 +416,23 @@ def _resolve_slots(index, plan, terminal, manifest, trusted_root):
             digest_field = f"{kind}_artifact_sha256"
             resolver.claim_evidence_path(
                 timeline[path_field], owner_prefix + (kind,), trusted_root)
-            resolver.read_once(timeline[path_field], timeline[digest_field],
-                               trusted_root)
+            # The frozen E2 validator reads these through the secure adapter below.
 
         # E2's frozen timeline validation: re-integrates the raw artifact,
         # re-derives every declared statistic, and rejects on any mismatch.
-        failures = e2_comparator.validate_timeline(timeline, trusted_root)
+        with e2a_e2.artifact_reader(resolver.read_once):
+            failures = e2_comparator.validate_timeline(timeline, trusted_root)
         if failures:
             _fail("E_TIMELINE_INVALID",
                   f"slot {slot_index} timeline {timeline.get('timeline_id')!r}: "
                   f"{failures[0]}")
+        if wall_capability is not None:
+            with e2a_e2.artifact_reader(resolver.read_once):
+                wall_failures = e2_comparator.check_wall_capability(
+                    wall_capability, timeline, trusted_root)
+            if wall_failures:
+                code, _, message = wall_failures[0].partition(": ")
+                _fail(code, message or wall_failures[0])
         if timeline["run_nonce"] != plan_slot["run_nonce"]:
             _fail("E_SLOT_BINDING",
                   f"slot {slot_index} ran nonce {timeline['run_nonce']!r} but the "
@@ -383,7 +473,8 @@ def _resolve_slots(index, plan, terminal, manifest, trusted_root):
             manifest, outcomes, timeline, trusted_root,
             f"outcomes slot {slot_index}", plan_slot["pair_index"])
         resolver.resolve_lifecycle(
-            lifecycle, timeline, plan_slot, resolved_outcomes)
+            lifecycle, timeline, plan_slot, resolved_outcomes, plan,
+            routes[plan_slot["role"]])
         ledger_start = ledger_group["start"]
         if ledger_start["clock_epoch_id"] != timeline["clock_epoch_id"] or \
                 ledger_entry["clock_epoch_id"] != timeline["clock_epoch_id"]:
@@ -486,7 +577,7 @@ def derive_label(bundle, totals, detail):
     """Derive the label from resolved evidence. There is no label parameter."""
     plan = bundle["plan"]
     scope = plan["scope"]
-    prop = anchors.anchor_property(bundle["plan_anchor"]["anchor_kind"])
+    prop = bundle["anchor_property"]
     if prop != anchors.REQUIRED_PROPERTY:
         return LABEL_INVALID, "ANCHOR_NOT_ENUMERABLE"
     if not detail["relief"]:
@@ -509,7 +600,7 @@ def evaluate(bundle_path):
     label, reason = derive_label(bundle, totals, detail)
 
     record = {
-        "schema_version": 2,
+        "schema_version": 4,
         "kind": "AggregateComparison",
         "aggregate_id": "agg." + canon.digest({
             "plan": plan["record_sha256"],
@@ -523,10 +614,12 @@ def evaluate(bundle_path):
         "ledger_close_record_sha256": bundle["ledger_close"]["record_sha256"],
         "ledger_head_sha256": bundle["ledger"]["head_sha256"],
         "request_set_manifest_sha256": bundle["manifest"]["record_sha256"],
+        "server_wall_capability_record_sha256":
+            (bundle["wall_capability"]["record_sha256"]
+             if bundle["wall_capability"] is not None else None),
         "aggregate_method": "SUM_ALL_PAIRS_V1",
         "anchor_kind": bundle["plan_anchor"]["anchor_kind"],
-        "anchor_property": anchors.anchor_property(
-            bundle["plan_anchor"]["anchor_kind"]),
+        "anchor_property": bundle["anchor_property"],
         "scope": plan["scope"],
         "instrument_kind": plan["instrument_kind"],
         "n_pairs": plan["n_pairs"],

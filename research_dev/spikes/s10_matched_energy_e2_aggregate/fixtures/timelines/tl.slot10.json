@@ -13,7 +13,7 @@
   ],
   "execution_artifact_id": "execution.tl.slot10",
   "execution_artifact_path": "execution/tl.slot10.json",
-  "execution_artifact_sha256": "344ac422ce37d470f0e2b35591e13e2934010c011c6a434071d6de3661f0e999",
+  "execution_artifact_sha256": "fb10d64a7b2e7e3f3834ed22d17acb2d530b150066b05091332820786ecd0065",
   "included_rails": [
     "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f/BOARD"
   ],
@@ -40,9 +40,9 @@
   "raw_artifact_path": "raw/tl.slot10.json",
   "raw_artifact_sha256": "0945dad50370144b069df223428dcd7cdfcbaf5881ed3dc2a49dd673f84c8502",
   "reason_code": "SYNTHETIC_MECHANICS_FIXTURE",
-  "record_sha256": "ddd209a77e482c9a2b0648cf06520fdfaf22bfe893ca1a21f82873261a5f2700",
+  "record_sha256": "daac336a6f48ea9df27ab721a94d6cb3a5b104ba9f6580f42ab674f3379b7a99",
   "role": "Q_PIM_TREATMENT",
-  "route_schedule_digest": "74fab39d591850d3c60fcfa9fadaff1b915c6b20de09f099b61b50952697bc7f",
+  "route_schedule_digest": "da2d3b042db1e924a6769b2db870cb939d35eb5b420a7dcbdefbbbf33fa2f62d",
   "run_nonce": "run.tl.slot10",
   "sample_count": 201,
   "schema_version": 1,

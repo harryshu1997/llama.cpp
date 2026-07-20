@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "service": "conversation_generation",
+  "provenance": "real",
+  "nodes": [
+    { "node_id": "tokenize", "op_class": "tokenize", "depends_on": [], "state_policy": "stateless", "phone_candidate": false },
+    { "node_id": "prefill", "op_class": "llm_prefill", "depends_on": ["tokenize"], "state_policy": "rebuildable", "phone_candidate": true },
+    { "node_id": "decode", "op_class": "llm_decode", "depends_on": ["prefill"], "state_policy": "sticky", "phone_candidate": true },
+    { "node_id": "sample", "op_class": "sample", "depends_on": ["decode"], "state_policy": "stateless", "phone_candidate": false },
+    { "node_id": "detokenize", "op_class": "detokenize", "depends_on": ["sample"], "state_policy": "stateless", "phone_candidate": false }
+  ]
+}

@@ -1,0 +1,1 @@
+["adb","-s","3C15AU002CL00000","shell","cd /data/local/tmp/ls-s15-live && env LD_LIBRARY_PATH=. ADSP_LIBRARY_PATH=. GGML_HEXAGON_MBUF=4192 LLAMA_LAYER_END=8 LAYERSPLIT_PLACEMENT_CERT=1 ./llama-layersplit -m /data/local/tmp/ls-npu/12b-f16-head-0-8.gguf --devices HTP0 -ngl 99 --mode stagenet --port 5951 -n 8 --driver-batch 32 --driver-context 512 --driver-max-prefill 64"]

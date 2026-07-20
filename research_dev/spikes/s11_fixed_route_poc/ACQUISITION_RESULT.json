@@ -1,0 +1,69 @@
+{
+  "schema": "s11-e0-acquisition-result-v1",
+  "scope": "GPU_BOARD",
+  "formal_claim": "NONE",
+  "label": "GPU_BOARD_DIAGNOSTIC_RELIEF_FAIL",
+  "freeze_sha256": "1280bf4f0d1f2bb45432d7e05f87ff080acc6a437a4db51ee7ae17504ff6787f",
+  "raw_plan": {
+    "path": "scratchpad/s11_e0_gpu_board_b8_512_20260717/plan.json",
+    "sha256": "ff173621aff8c66d4cf6d2723f2c2ac417be573c7760c3393c2aca03dbce4d85",
+    "plan_sha256": "128888b493f522bb684ee7b2ad58848d8d9c78f639e1f943514db8c60d92dca2"
+  },
+  "raw_summary": {
+    "path": "scratchpad/s11_e0_gpu_board_b8_512_20260717/summary.json",
+    "sha256": "8df2969e0f2b02cf38a033237463b719f149618ad019de8aea22057e742e8325"
+  },
+  "cohort": {
+    "pairs": 8,
+    "slots": 16,
+    "completed_requests_per_route": 4096,
+    "generated_tokens_per_route": 131072,
+    "valid_pairs": 8,
+    "exact_work_all_pairs": true,
+    "slo_p95_us": 3500000,
+    "slo_met_all_pairs": true,
+    "control_p95_group_wall_us_max": 1338735,
+    "treatment_p95_group_wall_us_max": 3297845,
+    "gpu_ready_memory_relief_mib_min": 888,
+    "gpu_ready_memory_relief_mib_max": 888
+  },
+  "energy": {
+    "control_energy_sum_nj": 197415279825520,
+    "treatment_energy_sum_nj": 302334343309860,
+    "gross_delta_control_minus_treatment_nj": -104919063484340,
+    "control_uncertainty_sum_nj": 8215791760000,
+    "treatment_uncertainty_sum_nj": 12680219445000,
+    "conservative_relief_lower_nj": -125815074689340,
+    "control_window_sum_us": 683158352,
+    "treatment_window_sum_us": 1576043889,
+    "control_average_power_mw": 288974,
+    "treatment_average_power_mw": 191831,
+    "treatment_energy_increase_basis_points": 5315,
+    "board_relief_observed": false,
+    "board_relief_ge_10pct": false
+  },
+  "evidence": {
+    "power_artifacts": 16,
+    "process_artifacts": 16,
+    "thermal_artifacts": 8,
+    "control_independent_power_updates_min": 168,
+    "treatment_independent_power_updates_min": 390,
+    "power_max_gap_us": 108332,
+    "process_max_gap_us": 230200,
+    "phone_thermal_max_gap_us": 690000,
+    "phone_thermal_errors": 0,
+    "power_pstates": ["P2"]
+  },
+  "interpretation": [
+    "The phone route lowers selected-A6000 average board power by about one third.",
+    "The serial phone-to-A6000 pipeline takes about 2.31x as long for equal work.",
+    "Longer runtime dominates lower board power, increasing A6000 board energy by about 53.15 percent.",
+    "The fixed OP15 [0,2) route is rejected as an energy-saving primitive."
+  ],
+  "limitations": [
+    "NVML measures one GPU board, not server-wall power.",
+    "Phone, USB, charger, host CPU, DRAM, and PSU energy are excluded.",
+    "The acquisition has no independent enumerable pre-registration anchor.",
+    "Phone and total-system energy remain unknown."
+  ]
+}

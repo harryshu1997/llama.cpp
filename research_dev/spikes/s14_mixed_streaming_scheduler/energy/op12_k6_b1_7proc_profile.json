@@ -1,0 +1,71 @@
+{
+  "adapter_sha256": "97367854a1aa9864c1d4c065f1c09d0ce75c8f9469ce73febcc7dc847ec221a3",
+  "cov_limit": 0.05,
+  "energy_scope": "UNKNOWN",
+  "formal_claim": "OP12_BATCH1_HEAD_7PROC_PLACEMENT_CORRECTNESS_AND_LATENCY",
+  "n_processes": 7,
+  "phone_stage_us_p50_by_process": [
+    868069,
+    957223,
+    880407,
+    870110,
+    874626,
+    907664,
+    873443
+  ],
+  "request_wall_process_cov": 0.025821686566670967,
+  "request_wall_us_p50_by_process": [
+    1142199,
+    1232550,
+    1154462,
+    1145194,
+    1151677,
+    1182523,
+    1148629
+  ],
+  "route": {
+    "batch_size": 1,
+    "correctness_certificate_id": "sha256:4de8d3476e2029a42ae1db4bd51e5e326576085524f2f7fd31395ca489d4712a#same-batch-token-correctness-7proc",
+    "duration_us": 1151677,
+    "island_id": "gemma-head-0-6",
+    "model_id": "gemma-4-12b-it-f16",
+    "placement_certificate_id": "sha256:4de8d3476e2029a42ae1db4bd51e5e326576085524f2f7fd31395ca489d4712a#scheduled-placement-7proc",
+    "profile_id": "sha256:4de8d3476e2029a42ae1db4bd51e5e326576085524f2f7fd31395ca489d4712a",
+    "roofline_class": "memory_bound",
+    "route_epoch": 1,
+    "route_id": "op12-gemma-head-0-6",
+    "service_class": "generation"
+  },
+  "schema": "s14-op12-route-profile-v1",
+  "source_artifacts": [
+    {
+      "path": "energy/op12_k6_b1_v2_r0.json",
+      "sha256": "ea03f663557cd1a1f22a165b8038a14890d07df776e35c5420a0e8faf5b62672"
+    },
+    {
+      "path": "energy/op12_k6_b1_v2_r1.json",
+      "sha256": "f61ae6ea2c9b17b830d62ca542f4a8e20c6a9ab4f71f3992704cafcabf7a9038"
+    },
+    {
+      "path": "energy/op12_k6_b1_v2_r2.json",
+      "sha256": "0257b2bf3dec8f907f4f1289b71a3b43cc592ba5914b1b27516e9a43beb93881"
+    },
+    {
+      "path": "energy/op12_k6_b1_v2_r3.json",
+      "sha256": "ecd48f54e890c9731a9b642c4cd687f640dba007dcd46fe25315e307dfe1e82b"
+    },
+    {
+      "path": "energy/op12_k6_b1_v2_r4.json",
+      "sha256": "f4e08153744bce8885c8d5e4a5278f475f2af4cfa6663699ac3f62c17387ad24"
+    },
+    {
+      "path": "energy/op12_k6_b1_v2_r5.json",
+      "sha256": "08c64d8c775d193662a5ce23cf460be25fecad4206a6ab8a2b8eccf259b391a7"
+    },
+    {
+      "path": "energy/op12_k6_b1_v2_r6.json",
+      "sha256": "dbde300a943c6a4b81ceee4a56a47700afaa030fc7f8662dfcef7533286e75d8"
+    }
+  ],
+  "status": "OP12_ROUTE_PROFILE_PASS"
+}

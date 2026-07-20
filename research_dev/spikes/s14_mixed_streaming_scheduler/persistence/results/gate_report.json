@@ -1,0 +1,111 @@
+{
+  "artifact_binary_sha256": "sha256:d26075bcf64e90ee04e51c2f86188d709e4c2906add252d209014ad1e046646c",
+  "certified": true,
+  "energy_scope": "UNKNOWN",
+  "n_sessions": 7,
+  "problems": [],
+  "reset_exact_across_sessions": true,
+  "schema": "s15-persistence-gate-v1",
+  "session_end_sequence": [
+    "detach",
+    "detach",
+    "detach",
+    "detach",
+    "detach",
+    "detach",
+    "stop"
+  ],
+  "stream_reset": {
+    "0": {
+      "first_session_tokens": [
+        107,
+        45518,
+        107,
+        100,
+        45518,
+        107,
+        101,
+        818,
+        7217,
+        7412,
+        3730,
+        1547,
+        529,
+        496,
+        20284,
+        2760
+      ],
+      "identical_across_sessions": true,
+      "n_tokens": 16
+    },
+    "1": {
+      "first_session_tokens": [
+        107,
+        45518,
+        107,
+        100,
+        45518,
+        107,
+        101,
+        818,
+        7217,
+        7412,
+        3730,
+        1547,
+        529,
+        496,
+        20284,
+        2760
+      ],
+      "identical_across_sessions": true,
+      "n_tokens": 16
+    }
+  },
+  "verdict": "PERSISTENT_SESSION_MECHANICS_PASS_PHYSICAL_ENERGY_NOT_RUN",
+  "worker_summaries": {
+    "op12": {
+      "boot_nonce": "d8e331c7da00125e",
+      "pid": 26896,
+      "session_ends": [
+        "DETACH",
+        "DETACH",
+        "DETACH",
+        "DETACH",
+        "DETACH",
+        "DETACH",
+        "STOP"
+      ],
+      "session_ids": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ]
+    },
+    "op15": {
+      "boot_nonce": "b7e707b119a55b8f",
+      "pid": 23633,
+      "session_ends": [
+        "DETACH",
+        "DETACH",
+        "DETACH",
+        "DETACH",
+        "DETACH",
+        "DETACH",
+        "STOP"
+      ],
+      "session_ids": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ]
+    }
+  }
+}

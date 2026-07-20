@@ -1,0 +1,6564 @@
+{
+  "artifact_manifest_sha256": "0c40dca213c16a4431beeb539cfb64343be2a92899a18df1a4d1ca066c2354b9",
+  "batch": 32,
+  "certified": true,
+  "deployments": {
+    "op12": {
+      "device_boot_id": "295e2329-ad9b-4abf-b526-fd79aad28e22",
+      "files": {
+        "libc++_shared.so": "77a34d3f03b17709f3f6473f37cb7795314e51fa3e5e652b5c37d53cfd05c754",
+        "libggml-base.so": "e51895f6ae45589c91eac862bfd24997097c2fbf4e2228767b497f9b7485872c",
+        "libggml-cpu.so": "00741a30f03f9c91d68f2ff78b7bfc1be8516993d98fd9bee748a129be47f6bb",
+        "libggml-hexagon.so": "d10238a4e6676bd780420586df575f7d5cd49c78707c498020e3b0f34d1c8f12",
+        "libggml-htp-v75.so": "39c952422e4012abd32ac25a1fba44dfa8a6877e3c84bb968ab964913ae7a2ba",
+        "libggml-opencl.so": "70fca0359ffc50d52c591fd04829ca92f1561e19f10c1be059324f3c61a963c9",
+        "libggml.so": "5d5c200754697e4149f90400fc4b47a63c2dc801c5ced500764db400c46a7372",
+        "libllama-common.so": "2dff6b8f63b43f4178e1b3ed5b4680a790ad7ec9f8256dd2e50de51e7c31c67b",
+        "libllama.so": "4dd5bd8cd2a52f82ddb8fc753885c50dee264d40e101d738facfcb2ef9851640",
+        "llama-layersplit": "2494f191515ca576cacd8c411de79fa8985f719cba2a11cd6371aa6e1024be9f"
+      },
+      "shard_sha256": "d507b7bb453242dff12ba1ce0add53189755b8a9a2b960743ead1578d8f1a6b5"
+    },
+    "op15": {
+      "device_boot_id": "65582fc7-4801-4d81-b171-3cb37e93b7fb",
+      "files": {
+        "libc++_shared.so": "77a34d3f03b17709f3f6473f37cb7795314e51fa3e5e652b5c37d53cfd05c754",
+        "libggml-base.so": "e51895f6ae45589c91eac862bfd24997097c2fbf4e2228767b497f9b7485872c",
+        "libggml-cpu.so": "00741a30f03f9c91d68f2ff78b7bfc1be8516993d98fd9bee748a129be47f6bb",
+        "libggml-hexagon.so": "d10238a4e6676bd780420586df575f7d5cd49c78707c498020e3b0f34d1c8f12",
+        "libggml-htp-v81.so": "bbaf7ee312e488a35afcc2db194b44f02e0eb93d0c09f4ae9c1de21742635f94",
+        "libggml-opencl.so": "70fca0359ffc50d52c591fd04829ca92f1561e19f10c1be059324f3c61a963c9",
+        "libggml.so": "5d5c200754697e4149f90400fc4b47a63c2dc801c5ced500764db400c46a7372",
+        "libllama-common.so": "2dff6b8f63b43f4178e1b3ed5b4680a790ad7ec9f8256dd2e50de51e7c31c67b",
+        "libllama.so": "4dd5bd8cd2a52f82ddb8fc753885c50dee264d40e101d738facfcb2ef9851640",
+        "llama-layersplit": "2494f191515ca576cacd8c411de79fa8985f719cba2a11cd6371aa6e1024be9f"
+      },
+      "shard_sha256": "a74845294bc1a3cba6ac26c747615d64d9127c904aae04c43c7ea2ebc1ea25c8"
+    }
+  },
+  "energy_scope": "UNKNOWN",
+  "gpu_uuid": "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f",
+  "harness_sha256": "540f499af01b8f5e9eace1c10ca49760f2eb5be2237228058a478f17851fe1b7",
+  "model": {
+    "path": "/home/myid/zs89458/Documents/models/gemma-4-12B-it-f16.gguf",
+    "sha256": "bac4e29337273d1cb41aa36f4209ebcf63baa1162e6ab4dc55f6034b3d69b35a"
+  },
+  "n_gen": 8,
+  "problems": [],
+  "processes_requested": 7,
+  "profiles": {
+    "op12": {
+      "n_processes": 7,
+      "process_cov": 0.0030416351634622815,
+      "request_wall_us_p50_by_process": [
+        9383453,
+        9363325,
+        9295515,
+        9368975,
+        9330941,
+        9361882,
+        9375776
+      ]
+    },
+    "op15": {
+      "n_processes": 7,
+      "process_cov": 0.004894435787789919,
+      "request_wall_us_p50_by_process": [
+        2922996,
+        2901783,
+        2902379,
+        2902555,
+        2933672,
+        2887467,
+        2912662
+      ]
+    }
+  },
+  "prompt": "Explain batching.",
+  "records": [
+    {
+      "device": "op15",
+      "elapsed_us": 47423611,
+      "eligible": true,
+      "error": null,
+      "log_artifacts": {
+        "op15_p0/host_k8_b32.stderr": "f9e72cb6d5404e3f4eaa804c3cf9d18d0dff2549b49f430ae6f932c4f6931c00",
+        "op15_p0/phone_k8.log": "aed325fe93cd56a46c8e89816ec2fe4bd20df7a0bba5803c7c27ce37460269a7"
+      },
+      "process_index": 0,
+      "row": {
+        "all_tokens_match_vs_mono": true,
+        "batch": 32,
+        "compute_cpu_nodes": 8,
+        "compute_htp0_nodes": 1856,
+        "cpu_mapped_mib": 1920.0,
+        "hexagon_mbuf_mib": 4192,
+        "host_returncode": 0,
+        "host_us_p50": 480677,
+        "htp0_model_buffer_mib": 3454.24,
+        "k": 8,
+        "layer_range": [
+          0,
+          8
+        ],
+        "missing_buffer_compute_nodes": 0,
+        "model_buffers_mib": {
+          "CPU_Mapped": 1920.0,
+          "HTP0": 3454.24
+        },
+        "n_gen": 8,
+        "n_requests_measured": 32,
+        "phone_resident_total_mib": 5374.24,
+        "placement_cert": {
+          "compute_by_buffer_type": {
+            "CPU": 8,
+            "HTP0": 1856
+          },
+          "compute_by_op": {
+            "ADD": 128,
+            "FLASH_ATTN_EXT": 64,
+            "GET_ROWS": 8,
+            "GLU": 64,
+            "MUL": 448,
+            "MUL_MAT": 440,
+            "RMS_NORM": 448,
+            "ROPE": 128,
+            "SCALE": 8,
+            "SET_ROWS": 128
+          },
+          "compute_by_op_and_buffer": {
+            "ADD": {
+              "HTP0": 128
+            },
+            "FLASH_ATTN_EXT": {
+              "HTP0": 64
+            },
+            "GET_ROWS": {
+              "CPU": 8
+            },
+            "GLU": {
+              "HTP0": 64
+            },
+            "MUL": {
+              "HTP0": 448
+            },
+            "MUL_MAT": {
+              "HTP0": 440
+            },
+            "RMS_NORM": {
+              "HTP0": 448
+            },
+            "ROPE": {
+              "HTP0": 128
+            },
+            "SCALE": {
+              "HTP0": 8
+            },
+            "SET_ROWS": {
+              "HTP0": 128
+            }
+          },
+          "compute_nodes": 1864,
+          "copy_by_buffer_type": {},
+          "copy_nodes": 0,
+          "layer_end": 8,
+          "layer_start": 0,
+          "metadata_nodes": 896,
+          "missing_buffer_compute_nodes": 0,
+          "mode": "stagenet",
+          "n_layer": 48,
+          "pid": 27062,
+          "role": "phone_stage",
+          "run_rc": 0,
+          "schema": "layersplit-scheduled-placement-v2",
+          "status": "SCHEDULED_PLACEMENT_OK"
+        },
+        "placement_status": "SCHEDULED_PLACEMENT_OK",
+        "request_wall_us_p50": 2922996,
+        "shard": "/data/local/tmp/ls-npu/12b-f16-head-0-8.gguf",
+        "shard_sha256": "a74845294bc1a3cba6ac26c747615d64d9127c904aae04c43c7ea2ebc1ea25c8",
+        "stage_a_us_max": 2442292,
+        "stage_a_us_min": 2442292,
+        "stage_a_us_p50": 2442292,
+        "token_ids": [
+          45518,
+          107,
+          100,
+          45518,
+          107,
+          101,
+          1509,
+          7412
+        ],
+        "token_ids_by_request": [
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ]
+        ],
+        "token_match_vs_mono": true
+      },
+      "thermal_end": {
+        "max_millic": 29400,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 29000,
+          "nsphmx-1": 29400,
+          "nsphmx-2": 29400,
+          "nsphmx-3": 29400
+        },
+        "valid": true
+      },
+      "thermal_start": {
+        "max_millic": 29000,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 28300,
+          "nsphmx-1": 29000,
+          "nsphmx-2": 29000,
+          "nsphmx-3": 29000
+        },
+        "valid": true
+      }
+    },
+    {
+      "device": "op12",
+      "elapsed_us": 22410564,
+      "eligible": true,
+      "error": null,
+      "log_artifacts": {
+        "op12_p0/host_k6_b32.stderr": "c7fa0460c632d338b0904731332930d55bcef456f99dab242cbc99afd9cb165b",
+        "op12_p0/phone_k6.log": "29e773de4ccfd5c5252e15f993e6541a9de0deca68f9c226abddcc74b52ff163"
+      },
+      "process_index": 0,
+      "row": {
+        "all_tokens_match_vs_mono": true,
+        "batch": 32,
+        "compute_cpu_nodes": 8,
+        "compute_htp0_nodes": 1488,
+        "cpu_mapped_mib": 1920.0,
+        "hexagon_mbuf_mib": 3336,
+        "host_returncode": 0,
+        "host_us_p50": 506633,
+        "htp0_model_buffer_mib": 2599.12,
+        "k": 6,
+        "layer_range": [
+          0,
+          6
+        ],
+        "missing_buffer_compute_nodes": 0,
+        "model_buffers_mib": {
+          "CPU_Mapped": 1920.0,
+          "HTP0": 2599.12
+        },
+        "n_gen": 8,
+        "n_requests_measured": 32,
+        "phone_resident_total_mib": 4519.12,
+        "placement_cert": {
+          "compute_by_buffer_type": {
+            "CPU": 8,
+            "HTP0": 1488
+          },
+          "compute_by_op": {
+            "ADD": 96,
+            "GET_ROWS": 8,
+            "GLU": 48,
+            "MUL": 336,
+            "MUL_MAT": 424,
+            "RMS_NORM": 336,
+            "ROPE": 96,
+            "SCALE": 8,
+            "SET_ROWS": 96,
+            "SOFT_MAX": 48
+          },
+          "compute_by_op_and_buffer": {
+            "ADD": {
+              "HTP0": 96
+            },
+            "GET_ROWS": {
+              "CPU": 8
+            },
+            "GLU": {
+              "HTP0": 48
+            },
+            "MUL": {
+              "HTP0": 336
+            },
+            "MUL_MAT": {
+              "HTP0": 424
+            },
+            "RMS_NORM": {
+              "HTP0": 336
+            },
+            "ROPE": {
+              "HTP0": 96
+            },
+            "SCALE": {
+              "HTP0": 8
+            },
+            "SET_ROWS": {
+              "HTP0": 96
+            },
+            "SOFT_MAX": {
+              "HTP0": 48
+            }
+          },
+          "compute_nodes": 1496,
+          "copy_by_buffer_type": {
+            "HTP0": 96
+          },
+          "copy_nodes": 96,
+          "layer_end": 6,
+          "layer_start": 0,
+          "metadata_nodes": 720,
+          "missing_buffer_compute_nodes": 0,
+          "mode": "stagenet",
+          "n_layer": 48,
+          "pid": 30040,
+          "role": "phone_stage",
+          "run_rc": 0,
+          "schema": "layersplit-scheduled-placement-v2",
+          "status": "SCHEDULED_PLACEMENT_OK"
+        },
+        "placement_status": "SCHEDULED_PLACEMENT_OK",
+        "request_wall_us_p50": 9383453,
+        "shard": "/data/local/tmp/ls-npu/12b-f16-head-0-6.gguf",
+        "shard_sha256": "d507b7bb453242dff12ba1ce0add53189755b8a9a2b960743ead1578d8f1a6b5",
+        "stage_a_us_max": 8876789,
+        "stage_a_us_min": 8876789,
+        "stage_a_us_p50": 8876789,
+        "token_ids": [
+          45518,
+          107,
+          100,
+          45518,
+          107,
+          101,
+          1509,
+          7412
+        ],
+        "token_ids_by_request": [
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ]
+        ],
+        "token_match_vs_mono": true
+      },
+      "thermal_end": {
+        "max_millic": 33300,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 33300,
+          "nsphmx-1": 32900,
+          "nsphmx-2": 32100,
+          "nsphmx-3": 33300
+        },
+        "valid": true
+      },
+      "thermal_start": {
+        "max_millic": 30200,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 29800,
+          "nsphmx-1": 29400,
+          "nsphmx-2": 29400,
+          "nsphmx-3": 30200
+        },
+        "valid": true
+      }
+    },
+    {
+      "device": "op15",
+      "elapsed_us": 45837082,
+      "eligible": true,
+      "error": null,
+      "log_artifacts": {
+        "op15_p1/host_k8_b32.stderr": "000335df81271b151525f6a66719081fcb0cf9468c762c8e4eed112189103983",
+        "op15_p1/phone_k8.log": "c3e226f2c8eb5f6a6de972244c30a11a5619d78e6550908bb7e3178bc937fd51"
+      },
+      "process_index": 1,
+      "row": {
+        "all_tokens_match_vs_mono": true,
+        "batch": 32,
+        "compute_cpu_nodes": 8,
+        "compute_htp0_nodes": 1856,
+        "cpu_mapped_mib": 1920.0,
+        "hexagon_mbuf_mib": 4192,
+        "host_returncode": 0,
+        "host_us_p50": 482585,
+        "htp0_model_buffer_mib": 3454.24,
+        "k": 8,
+        "layer_range": [
+          0,
+          8
+        ],
+        "missing_buffer_compute_nodes": 0,
+        "model_buffers_mib": {
+          "CPU_Mapped": 1920.0,
+          "HTP0": 3454.24
+        },
+        "n_gen": 8,
+        "n_requests_measured": 32,
+        "phone_resident_total_mib": 5374.24,
+        "placement_cert": {
+          "compute_by_buffer_type": {
+            "CPU": 8,
+            "HTP0": 1856
+          },
+          "compute_by_op": {
+            "ADD": 128,
+            "FLASH_ATTN_EXT": 64,
+            "GET_ROWS": 8,
+            "GLU": 64,
+            "MUL": 448,
+            "MUL_MAT": 440,
+            "RMS_NORM": 448,
+            "ROPE": 128,
+            "SCALE": 8,
+            "SET_ROWS": 128
+          },
+          "compute_by_op_and_buffer": {
+            "ADD": {
+              "HTP0": 128
+            },
+            "FLASH_ATTN_EXT": {
+              "HTP0": 64
+            },
+            "GET_ROWS": {
+              "CPU": 8
+            },
+            "GLU": {
+              "HTP0": 64
+            },
+            "MUL": {
+              "HTP0": 448
+            },
+            "MUL_MAT": {
+              "HTP0": 440
+            },
+            "RMS_NORM": {
+              "HTP0": 448
+            },
+            "ROPE": {
+              "HTP0": 128
+            },
+            "SCALE": {
+              "HTP0": 8
+            },
+            "SET_ROWS": {
+              "HTP0": 128
+            }
+          },
+          "compute_nodes": 1864,
+          "copy_by_buffer_type": {},
+          "copy_nodes": 0,
+          "layer_end": 8,
+          "layer_start": 0,
+          "metadata_nodes": 896,
+          "missing_buffer_compute_nodes": 0,
+          "mode": "stagenet",
+          "n_layer": 48,
+          "pid": 27544,
+          "role": "phone_stage",
+          "run_rc": 0,
+          "schema": "layersplit-scheduled-placement-v2",
+          "status": "SCHEDULED_PLACEMENT_OK"
+        },
+        "placement_status": "SCHEDULED_PLACEMENT_OK",
+        "request_wall_us_p50": 2901783,
+        "shard": "/data/local/tmp/ls-npu/12b-f16-head-0-8.gguf",
+        "shard_sha256": "a74845294bc1a3cba6ac26c747615d64d9127c904aae04c43c7ea2ebc1ea25c8",
+        "stage_a_us_max": 2419169,
+        "stage_a_us_min": 2419169,
+        "stage_a_us_p50": 2419169,
+        "token_ids": [
+          45518,
+          107,
+          100,
+          45518,
+          107,
+          101,
+          1509,
+          7412
+        ],
+        "token_ids_by_request": [
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ]
+        ],
+        "token_match_vs_mono": true
+      },
+      "thermal_end": {
+        "max_millic": 29800,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 29400,
+          "nsphmx-1": 29400,
+          "nsphmx-2": 29800,
+          "nsphmx-3": 29400
+        },
+        "valid": true
+      },
+      "thermal_start": {
+        "max_millic": 29000,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 28700,
+          "nsphmx-1": 29000,
+          "nsphmx-2": 29000,
+          "nsphmx-3": 29000
+        },
+        "valid": true
+      }
+    },
+    {
+      "device": "op12",
+      "elapsed_us": 22725171,
+      "eligible": true,
+      "error": null,
+      "log_artifacts": {
+        "op12_p1/host_k6_b32.stderr": "dadb9adbe9397fa219025104324345287828a1c8f30bd3e7a13226e8f784354c",
+        "op12_p1/phone_k6.log": "8c7fcb40a2c6760f0c08d268cb44ab256eaec0057c3727a935c6104bb66a71ef"
+      },
+      "process_index": 1,
+      "row": {
+        "all_tokens_match_vs_mono": true,
+        "batch": 32,
+        "compute_cpu_nodes": 8,
+        "compute_htp0_nodes": 1488,
+        "cpu_mapped_mib": 1920.0,
+        "hexagon_mbuf_mib": 3336,
+        "host_returncode": 0,
+        "host_us_p50": 496630,
+        "htp0_model_buffer_mib": 2599.12,
+        "k": 6,
+        "layer_range": [
+          0,
+          6
+        ],
+        "missing_buffer_compute_nodes": 0,
+        "model_buffers_mib": {
+          "CPU_Mapped": 1920.0,
+          "HTP0": 2599.12
+        },
+        "n_gen": 8,
+        "n_requests_measured": 32,
+        "phone_resident_total_mib": 4519.12,
+        "placement_cert": {
+          "compute_by_buffer_type": {
+            "CPU": 8,
+            "HTP0": 1488
+          },
+          "compute_by_op": {
+            "ADD": 96,
+            "GET_ROWS": 8,
+            "GLU": 48,
+            "MUL": 336,
+            "MUL_MAT": 424,
+            "RMS_NORM": 336,
+            "ROPE": 96,
+            "SCALE": 8,
+            "SET_ROWS": 96,
+            "SOFT_MAX": 48
+          },
+          "compute_by_op_and_buffer": {
+            "ADD": {
+              "HTP0": 96
+            },
+            "GET_ROWS": {
+              "CPU": 8
+            },
+            "GLU": {
+              "HTP0": 48
+            },
+            "MUL": {
+              "HTP0": 336
+            },
+            "MUL_MAT": {
+              "HTP0": 424
+            },
+            "RMS_NORM": {
+              "HTP0": 336
+            },
+            "ROPE": {
+              "HTP0": 96
+            },
+            "SCALE": {
+              "HTP0": 8
+            },
+            "SET_ROWS": {
+              "HTP0": 96
+            },
+            "SOFT_MAX": {
+              "HTP0": 48
+            }
+          },
+          "compute_nodes": 1496,
+          "copy_by_buffer_type": {
+            "HTP0": 96
+          },
+          "copy_nodes": 96,
+          "layer_end": 6,
+          "layer_start": 0,
+          "metadata_nodes": 720,
+          "missing_buffer_compute_nodes": 0,
+          "mode": "stagenet",
+          "n_layer": 48,
+          "pid": 30512,
+          "role": "phone_stage",
+          "run_rc": 0,
+          "schema": "layersplit-scheduled-placement-v2",
+          "status": "SCHEDULED_PLACEMENT_OK"
+        },
+        "placement_status": "SCHEDULED_PLACEMENT_OK",
+        "request_wall_us_p50": 9363325,
+        "shard": "/data/local/tmp/ls-npu/12b-f16-head-0-6.gguf",
+        "shard_sha256": "d507b7bb453242dff12ba1ce0add53189755b8a9a2b960743ead1578d8f1a6b5",
+        "stage_a_us_max": 8866654,
+        "stage_a_us_min": 8866654,
+        "stage_a_us_p50": 8866654,
+        "token_ids": [
+          45518,
+          107,
+          100,
+          45518,
+          107,
+          101,
+          1509,
+          7412
+        ],
+        "token_ids_by_request": [
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ]
+        ],
+        "token_match_vs_mono": true
+      },
+      "thermal_end": {
+        "max_millic": 34100,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 33700,
+          "nsphmx-1": 32900,
+          "nsphmx-2": 32900,
+          "nsphmx-3": 34100
+        },
+        "valid": true
+      },
+      "thermal_start": {
+        "max_millic": 30600,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 30200,
+          "nsphmx-1": 30200,
+          "nsphmx-2": 29800,
+          "nsphmx-3": 30600
+        },
+        "valid": true
+      }
+    },
+    {
+      "device": "op15",
+      "elapsed_us": 47087263,
+      "eligible": true,
+      "error": null,
+      "log_artifacts": {
+        "op15_p2/host_k8_b32.stderr": "73c085adaf003dcf607e239f01145444855cd242bdb2df42a17edff8b1a77cda",
+        "op15_p2/phone_k8.log": "d045a9bde403556f0bc737f8110d16a33c12b1cddd0fb5155d48985af767a65e"
+      },
+      "process_index": 2,
+      "row": {
+        "all_tokens_match_vs_mono": true,
+        "batch": 32,
+        "compute_cpu_nodes": 8,
+        "compute_htp0_nodes": 1856,
+        "cpu_mapped_mib": 1920.0,
+        "hexagon_mbuf_mib": 4192,
+        "host_returncode": 0,
+        "host_us_p50": 481954,
+        "htp0_model_buffer_mib": 3454.24,
+        "k": 8,
+        "layer_range": [
+          0,
+          8
+        ],
+        "missing_buffer_compute_nodes": 0,
+        "model_buffers_mib": {
+          "CPU_Mapped": 1920.0,
+          "HTP0": 3454.24
+        },
+        "n_gen": 8,
+        "n_requests_measured": 32,
+        "phone_resident_total_mib": 5374.24,
+        "placement_cert": {
+          "compute_by_buffer_type": {
+            "CPU": 8,
+            "HTP0": 1856
+          },
+          "compute_by_op": {
+            "ADD": 128,
+            "FLASH_ATTN_EXT": 64,
+            "GET_ROWS": 8,
+            "GLU": 64,
+            "MUL": 448,
+            "MUL_MAT": 440,
+            "RMS_NORM": 448,
+            "ROPE": 128,
+            "SCALE": 8,
+            "SET_ROWS": 128
+          },
+          "compute_by_op_and_buffer": {
+            "ADD": {
+              "HTP0": 128
+            },
+            "FLASH_ATTN_EXT": {
+              "HTP0": 64
+            },
+            "GET_ROWS": {
+              "CPU": 8
+            },
+            "GLU": {
+              "HTP0": 64
+            },
+            "MUL": {
+              "HTP0": 448
+            },
+            "MUL_MAT": {
+              "HTP0": 440
+            },
+            "RMS_NORM": {
+              "HTP0": 448
+            },
+            "ROPE": {
+              "HTP0": 128
+            },
+            "SCALE": {
+              "HTP0": 8
+            },
+            "SET_ROWS": {
+              "HTP0": 128
+            }
+          },
+          "compute_nodes": 1864,
+          "copy_by_buffer_type": {},
+          "copy_nodes": 0,
+          "layer_end": 8,
+          "layer_start": 0,
+          "metadata_nodes": 896,
+          "missing_buffer_compute_nodes": 0,
+          "mode": "stagenet",
+          "n_layer": 48,
+          "pid": 28019,
+          "role": "phone_stage",
+          "run_rc": 0,
+          "schema": "layersplit-scheduled-placement-v2",
+          "status": "SCHEDULED_PLACEMENT_OK"
+        },
+        "placement_status": "SCHEDULED_PLACEMENT_OK",
+        "request_wall_us_p50": 2902379,
+        "shard": "/data/local/tmp/ls-npu/12b-f16-head-0-8.gguf",
+        "shard_sha256": "a74845294bc1a3cba6ac26c747615d64d9127c904aae04c43c7ea2ebc1ea25c8",
+        "stage_a_us_max": 2420394,
+        "stage_a_us_min": 2420394,
+        "stage_a_us_p50": 2420394,
+        "token_ids": [
+          45518,
+          107,
+          100,
+          45518,
+          107,
+          101,
+          1509,
+          7412
+        ],
+        "token_ids_by_request": [
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ]
+        ],
+        "token_match_vs_mono": true
+      },
+      "thermal_end": {
+        "max_millic": 30200,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 29400,
+          "nsphmx-1": 30200,
+          "nsphmx-2": 29800,
+          "nsphmx-3": 29800
+        },
+        "valid": true
+      },
+      "thermal_start": {
+        "max_millic": 29400,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 28700,
+          "nsphmx-1": 29400,
+          "nsphmx-2": 29000,
+          "nsphmx-3": 29000
+        },
+        "valid": true
+      }
+    },
+    {
+      "device": "op12",
+      "elapsed_us": 22995542,
+      "eligible": true,
+      "error": null,
+      "log_artifacts": {
+        "op12_p2/host_k6_b32.stderr": "3e595ecc7bf0acdcfd9ebe109f06c5cd721c947fc057d3a724a1b4ce8decaf8e",
+        "op12_p2/phone_k6.log": "f9b16b6b5bc77f6c31808e7eb413848e1011458eba87816b661316ff242c3688"
+      },
+      "process_index": 2,
+      "row": {
+        "all_tokens_match_vs_mono": true,
+        "batch": 32,
+        "compute_cpu_nodes": 8,
+        "compute_htp0_nodes": 1488,
+        "cpu_mapped_mib": 1920.0,
+        "hexagon_mbuf_mib": 3336,
+        "host_returncode": 0,
+        "host_us_p50": 500443,
+        "htp0_model_buffer_mib": 2599.12,
+        "k": 6,
+        "layer_range": [
+          0,
+          6
+        ],
+        "missing_buffer_compute_nodes": 0,
+        "model_buffers_mib": {
+          "CPU_Mapped": 1920.0,
+          "HTP0": 2599.12
+        },
+        "n_gen": 8,
+        "n_requests_measured": 32,
+        "phone_resident_total_mib": 4519.12,
+        "placement_cert": {
+          "compute_by_buffer_type": {
+            "CPU": 8,
+            "HTP0": 1488
+          },
+          "compute_by_op": {
+            "ADD": 96,
+            "GET_ROWS": 8,
+            "GLU": 48,
+            "MUL": 336,
+            "MUL_MAT": 424,
+            "RMS_NORM": 336,
+            "ROPE": 96,
+            "SCALE": 8,
+            "SET_ROWS": 96,
+            "SOFT_MAX": 48
+          },
+          "compute_by_op_and_buffer": {
+            "ADD": {
+              "HTP0": 96
+            },
+            "GET_ROWS": {
+              "CPU": 8
+            },
+            "GLU": {
+              "HTP0": 48
+            },
+            "MUL": {
+              "HTP0": 336
+            },
+            "MUL_MAT": {
+              "HTP0": 424
+            },
+            "RMS_NORM": {
+              "HTP0": 336
+            },
+            "ROPE": {
+              "HTP0": 96
+            },
+            "SCALE": {
+              "HTP0": 8
+            },
+            "SET_ROWS": {
+              "HTP0": 96
+            },
+            "SOFT_MAX": {
+              "HTP0": 48
+            }
+          },
+          "compute_nodes": 1496,
+          "copy_by_buffer_type": {
+            "HTP0": 96
+          },
+          "copy_nodes": 96,
+          "layer_end": 6,
+          "layer_start": 0,
+          "metadata_nodes": 720,
+          "missing_buffer_compute_nodes": 0,
+          "mode": "stagenet",
+          "n_layer": 48,
+          "pid": 31059,
+          "role": "phone_stage",
+          "run_rc": 0,
+          "schema": "layersplit-scheduled-placement-v2",
+          "status": "SCHEDULED_PLACEMENT_OK"
+        },
+        "placement_status": "SCHEDULED_PLACEMENT_OK",
+        "request_wall_us_p50": 9295515,
+        "shard": "/data/local/tmp/ls-npu/12b-f16-head-0-6.gguf",
+        "shard_sha256": "d507b7bb453242dff12ba1ce0add53189755b8a9a2b960743ead1578d8f1a6b5",
+        "stage_a_us_max": 8795042,
+        "stage_a_us_min": 8795042,
+        "stage_a_us_p50": 8795042,
+        "token_ids": [
+          45518,
+          107,
+          100,
+          45518,
+          107,
+          101,
+          1509,
+          7412
+        ],
+        "token_ids_by_request": [
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ]
+        ],
+        "token_match_vs_mono": true
+      },
+      "thermal_end": {
+        "max_millic": 34500,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 34100,
+          "nsphmx-1": 33300,
+          "nsphmx-2": 33300,
+          "nsphmx-3": 34500
+        },
+        "valid": true
+      },
+      "thermal_start": {
+        "max_millic": 31000,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 30600,
+          "nsphmx-1": 30200,
+          "nsphmx-2": 30600,
+          "nsphmx-3": 31000
+        },
+        "valid": true
+      }
+    },
+    {
+      "device": "op15",
+      "elapsed_us": 47266172,
+      "eligible": true,
+      "error": null,
+      "log_artifacts": {
+        "op15_p3/host_k8_b32.stderr": "64b068d9ad5aad79c34a52236a856356d31116e303607566483d56b756d1f829",
+        "op15_p3/phone_k8.log": "93145e02876e602c844081da5460d0eeddfb2e65c9ed3d488995dd3c822f44b7"
+      },
+      "process_index": 3,
+      "row": {
+        "all_tokens_match_vs_mono": true,
+        "batch": 32,
+        "compute_cpu_nodes": 8,
+        "compute_htp0_nodes": 1856,
+        "cpu_mapped_mib": 1920.0,
+        "hexagon_mbuf_mib": 4192,
+        "host_returncode": 0,
+        "host_us_p50": 480302,
+        "htp0_model_buffer_mib": 3454.24,
+        "k": 8,
+        "layer_range": [
+          0,
+          8
+        ],
+        "missing_buffer_compute_nodes": 0,
+        "model_buffers_mib": {
+          "CPU_Mapped": 1920.0,
+          "HTP0": 3454.24
+        },
+        "n_gen": 8,
+        "n_requests_measured": 32,
+        "phone_resident_total_mib": 5374.24,
+        "placement_cert": {
+          "compute_by_buffer_type": {
+            "CPU": 8,
+            "HTP0": 1856
+          },
+          "compute_by_op": {
+            "ADD": 128,
+            "FLASH_ATTN_EXT": 64,
+            "GET_ROWS": 8,
+            "GLU": 64,
+            "MUL": 448,
+            "MUL_MAT": 440,
+            "RMS_NORM": 448,
+            "ROPE": 128,
+            "SCALE": 8,
+            "SET_ROWS": 128
+          },
+          "compute_by_op_and_buffer": {
+            "ADD": {
+              "HTP0": 128
+            },
+            "FLASH_ATTN_EXT": {
+              "HTP0": 64
+            },
+            "GET_ROWS": {
+              "CPU": 8
+            },
+            "GLU": {
+              "HTP0": 64
+            },
+            "MUL": {
+              "HTP0": 448
+            },
+            "MUL_MAT": {
+              "HTP0": 440
+            },
+            "RMS_NORM": {
+              "HTP0": 448
+            },
+            "ROPE": {
+              "HTP0": 128
+            },
+            "SCALE": {
+              "HTP0": 8
+            },
+            "SET_ROWS": {
+              "HTP0": 128
+            }
+          },
+          "compute_nodes": 1864,
+          "copy_by_buffer_type": {},
+          "copy_nodes": 0,
+          "layer_end": 8,
+          "layer_start": 0,
+          "metadata_nodes": 896,
+          "missing_buffer_compute_nodes": 0,
+          "mode": "stagenet",
+          "n_layer": 48,
+          "pid": 28471,
+          "role": "phone_stage",
+          "run_rc": 0,
+          "schema": "layersplit-scheduled-placement-v2",
+          "status": "SCHEDULED_PLACEMENT_OK"
+        },
+        "placement_status": "SCHEDULED_PLACEMENT_OK",
+        "request_wall_us_p50": 2902555,
+        "shard": "/data/local/tmp/ls-npu/12b-f16-head-0-8.gguf",
+        "shard_sha256": "a74845294bc1a3cba6ac26c747615d64d9127c904aae04c43c7ea2ebc1ea25c8",
+        "stage_a_us_max": 2422228,
+        "stage_a_us_min": 2422228,
+        "stage_a_us_p50": 2422228,
+        "token_ids": [
+          45518,
+          107,
+          100,
+          45518,
+          107,
+          101,
+          1509,
+          7412
+        ],
+        "token_ids_by_request": [
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ]
+        ],
+        "token_match_vs_mono": true
+      },
+      "thermal_end": {
+        "max_millic": 30200,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 29400,
+          "nsphmx-1": 30200,
+          "nsphmx-2": 30200,
+          "nsphmx-3": 29400
+        },
+        "valid": true
+      },
+      "thermal_start": {
+        "max_millic": 29400,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 29000,
+          "nsphmx-1": 29400,
+          "nsphmx-2": 29400,
+          "nsphmx-3": 29000
+        },
+        "valid": true
+      }
+    },
+    {
+      "device": "op12",
+      "elapsed_us": 22715437,
+      "eligible": true,
+      "error": null,
+      "log_artifacts": {
+        "op12_p3/host_k6_b32.stderr": "29494ebff28e84ec4815af264b3592dd198b9694c33f917c70d799d75eb48f8d",
+        "op12_p3/phone_k6.log": "33e08848affe86a9c2fc3de70e7b27cc6a9821e391aeeae0033de814e3cdf9c3"
+      },
+      "process_index": 3,
+      "row": {
+        "all_tokens_match_vs_mono": true,
+        "batch": 32,
+        "compute_cpu_nodes": 8,
+        "compute_htp0_nodes": 1488,
+        "cpu_mapped_mib": 1920.0,
+        "hexagon_mbuf_mib": 3336,
+        "host_returncode": 0,
+        "host_us_p50": 498315,
+        "htp0_model_buffer_mib": 2599.12,
+        "k": 6,
+        "layer_range": [
+          0,
+          6
+        ],
+        "missing_buffer_compute_nodes": 0,
+        "model_buffers_mib": {
+          "CPU_Mapped": 1920.0,
+          "HTP0": 2599.12
+        },
+        "n_gen": 8,
+        "n_requests_measured": 32,
+        "phone_resident_total_mib": 4519.12,
+        "placement_cert": {
+          "compute_by_buffer_type": {
+            "CPU": 8,
+            "HTP0": 1488
+          },
+          "compute_by_op": {
+            "ADD": 96,
+            "GET_ROWS": 8,
+            "GLU": 48,
+            "MUL": 336,
+            "MUL_MAT": 424,
+            "RMS_NORM": 336,
+            "ROPE": 96,
+            "SCALE": 8,
+            "SET_ROWS": 96,
+            "SOFT_MAX": 48
+          },
+          "compute_by_op_and_buffer": {
+            "ADD": {
+              "HTP0": 96
+            },
+            "GET_ROWS": {
+              "CPU": 8
+            },
+            "GLU": {
+              "HTP0": 48
+            },
+            "MUL": {
+              "HTP0": 336
+            },
+            "MUL_MAT": {
+              "HTP0": 424
+            },
+            "RMS_NORM": {
+              "HTP0": 336
+            },
+            "ROPE": {
+              "HTP0": 96
+            },
+            "SCALE": {
+              "HTP0": 8
+            },
+            "SET_ROWS": {
+              "HTP0": 96
+            },
+            "SOFT_MAX": {
+              "HTP0": 48
+            }
+          },
+          "compute_nodes": 1496,
+          "copy_by_buffer_type": {
+            "HTP0": 96
+          },
+          "copy_nodes": 96,
+          "layer_end": 6,
+          "layer_start": 0,
+          "metadata_nodes": 720,
+          "missing_buffer_compute_nodes": 0,
+          "mode": "stagenet",
+          "n_layer": 48,
+          "pid": 31537,
+          "role": "phone_stage",
+          "run_rc": 0,
+          "schema": "layersplit-scheduled-placement-v2",
+          "status": "SCHEDULED_PLACEMENT_OK"
+        },
+        "placement_status": "SCHEDULED_PLACEMENT_OK",
+        "request_wall_us_p50": 9368975,
+        "shard": "/data/local/tmp/ls-npu/12b-f16-head-0-6.gguf",
+        "shard_sha256": "d507b7bb453242dff12ba1ce0add53189755b8a9a2b960743ead1578d8f1a6b5",
+        "stage_a_us_max": 8870631,
+        "stage_a_us_min": 8870631,
+        "stage_a_us_p50": 8870631,
+        "token_ids": [
+          45518,
+          107,
+          100,
+          45518,
+          107,
+          101,
+          1509,
+          7412
+        ],
+        "token_ids_by_request": [
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ]
+        ],
+        "token_match_vs_mono": true
+      },
+      "thermal_end": {
+        "max_millic": 33700,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 33700,
+          "nsphmx-1": 32900,
+          "nsphmx-2": 33300,
+          "nsphmx-3": 33700
+        },
+        "valid": true
+      },
+      "thermal_start": {
+        "max_millic": 31000,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 30600,
+          "nsphmx-1": 30200,
+          "nsphmx-2": 30600,
+          "nsphmx-3": 31000
+        },
+        "valid": true
+      }
+    },
+    {
+      "device": "op15",
+      "elapsed_us": 42583625,
+      "eligible": true,
+      "error": null,
+      "log_artifacts": {
+        "op15_p4/host_k8_b32.stderr": "a7152f65b6f493e5790188b4c4f11836e3387b7b5295f7c329b33e4c6bf646e4",
+        "op15_p4/phone_k8.log": "e4eaeaf439656618e33bf706f92f81bd6a2910b1a6d0d6a0f9636f4533bbf377"
+      },
+      "process_index": 4,
+      "row": {
+        "all_tokens_match_vs_mono": true,
+        "batch": 32,
+        "compute_cpu_nodes": 8,
+        "compute_htp0_nodes": 1856,
+        "cpu_mapped_mib": 1920.0,
+        "hexagon_mbuf_mib": 4192,
+        "host_returncode": 0,
+        "host_us_p50": 482886,
+        "htp0_model_buffer_mib": 3454.24,
+        "k": 8,
+        "layer_range": [
+          0,
+          8
+        ],
+        "missing_buffer_compute_nodes": 0,
+        "model_buffers_mib": {
+          "CPU_Mapped": 1920.0,
+          "HTP0": 3454.24
+        },
+        "n_gen": 8,
+        "n_requests_measured": 32,
+        "phone_resident_total_mib": 5374.24,
+        "placement_cert": {
+          "compute_by_buffer_type": {
+            "CPU": 8,
+            "HTP0": 1856
+          },
+          "compute_by_op": {
+            "ADD": 128,
+            "FLASH_ATTN_EXT": 64,
+            "GET_ROWS": 8,
+            "GLU": 64,
+            "MUL": 448,
+            "MUL_MAT": 440,
+            "RMS_NORM": 448,
+            "ROPE": 128,
+            "SCALE": 8,
+            "SET_ROWS": 128
+          },
+          "compute_by_op_and_buffer": {
+            "ADD": {
+              "HTP0": 128
+            },
+            "FLASH_ATTN_EXT": {
+              "HTP0": 64
+            },
+            "GET_ROWS": {
+              "CPU": 8
+            },
+            "GLU": {
+              "HTP0": 64
+            },
+            "MUL": {
+              "HTP0": 448
+            },
+            "MUL_MAT": {
+              "HTP0": 440
+            },
+            "RMS_NORM": {
+              "HTP0": 448
+            },
+            "ROPE": {
+              "HTP0": 128
+            },
+            "SCALE": {
+              "HTP0": 8
+            },
+            "SET_ROWS": {
+              "HTP0": 128
+            }
+          },
+          "compute_nodes": 1864,
+          "copy_by_buffer_type": {},
+          "copy_nodes": 0,
+          "layer_end": 8,
+          "layer_start": 0,
+          "metadata_nodes": 896,
+          "missing_buffer_compute_nodes": 0,
+          "mode": "stagenet",
+          "n_layer": 48,
+          "pid": 29039,
+          "role": "phone_stage",
+          "run_rc": 0,
+          "schema": "layersplit-scheduled-placement-v2",
+          "status": "SCHEDULED_PLACEMENT_OK"
+        },
+        "placement_status": "SCHEDULED_PLACEMENT_OK",
+        "request_wall_us_p50": 2933672,
+        "shard": "/data/local/tmp/ls-npu/12b-f16-head-0-8.gguf",
+        "shard_sha256": "a74845294bc1a3cba6ac26c747615d64d9127c904aae04c43c7ea2ebc1ea25c8",
+        "stage_a_us_max": 2450760,
+        "stage_a_us_min": 2450760,
+        "stage_a_us_p50": 2450760,
+        "token_ids": [
+          45518,
+          107,
+          100,
+          45518,
+          107,
+          101,
+          1509,
+          7412
+        ],
+        "token_ids_by_request": [
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ]
+        ],
+        "token_match_vs_mono": true
+      },
+      "thermal_end": {
+        "max_millic": 30200,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 29800,
+          "nsphmx-1": 29800,
+          "nsphmx-2": 30200,
+          "nsphmx-3": 29800
+        },
+        "valid": true
+      },
+      "thermal_start": {
+        "max_millic": 29400,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 29400,
+          "nsphmx-1": 29400,
+          "nsphmx-2": 29400,
+          "nsphmx-3": 29400
+        },
+        "valid": true
+      }
+    },
+    {
+      "device": "op12",
+      "elapsed_us": 22737444,
+      "eligible": true,
+      "error": null,
+      "log_artifacts": {
+        "op12_p4/host_k6_b32.stderr": "ec3c698803e167a9218a46221d2552190bb7e8b0f026c8eaa4149d2675a6b88c",
+        "op12_p4/phone_k6.log": "5fd8a0e9560d6b0d0faa17dd61b40ee98701232428791e6cfc7babe6e6880096"
+      },
+      "process_index": 4,
+      "row": {
+        "all_tokens_match_vs_mono": true,
+        "batch": 32,
+        "compute_cpu_nodes": 8,
+        "compute_htp0_nodes": 1488,
+        "cpu_mapped_mib": 1920.0,
+        "hexagon_mbuf_mib": 3336,
+        "host_returncode": 0,
+        "host_us_p50": 499348,
+        "htp0_model_buffer_mib": 2599.12,
+        "k": 6,
+        "layer_range": [
+          0,
+          6
+        ],
+        "missing_buffer_compute_nodes": 0,
+        "model_buffers_mib": {
+          "CPU_Mapped": 1920.0,
+          "HTP0": 2599.12
+        },
+        "n_gen": 8,
+        "n_requests_measured": 32,
+        "phone_resident_total_mib": 4519.12,
+        "placement_cert": {
+          "compute_by_buffer_type": {
+            "CPU": 8,
+            "HTP0": 1488
+          },
+          "compute_by_op": {
+            "ADD": 96,
+            "GET_ROWS": 8,
+            "GLU": 48,
+            "MUL": 336,
+            "MUL_MAT": 424,
+            "RMS_NORM": 336,
+            "ROPE": 96,
+            "SCALE": 8,
+            "SET_ROWS": 96,
+            "SOFT_MAX": 48
+          },
+          "compute_by_op_and_buffer": {
+            "ADD": {
+              "HTP0": 96
+            },
+            "GET_ROWS": {
+              "CPU": 8
+            },
+            "GLU": {
+              "HTP0": 48
+            },
+            "MUL": {
+              "HTP0": 336
+            },
+            "MUL_MAT": {
+              "HTP0": 424
+            },
+            "RMS_NORM": {
+              "HTP0": 336
+            },
+            "ROPE": {
+              "HTP0": 96
+            },
+            "SCALE": {
+              "HTP0": 8
+            },
+            "SET_ROWS": {
+              "HTP0": 96
+            },
+            "SOFT_MAX": {
+              "HTP0": 48
+            }
+          },
+          "compute_nodes": 1496,
+          "copy_by_buffer_type": {
+            "HTP0": 96
+          },
+          "copy_nodes": 96,
+          "layer_end": 6,
+          "layer_start": 0,
+          "metadata_nodes": 720,
+          "missing_buffer_compute_nodes": 0,
+          "mode": "stagenet",
+          "n_layer": 48,
+          "pid": 31998,
+          "role": "phone_stage",
+          "run_rc": 0,
+          "schema": "layersplit-scheduled-placement-v2",
+          "status": "SCHEDULED_PLACEMENT_OK"
+        },
+        "placement_status": "SCHEDULED_PLACEMENT_OK",
+        "request_wall_us_p50": 9330941,
+        "shard": "/data/local/tmp/ls-npu/12b-f16-head-0-6.gguf",
+        "shard_sha256": "d507b7bb453242dff12ba1ce0add53189755b8a9a2b960743ead1578d8f1a6b5",
+        "stage_a_us_max": 8831557,
+        "stage_a_us_min": 8831557,
+        "stage_a_us_p50": 8831557,
+        "token_ids": [
+          45518,
+          107,
+          100,
+          45518,
+          107,
+          101,
+          1509,
+          7412
+        ],
+        "token_ids_by_request": [
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ]
+        ],
+        "token_match_vs_mono": true
+      },
+      "thermal_end": {
+        "max_millic": 34500,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 34100,
+          "nsphmx-1": 33700,
+          "nsphmx-2": 33300,
+          "nsphmx-3": 34500
+        },
+        "valid": true
+      },
+      "thermal_start": {
+        "max_millic": 31400,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 31000,
+          "nsphmx-1": 30600,
+          "nsphmx-2": 31000,
+          "nsphmx-3": 31400
+        },
+        "valid": true
+      }
+    },
+    {
+      "device": "op15",
+      "elapsed_us": 28459963,
+      "eligible": true,
+      "error": null,
+      "log_artifacts": {
+        "op15_p5/host_k8_b32.stderr": "731eff9569386a9c5d06a93807ccd05e841f6c26a2a695c8be4c0b4356b374de",
+        "op15_p5/phone_k8.log": "94a8bb71b0d225e2896c43873c0973c7162a76d02d571bbd9fcd83b0fa6ca3f8"
+      },
+      "process_index": 5,
+      "row": {
+        "all_tokens_match_vs_mono": true,
+        "batch": 32,
+        "compute_cpu_nodes": 8,
+        "compute_htp0_nodes": 1856,
+        "cpu_mapped_mib": 1920.0,
+        "hexagon_mbuf_mib": 4192,
+        "host_returncode": 0,
+        "host_us_p50": 481727,
+        "htp0_model_buffer_mib": 3454.24,
+        "k": 8,
+        "layer_range": [
+          0,
+          8
+        ],
+        "missing_buffer_compute_nodes": 0,
+        "model_buffers_mib": {
+          "CPU_Mapped": 1920.0,
+          "HTP0": 3454.24
+        },
+        "n_gen": 8,
+        "n_requests_measured": 32,
+        "phone_resident_total_mib": 5374.24,
+        "placement_cert": {
+          "compute_by_buffer_type": {
+            "CPU": 8,
+            "HTP0": 1856
+          },
+          "compute_by_op": {
+            "ADD": 128,
+            "FLASH_ATTN_EXT": 64,
+            "GET_ROWS": 8,
+            "GLU": 64,
+            "MUL": 448,
+            "MUL_MAT": 440,
+            "RMS_NORM": 448,
+            "ROPE": 128,
+            "SCALE": 8,
+            "SET_ROWS": 128
+          },
+          "compute_by_op_and_buffer": {
+            "ADD": {
+              "HTP0": 128
+            },
+            "FLASH_ATTN_EXT": {
+              "HTP0": 64
+            },
+            "GET_ROWS": {
+              "CPU": 8
+            },
+            "GLU": {
+              "HTP0": 64
+            },
+            "MUL": {
+              "HTP0": 448
+            },
+            "MUL_MAT": {
+              "HTP0": 440
+            },
+            "RMS_NORM": {
+              "HTP0": 448
+            },
+            "ROPE": {
+              "HTP0": 128
+            },
+            "SCALE": {
+              "HTP0": 8
+            },
+            "SET_ROWS": {
+              "HTP0": 128
+            }
+          },
+          "compute_nodes": 1864,
+          "copy_by_buffer_type": {},
+          "copy_nodes": 0,
+          "layer_end": 8,
+          "layer_start": 0,
+          "metadata_nodes": 896,
+          "missing_buffer_compute_nodes": 0,
+          "mode": "stagenet",
+          "n_layer": 48,
+          "pid": 29514,
+          "role": "phone_stage",
+          "run_rc": 0,
+          "schema": "layersplit-scheduled-placement-v2",
+          "status": "SCHEDULED_PLACEMENT_OK"
+        },
+        "placement_status": "SCHEDULED_PLACEMENT_OK",
+        "request_wall_us_p50": 2887467,
+        "shard": "/data/local/tmp/ls-npu/12b-f16-head-0-8.gguf",
+        "shard_sha256": "a74845294bc1a3cba6ac26c747615d64d9127c904aae04c43c7ea2ebc1ea25c8",
+        "stage_a_us_max": 2405711,
+        "stage_a_us_min": 2405711,
+        "stage_a_us_p50": 2405711,
+        "token_ids": [
+          45518,
+          107,
+          100,
+          45518,
+          107,
+          101,
+          1509,
+          7412
+        ],
+        "token_ids_by_request": [
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ]
+        ],
+        "token_match_vs_mono": true
+      },
+      "thermal_end": {
+        "max_millic": 31800,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 31400,
+          "nsphmx-1": 31800,
+          "nsphmx-2": 31800,
+          "nsphmx-3": 31800
+        },
+        "valid": true
+      },
+      "thermal_start": {
+        "max_millic": 29800,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 29400,
+          "nsphmx-1": 29800,
+          "nsphmx-2": 29400,
+          "nsphmx-3": 29400
+        },
+        "valid": true
+      }
+    },
+    {
+      "device": "op12",
+      "elapsed_us": 22421167,
+      "eligible": true,
+      "error": null,
+      "log_artifacts": {
+        "op12_p5/host_k6_b32.stderr": "ae850dd4438650fac42ad82835c05a13d9cf778e9ce31ed4cbba78b362bce090",
+        "op12_p5/phone_k6.log": "522198c909fbd9d13c5bb7a21a42d078d1808866d4c4541dbc59d8bdc12c5968"
+      },
+      "process_index": 5,
+      "row": {
+        "all_tokens_match_vs_mono": true,
+        "batch": 32,
+        "compute_cpu_nodes": 8,
+        "compute_htp0_nodes": 1488,
+        "cpu_mapped_mib": 1920.0,
+        "hexagon_mbuf_mib": 3336,
+        "host_returncode": 0,
+        "host_us_p50": 501290,
+        "htp0_model_buffer_mib": 2599.12,
+        "k": 6,
+        "layer_range": [
+          0,
+          6
+        ],
+        "missing_buffer_compute_nodes": 0,
+        "model_buffers_mib": {
+          "CPU_Mapped": 1920.0,
+          "HTP0": 2599.12
+        },
+        "n_gen": 8,
+        "n_requests_measured": 32,
+        "phone_resident_total_mib": 4519.12,
+        "placement_cert": {
+          "compute_by_buffer_type": {
+            "CPU": 8,
+            "HTP0": 1488
+          },
+          "compute_by_op": {
+            "ADD": 96,
+            "GET_ROWS": 8,
+            "GLU": 48,
+            "MUL": 336,
+            "MUL_MAT": 424,
+            "RMS_NORM": 336,
+            "ROPE": 96,
+            "SCALE": 8,
+            "SET_ROWS": 96,
+            "SOFT_MAX": 48
+          },
+          "compute_by_op_and_buffer": {
+            "ADD": {
+              "HTP0": 96
+            },
+            "GET_ROWS": {
+              "CPU": 8
+            },
+            "GLU": {
+              "HTP0": 48
+            },
+            "MUL": {
+              "HTP0": 336
+            },
+            "MUL_MAT": {
+              "HTP0": 424
+            },
+            "RMS_NORM": {
+              "HTP0": 336
+            },
+            "ROPE": {
+              "HTP0": 96
+            },
+            "SCALE": {
+              "HTP0": 8
+            },
+            "SET_ROWS": {
+              "HTP0": 96
+            },
+            "SOFT_MAX": {
+              "HTP0": 48
+            }
+          },
+          "compute_nodes": 1496,
+          "copy_by_buffer_type": {
+            "HTP0": 96
+          },
+          "copy_nodes": 96,
+          "layer_end": 6,
+          "layer_start": 0,
+          "metadata_nodes": 720,
+          "missing_buffer_compute_nodes": 0,
+          "mode": "stagenet",
+          "n_layer": 48,
+          "pid": 32462,
+          "role": "phone_stage",
+          "run_rc": 0,
+          "schema": "layersplit-scheduled-placement-v2",
+          "status": "SCHEDULED_PLACEMENT_OK"
+        },
+        "placement_status": "SCHEDULED_PLACEMENT_OK",
+        "request_wall_us_p50": 9361882,
+        "shard": "/data/local/tmp/ls-npu/12b-f16-head-0-6.gguf",
+        "shard_sha256": "d507b7bb453242dff12ba1ce0add53189755b8a9a2b960743ead1578d8f1a6b5",
+        "stage_a_us_max": 8860556,
+        "stage_a_us_min": 8860556,
+        "stage_a_us_p50": 8860556,
+        "token_ids": [
+          45518,
+          107,
+          100,
+          45518,
+          107,
+          101,
+          1509,
+          7412
+        ],
+        "token_ids_by_request": [
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ]
+        ],
+        "token_match_vs_mono": true
+      },
+      "thermal_end": {
+        "max_millic": 34100,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 33700,
+          "nsphmx-1": 33300,
+          "nsphmx-2": 33300,
+          "nsphmx-3": 34100
+        },
+        "valid": true
+      },
+      "thermal_start": {
+        "max_millic": 31800,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 31400,
+          "nsphmx-1": 30600,
+          "nsphmx-2": 31000,
+          "nsphmx-3": 31800
+        },
+        "valid": true
+      }
+    },
+    {
+      "device": "op15",
+      "elapsed_us": 47073513,
+      "eligible": true,
+      "error": null,
+      "log_artifacts": {
+        "op15_p6/host_k8_b32.stderr": "60b3f28fd879ff8374999c7b92a6309e2aa3e2d9d7c284e2fb4a329d2e8aaf14",
+        "op15_p6/phone_k8.log": "8c65d7da33641b261ef42b1759322e7f74ca5f699c69f92be114ed211f0b8535"
+      },
+      "process_index": 6,
+      "row": {
+        "all_tokens_match_vs_mono": true,
+        "batch": 32,
+        "compute_cpu_nodes": 8,
+        "compute_htp0_nodes": 1856,
+        "cpu_mapped_mib": 1920.0,
+        "hexagon_mbuf_mib": 4192,
+        "host_returncode": 0,
+        "host_us_p50": 481508,
+        "htp0_model_buffer_mib": 3454.24,
+        "k": 8,
+        "layer_range": [
+          0,
+          8
+        ],
+        "missing_buffer_compute_nodes": 0,
+        "model_buffers_mib": {
+          "CPU_Mapped": 1920.0,
+          "HTP0": 3454.24
+        },
+        "n_gen": 8,
+        "n_requests_measured": 32,
+        "phone_resident_total_mib": 5374.24,
+        "placement_cert": {
+          "compute_by_buffer_type": {
+            "CPU": 8,
+            "HTP0": 1856
+          },
+          "compute_by_op": {
+            "ADD": 128,
+            "FLASH_ATTN_EXT": 64,
+            "GET_ROWS": 8,
+            "GLU": 64,
+            "MUL": 448,
+            "MUL_MAT": 440,
+            "RMS_NORM": 448,
+            "ROPE": 128,
+            "SCALE": 8,
+            "SET_ROWS": 128
+          },
+          "compute_by_op_and_buffer": {
+            "ADD": {
+              "HTP0": 128
+            },
+            "FLASH_ATTN_EXT": {
+              "HTP0": 64
+            },
+            "GET_ROWS": {
+              "CPU": 8
+            },
+            "GLU": {
+              "HTP0": 64
+            },
+            "MUL": {
+              "HTP0": 448
+            },
+            "MUL_MAT": {
+              "HTP0": 440
+            },
+            "RMS_NORM": {
+              "HTP0": 448
+            },
+            "ROPE": {
+              "HTP0": 128
+            },
+            "SCALE": {
+              "HTP0": 8
+            },
+            "SET_ROWS": {
+              "HTP0": 128
+            }
+          },
+          "compute_nodes": 1864,
+          "copy_by_buffer_type": {},
+          "copy_nodes": 0,
+          "layer_end": 8,
+          "layer_start": 0,
+          "metadata_nodes": 896,
+          "missing_buffer_compute_nodes": 0,
+          "mode": "stagenet",
+          "n_layer": 48,
+          "pid": 29992,
+          "role": "phone_stage",
+          "run_rc": 0,
+          "schema": "layersplit-scheduled-placement-v2",
+          "status": "SCHEDULED_PLACEMENT_OK"
+        },
+        "placement_status": "SCHEDULED_PLACEMENT_OK",
+        "request_wall_us_p50": 2912662,
+        "shard": "/data/local/tmp/ls-npu/12b-f16-head-0-8.gguf",
+        "shard_sha256": "a74845294bc1a3cba6ac26c747615d64d9127c904aae04c43c7ea2ebc1ea25c8",
+        "stage_a_us_max": 2431120,
+        "stage_a_us_min": 2431120,
+        "stage_a_us_p50": 2431120,
+        "token_ids": [
+          45518,
+          107,
+          100,
+          45518,
+          107,
+          101,
+          1509,
+          7412
+        ],
+        "token_ids_by_request": [
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ]
+        ],
+        "token_match_vs_mono": true
+      },
+      "thermal_end": {
+        "max_millic": 30200,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 29800,
+          "nsphmx-1": 29800,
+          "nsphmx-2": 30200,
+          "nsphmx-3": 30200
+        },
+        "valid": true
+      },
+      "thermal_start": {
+        "max_millic": 29800,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 29400,
+          "nsphmx-1": 29800,
+          "nsphmx-2": 29800,
+          "nsphmx-3": 29800
+        },
+        "valid": true
+      }
+    },
+    {
+      "device": "op12",
+      "elapsed_us": 22049137,
+      "eligible": true,
+      "error": null,
+      "log_artifacts": {
+        "op12_p6/host_k6_b32.stderr": "f4cc79e178e8ffbd33a5832352622d2ea567a8e83238dcbfed05b65a667c09a2",
+        "op12_p6/phone_k6.log": "bdf80c7fcec89a6c273faeb1a0139d6ad671d7df0ae4167576dfeea270d93ab2"
+      },
+      "process_index": 6,
+      "row": {
+        "all_tokens_match_vs_mono": true,
+        "batch": 32,
+        "compute_cpu_nodes": 8,
+        "compute_htp0_nodes": 1488,
+        "cpu_mapped_mib": 1920.0,
+        "hexagon_mbuf_mib": 3336,
+        "host_returncode": 0,
+        "host_us_p50": 497673,
+        "htp0_model_buffer_mib": 2599.12,
+        "k": 6,
+        "layer_range": [
+          0,
+          6
+        ],
+        "missing_buffer_compute_nodes": 0,
+        "model_buffers_mib": {
+          "CPU_Mapped": 1920.0,
+          "HTP0": 2599.12
+        },
+        "n_gen": 8,
+        "n_requests_measured": 32,
+        "phone_resident_total_mib": 4519.12,
+        "placement_cert": {
+          "compute_by_buffer_type": {
+            "CPU": 8,
+            "HTP0": 1488
+          },
+          "compute_by_op": {
+            "ADD": 96,
+            "GET_ROWS": 8,
+            "GLU": 48,
+            "MUL": 336,
+            "MUL_MAT": 424,
+            "RMS_NORM": 336,
+            "ROPE": 96,
+            "SCALE": 8,
+            "SET_ROWS": 96,
+            "SOFT_MAX": 48
+          },
+          "compute_by_op_and_buffer": {
+            "ADD": {
+              "HTP0": 96
+            },
+            "GET_ROWS": {
+              "CPU": 8
+            },
+            "GLU": {
+              "HTP0": 48
+            },
+            "MUL": {
+              "HTP0": 336
+            },
+            "MUL_MAT": {
+              "HTP0": 424
+            },
+            "RMS_NORM": {
+              "HTP0": 336
+            },
+            "ROPE": {
+              "HTP0": 96
+            },
+            "SCALE": {
+              "HTP0": 8
+            },
+            "SET_ROWS": {
+              "HTP0": 96
+            },
+            "SOFT_MAX": {
+              "HTP0": 48
+            }
+          },
+          "compute_nodes": 1496,
+          "copy_by_buffer_type": {
+            "HTP0": 96
+          },
+          "copy_nodes": 96,
+          "layer_end": 6,
+          "layer_start": 0,
+          "metadata_nodes": 720,
+          "missing_buffer_compute_nodes": 0,
+          "mode": "stagenet",
+          "n_layer": 48,
+          "pid": 546,
+          "role": "phone_stage",
+          "run_rc": 0,
+          "schema": "layersplit-scheduled-placement-v2",
+          "status": "SCHEDULED_PLACEMENT_OK"
+        },
+        "placement_status": "SCHEDULED_PLACEMENT_OK",
+        "request_wall_us_p50": 9375776,
+        "shard": "/data/local/tmp/ls-npu/12b-f16-head-0-6.gguf",
+        "shard_sha256": "d507b7bb453242dff12ba1ce0add53189755b8a9a2b960743ead1578d8f1a6b5",
+        "stage_a_us_max": 8878070,
+        "stage_a_us_min": 8878070,
+        "stage_a_us_p50": 8878070,
+        "token_ids": [
+          45518,
+          107,
+          100,
+          45518,
+          107,
+          101,
+          1509,
+          7412
+        ],
+        "token_ids_by_request": [
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ],
+          [
+            45518,
+            107,
+            100,
+            45518,
+            107,
+            101,
+            1509,
+            7412
+          ]
+        ],
+        "token_match_vs_mono": true
+      },
+      "thermal_end": {
+        "max_millic": 34500,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 34100,
+          "nsphmx-1": 34100,
+          "nsphmx-2": 34100,
+          "nsphmx-3": 34500
+        },
+        "valid": true
+      },
+      "thermal_start": {
+        "max_millic": 31400,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 31400,
+          "nsphmx-1": 31400,
+          "nsphmx-2": 30600,
+          "nsphmx-3": 31400
+        },
+        "valid": true
+      }
+    }
+  ],
+  "reference_log_sha256": "84116109e1ea118bfceab98551f1aac8d3b1f28df3e0dbc94dd97cf45d320a30",
+  "reference_tokens": [
+    45518,
+    107,
+    100,
+    45518,
+    107,
+    101,
+    1509,
+    7412
+  ],
+  "requests_per_process": 32,
+  "schema": "s15-independent-b32-gate-v1",
+  "scope": "REAL_DEVICE_B32_CORRECTNESS_PLACEMENT_LATENCY_ONLY_ENERGY_UNKNOWN",
+  "stageb_helper_sha256": "093b6c30cf7c614522a7f6705f17334ef5d97d38adc5505d3ba53f49184cb80a",
+  "verdict": "B32_INDEPENDENT_PHONE_GATE_PASS"
+}

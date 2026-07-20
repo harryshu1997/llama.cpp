@@ -1,0 +1,463 @@
+{
+  "artifacts": {
+    "harness": {
+      "path": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/spikes/s14_mixed_streaming_scheduler/energy/parallel_heads_device.py",
+      "sha256": "26c2fe1b45aa85ea9ba285ea588a7b8a2ed5b048601dafa1685911db64992e25"
+    },
+    "host": {
+      "bytes": 59425,
+      "path": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/spikes/s14_mixed_streaming_scheduler/energy/logs_parallel_heads/final_b2/host.stderr",
+      "sha256": "fdc2137918a5f51d0072bdf39c5a42defc8092daceecc6011b06f44e82d0e9b6"
+    },
+    "host_binary": {
+      "path": "/home/myid/zs89458/Documents/llama.cpp-release/build-cuda/bin/llama-layersplit",
+      "sha256": "fb4cfee8fa667fc45481fd922f42520b4496ef01662b356ad719da4ff7bfe613"
+    },
+    "host_stdout": {
+      "bytes": 321,
+      "path": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/spikes/s14_mixed_streaming_scheduler/energy/logs_parallel_heads/final_b2/host.stdout",
+      "sha256": "e9a950742fda8fc20d10e667e8dd062324ae8ebe57a60aaa4802d1480d417f46"
+    },
+    "op12": {
+      "bytes": 31021,
+      "path": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/spikes/s14_mixed_streaming_scheduler/energy/logs_parallel_heads/final_b2/op12.log",
+      "sha256": "e3ddfffcb75842a3f8ac788026bea468f7228e5a59c379a0d1205d5f4c495274"
+    },
+    "op15": {
+      "bytes": 30884,
+      "path": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/spikes/s14_mixed_streaming_scheduler/energy/logs_parallel_heads/final_b2/op15.log",
+      "sha256": "77c2a8c95b89036f6596163b375125f4e221fe5a062b2aa97072829e96d86c16"
+    },
+    "phone_binary_op12": {
+      "path": "/data/local/tmp/ls-s14-cpe/llama-layersplit",
+      "sha256": "2be934b2808703f7f10108d5960f75b87aa302b8b306fb7bf4cef0cd3eb2541c"
+    },
+    "phone_binary_op15": {
+      "path": "/data/local/tmp/ls-s14-cpe/llama-layersplit",
+      "sha256": "2be934b2808703f7f10108d5960f75b87aa302b8b306fb7bf4cef0cd3eb2541c"
+    },
+    "shard_op12": {
+      "path": "/data/local/tmp/ls-npu/12b-f16-head-0-6.gguf",
+      "sha256": "d507b7bb453242dff12ba1ce0add53189755b8a9a2b960743ead1578d8f1a6b5"
+    },
+    "shard_op15": {
+      "path": "/data/local/tmp/ls-npu/12b-f16-head-0-6.gguf",
+      "sha256": "d507b7bb453242dff12ba1ce0add53189755b8a9a2b960743ead1578d8f1a6b5"
+    }
+  },
+  "certificates": {
+    "host": {
+      "compute_by_buffer_type": {
+        "CUDA0": 19504
+      },
+      "compute_by_op": {
+        "ADD": 1360,
+        "FLASH_ATTN_EXT": 672,
+        "GET_ROWS": 16,
+        "GLU": 672,
+        "MUL": 4720,
+        "MUL_MAT": 4608,
+        "RMS_NORM": 4720,
+        "ROPE": 1344,
+        "SCALE": 32,
+        "SET_ROWS": 1344,
+        "UNARY": 16
+      },
+      "compute_by_op_and_buffer": {
+        "ADD": {
+          "CUDA0": 1360
+        },
+        "FLASH_ATTN_EXT": {
+          "CUDA0": 672
+        },
+        "GET_ROWS": {
+          "CUDA0": 16
+        },
+        "GLU": {
+          "CUDA0": 672
+        },
+        "MUL": {
+          "CUDA0": 4720
+        },
+        "MUL_MAT": {
+          "CUDA0": 4608
+        },
+        "RMS_NORM": {
+          "CUDA0": 4720
+        },
+        "ROPE": {
+          "CUDA0": 1344
+        },
+        "SCALE": {
+          "CUDA0": 32
+        },
+        "SET_ROWS": {
+          "CUDA0": 1344
+        },
+        "UNARY": {
+          "CUDA0": 16
+        }
+      },
+      "compute_nodes": 19504,
+      "copy_by_buffer_type": {},
+      "copy_nodes": 0,
+      "layer_end": 48,
+      "layer_start": 6,
+      "metadata_nodes": 9408,
+      "missing_buffer_compute_nodes": 0,
+      "mode": "pipedriver",
+      "n_layer": 48,
+      "pid": 3664763,
+      "role": "host_tail",
+      "run_rc": 0,
+      "schema": "layersplit-scheduled-placement-v2",
+      "status": "SCHEDULED_PLACEMENT_OK"
+    },
+    "op12": {
+      "compute_by_buffer_type": {
+        "CPU": 16,
+        "HTP0": 2976
+      },
+      "compute_by_op": {
+        "ADD": 192,
+        "GET_ROWS": 16,
+        "GLU": 96,
+        "MUL": 672,
+        "MUL_MAT": 848,
+        "RMS_NORM": 672,
+        "ROPE": 192,
+        "SCALE": 16,
+        "SET_ROWS": 192,
+        "SOFT_MAX": 96
+      },
+      "compute_by_op_and_buffer": {
+        "ADD": {
+          "HTP0": 192
+        },
+        "GET_ROWS": {
+          "CPU": 16
+        },
+        "GLU": {
+          "HTP0": 96
+        },
+        "MUL": {
+          "HTP0": 672
+        },
+        "MUL_MAT": {
+          "HTP0": 848
+        },
+        "RMS_NORM": {
+          "HTP0": 672
+        },
+        "ROPE": {
+          "HTP0": 192
+        },
+        "SCALE": {
+          "HTP0": 16
+        },
+        "SET_ROWS": {
+          "HTP0": 192
+        },
+        "SOFT_MAX": {
+          "HTP0": 96
+        }
+      },
+      "compute_nodes": 2992,
+      "copy_by_buffer_type": {
+        "HTP0": 192
+      },
+      "copy_nodes": 192,
+      "layer_end": 6,
+      "layer_start": 0,
+      "metadata_nodes": 1248,
+      "missing_buffer_compute_nodes": 0,
+      "mode": "stagenet",
+      "n_layer": 48,
+      "pid": 22233,
+      "role": "phone_stage",
+      "run_rc": 0,
+      "schema": "layersplit-scheduled-placement-v2",
+      "status": "SCHEDULED_PLACEMENT_OK"
+    },
+    "op15": {
+      "compute_by_buffer_type": {
+        "CPU": 16,
+        "HTP0": 2784
+      },
+      "compute_by_op": {
+        "ADD": 192,
+        "FLASH_ATTN_EXT": 96,
+        "GET_ROWS": 16,
+        "GLU": 96,
+        "MUL": 672,
+        "MUL_MAT": 656,
+        "RMS_NORM": 672,
+        "ROPE": 192,
+        "SCALE": 16,
+        "SET_ROWS": 192
+      },
+      "compute_by_op_and_buffer": {
+        "ADD": {
+          "HTP0": 192
+        },
+        "FLASH_ATTN_EXT": {
+          "HTP0": 96
+        },
+        "GET_ROWS": {
+          "CPU": 16
+        },
+        "GLU": {
+          "HTP0": 96
+        },
+        "MUL": {
+          "HTP0": 672
+        },
+        "MUL_MAT": {
+          "HTP0": 656
+        },
+        "RMS_NORM": {
+          "HTP0": 672
+        },
+        "ROPE": {
+          "HTP0": 192
+        },
+        "SCALE": {
+          "HTP0": 16
+        },
+        "SET_ROWS": {
+          "HTP0": 192
+        }
+      },
+      "compute_nodes": 2800,
+      "copy_by_buffer_type": {},
+      "copy_nodes": 0,
+      "layer_end": 6,
+      "layer_start": 0,
+      "metadata_nodes": 1152,
+      "missing_buffer_compute_nodes": 0,
+      "mode": "stagenet",
+      "n_layer": 48,
+      "pid": 18890,
+      "role": "phone_stage",
+      "run_rc": 0,
+      "schema": "layersplit-scheduled-placement-v2",
+      "status": "SCHEDULED_PLACEMENT_OK"
+    }
+  },
+  "checks": {
+    "all_tokens_match_reference": false,
+    "host_returncode_zero": true,
+    "host_tail_cert_ok": true,
+    "op12_cert_ok": true,
+    "op15_cert_ok": true,
+    "tail_batch_matches": true,
+    "thermal_end_ok": true,
+    "thermal_start_ok": true,
+    "two_rows_complete": true
+  },
+  "devices": {
+    "op12": {
+      "backend": "HTP0",
+      "hexagon": "v75",
+      "serial": "5ae7a43d"
+    },
+    "op15": {
+      "backend": "HTP0",
+      "hexagon": "v81",
+      "serial": "3C15AU002CL00000"
+    }
+  },
+  "energy_scope": "UNKNOWN",
+  "formal_claim": "NONE",
+  "head_batch_per_phone": 1,
+  "host_command": [
+    "/home/myid/zs89458/Documents/llama.cpp-release/build-cuda/bin/llama-layersplit",
+    "-m",
+    "/home/myid/zs89458/Documents/models/gemma-4-12B-it-f16.gguf",
+    "-ngl",
+    "99",
+    "--mode",
+    "pipedriver",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "16715",
+    "--port2",
+    "16712",
+    "--parallel-heads",
+    "--parallel-tail-batch",
+    "2",
+    "-p",
+    "Explain why batching improves accelerator utilization.",
+    "-n",
+    "8",
+    "--driver-requests",
+    "2",
+    "--driver-warmup",
+    "1",
+    "--driver-batch",
+    "2",
+    "--driver-context",
+    "512",
+    "--driver-max-prefill",
+    "64"
+  ],
+  "host_returncode": 0,
+  "model": {
+    "id": "gemma-4-12b-it-f16",
+    "version": "sha256:bac4e29337273d1cb41aa36f4209ebcf63baa1162e6ab4dc55f6034b3d69b35a"
+  },
+  "process_identity": {
+    "ended_utc_us": 1784412635180518,
+    "host_boot_id": "60cb683b-1898-41eb-aca2-24b1a77a5a3b",
+    "pid": 3664715,
+    "started_utc_us": 1784412566662143
+  },
+  "reference_tokens_full_model": [
+    108,
+    107,
+    100,
+    45518,
+    107,
+    101,
+    28925,
+    522
+  ],
+  "route": {
+    "op12": [
+      0,
+      6
+    ],
+    "op15": [
+      0,
+      6
+    ],
+    "shared_server_tail": [
+      6,
+      48
+    ]
+  },
+  "rows": [
+    {
+      "batch_index": 0,
+      "batch_size": 2,
+      "decode_us": 753624,
+      "eog": 0,
+      "generated_tokens": 8,
+      "host_us": 286940,
+      "prefill_us": 200092,
+      "prompt_tokens": 9,
+      "request_index": 0,
+      "request_wall_us": 1134516,
+      "requested_tokens": 8,
+      "route": "A0_PHONE_FLEET_TAIL_B2",
+      "stage_a_us": 666776,
+      "stage_b_us": 0,
+      "status": "ok",
+      "stream_index": 0,
+      "token_ids": [
+        107,
+        100,
+        45518,
+        107,
+        101,
+        28925,
+        522,
+        563
+      ]
+    },
+    {
+      "batch_index": 0,
+      "batch_size": 2,
+      "decode_us": 914457,
+      "eog": 0,
+      "generated_tokens": 8,
+      "host_us": 286940,
+      "prefill_us": 204998,
+      "prompt_tokens": 9,
+      "request_index": 1,
+      "request_wall_us": 1134516,
+      "requested_tokens": 8,
+      "route": "A0_PHONE_FLEET_TAIL_B2",
+      "stage_a_us": 832515,
+      "stage_b_us": 0,
+      "status": "ok",
+      "stream_index": 1,
+      "token_ids": [
+        108,
+        45518,
+        107,
+        100,
+        45518,
+        107,
+        101,
+        28925
+      ]
+    }
+  ],
+  "run_id": "final_b2",
+  "schema": "s14-parallel-heads-device-v1",
+  "scope": "OP15_AND_OP12_PARALLEL_HEADS_ONE_SHARED_A6000_TAIL_MECHANICS_ONLY_ENERGY_UNKNOWN",
+  "second_gpu_uuid": "GPU-431a4567-fa90-7a73-625a-2ee6e7b5eaaf",
+  "selected_gpu_uuid": "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f",
+  "shared_tail_batch": 2,
+  "status": "PARALLEL_HEADS_FAIL",
+  "thermals": {
+    "op12": {
+      "end": {
+        "max_millic": 30200,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 30200,
+          "nsphmx-1": 29800,
+          "nsphmx-2": 30200,
+          "nsphmx-3": 30200
+        },
+        "valid": true
+      },
+      "start": {
+        "max_millic": 30200,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 29400,
+          "nsphmx-1": 29000,
+          "nsphmx-2": 28700,
+          "nsphmx-3": 30200
+        },
+        "valid": true
+      }
+    },
+    "op15": {
+      "end": {
+        "max_millic": 29400,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 29000,
+          "nsphmx-1": 29400,
+          "nsphmx-2": 29400,
+          "nsphmx-3": 29400
+        },
+        "valid": true
+      },
+      "start": {
+        "max_millic": 27100,
+        "sensor_class": "nsphmx-*",
+        "sensors_millic": {
+          "nsphmx-0": 26700,
+          "nsphmx-1": 27100,
+          "nsphmx-2": 27100,
+          "nsphmx-3": 27100
+        },
+        "valid": true
+      }
+    }
+  },
+  "workload": {
+    "driver_context": 512,
+    "driver_max_prefill": 64,
+    "n_gen": 8,
+    "prompt": "Explain why batching improves accelerator utilization.",
+    "requests": 2,
+    "warmup_groups": 1
+  }
+}
