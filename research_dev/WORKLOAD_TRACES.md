@@ -83,6 +83,24 @@ locality experiments. It does not provide actual component execution times;
 those must come from our measured profile atlas. Confirm dataset redistribution
 terms before copying source data into this repository.
 
+#### S38 executable distributed-RAG composition
+
+S38 combines two independently pinned sources without presenting the result as
+a real production trace:
+
+- RAGPulse supplies observed arrival times, token demand, sessions, and cache
+  identifiers;
+- MultiHop-RAG supplies 2,556 executable questions and answers, 609 documents,
+  and ground-truth evidence; and
+- a deterministic URL-hash partition assigns each document to OP12 or OP15.
+
+The result is labeled `semi_synthetic`. Each query fans out to both phones for
+local embedding, retrieval, and reranking, followed by a deterministic global
+top-k merge and a collaborative Gemma-4 reasoning route. Priority and deadline
+remain null until matching physical stage profiles exist. The canonical bundle
+is outside git at `rag_assets/composed/s38-v1`; its builder, exact hashes, and
+validation result are under `spikes/s38_distributed_rag_trace/`.
+
 ### T4: Mooncake traces
 
 Optional cache-aware conversation and tool-agent scenario.

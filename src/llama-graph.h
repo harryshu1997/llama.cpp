@@ -762,6 +762,11 @@ struct llm_graph_params {
             return false;
         }
 
+        if (cparams.layersplit_start != other.cparams.layersplit_start ||
+            cparams.layersplit_end   != other.cparams.layersplit_end) {
+            return false;
+        }
+
         return
             cparams.embeddings              == other.cparams.embeddings              &&
             cparams.embeddings_nextn        == other.cparams.embeddings_nextn        &&

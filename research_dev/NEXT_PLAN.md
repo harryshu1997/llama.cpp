@@ -1,9 +1,170 @@
-# Q-PIM executable research plan
+# Active warm-tier executable research plan
 
-Status: S18 real three-device R1 mechanics pass; selected-GPU relief is
-insufficient as of 2026-07-19. S19 CP0 has now audited llama-server continuous
-batching and frozen the distributed reuse boundary; runtime CP1 has not yet
-started.
+Status: `S39_TRACE_AND_SHARDS_READY; QWEN_BATCH_PROVISIONAL; W0_ELIGIBLE_TWO_MODEL_ATLAS_BLOCKED`
+
+The current paper-critical system is defined in
+[ACTIVE_WARM_TIER_DESIGN.md](ACTIVE_WARM_TIER_DESIGN.md). The first bounded
+implementation is
+[S39](spikes/s39_phone_model_switch_trace/PLAN.md).
+
+One desktop GPU holds one hot large model. OP15 and OP12 collectively hold one
+other executable warm model. When demand shifts, phones serve the warm model
+while the GPU drains and loads its local copy. CUDA then batch-prefills the
+prompt and committed phone token histories, consumes the small token delta, and
+takes ownership at one exact token boundary. The phones release that model and
+prepare the displaced GPU model for a later reverse switch.
+
+The immediate gate order is:
+
+1. **W0 eligible two-model atlas.** Freeze exact model identities and prove one
+   complete CUDA route and one complete collective-phone route for each model.
+   Measure phone warm TTFT/decode, CUDA load/unload, CUDA batched prefill, and
+   phone rewarm. Storage-only residency is ineligible.
+2. **W1 one-request catch-up.** Keep one request decoding on phones while CUDA
+   loads and reconstructs native KV from tokens. Switch ownership once and
+   continue for 32 tokens with no duplicate, missing, or stale token.
+3. **W2 batched catch-up.** Repeat at `N={1,8,32}` with unequal request lengths,
+   one authoritative phone frontier, batched CUDA reconstruction, delta
+   catch-up, and exact sequence cleanup.
+4. **W3 symmetric rewarm.** Release the promoted model from phones, prepare the
+   displaced model from local UFS, publish new readiness, and execute a reverse
+   switch.
+5. **W4 trace comparison.** Run server queue, phone finish, catch-up handoff,
+   and rotating-warm-tier controls on the frozen S39 trace with a finite,
+   predeclared promotion/hysteresis sweep.
+6. **W5 benefit and robustness.** Only after mechanics pass, expand arrival
+   regimes, inject failures, and measure selected-GPU energy.
+
+Do not implement direct KV assembly first. Token-history replay is the primary
+handoff because it constructs native CUDA KV and transfers little data. Do not
+transfer full checkpoints during a switch; desktop checkpoints and phone shards
+are provisioned before the run.
+
+Use USB ADB as the bulk provisioning plane and WiFi TCP as the runtime
+command/activation plane. Weight readiness requires a verified phone-UFS
+artifact before dispatch. The next real acquisition must capture socket peers
+and interface counters; W0's WiFi endpoints are a post-run operator record.
+
+The current blockers are concrete:
+
+- Qwen3 B1/B8/B32 is token-exact but lacks a prompt corpus, repeated-process
+  variance, zero-swap evidence, and a pre-captured network-path certificate;
+- existing Gemma Q4/Q8 HTP routes failed the prior numerical-quality gate;
+- no two-model load/serve/replay/rewarm timing atlas exists;
+- no token-boundary ownership transfer exists;
+- no symmetric reverse switch has run.
+
+Everything below this line is retained historical Q-PIM, RAG, scheduler, and
+evidence work. It supplies mechanisms and controls but is not the live roadmap.
+
+---
+
+Status: S36/S37 closed the next runtime gates on 2026-07-22. The physical
+SLO-aware scheduler completed the frozen 60-request trace on one A6000, OP12,
+and OP15. Every treatment used both phones, preserved all tokens and SLOs, and
+produced one real phone batch containing prefill and decode rows. A separate
+physical sweep completed every jointly resident handoff cut 4 through 8 twice
+on both phones. See `spikes/s36_dynamic_cut_scheduler/RESULTS.md` and
+`spikes/s37_arbitrary_layer_exit/RESULTS.md`.
+
+The benefit gate failed. Across three paired runs, selected-CUDA stage relief
+was +1.78%, -4.34%, and -1.53%; median treatment was 1.86% slower. Different
+cuts fragmented terminal CUDA work into smaller `[cut,48)` calls. The next
+finite gate is therefore the already scoped canonical cut lift:
+
+1. Freeze canonical cut `K=8` and retain request-selected phone cuts 4..8.
+2. Add one CUDA lift queue for exact `[cut,8)` execution and one shared tail
+   queue for `[8,48)`; the shared tail must hold one weight image.
+3. Preserve request, route epoch, position, token, and per-layer KV ownership
+   through lift and tail. A request keeps one phone cut for prefill and decode.
+4. Batch by `(device, cut, priority-band)` before lift and by
+   `(canonical-cut, priority-band)` after lift. Prefill and decode rows may mix
+   in one physical call; graph ranges and priority zero may not mix.
+5. Repeat the same three paired physical runs. Require all S36 mechanics gates
+   plus reproducibly lower median selected-CUDA stage time before measuring
+   GPU-board energy.
+
+Do not call the selectable cut a semantic early exit. Every request still
+executes all 48 layers; the cut chooses where the exact activation and KV
+ownership hand off from a phone prefix to the CUDA suffix.
+
+Status: S28 completed the first real priority-safe shared-tail gate on
+2026-07-21. The RTX 4060 Ti, OP12 `[0,8)`, and OP15 `[8,16)` processed the
+frozen 60-request dense trace through one CUDA `[16,48)` tail queue. The
+all-CUDA control completed 60 R0 requests; treatment kept 10 P0 requests on R0
+and sent 50 P1/P2 requests through R2. Both had zero synthetic SLO misses.
+Treatment reduced summed CUDA-island compute from 5.767 to 4.697 s (-18.55%)
+and preserved P0 p95 (860.246 to 850.127 ms). OP12 and OP15 mean batches were
+3.846/4. The shared tail interleaved route classes seven times and never mixed
+P0 with background work in one physical batch.
+
+This is a real request-level scheduler and server-work proof, not an energy or
+accuracy proof. The latest-safe batching policy increased makespan from 5.007
+to 41.977 s, although every synthetic SLO passed. F16-phone/Q8-server output is
+uncertified (10/60 token sequences matched), and phone/network/total energy was
+not measured. See `spikes/s28_priority_shared_tail/RESULTS.md`.
+
+The next gate is not more scheduler scope. First make the server control
+precision-compatible with the phone shards and repeat the same finite R0/R2
+experiment. Then acquire matched 4060 Ti GPU-board energy with the already
+validated request, placement, and session gates. Only if server energy falls
+with preserved P0 SLO and acceptable quality should the work expand to richer
+shapes or model residency changes.
+
+Status: S25 completed the missing real continuous-request lifecycle proof on
+2026-07-21. OP12 `[0,8)`, OP15 `[8,16)`, and the RTX 4060 Ti CUDA `[16,48)`
+tail executed unequal output lengths with physical memberships
+`AB, AB, CB, CB, CD, D`. C reused A's sequence slot while B remained live, D
+reused B's slot while C remained live, all three workers drained to zero, and
+all four dynamic greedy sequences matched same-route B1. Placement was
+HTP0/HTP0/CUDA0 with zero missing compute buffers. See
+`spikes/s25_continuous_lifecycle/RESULTS.md`.
+
+This closes the basic implementation question: resident phone and desktop
+workers support variable-row batches, per-request KV ownership, request-level
+admission and retirement, sequence-slot reuse, and layer-boundary handoff. The
+handoff is not semantic early termination; every request still runs all 48
+layers. S25 is a real mechanics result, not a simulation or a benefit claim.
+
+The next gate is policy, not another batching primitive. S24 proved that the
+fixed SLO router is harmful even though shared batching works. Build one bounded
+online controller that:
+
+1. orders admission by priority and latest safe start before FIFO insertion;
+2. selects only a measured route and device-specific batch candidate;
+3. admits phone work only when predicted CUDA work or HBM residency decreases;
+4. reserves downstream sequence and time credits before phone dispatch;
+5. releases at the measured knee or the earliest latest-safe start, whichever
+   occurs first; and
+6. falls back to CUDA without waiting if those conditions are not met.
+
+Run that controller first on a small real unequal-length mixed-priority trace.
+Compare it against all-CUDA and S24's failed fixed policy. Require zero extra
+priority-0 misses, at most 5 percent priority-0 p95 regression, and strictly
+less matched CUDA work or resident HBM before acquiring GPU-board energy.
+
+The S24 status below is retained as the negative policy baseline.
+
+Status: S24 completed the real RTX 4060 Ti + OP12 + OP15 fixed-diamond proof of
+concept on 2026-07-21. Physical batching and convergence mechanics pass, but
+the frozen benefit gate fails. CP6 is not authorized for this policy.
+
+The positive mechanism result is narrow: heterogeneous upstream routes can
+converge into shared physical batches without a cohort barrier. The measured
+fixed policy is not a useful system result. Relative to route-isolated queues,
+shared OP15 batching raised mean batch from 2.0 to 3.0 and reduced makespan,
+but it exceeded the priority regression bound. The SLO router increased CUDA
+island compute, introduced two misses, and consumed 4.64x the selected-GPU
+board energy of the all-CUDA control. F16-phone/Q8-desktop quality also remains
+numerically uncertified.
+
+Do not extend this exact diamond to broader traces, deeper overlap, or direct
+phone transfer. A new checkpoint must first change one load-bearing condition:
+use a precision-compatible server control and replace the route policy with a
+priority-safe admission rule that can prove predicted CUDA relief before
+dispatch. Freeze that as a separate experiment; do not reinterpret S24.
+
+The S18/S19 plan below is retained as historical context.
 
 The independent-lane design now runs end to end on one selected A6000, OP15,
 and OP12. Six matched rows preserve 339,440 high-priority BGE encodes plus 384
@@ -21,11 +182,20 @@ peak selected-GPU memory rises from 26,555 to 45,674 MiB. Verdict:
 
 The next physical gate is the focused Q-PIM Funnel runtime: OP12 `[0,6)` rows
 pass through a CUDA `[6,8)` bridge, OP15 `[0,8)` rows enter directly, and both
-feed one variable-batch `[8,48)` CUDA tail. A native llama batch cannot mix
+feed one variable-batch `[8,48)` CUDA tail. The paper-critical hardware remains
+one selected A6000 plus OP12 and OP15; the slow external desktop link and the
+second A6000 are excluded. A native llama batch cannot mix
 boundary rows entering at different layers, so the bridge normalizes both
 routes to the same layer-8 cut. The B32 S18 geometry remains a regression point
 only. Production dispatch may choose only measured batch candidates, but it
 must choose among them online rather than hard-code B32/B64.
+
+The new mechanism name is heterogeneous-cut batch morphing. Continuous batching
+within one executor is reused llama-server substrate. OP12 and OP15 release
+independent stage-local batches at their measured candidates or latest-start
+limits; after normalization, the tail forms a new compatible batch whose size
+and membership may differ from either upstream batch. Exact row lineage and
+distributed per-layer KV ownership make this transformation safe.
 
 The request-lifecycle substrate follows llama-server's proven pattern: one slot
 per sequence, one logical batch manifest rebuilt at every update, compatibility
@@ -50,10 +220,13 @@ implementation and physical gates are frozen in
    downstream credits. Batch 1/2 is an urgent fallback, not a target.
 5. Prove the frozen B32 route as a regression, then run arrival-varying tests in
    which active batch membership and selected size change between token steps.
-6. Repeat the S18 mixed screen and require lower peak HBM before any full energy
+6. Prove a physical split/merge event: unequal phone releases merge into one
+   tail batch, or one upstream release is consumed by multiple tail batches,
+   without a cross-phone barrier or token mismatch.
+7. Repeat the S18 mixed screen and require lower peak HBM before any full energy
    acquisition. Stop if the shared tail or continuous-batch handoff serializes
    the lanes past their SLOs.
-7. Only after that screen passes, rerun an equal-work selected-GPU test across a
+8. Only after that screen passes, rerun an equal-work selected-GPU test across a
    frozen workload-ratio sweep. Do not reconnect the general DAG/residency
    machinery in the paper-critical path.
 

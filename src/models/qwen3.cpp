@@ -1,5 +1,7 @@
 #include "models.h"
 
+#include <cstdlib>
+
 void llama_model_qwen3::load_arch_hparams(llama_model_loader & ml) {
     ml.get_key(LLM_KV_ATTENTION_LAYERNORM_RMS_EPS, hparams.f_norm_rms_eps);
 
@@ -15,20 +17,49 @@ void llama_model_qwen3::load_arch_hparams(llama_model_loader & ml) {
 void llama_model_qwen3::load_arch_tensors(llama_model_loader &) {
     LLAMA_LOAD_LOCALS;
 
-    tok_embd = create_tensor(tn(LLM_TENSOR_TOKEN_EMBD, "weight"), {n_embd, n_vocab}, 0);
+    int ls = 0;
+    int le = (int) n_layer;
+    if (const char * value = getenv("LLAMA_LAYER_START")) {
+        ls = atoi(value);
+    }
+    if (const char * value = getenv("LLAMA_LAYER_END")) {
+        le = atoi(value);
+    }
+    if (ls < 0) {
+        ls = 0;
+    }
+    if (le > (int) n_layer) {
+        le = (int) n_layer;
+    }
+    if (ls >= le) {
+        throw std::runtime_error("Qwen3 LayerSplit has an invalid layer range");
+    }
 
-    // output
-    output_norm = create_tensor(tn(LLM_TENSOR_OUTPUT_NORM, "weight"), {n_embd}, 0);
-    output      = create_tensor(tn(LLM_TENSOR_OUTPUT,      "weight"), {n_embd, n_vocab}, TENSOR_NOT_REQUIRED);
-    // if output is NULL, init from the input tok embed
-    if (output == NULL) {
-        output = create_tensor(tn(LLM_TENSOR_TOKEN_EMBD, "weight"), {n_embd, n_vocab}, TENSOR_DUPLICATED);
+    const bool is_head = ls == 0;
+    const bool is_tail = le == (int) n_layer;
+
+    if (is_tail) {
+        output_norm = create_tensor(tn(LLM_TENSOR_OUTPUT_NORM, "weight"), {n_embd}, 0);
+        output      = create_tensor(tn(LLM_TENSOR_OUTPUT,      "weight"), {n_embd, n_vocab}, TENSOR_NOT_REQUIRED);
+        if (output == nullptr) {
+            output = create_tensor(tn(LLM_TENSOR_TOKEN_EMBD, "weight"), {n_embd, n_vocab}, TENSOR_DUPLICATED);
+        }
+    }
+
+    if (is_head || is_tail) {
+        tok_embd = create_tensor(tn(LLM_TENSOR_TOKEN_EMBD, "weight"), {n_embd, n_vocab}, 0);
     }
 
     // output rerank head
-    cls_out = create_tensor(tn(LLM_TENSOR_CLS_OUT, "weight"), {n_embd, hparams.n_cls_out}, TENSOR_NOT_REQUIRED);
+    if (is_tail) {
+        cls_out = create_tensor(tn(LLM_TENSOR_CLS_OUT, "weight"), {n_embd, hparams.n_cls_out}, TENSOR_NOT_REQUIRED);
+    }
 
     for (int i = 0; i < n_layer; ++i) {
+        if (i < ls || i >= le) {
+            continue;
+        }
+
         auto & layer = layers[i];
 
         layer.attn_norm = create_tensor(tn(LLM_TENSOR_ATTN_NORM, "weight", i), {n_embd}, 0);
@@ -59,16 +90,49 @@ llama_model_qwen3::graph::graph(const llama_model & model, const llm_graph_param
     ggml_tensor * cur;
     ggml_tensor * inpL;
 
-    inpL = build_inp_embd(model.tok_embd);
+    int ls = 0;
+    int le = (int) n_layer;
+    if (const char * value = getenv("LLAMA_LAYER_START")) {
+        ls = atoi(value);
+    }
+    if (const char * value = getenv("LLAMA_LAYER_END")) {
+        le = atoi(value);
+    }
+    if (cparams.layersplit_start >= 0) {
+        ls = cparams.layersplit_start;
+    }
+    if (cparams.layersplit_end >= 0) {
+        le = cparams.layersplit_end;
+    }
+    if (ls < 0) {
+        ls = 0;
+    }
+    if (le > (int) n_layer) {
+        le = (int) n_layer;
+    }
+    GGML_ASSERT(ls < le);
+
+    const bool is_tail = le == (int) n_layer;
+
+    if (ls > 0) {
+        auto inp = std::make_unique<llm_graph_input_embd_h>(n_embd);
+        inpL = ggml_new_tensor_2d(ctx0, GGML_TYPE_F32, n_embd, n_tokens);
+        ggml_set_input(inpL);
+        inp->h = inpL;
+        res->add_input(std::move(inp));
+        cb(inpL, "layersplit_inject", -1);
+    } else {
+        inpL = build_inp_embd(model.tok_embd);
+    }
 
     // inp_pos - contains the positions
     ggml_tensor * inp_pos = build_inp_pos();
 
     auto * inp_attn = build_attn_inp_kv();
 
-    ggml_tensor * inp_out_ids = build_inp_out_ids();
+    ggml_tensor * inp_out_ids = is_tail ? build_inp_out_ids() : nullptr;
 
-    for (int il = 0; il < n_layer; ++il) {
+    for (int il = ls; il < le; ++il) {
         res->t_layer_inp[il] = inpL;
 
         ggml_tensor * inpSA = inpL;
@@ -141,6 +205,13 @@ llama_model_qwen3::graph::graph(const llama_model & model, const llm_graph_param
         inpL = cur;
     }
     cur = inpL;
+
+    if (!is_tail) {
+        res->t_h_nextn = cur;
+        ggml_set_output(res->t_h_nextn);
+        ggml_build_forward_expand(gf, res->t_h_nextn);
+        return;
+    }
 
     cur = build_norm(cur,
             model.output_norm, NULL,

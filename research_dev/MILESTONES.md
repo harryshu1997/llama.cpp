@@ -4,10 +4,10 @@
 
 > **DO NOT EXECUTE THIS FILE AS THE CURRENT PLAN.** It preserves the original
 > Design A M0-M5 sequencing and risk assumptions. The primary target is now the
-> mixed-workload system in
-> [MIXED_WORKLOAD_DESIGN.md](MIXED_WORKLOAD_DESIGN.md), with executable MW0-MW7
-> gates in [NEXT_PLAN.md](NEXT_PLAN.md) and the first bounded experiment in
-> [S8-V0](spikes/s8_operator_island_affinity/PLAN.md). Design A remains route
+> executable phone warm tier in
+> [ACTIVE_WARM_TIER_DESIGN.md](ACTIVE_WARM_TIER_DESIGN.md), with executable
+> W0-W5 gates and the first bounded experiment in
+> [S39](spikes/s39_phone_model_switch_trace/PLAN.md). Design A remains route
 > `A0` and useful historical evidence.
 
 > Measurement correction (2026-07-10): historical "zero interference" entries

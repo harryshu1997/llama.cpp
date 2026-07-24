@@ -1,129 +1,154 @@
-# Q-PIM Funnel: heterogeneous continuous activation batching
+# Active Warm-Tier Multi-Model Serving
 
-The focused system uses OP12 and OP15 as resident Gemma prefix accelerators for
-one selected A6000. A small CUDA bridge normalizes their different prefix cuts,
-then one shared CUDA tail continuously batches ready activation rows while a
-high-priority BGE service remains on the A6000. The scheduler releases at a
-measured useful batch or the earliest SLO-safe time.
+The primary system uses OP12 and OP15 as a collectively sharded executable warm
+tier for one memory-limited desktop GPU. The GPU holds one hot model. The phone
+fleet holds one other ready model, serves it while the GPU drains and changes
+models, and then transfers live requests into one CUDA continuous batch through
+batched token-history replay. After cutover, the phones prepare the displaced
+GPU model for the next switch.
 
-Design A, `server -> OP15 -> OP12 -> server`, remains a proven route named `A0`.
-It supplies useful pipeline, sharding, local-KV, transport, and shared-weight
-mechanisms. It is not the new system novelty.
+```text
+initial:  GPU = model A HOT        phones = model B WARM
+bridge:   GPU loads B              phones serve B requests
+handoff:  GPU batch-prefills B     phones continue B until catch-up
+cutover:  GPU = model B HOT        phones release B
+rearm:    GPU = model B HOT        phones prepare model A WARM
+```
+
+This is an executable model cache, not remote coherent memory and not a fixed
+layer pipeline.
 
 ## Primary question
 
-Can heterogeneous phone prefixes feed one continuously batched GPU suffix while
-preserving mixed-priority SLOs and reducing one-GPU HBM or selected-GPU board
-J/completed equal-work request?
+Can a low-power, collectively sharded phone tier eliminate the service blackout
+of multi-model GPU residency changes while preserving continuous batching and
+request SLOs?
 
-Skipped GPU-us, utilization, and modeled idle time are not energy evidence. The
-current experiment reports only matched selected-GPU board energy. A
-total-system claim still requires synchronized phone, USB, host, and GPU power.
+The first claim is latency and SLO goodput. Selected-GPU board energy is
+secondary. Phone, host, network, and total-system energy remain unknown until a
+valid physical measurement boundary exists.
 
-## Sources of truth
+## Current authority
 
-| File | Authority |
+| File | Purpose |
 |---|---|
+| [ACTIVE_WARM_TIER_DESIGN.md](ACTIVE_WARM_TIER_DESIGN.md) | Current system contract, invariants, scheduler, controls, and milestones |
+| [spikes/s39_phone_model_switch_trace/PLAN.md](spikes/s39_phone_model_switch_trace/PLAN.md) | First bounded physical proof of concept |
 | [talks.md](talks.md) | Live status and newest-first experiment log |
-| [MIXED_WORKLOAD_DESIGN.md](MIXED_WORKLOAD_DESIGN.md) | Authoritative Q-PIM architecture and claim boundary |
-| [TWO_LEVEL_SCHEDULER.md](TWO_LEVEL_SCHEDULER.md) | Deferred broad scheduler design; not paper-critical |
-| [WORKLOAD_TRACES.md](WORKLOAD_TRACES.md) | Public dataset catalog and trace orientation; S8 schemas/spec freeze bytes |
-| [NEXT_PLAN.md](NEXT_PLAN.md) | Current focused executable gate order |
-| [spikes/s19_dynamic_batch_runtime/PLAN.md](spikes/s19_dynamic_batch_runtime/PLAN.md) | Active continuous-batch and shared-tail implementation plan |
-| [spikes/s10_power_frontier_repair/PLAN.md](spikes/s10_power_frontier_repair/PLAN.md) | Historical S10 foundation repair and oracle substrate |
-| [spikes/s10_power_frontier_repair/V0_AUDIT.md](spikes/s10_power_frontier_repair/V0_AUDIT.md) | Why the historical S10-V0 verdict is invalid/inconclusive |
-| [spikes/s9_phone_pim_runtime/DYNAMIC_RESULTS.md](spikes/s9_phone_pim_runtime/DYNAMIC_RESULTS.md) | Bounded sequential provisioning/runtime evidence |
-| [spikes/s9_pipelined_transport/RESULTS_R.md](spikes/s9_pipelined_transport/RESULTS_R.md) | Repaired bounded pipelined-transport evidence |
-| [spikes/s13_runtime_fleet/RESULTS.md](spikes/s13_runtime_fleet/RESULTS.md) | Live two-phone FFN fleet runtime evidence |
-| [spikes/s10_matched_energy_e2_aggregate/RESULTS.md](spikes/s10_matched_energy_e2_aggregate/RESULTS.md) | Current evidence-chain verdict and physical blockers |
-| [DESIGN.md](DESIGN.md) | Historical Design A technical substrate |
-| [MILESTONES.md](MILESTONES.md) | Historical Design A M0-M5 record |
-| [PORT.md](PORT.md) | Port provenance and reusable historical components |
+| [NEXT_PLAN.md](NEXT_PLAN.md) | Active gate order followed by preserved historical plans |
+| [WORKLOAD_TRACES.md](WORKLOAD_TRACES.md) | Trace provenance and workload sources |
+| [MIXED_WORKLOAD_DESIGN.md](MIXED_WORKLOAD_DESIGN.md) | Historical Q-PIM focused design and reusable scheduler substrate |
+| [DESIGN.md](DESIGN.md) | Historical Design A layer-pipeline substrate |
+| [MILESTONES.md](MILESTONES.md) | Historical Design A milestones |
 
-## What, how, and when
+## What is new
 
-**What:** low-priority Gemma prefix work for OP12 `[0,6)` or OP15 `[0,8)`.
-High-priority BGE stays on the selected A6000.
+The system combines three mechanisms:
 
-**How:** normalize OP12 results through CUDA `[6,8)`, combine all layer-8 rows in
-one continuously batched CUDA `[8,48)` tail, and maintain per-request KV in each
-stage.
+1. **Executable warm residency.** A GPU-nonresident model remains usable on
+   phone-resident shards instead of waiting in storage.
+2. **Non-blocking batched catch-up.** Phones remain the token owner while CUDA
+   loads and reconstructs native KV for multiple requests from prompt and
+   committed token IDs. CUDA consumes the small token delta and takes ownership
+   at an exact token boundary.
+3. **Symmetric rewarming.** Once model B becomes hot on the GPU, phones prepare
+   displaced model A. A later demand reversal runs the same transition in the
+   other direction.
 
-**When:** release a phone or tail batch when it reaches a measured useful batch
-candidate or the earliest admitted request reaches its latest safe start.
+Model loading, continuous batching, SLO routing, token replay, and layer
+sharding are substrate, not standalone novelty.
 
-Weights are fixed and resident before the run. No request waits for a download,
-general DAG solve, or phone-to-phone middle stage.
+## What moves
 
-Maximum phone use means maximum useful parallelism, not forced utilization.
+All checkpoints are provisioned before a measured run:
+
+```text
+desktop NVMe or host memory: all model checkpoints
+phone UFS:                  assigned shards for eligible models
+desktop VRAM:               one hot model
+phone RAM and NPU buffers:  one collectively executable warm model
+```
+
+A normal promotion does not transfer a complete 9-12 GB checkpoint from phones
+to the desktop. The desktop loads its local copy. The coordinator already owns
+the prompt and emitted token history, so catch-up transfers only bounded token
+deltas and control metadata.
+
+The physical transport is split by payload. USB ADB provisions large weight
+shards to phone UFS before they become ready. WiFi TCP carries runtime commands,
+hidden-state activations, and token results. The current phone-stage path is
+relayed by the host coordinator; it is not direct phone-to-phone transfer.
+
+Direct KV transfer is optional future work. The primary path reconstructs
+native CUDA KV by batch-prefilling token histories, which avoids cross-backend
+KV-layout dependence.
+
+## Runtime invariants
+
+- At most one model is hot on the GPU; zero is legal during replacement.
+- At most one other model is executable on the phone fleet initially.
+- Storage residency never implies execution readiness.
+- Model, tokenizer, template, quantization, KV type, context, and route digests
+  must match their certificates.
+- Only one owner may commit a request token for an ownership epoch.
+- Phones remain authoritative during CUDA catch-up.
+- CUDA becomes authoritative only after a durable token-boundary cutover.
+- A failed promotion leaves the phone route authoritative.
+- A failed rewarm publishes not-ready and cannot retain stale readiness.
+- No request waits indefinitely for a phone, load, replay, or handoff.
 
 ## Evidence carried forward
 
-- The persistent three-device 12B route `A0` runs end to end with stage-local KV.
-- Phone GGUF shards preserve absolute layer indices and store only local slices.
-- Read-only weights can be shared by Hexagon and OpenCL per tensor.
-- Static HTP batched decode works at tested shapes.
-- S3 output-row splitting failed; do not split one GEMV over phone backends.
-- S4 GPU attention failed at realistic context; HTP remains the tested decode
-  attention engine.
-- S5 showed isolated phone operators do not add useful raw A6000 throughput over
-  adb at the measured point.
-- S6 found saturated HTP-decode/GPU-prefill overlap, but request-pair latency and
-  FFN boundary evidence are not scheduler authorization.
-- S7 ragged HMX attention passed an isolated operator gate and still needs a real
-  layer and trace.
-- S11-E0 proved exact resident OP15 `[0,2)` execution and 888 MiB selected-A6000
-  relief, but rejected the fixed serial route for energy: lower A6000 power did
-  not offset 2.31x runtime, so equal-work board energy increased 53.15 percent.
-  The next mechanism must overlap phone work with useful server work.
-- The protocol-v3 phone-PIM prototype can durably provision, resume, publish,
-  prepare, and execute one Gemma4 dense-FFN island on both phones. S9-V1A-R
-  proves bounded windowed provisioning on both phones, but still provides no
-  multi-model capacity or energy claim.
-- Fleet energy remains unmeasured because the physical phone power boundary is
-  invalid in the current setup.
+The earlier program provides useful mechanisms:
 
-The next bounded build is S19: versioned per-sequence StageNet commands,
-LayerSplit-local continuous admission, one-phone physical validation, then the
-OP12 `[6,8)` bridge plus one shared `[8,48)` tail. No simulator, weight-streaming
-planner, general solver, or phone-to-phone route can substitute for those
-physical gates.
+- persistent phone workers retain prepared weights across sessions;
+- OP12 and OP15 execute real stage-local continuous batches;
+- mixed prefill and decode rows have run in one physical phone batch;
+- arbitrary resident layer intervals and per-request KV lifecycle work;
+- request identity, position, epoch, placement, and reset checks exist;
+- the three-device routes prove activation transport and exact request
+  conservation;
+- S39 already freezes a real BurstGPT-derived 20-minute model-switch trace.
 
-## Existing implementation relevant to the new target
+The earlier program also provides stop conditions:
 
-- Current tree: server queues/slots, LayerSplit TCP stages, GGUF sharding,
-  download/cache helpers, per-tensor weight sharing, and dual HTP/GPU workers.
-- `examples/phone-pim`: bounded protocol-v3 sequential provisioning, verified
-  restart resume, content-addressed publication, one resident FFN command path,
-  and a compiled multi-phone work-stealing harness. It is a live prototype
-  substrate, not a mixed-model server scheduler.
-- Historical `route2-b9531`: process-local VQ byte table, CONWIP admission,
-  backend singleton/fairness, co-execution harnesses, and an experimental HEFT
-  virtual queue.
-- Historical Unifer design: a 16-byte remote telemetry roster and trace replay.
-
-The historical VQ is local occupancy instrumentation, not a distributed status
-or lease system. It must be audited and minimally extracted before any port.
+- output-row splitting one GEMV across phone backends lost;
+- moving attention to Adreno lost at realistic context;
+- fixed phone prefixes generally increased end-to-end latency;
+- Q4/Q8 HTP routes have not passed the prior same-artifact numerical-quality
+  gate;
+- phone storage capacity is not proof that a complete second model can execute;
+- selected-GPU energy reductions do not establish total-system savings.
 
 ## Honest current status
 
-S18 runs one selected A6000, OP15, and OP12 with exact Gemma tokens and preserved
-BGE p95, but its independent fixed-B32 routes duplicate CUDA tail weights and
-save only 0.342 percent median selected-GPU board energy. It is a mechanics
-pass and a relief failure. S19 has audited llama-server continuous batching and
-frozen the focused implementation, but arbitrary-sequence admission,
-heterogeneous-cut normalization, and the one-copy shared tail are not yet
-implemented. No total-system energy benefit is claimed.
+S39 has a deterministic BurstGPT-derived trace and provisional Gemma/Qwen model
+mapping. Its active frequent-switch profile now reduces byte-identically to
+five promotion windows and nine target changes. Overlapping shard supersets
+are hash-verified on both phones. Dense Qwen3 partial-stage execution is
+implemented, and one real B1 collective-phone route matches eight CUDA tokens,
+but it remains `PROVISIONAL_B1`. The corresponding Gemma Q4 route has clean
+placement but fails token correctness. The active system has not passed W0:
+
+- neither decoder has a complete, repeated-process collective-phone execution
+  certificate;
+- CUDA and phone transition times have not been measured as one comparable
+  atlas;
+- non-blocking phone-to-CUDA token catch-up is not implemented;
+- symmetric rewarming and reverse handoff are not implemented;
+- no latency, SLO, or energy benefit is claimed.
+
+The hash-bound warm-tier controller is implemented and intentionally refuses
+all nine physical transitions with `E_ROUTE_NOT_READY`. The first task remains
+the W0 two-model eligibility and timing gate, not a general scheduler.
 
 ## Start here
 
 1. Read the top of [talks.md](talks.md).
-2. Read [MIXED_WORKLOAD_DESIGN.md](MIXED_WORKLOAD_DESIGN.md).
-3. Read [spikes/s19_dynamic_batch_runtime/PLAN.md](spikes/s19_dynamic_batch_runtime/PLAN.md).
-4. Read [NEXT_PLAN.md](NEXT_PLAN.md) for historical evidence and gate order.
-5. Read the S18 result before interpreting the current energy numbers.
+2. Read [ACTIVE_WARM_TIER_DESIGN.md](ACTIVE_WARM_TIER_DESIGN.md).
+3. Execute [the S39 plan](spikes/s39_phone_model_switch_trace/PLAN.md) in order.
+4. Read S33-S38 results before reusing a quantized or mixed-generation route.
 
-Do not copy llama-server's HTTP/task stack. Borrow its slot, logical-batch,
-continuous-admission, and per-sequence KV lifecycle inside the experimental
-LayerSplit executor. Do not start an energy acquisition before the S19 physical
-continuous-batch and one-copy-tail gates pass.
+Do not start direct KV assembly, energy acquisition, a general solver, or a
+multi-model cache replacement policy before one-request and batched token
+catch-up pass on real devices.

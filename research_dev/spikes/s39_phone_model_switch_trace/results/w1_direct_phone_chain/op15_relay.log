@@ -1,0 +1,2 @@
+[direct-relay] listening on 0.0.0.0:39415 head=127.0.0.1:39315 tail=172.20.59.72:39312
+DIRECTCERT {"schema":"ls-stage-direct-relay-v1","status":"DIRECT_RELAY_OK","run_rc":0,"head_endpoint":"127.0.0.1:39315","tail_endpoint":"172.20.59.72:39312","layer_start":0,"cut_layer":30,"layer_end":40,"n_layer":40,"n_embd":5120,"file_type":15,"model_sha256":"500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0","batches":8,"rows":12,"activation_payload_bytes":245760,"host_activation_payload_bytes":0}

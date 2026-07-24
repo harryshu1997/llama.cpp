@@ -223,6 +223,7 @@ static std::string make_worker_boot_nonce() {
 // range, backend, and reset acknowledgement). The tally is cleared after each
 // successful DETACH so placement and steps_session both describe one session.
 static void emit_session_cert(int session_id, const char * session_end,
+                              const char * expected_backend,
                               const std::string & boot_nonce,
                               const std::string & device_boot_id,
                               int layer_start, int layer_end, int n_layer,
@@ -240,7 +241,7 @@ static void emit_session_cert(int session_id, const char * session_end,
         {"proto_version", STAGE_PERSIST_PROTO_VERSION},
         {"session_id", session_id},
         {"session_end", session_end},
-        {"expected_backend", "HTP0"},
+        {"expected_backend", expected_backend},
         {"worker_pid", (int) getpid()},
         {"worker_boot_nonce", boot_nonce},
         {"device_boot_id", device_boot_id},
@@ -260,15 +261,16 @@ static void emit_session_cert(int session_id, const char * session_end,
 
 static void print_usage(int, char ** argv) {
     fprintf(stderr,
-        "\nusage: %s -m <model> --mode <mono|head|mid|tail|tailnet|headnet> [opts]\n"
+        "\nusage: %s -m <model> --mode <mono|head|mid|tail|tailnet|headnet|stagenet|tailv3> [opts]\n"
         "  mono    : full model on the prompt, print last-token top-1 + top-5\n"
         "  head    : run layers [0,LLAMA_LAYER_END), dump N cut activations + token ids to --act-file\n"
         "  mid     : env LLAMA_LAYER_START=k2 LLAMA_LAYER_END=k3 ; inject --act-file, run [k2,k3) head-less, relay to --act-out\n"
         "  tail    : run layers [LLAMA_LAYER_START,n_layer) on injected activations, print last-token top-1 + top-5\n"
-        "  tailnet : --port P ; listen 0.0.0.0:P, own KV[k,48)+sampling (env LLAMA_LAYER_START=k)\n"
+        "  tailnet : --port P ; listen 0.0.0.0:P, own terminal-layer KV and sampling\n"
         "  headnet : --host H --port P -p PROMPT -n NGEN ; drive decode (env LLAMA_LAYER_END=k)\n"
         "  tailbench: -b STREAMS -n STEPS ; BATCHED tail decode, STREAMS seqs/forward (env LLAMA_LAYER_START=k)\n"
         "  stagenet  : --port P ; PERSISTENT head-less stage server (env LLAMA_LAYER_START/END), KV-resident\n"
+        "  tailv3    : --port P ; V3 terminal stage (env LLAMA_LAYER_START), returns greedy token ids\n"
         "  monodriver: -p PROMPT -n NGEN ; resident full-model control using the pipedriver decode loop\n"
         "  pipedriver: --host H --port A [--port2 B] -p PROMPT -n NGEN ; host tail drives one or two\n"
         "              --parallel-heads requires --port2 and B=2; two equal head cuts feed one batched tail\n"
@@ -826,6 +828,11 @@ static int run_tailnet(llama_context * ctx, const llama_vocab * vocab,
 static int run_headnet(llama_context * ctx, const llama_vocab * vocab,
                        int n_embd, const std::string & host, int port,
                        const std::string & prompt, int n_gen) {
+    const auto now_us = []() {
+        return std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count();
+    };
+
     // resolve + connect
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) { fprintf(stderr, "error: socket() failed: %s\n", strerror(errno)); return 3; }
@@ -867,6 +874,7 @@ static int run_headnet(llama_context * ctx, const llama_vocab * vocab,
             prompt.c_str(), prompt_tokens.size(), n_gen);
 
     llama_batch batch = llama_batch_init(1, 0, 1);
+    int64_t exchange_count = 0;
 
     auto exchange = [&](int32_t pos, llama_token tok, llama_token & out_tok) -> bool {
         batch.n_tokens     = 1;
@@ -897,6 +905,7 @@ static int run_headnet(llama_context * ctx, const llama_vocab * vocab,
             fprintf(stderr, "error: recv(token) failed/EOF (pos=%d)\n", pos);
             return false;
         }
+        ++exchange_count;
         return true;
     };
 
@@ -904,6 +913,10 @@ static int run_headnet(llama_context * ctx, const llama_vocab * vocab,
     int32_t pos = 0;
     llama_token next_tok = 0;
     std::string generated;
+    std::vector<llama_token> generated_tokens;
+    std::vector<int64_t> decode_step_us;
+    const int64_t service_start_us = now_us();
+    int64_t ttft_us = -1;
 
     // 1) feed the prompt tokens; ignore returned token until the LAST prompt token.
     for (size_t i = 0; i < prompt_tokens.size(); ++i) {
@@ -914,11 +927,13 @@ static int run_headnet(llama_context * ctx, const llama_vocab * vocab,
         }
         pos++;
     }
+    ttft_us = now_us() - service_start_us;
 
     // 2) generation: the token recv'd after the prompt is the generated token.
     printf("\n=== GENERATED ===\n%s", prompt.c_str());
     fflush(stdout);
     for (int g = 0; g < n_gen; ++g) {
+        generated_tokens.push_back(next_tok);
         std::string piece = common_token_to_piece(ctx, next_tok, true);
         generated += piece;
         printf("%s", piece.c_str());
@@ -929,7 +944,9 @@ static int run_headnet(llama_context * ctx, const llama_vocab * vocab,
         }
         if (g + 1 >= n_gen) break;   // last token already printed; no need to feed again
         llama_token recv_tok = 0;
+        const int64_t step_start_us = now_us();
         if (!exchange(pos, next_tok, recv_tok)) { rc = 3; goto done; }
+        decode_step_us.push_back(now_us() - step_start_us);
         next_tok = recv_tok;
         pos++;
     }
@@ -937,6 +954,24 @@ static int run_headnet(llama_context * ctx, const llama_vocab * vocab,
     fflush(stdout);
 
 done:
+    {
+        const int64_t service_wall_us = now_us() - service_start_us;
+        const nlohmann::ordered_json result = {
+            {"schema", "layersplit-headnet-result-v1"},
+            {"status", rc == 0 ? "completed" : "error"},
+            {"prompt_tokens", prompt_tokens.size()},
+            {"output_tokens", generated_tokens.size()},
+            {"token_ids", generated_tokens},
+            {"ttft_us", ttft_us},
+            {"decode_step_us", decode_step_us},
+            {"service_wall_us", service_wall_us},
+            {"exchange_count", exchange_count},
+            {"activation_bytes", exchange_count * (int64_t) n_embd * (int64_t) sizeof(float)},
+            {"control_bytes", exchange_count * (int64_t) (3 * sizeof(int32_t))},
+        };
+        fprintf(stderr, "HEADNET_RESULT %s\n", result.dump(-1, ' ', true).c_str());
+    }
+
     // sentinel: tell tail to exit.
     {
         int32_t sentinel = -1;
@@ -981,12 +1016,80 @@ enum {
     STAGE_BATCH_DECODE  = -5,
     STAGE_HELLO         = -6,
     STAGE_DETACH        = -7,   // [S15] v2 opt-in: reset + session cert + ack, keep worker resident
+    STAGE_V3_HELLO      = -8,
+    STAGE_V3_BATCH      = -9,
+    STAGE_V3_SEQ_REMOVE = -10,
+    STAGE_V3_STATUS     = -11,
+    STAGE_V3_DRAIN      = -12,
+    STAGE_V3_IDENTITY   = -13,
+    STAGE_V3_RANGE_BATCH = -14,
 };
 
 enum {
     STAGE_HELLO_MAGIC   = 0x4c535432,
     STAGE_HELLO_VERSION = 1,
+    STAGE_V3_MAGIC      = 0x4c535633,
+    STAGE_V3_VERSION    = 3,
+    STAGE_IDENTITY_MAGIC   = 0x4c534944,
+    STAGE_IDENTITY_VERSION = 1,
 };
+
+enum {
+    STAGE_V3_CAP_BATCH      = 1 << 0,
+    STAGE_V3_CAP_SEQ_REMOVE = 1 << 1,
+    STAGE_V3_CAP_STATUS     = 1 << 2,
+    STAGE_V3_CAP_DRAIN      = 1 << 3,
+    STAGE_V3_CAP_TERMINAL   = 1 << 4,
+    STAGE_V3_CAP_IDENTITY   = 1 << 5,
+    STAGE_V3_CAP_RANGE      = 1 << 6,
+};
+
+struct StageModelIdentity {
+    bool available = false;
+    int32_t file_type = -1;
+    uint8_t sha256[32] = {};
+};
+
+static int hex_digit(char value) {
+    if (value >= '0' && value <= '9') {
+        return value - '0';
+    }
+    if (value >= 'a' && value <= 'f') {
+        return value - 'a' + 10;
+    }
+    return -1;
+}
+
+static bool read_stage_model_identity(
+        const llama_model * model,
+        StageModelIdentity & identity) {
+    const char * sha256 = getenv("LAYERSPLIT_MODEL_SHA256");
+    if (sha256 == nullptr) {
+        return true;
+    }
+    if (strlen(sha256) != 64) {
+        return false;
+    }
+    for (size_t i = 0; i < sizeof(identity.sha256); ++i) {
+        const int high = hex_digit(sha256[2 * i]);
+        const int low  = hex_digit(sha256[2 * i + 1]);
+        if (high < 0 || low < 0) {
+            return false;
+        }
+        identity.sha256[i] = (uint8_t) ((high << 4) | low);
+    }
+
+    char file_type[32] = {};
+    int parsed = -1;
+    if (llama_model_meta_val_str(
+            model, "general.file_type", file_type, sizeof(file_type)) < 0 ||
+        !parse_i32(file_type, parsed) || parsed < 0) {
+        return false;
+    }
+    identity.file_type = parsed;
+    identity.available = true;
+    return true;
+}
 
 struct StageHello {
     int32_t layer_start;
@@ -998,6 +1101,81 @@ struct StageHello {
     int32_t n_batch;
     int32_t n_ubatch;
 };
+
+struct StageV3Seq {
+    bool active = false;
+    int64_t request_id = 0;
+    int64_t route_epoch = 0;
+    int32_t next_pos = 0;
+    int32_t layer_start = -1;
+    int32_t layer_end = -1;
+};
+
+static llama_token driver_argmax(const float * logits, int n_vocab);
+
+static int stage_v3_active_count(const std::vector<StageV3Seq> & sequences) {
+    return (int) std::count_if(
+        sequences.begin(), sequences.end(),
+        [](const StageV3Seq & sequence) { return sequence.active; });
+}
+
+static bool stage_v3_advance_rows(
+        const std::vector<int64_t> & request_ids,
+        const std::vector<int64_t> & route_epochs,
+        const std::vector<int32_t> & seq_ids,
+        const std::vector<int32_t> & positions,
+        int32_t layer_start,
+        int32_t layer_end,
+        const std::vector<StageV3Seq> & current,
+        std::vector<StageV3Seq> & advanced,
+        std::string & error) {
+    if (request_ids.empty() ||
+        request_ids.size() != route_epochs.size() ||
+        request_ids.size() != seq_ids.size() ||
+        request_ids.size() != positions.size()) {
+        error = "row vector size mismatch";
+        return false;
+    }
+    advanced = current;
+    for (size_t row = 0; row < request_ids.size(); ++row) {
+        const int32_t seq_id = seq_ids[row];
+        const int32_t position = positions[row];
+        if (request_ids[row] <= 0 || route_epochs[row] <= 0 ||
+            seq_id < 0 || seq_id >= (int32_t) advanced.size() || position < 0) {
+            error = "invalid row identity";
+            return false;
+        }
+        StageV3Seq & sequence = advanced[(size_t) seq_id];
+        if (!sequence.active) {
+            if (position != 0) {
+                error = "new sequence must start at position zero";
+                return false;
+            }
+            sequence.active = true;
+            sequence.request_id = request_ids[row];
+            sequence.route_epoch = route_epochs[row];
+            sequence.next_pos = 0;
+            sequence.layer_start = layer_start;
+            sequence.layer_end = layer_end;
+        }
+        if (sequence.request_id != request_ids[row] ||
+            sequence.route_epoch != route_epochs[row]) {
+            error = "sequence identity mismatch";
+            return false;
+        }
+        if (sequence.layer_start != layer_start ||
+            sequence.layer_end != layer_end) {
+            error = "live sequence layer range mismatch";
+            return false;
+        }
+        if (position != sequence.next_pos) {
+            error = "sequence position gap or duplicate";
+            return false;
+        }
+        ++sequence.next_pos;
+    }
+    return true;
+}
 
 static bool send_stage_hello(
         int fd,
@@ -1141,17 +1319,33 @@ static bool validate_parallel_heads(
 //   batch prefill:   { i32 -4; i32 B; i32 N; i32 nh; B*N*i32 tok; B*N*nh*f32 hidden }
 //   hello request: { i32 -6 }, reset request: { i32 -2 }, stop request: { i32 -1 }
 //   detach request: { i32 -7 } -> reset + session cert + i32 ack; worker stays resident (v2)
+//   v3 batch: { i32 -9; i32 version,B,nh; B*i64 request,epoch;
+//               B*i32 seq,pos,tok; B*nh*f32 hidden }
+//   v3 range batch: { i32 -14; i32 version,B,nh,active_start,active_end;
+//                     B*i64 request,epoch; B*i32 seq,pos,tok; B*nh*f32 hidden }
+//   v3 seq remove: { i32 -10; i32 version,seq; i64 request,epoch }
 // ls==0 (head): token batch (token embedding). ls>0 (mid): DUAL batch {relayed token + residual}.
 static int run_stagenet(
         llama_context * ctx,
         int n_embd,
+        int n_vocab,
         int port,
         int max_streams,
         int layer_start,
         int layer_end,
-        int n_layer) {
+        int n_layer,
+        bool terminal,
+        const char * expected_backend) {
     const bool require_hidden = layer_start > 0;
-    llama_set_embeddings_nextn(ctx, true, false);
+    const bool dynamic_cut = getenv("LAYERSPLIT_DYNAMIC_CUT") != nullptr;
+    StageModelIdentity model_identity;
+    if (!read_stage_model_identity(llama_get_model(ctx), model_identity)) {
+        fprintf(stderr, "error: invalid StageNet model identity\n");
+        return 3;
+    }
+    if (!terminal) {
+        llama_set_embeddings_nextn(ctx, true, false);
+    }
     int srv = socket(AF_INET, SOCK_STREAM, 0);
     if (srv < 0) { fprintf(stderr, "error: socket(): %s\n", strerror(errno)); return 3; }
     int one = 1; setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
@@ -1170,12 +1364,24 @@ static int run_stagenet(
     db.token = (llama_token *) malloc(sizeof(llama_token));  // freed by llama_batch_free
     std::vector<float> hidden((size_t) n_embd);
     llama_memory_t mem = llama_get_memory(ctx);
+    std::vector<StageV3Seq> v3_sequences((size_t) max_streams);
+    bool v3_draining = false;
     const std::string boot_nonce     = make_worker_boot_nonce();
     const std::string device_boot_id = read_proc_line("/proc/sys/kernel/random/boot_id");
     int rc = 0; long steps = 0;
     int  session_id          = 1;   // 1-based, one per DETACH/STOP session
     long steps_session_start = 0;   // cumulative steps when the current session began
     int  session_end         = 0;   // 1 DETACH, 2 STOP, 3 EOF, 0 error
+    auto send_v3_status = [&](int32_t status) {
+        const int32_t words[] = {
+            status,
+            STAGE_V3_VERSION,
+            stage_v3_active_count(v3_sequences),
+            max_streams,
+            v3_draining ? 1 : 0,
+        };
+        return send_all(cli, words, sizeof(words));
+    };
     while (true) {
         int32_t pos = 0, tok = 0, nh = 0;
         if (!recv_all(cli, &pos, sizeof(pos))) {
@@ -1193,13 +1399,268 @@ static int run_stagenet(
             }
             continue;
         }
+        if (pos == STAGE_V3_HELLO) {
+            const int32_t words[] = {
+                STAGE_V3_MAGIC,
+                STAGE_V3_VERSION,
+                layer_start,
+                layer_end,
+                n_layer,
+                n_embd,
+                max_streams,
+                (int32_t) llama_n_ctx_seq(ctx),
+                (int32_t) llama_n_batch(ctx),
+                (int32_t) llama_n_ubatch(ctx),
+                STAGE_V3_CAP_BATCH | STAGE_V3_CAP_SEQ_REMOVE |
+                    STAGE_V3_CAP_STATUS | STAGE_V3_CAP_DRAIN |
+                    (terminal ? STAGE_V3_CAP_TERMINAL : 0) |
+                    (model_identity.available ? STAGE_V3_CAP_IDENTITY : 0) |
+                    (dynamic_cut ? STAGE_V3_CAP_RANGE : 0),
+            };
+            if (!send_all(cli, words, sizeof(words))) {
+                rc = 3;
+                break;
+            }
+            continue;
+        }
+        if (pos == STAGE_V3_IDENTITY) {
+            const int32_t words[] = {
+                STAGE_IDENTITY_MAGIC,
+                STAGE_IDENTITY_VERSION,
+                model_identity.file_type,
+            };
+            if (!model_identity.available ||
+                !send_all(cli, words, sizeof(words)) ||
+                !send_all(cli, model_identity.sha256, sizeof(model_identity.sha256))) {
+                rc = 3;
+                break;
+            }
+            continue;
+        }
+        if (pos == STAGE_V3_STATUS) {
+            int32_t version = 0;
+            if (!recv_all(cli, &version, sizeof(version)) ||
+                version != STAGE_V3_VERSION || !send_v3_status(0)) {
+                rc = 3;
+                break;
+            }
+            continue;
+        }
+        if (pos == STAGE_V3_DRAIN) {
+            int32_t version = 0;
+            if (!recv_all(cli, &version, sizeof(version)) ||
+                version != STAGE_V3_VERSION) {
+                rc = 3;
+                break;
+            }
+            v3_draining = true;
+            if (!send_v3_status(0)) {
+                rc = 3;
+                break;
+            }
+            continue;
+        }
+        if (pos == STAGE_V3_SEQ_REMOVE) {
+            int32_t version = 0;
+            int32_t seq_id = -1;
+            int64_t request_id = 0;
+            int64_t route_epoch = 0;
+            if (!recv_all(cli, &version, sizeof(version)) ||
+                !recv_all(cli, &seq_id, sizeof(seq_id)) ||
+                !recv_all(cli, &request_id, sizeof(request_id)) ||
+                !recv_all(cli, &route_epoch, sizeof(route_epoch))) {
+                rc = 3;
+                break;
+            }
+            int32_t status = -1;
+            if (version == STAGE_V3_VERSION &&
+                seq_id >= 0 && seq_id < max_streams) {
+                StageV3Seq & sequence = v3_sequences[(size_t) seq_id];
+                if (sequence.active && sequence.request_id == request_id &&
+                    sequence.route_epoch == route_epoch &&
+                    llama_memory_seq_rm(mem, seq_id, -1, -1)) {
+                    sequence = StageV3Seq{};
+                    status = 0;
+                }
+            }
+            if (!send_v3_status(status)) {
+                rc = 3;
+                break;
+            }
+            continue;
+        }
         if (pos == STAGE_RESET) {
             llama_memory_clear(mem, true);
+            std::fill(v3_sequences.begin(), v3_sequences.end(), StageV3Seq{});
+            v3_draining = false;
             int32_t ack = 0;
             if (!send_all(cli, &ack, sizeof(ack))) { rc = 3; break; }
             continue;
         }
+        if (pos == STAGE_V3_BATCH || pos == STAGE_V3_RANGE_BATCH) {
+            const bool range_batch = pos == STAGE_V3_RANGE_BATCH;
+            int32_t version = 0;
+            int32_t n_rows = 0;
+            int32_t nh_batch = 0;
+            int32_t active_start = layer_start;
+            int32_t active_end = layer_end;
+            if (!recv_all(cli, &version, sizeof(version)) ||
+                !recv_all(cli, &n_rows, sizeof(n_rows)) ||
+                !recv_all(cli, &nh_batch, sizeof(nh_batch)) ||
+                (range_batch &&
+                 (!recv_all(cli, &active_start, sizeof(active_start)) ||
+                  !recv_all(cli, &active_end, sizeof(active_end))))) {
+                rc = 3;
+                break;
+            }
+            if (version != STAGE_V3_VERSION || n_rows <= 0 ||
+                n_rows > (int32_t) llama_n_batch(ctx) ||
+                n_rows > (int32_t) llama_n_ubatch(ctx) ||
+                (require_hidden ? nh_batch != n_embd : nh_batch != 0) ||
+                (range_batch && !dynamic_cut) ||
+                active_start < layer_start || active_end > layer_end ||
+                active_start >= active_end ||
+                (layer_start == 0 && active_start != 0) ||
+                (terminal && active_end != n_layer)) {
+                fprintf(stderr,
+                        "error: invalid stagenet v3 batch header B=%d nh=%d range=[%d,%d)\n",
+                        n_rows, nh_batch, active_start, active_end);
+                rc = 3;
+                break;
+            }
+
+            std::vector<int64_t> request_ids((size_t) n_rows);
+            std::vector<int64_t> route_epochs((size_t) n_rows);
+            std::vector<int32_t> seq_ids((size_t) n_rows);
+            std::vector<int32_t> positions((size_t) n_rows);
+            std::vector<llama_token> tokens((size_t) n_rows);
+            std::vector<float> batch_hidden;
+            if (!recv_all(cli, request_ids.data(), request_ids.size() * sizeof(int64_t)) ||
+                !recv_all(cli, route_epochs.data(), route_epochs.size() * sizeof(int64_t)) ||
+                !recv_all(cli, seq_ids.data(), seq_ids.size() * sizeof(int32_t)) ||
+                !recv_all(cli, positions.data(), positions.size() * sizeof(int32_t)) ||
+                !recv_all(cli, tokens.data(), tokens.size() * sizeof(llama_token))) {
+                rc = 3;
+                break;
+            }
+            if (nh_batch > 0) {
+                batch_hidden.resize((size_t) n_rows * n_embd);
+                if (!recv_all(cli, batch_hidden.data(), batch_hidden.size() * sizeof(float))) {
+                    rc = 3;
+                    break;
+                }
+            }
+
+            std::vector<StageV3Seq> advanced;
+            std::string manifest_error;
+            bool valid = !v3_draining && stage_v3_advance_rows(
+                request_ids, route_epochs, seq_ids, positions,
+                active_start, active_end,
+                v3_sequences, advanced, manifest_error);
+            for (int row = 0; row < n_rows && valid; ++row) {
+                if (positions[(size_t) row] >= (int32_t) llama_n_ctx_seq(ctx)) {
+                    manifest_error = "sequence position exceeds context";
+                    valid = false;
+                } else if (tokens[(size_t) row] < 0 ||
+                           tokens[(size_t) row] >= n_vocab) {
+                    manifest_error = "token id is out of range";
+                    valid = false;
+                }
+            }
+            if (!valid) {
+                fprintf(stderr, "error: rejected stagenet v3 batch: %s\n",
+                        v3_draining ? "worker is draining" : manifest_error.c_str());
+                int32_t status = -1;
+                if (!send_all(cli, &status, sizeof(status))) {
+                    rc = 3;
+                    break;
+                }
+                continue;
+            }
+
+            llama_batch batch = llama_batch_init(
+                n_rows, nh_batch > 0 ? n_embd : 0, 1);
+            if (nh_batch > 0) {
+                batch.token = (llama_token *) malloc((size_t) n_rows * sizeof(llama_token));
+            }
+            batch.n_tokens = n_rows;
+            for (int row = 0; row < n_rows; ++row) {
+                batch.token[row] = tokens[(size_t) row];
+                if (nh_batch > 0) {
+                    memcpy(batch.embd + (size_t) row * n_embd,
+                           batch_hidden.data() + (size_t) row * n_embd,
+                           (size_t) n_embd * sizeof(float));
+                }
+                batch.pos[row] = positions[(size_t) row];
+                batch.n_seq_id[row] = 1;
+                batch.seq_id[row][0] = seq_ids[(size_t) row];
+                batch.logits[row] = 1;
+            }
+
+            const bool range_ok = !dynamic_cut ||
+                llama_set_layersplit_range(ctx, active_start, active_end);
+            bool ok = range_ok && llama_decode(ctx, batch) == 0;
+            std::vector<float> output;
+            std::vector<llama_token> output_tokens;
+            if (terminal) {
+                output_tokens.resize((size_t) n_rows);
+            } else {
+                output.resize((size_t) n_rows * n_embd);
+            }
+            for (int row = 0; row < n_rows && ok; ++row) {
+                if (terminal) {
+                    const float * logits = llama_get_logits_ith(ctx, row);
+                    if (!logits) {
+                        ok = false;
+                        break;
+                    }
+                    output_tokens[(size_t) row] = driver_argmax(logits, n_vocab);
+                } else {
+                    const float * result = llama_get_embeddings_nextn_ith(ctx, row);
+                    if (!result) {
+                        ok = false;
+                        break;
+                    }
+                    memcpy(output.data() + (size_t) row * n_embd, result,
+                           (size_t) n_embd * sizeof(float));
+                }
+            }
+            llama_batch_free(batch);
+            if (!ok) {
+                fprintf(stderr, "error: stagenet v3 batch compute failed B=%d\n", n_rows);
+                rc = 3;
+                break;
+            }
+
+            v3_sequences.swap(advanced);
+            int32_t status = 0;
+            int32_t ne = terminal ? 0 : (int32_t) n_embd;
+            if (!send_all(cli, &status, sizeof(status)) ||
+                !send_all(cli, &n_rows, sizeof(n_rows)) ||
+                !send_all(cli, &ne, sizeof(ne)) ||
+                (range_batch &&
+                 (!send_all(cli, &active_start, sizeof(active_start)) ||
+                  !send_all(cli, &active_end, sizeof(active_end)))) ||
+                !send_all(cli, request_ids.data(), request_ids.size() * sizeof(int64_t)) ||
+                !send_all(cli, route_epochs.data(), route_epochs.size() * sizeof(int64_t)) ||
+                !send_all(cli, seq_ids.data(), seq_ids.size() * sizeof(int32_t)) ||
+                !send_all(cli, positions.data(), positions.size() * sizeof(int32_t)) ||
+                (terminal && !send_all(
+                    cli, output_tokens.data(), output_tokens.size() * sizeof(llama_token))) ||
+                (!terminal && !send_all(
+                    cli, output.data(), output.size() * sizeof(float)))) {
+                rc = 3;
+                break;
+            }
+            steps += n_rows;
+            continue;
+        }
         if (pos == STAGE_BATCH_DECODE) {
+            if (stage_v3_active_count(v3_sequences) != 0) {
+                fprintf(stderr, "error: legacy batch decode with live v3 sequences\n");
+                rc = 3;
+                break;
+            }
             int32_t n_rows = 0, nh_batch = 0;
             if (!recv_all(cli, &n_rows, sizeof(n_rows)) ||
                 !recv_all(cli, &nh_batch, sizeof(nh_batch))) {
@@ -1290,6 +1751,11 @@ static int run_stagenet(
             continue;
         }
         if (pos == STAGE_BATCH_PREFILL) {
+            if (stage_v3_active_count(v3_sequences) != 0) {
+                fprintf(stderr, "error: legacy batch prefill with live v3 sequences\n");
+                rc = 3;
+                break;
+            }
             int32_t n_streams = 0, n_tokens = 0, nh_batch = 0;
             if (!recv_all(cli, &n_streams, sizeof(n_streams)) ||
                 !recv_all(cli, &n_tokens, sizeof(n_tokens)) ||
@@ -1371,6 +1837,11 @@ static int run_stagenet(
             continue;
         }
         if (pos == STAGE_PREFILL) {
+            if (stage_v3_active_count(v3_sequences) != 0) {
+                fprintf(stderr, "error: legacy prefill with live v3 sequences\n");
+                rc = 3;
+                break;
+            }
             int32_t n_tokens = 0, nh_batch = 0;
             if (!recv_all(cli, &n_tokens, sizeof(n_tokens)) ||
                 !recv_all(cli, &nh_batch, sizeof(nh_batch))) {
@@ -1448,7 +1919,10 @@ static int run_stagenet(
             // [S15] reset request-local state, emit a session cert, ack, then
             // recycle ONLY the client socket and keep weights/backends resident.
             llama_memory_clear(mem, true);
-            emit_session_cert(session_id, "DETACH", boot_nonce, device_boot_id,
+            std::fill(v3_sequences.begin(), v3_sequences.end(), StageV3Seq{});
+            v3_draining = false;
+            emit_session_cert(session_id, "DETACH", expected_backend,
+                              boot_nonce, device_boot_id,
                               layer_start, layer_end, n_layer,
                               steps - steps_session_start, steps, true);
             int32_t ack = 0;
@@ -1474,6 +1948,11 @@ static int run_stagenet(
         }
         if (pos < 0) {
             fprintf(stderr, "error: unknown stagenet command %d\n", pos);
+            rc = 3;
+            break;
+        }
+        if (stage_v3_active_count(v3_sequences) != 0) {
+            fprintf(stderr, "error: legacy decode with live v3 sequences\n");
             rc = 3;
             break;
         }
@@ -1506,7 +1985,8 @@ static int run_stagenet(
         // error still records the session) before weights/backends are released.
         const char * end_label = session_end == 2 ? "STOP"
                                : session_end == 3 ? "EOF" : "ERROR";
-        emit_session_cert(session_id, end_label, boot_nonce, device_boot_id,
+        emit_session_cert(session_id, end_label, expected_backend,
+                          boot_nonce, device_boot_id,
                           layer_start, layer_end, n_layer,
                           steps - steps_session_start, steps, false);
     }
@@ -4338,6 +4818,7 @@ int main(int argc, char ** argv) {
     const bool is_tailnet  = (mode == "tailnet");
     const bool is_headnet  = (mode == "headnet");
     const bool is_stagenet   = (mode == "stagenet");
+    const bool is_tailv3     = (mode == "tailv3");
     const bool is_pipedriver = (mode == "pipedriver");
     const bool is_tailbench = (mode == "tailbench");
     const bool is_tailstream = (mode == "tailstream");
@@ -4348,7 +4829,8 @@ int main(int argc, char ** argv) {
     if (is_kvserver && port <= 0) { fprintf(stderr, "error: --port required for kvserver\n"); return 1; }
     if (is_kvclient && (host.empty() || port <= 0)) { fprintf(stderr, "error: --host --port required for kvclient\n"); return 1; }
     if (!is_mono && !is_monogen && !is_monodriver && !is_kvsave && !is_kvload && !is_kvserver && !is_kvclient && !is_head && !is_tail && !is_mid && !is_tailnet && !is_headnet && !is_tailbench
-        && !is_tailstream && !is_headstream && !is_stagenet && !is_pipedriver && !is_dualengine) {
+        && !is_tailstream && !is_headstream && !is_stagenet && !is_tailv3 &&
+        !is_pipedriver && !is_dualengine) {
         fprintf(stderr, "error: unsupported --mode '%s'\n", mode.c_str());
         return 1;
     }
@@ -4357,6 +4839,7 @@ int main(int argc, char ** argv) {
         return 1;
     }
     if (is_stagenet && port <= 0) { fprintf(stderr, "error: --port required for stagenet\n"); return 1; }
+    if (is_tailv3 && port <= 0) { fprintf(stderr, "error: --port required for tailv3\n"); return 1; }
     if (is_pipedriver &&
         (host.empty() || port <= 0 || (prompt.empty() && !prompt_after_load && !persistent_jsonl))) {
         fprintf(stderr, "error: --host --port (stage A) and a prompt source are required for pipedriver\n"); return 1;
@@ -4394,7 +4877,7 @@ int main(int argc, char ** argv) {
         fprintf(stderr, "error: driver counts require -n > 0, --driver-requests > 0, --driver-warmup >= 0\n");
         return 1;
     }
-    if ((is_monodriver || is_pipedriver || is_stagenet) &&
+    if ((is_monodriver || is_pipedriver || is_stagenet || is_tailv3) &&
         (driver_batch <= 0 || driver_batch > 64 ||
          driver_context <= 0 || driver_max_prefill <= 0 || driver_max_prefill > 512)) {
         fprintf(stderr, "error: driver bounds require batch 1..64, context > 0, max-prefill 1..512\n");
@@ -4405,7 +4888,7 @@ int main(int argc, char ** argv) {
         fprintf(stderr, "error: --driver-requests must be divisible by --driver-batch\n");
         return 1;
     }
-    if ((is_monodriver || is_pipedriver || is_stagenet) &&
+    if ((is_monodriver || is_pipedriver || is_stagenet || is_tailv3) &&
         (int64_t) driver_context < (int64_t) driver_max_prefill + n_gen) {
         fprintf(stderr, "error: --driver-context must cover max-prefill + generated tokens\n");
         return 1;
@@ -4501,6 +4984,11 @@ int main(int argc, char ** argv) {
         llama_model_free(model);
         return 1;
     }
+    if (is_tailv3 && (layer_start <= 0 || effective_layer_end != n_layer)) {
+        fprintf(stderr, "error: tailv3 requires a nonempty terminal layer range\n");
+        llama_model_free(model);
+        return 1;
+    }
     if (is_monodriver && (layer_start != 0 || effective_layer_end != n_layer)) {
         fprintf(stderr, "error: monodriver requires the full model layer range\n");
         llama_model_free(model);
@@ -4543,10 +5031,10 @@ int main(int argc, char ** argv) {
 
     llama_context_params ctx_params = llama_context_default_params();
     // net modes advance KV one position per token (prompt + n_gen); size generously.
-    ctx_params.n_ctx   = (is_tailnet || is_headnet || is_tailstream || is_headstream || is_stagenet || is_pipedriver || is_monodriver) ? 4096 :
+    ctx_params.n_ctx   = (is_tailnet || is_headnet || is_tailstream || is_headstream || is_stagenet || is_tailv3 || is_pipedriver || is_monodriver) ? 4096 :
                          (is_kvsave || is_kvload || is_kvserver || is_kvclient) ? (uint32_t)(prompt_len + n_gen + 64) : 64;
     ctx_params.n_batch = 8;
-    if (is_stagenet || is_pipedriver || is_monodriver) {
+    if (is_stagenet || is_tailv3 || is_pipedriver || is_monodriver) {
         const uint64_t n_ctx_total = (uint64_t) driver_context * driver_batch;
         const uint64_t n_batch_total = (uint64_t) driver_max_prefill * driver_batch;
         if (n_ctx_total > UINT32_MAX || n_batch_total > UINT32_MAX) {
@@ -4560,6 +5048,16 @@ int main(int argc, char ** argv) {
         // Keep the bounded B x prompt prefill in one ubatch. Splitting an unmasked
         // nextn buffer while selecting sparse output rows loses the dense row order.
         ctx_params.n_ubatch = (uint32_t) std::min<uint64_t>(ctx_params.n_batch, 512);
+
+        const char * kv_unified = getenv("LAYERSPLIT_KV_UNIFIED");
+        if (kv_unified != nullptr) {
+            if (strcmp(kv_unified, "1") != 0) {
+                fprintf(stderr, "error: LAYERSPLIT_KV_UNIFIED must be 1 when set\n");
+                llama_model_free(model);
+                return 1;
+            }
+            ctx_params.kv_unified = true;
+        }
     }
     if (is_kvsave || is_kvload || is_kvserver || is_kvclient) {   // prefill the whole prompt in one batch
         ctx_params.n_batch  = (uint32_t) std::max(prompt_len, 8);
@@ -4586,7 +5084,8 @@ int main(int argc, char ** argv) {
     // [S11-E0 CP1.5] wire the observe-only placement callback for the E0 roles
     // (phone stage / host tail / mono control) when the harness asks for a cert.
     const bool placement_cert =
-        (is_stagenet || is_pipedriver || is_monodriver) &&
+        (is_head || is_tail || is_headnet || is_tailnet ||
+         is_stagenet || is_tailv3 || is_pipedriver || is_monodriver) &&
         getenv("LAYERSPLIT_PLACEMENT_CERT") != nullptr;
     if (placement_cert) {
         ctx_params.cb_eval           = placement_eval_cb;
@@ -4630,10 +5129,11 @@ int main(int argc, char ** argv) {
         rc = run_headstream(ctx, n_embd, host, port, sched_file);
     } else if (is_tailbench) {
         rc = run_tailbench(ctx, n_embd, n_streams, n_gen, gap_ms);
-    } else if (is_stagenet) {
+    } else if (is_stagenet || is_tailv3) {
         rc = run_stagenet(
-            ctx, n_embd, port, driver_batch,
-            layer_start, effective_layer_end, n_layer);
+            ctx, n_embd, n_vocab, port, driver_batch,
+            layer_start, effective_layer_end, n_layer, is_tailv3,
+            dev_csv.empty() ? (is_tailv3 ? "CPU" : "HTP0") : dev_csv.c_str());
     } else if (is_pipedriver && persistent_jsonl) {
         rc = run_persistent_pipebatchdriver(
             ctx, vocab, n_embd, n_vocab, host, port, n_gen, chat_mode,
@@ -4664,9 +5164,14 @@ int main(int argc, char ** argv) {
 
     // [S11-E0 CP1.5] one machine-readable executed-placement certificate per run.
     if (placement_cert && !persistent_jsonl) {
-        const char * role = is_stagenet ? "phone_stage"
+        const char * role = is_head || is_headnet ? "phone_head"
+                          : is_tail || is_tailnet ? "phone_tail"
+                          : is_stagenet ? "phone_stage"
+                          : is_tailv3 ? "host_tail_v3"
                           : is_monodriver ? "monodriver" : "host_tail";
-        const int cert_layer_end = is_stagenet ? effective_layer_end : (int) n_layer;
+        const int cert_layer_end =
+            (is_head || is_headnet || is_stagenet || is_tailv3) ?
+            effective_layer_end : (int) n_layer;
         emit_placement_cert(
             role, mode, layer_start, cert_layer_end, (int) n_layer, rc);
     }

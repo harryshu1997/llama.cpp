@@ -4,6 +4,7 @@
 #include "llama-io.h"
 #include "llama-model.h"
 #include "llama-context.h"
+#include "llama-ext.h"
 
 #include <algorithm>
 #include <cassert>
@@ -1238,6 +1239,245 @@ ggml_tensor * llama_kv_cache::get_k_storage(int32_t il) const {
     const int32_t ikv = map_layer_ids.at(il);
 
     return layers[ikv].k;
+}
+
+bool llama_kv_cache::wavefront_reserve(llama_seq_id seq_id, llama_pos p0, llama_pos p1) {
+    if (other || n_stream != 1 || n_swa != 0 || hparams.n_pos_per_embd() != 1) {
+        LLAMA_LOG_ERROR("%s: unsupported KV cache layout\n", __func__);
+        return false;
+    }
+    if (seq_id < 0 || (size_t) seq_id >= seq_to_stream.size() || p0 < 0 || p1 <= p0) {
+        LLAMA_LOG_ERROR("%s: invalid sequence or position range\n", __func__);
+        return false;
+    }
+
+    auto & cells = v_cells[seq_to_stream[seq_id]];
+    if (cells.seq_pos_min(seq_id) >= 0) {
+        LLAMA_LOG_ERROR("%s: sequence %d is not empty\n", __func__, seq_id);
+        return false;
+    }
+
+    const int64_t count64 = (int64_t) p1 - p0;
+    if (count64 <= 0 || count64 > cells.size()) {
+        LLAMA_LOG_ERROR("%s: position range is too large\n", __func__);
+        return false;
+    }
+    const uint32_t count = (uint32_t) count64;
+
+    llama_batch_allocr balloc(hparams.n_pos_per_embd());
+    llama_ubatch ubatch = balloc.ubatch_reserve(count, 1);
+    ubatch.seq_id_unq[0] = seq_id;
+    std::fill(ubatch.seq_idx, ubatch.seq_idx + LLAMA_MAX_SEQ, -1);
+    ubatch.seq_idx[seq_id] = 0;
+
+    for (uint32_t i = 0; i < count; ++i) {
+        ubatch.pos[i]      = p0 + (llama_pos) i;
+        ubatch.n_seq_id[i] = 1;
+        ubatch.seq_id[i]   = &ubatch.seq_id_unq[0];
+        ubatch.output[i]   = 0;
+    }
+
+    const auto sinfo = find_slot(ubatch, false);
+    if (sinfo.empty()) {
+        LLAMA_LOG_ERROR("%s: failed to reserve %u KV cells\n", __func__, count);
+        return false;
+    }
+
+    apply_ubatch(sinfo, ubatch);
+    return true;
+}
+
+bool llama_kv_cache::wavefront_sequence_cells(
+        llama_seq_id seq_id,
+           llama_pos p0,
+           llama_pos p1,
+        std::vector<uint32_t> & indices) const {
+    if (seq_id < 0 || (size_t) seq_id >= seq_to_stream.size() || p0 < 0 || p1 <= p0) {
+        return false;
+    }
+
+    const int64_t count64 = (int64_t) p1 - p0;
+    if (count64 <= 0 || count64 > get_size()) {
+        return false;
+    }
+
+    const auto & cells = v_cells[seq_to_stream[seq_id]];
+    indices.assign((size_t) count64, UINT32_MAX);
+
+    for (uint32_t i = 0; i < cells.size(); ++i) {
+        if (cells.is_empty(i) || !cells.seq_has(i, seq_id)) {
+            continue;
+        }
+        const llama_pos pos = cells.pos_get(i);
+        if (pos < p0 || pos >= p1) {
+            continue;
+        }
+        const size_t offset = (size_t) ((int64_t) pos - p0);
+        if (indices[offset] != UINT32_MAX) {
+            return false;
+        }
+        indices[offset] = i;
+    }
+
+    return std::find(indices.begin(), indices.end(), UINT32_MAX) == indices.end();
+}
+
+bool llama_kv_cache::wavefront_copy_from(
+        const llama_kv_cache & src,
+               llama_seq_id   dst_seq_id,
+               llama_seq_id   src_seq_id,
+                  llama_pos   p0,
+                  llama_pos   p1,
+                   uint32_t   il0,
+                   uint32_t   il1,
+                     size_t & bytes_copied) {
+    bytes_copied = 0;
+
+    if (other || src.other || n_stream != 1 || src.n_stream != 1 ||
+        n_swa != 0 || src.n_swa != 0 || v_trans != src.v_trans ||
+        il0 >= il1 || il1 > hparams.n_layer_all || il1 > src.hparams.n_layer_all) {
+        LLAMA_LOG_ERROR("%s: incompatible KV caches or layer range\n", __func__);
+        return false;
+    }
+
+    std::vector<uint32_t> src_indices;
+    std::vector<uint32_t> dst_indices;
+    if (!src.wavefront_sequence_cells(src_seq_id, p0, p1, src_indices) ||
+        !wavefront_sequence_cells(dst_seq_id, p0, p1, dst_indices)) {
+        LLAMA_LOG_ERROR("%s: source or destination positions are incomplete\n", __func__);
+        return false;
+    }
+
+    const uint32_t src_stream = src.seq_to_stream[src_seq_id];
+    const uint32_t dst_stream = seq_to_stream[dst_seq_id];
+    std::vector<uint8_t> staging;
+
+    auto copy_rows = [&](const ggml_tensor * src_tensor, ggml_tensor * dst_tensor,
+                         size_t src_stride, size_t dst_stride, size_t row_size) {
+        if (!src_tensor || !dst_tensor || src_tensor->type != dst_tensor->type || row_size == 0) {
+            return false;
+        }
+
+        const size_t count = src_indices.size();
+        staging.resize(count * row_size);
+
+        bool src_contiguous = true;
+        bool dst_contiguous = true;
+        for (size_t i = 1; i < count; ++i) {
+            src_contiguous = src_contiguous && src_indices[i] == src_indices[0] + i;
+            dst_contiguous = dst_contiguous && dst_indices[i] == dst_indices[0] + i;
+        }
+
+        if (src_contiguous && src_stride == row_size) {
+            ggml_backend_tensor_get(src_tensor, staging.data(), src_indices[0] * src_stride, count * row_size);
+        } else {
+            for (size_t i = 0; i < count; ++i) {
+                ggml_backend_tensor_get(src_tensor, staging.data() + i * row_size,
+                        src_indices[i] * src_stride, row_size);
+            }
+        }
+
+        if (dst_contiguous && dst_stride == row_size) {
+            ggml_backend_tensor_set(dst_tensor, staging.data(), dst_indices[0] * dst_stride, count * row_size);
+        } else {
+            for (size_t i = 0; i < count; ++i) {
+                ggml_backend_tensor_set(dst_tensor, staging.data() + i * row_size,
+                        dst_indices[i] * dst_stride, row_size);
+            }
+        }
+
+        bytes_copied += count * row_size;
+        return true;
+    };
+
+    for (uint32_t il = il0; il < il1; ++il) {
+        const auto src_it = src.map_layer_ids.find((int32_t) il);
+        const auto dst_it = map_layer_ids.find((int32_t) il);
+        if (src_it == src.map_layer_ids.end() || dst_it == map_layer_ids.end()) {
+            LLAMA_LOG_ERROR("%s: layer %u has no KV storage\n", __func__, il);
+            return false;
+        }
+
+        const auto & src_layer = src.layers[src_it->second];
+        const auto & dst_layer = layers[dst_it->second];
+        const ggml_tensor * src_k = src_layer.k_stream[src_stream];
+        ggml_tensor * dst_k = dst_layer.k_stream[dst_stream];
+        if (!src_k || !dst_k || src_k->type != dst_k->type || src_k->ne[0] != dst_k->ne[0]) {
+            LLAMA_LOG_ERROR("%s: incompatible K storage for layer %u\n", __func__, il);
+            return false;
+        }
+        const size_t k_row = ggml_row_size(src_k->type, src_k->ne[0]);
+        if (!copy_rows(src_k, dst_k, k_row, k_row, k_row)) {
+            return false;
+        }
+
+        const ggml_tensor * src_v = src_layer.v_stream[src_stream];
+        ggml_tensor * dst_v = dst_layer.v_stream[dst_stream];
+        if (!src_v && !dst_v) {
+            continue;
+        }
+        if (!src_v || !dst_v || src_v->type != dst_v->type || src_v->ne[0] != dst_v->ne[0]) {
+            LLAMA_LOG_ERROR("%s: incompatible V storage for layer %u\n", __func__, il);
+            return false;
+        }
+
+        if (!v_trans) {
+            const size_t v_row = ggml_row_size(src_v->type, src_v->ne[0]);
+            if (!copy_rows(src_v, dst_v, v_row, v_row, v_row)) {
+                return false;
+            }
+        } else {
+            if (ggml_blck_size(src_v->type) != 1) {
+                LLAMA_LOG_ERROR("%s: transposed quantized V storage is unsupported\n", __func__);
+                return false;
+            }
+            const size_t element_size = ggml_type_size(src_v->type);
+            const size_t src_kv_size = src.get_size();
+            const size_t dst_kv_size = get_size();
+            const uint32_t src_n_embd = src.hparams.n_embd_v_gqa(il);
+            const uint32_t dst_n_embd = hparams.n_embd_v_gqa(il);
+            if (src_n_embd != dst_n_embd || src_n_embd > (uint32_t) src_v->ne[0] ||
+                dst_n_embd > (uint32_t) dst_v->ne[0]) {
+                LLAMA_LOG_ERROR("%s: incompatible transposed V storage for layer %u\n", __func__, il);
+                return false;
+            }
+
+            const bool src_contiguous = std::adjacent_find(
+                    src_indices.begin(), src_indices.end(),
+                    [](uint32_t a, uint32_t b) { return b != a + 1; }) == src_indices.end();
+            const bool dst_contiguous = std::adjacent_find(
+                    dst_indices.begin(), dst_indices.end(),
+                    [](uint32_t a, uint32_t b) { return b != a + 1; }) == dst_indices.end();
+
+            for (uint32_t j = 0; j < src_n_embd; ++j) {
+                const size_t src_base = (size_t) j * src_kv_size * element_size;
+                const size_t dst_base = (size_t) j * dst_kv_size * element_size;
+
+                staging.resize(src_indices.size() * element_size);
+                if (src_contiguous) {
+                    ggml_backend_tensor_get(src_v, staging.data(),
+                            src_base + src_indices[0] * element_size, staging.size());
+                } else {
+                    for (size_t i = 0; i < src_indices.size(); ++i) {
+                        ggml_backend_tensor_get(src_v, staging.data() + i * element_size,
+                                src_base + src_indices[i] * element_size, element_size);
+                    }
+                }
+                if (dst_contiguous) {
+                    ggml_backend_tensor_set(dst_v, staging.data(),
+                            dst_base + dst_indices[0] * element_size, staging.size());
+                } else {
+                    for (size_t i = 0; i < dst_indices.size(); ++i) {
+                        ggml_backend_tensor_set(dst_v, staging.data() + i * element_size,
+                                dst_base + dst_indices[i] * element_size, element_size);
+                    }
+                }
+                bytes_copied += src_indices.size() * element_size;
+            }
+        }
+    }
+
+    return true;
 }
 
 uint32_t llama_kv_cache::get_n_kv(const slot_info & sinfo) const {
@@ -2567,6 +2807,58 @@ bool llama_kv_cache_context::apply() {
     n_kv = kv->get_n_kv(sinfos[i_cur]);
 
     return true;
+}
+
+bool llama_kv_cache_wavefront_reserve(
+        llama_context * ctx,
+          llama_seq_id   seq_id,
+             llama_pos   p0,
+             llama_pos   p1) {
+    if (!ctx) {
+        return false;
+    }
+
+    ctx->synchronize();
+    auto * kv = dynamic_cast<llama_kv_cache *>(ctx->get_memory());
+    if (!kv) {
+        LLAMA_LOG_ERROR("%s: context does not use an ordinary KV cache\n", __func__);
+        return false;
+    }
+
+    return kv->wavefront_reserve(seq_id, p0, p1);
+}
+
+bool llama_kv_cache_wavefront_copy(
+              llama_context * dst,
+        const llama_context * src,
+               llama_seq_id   dst_seq_id,
+               llama_seq_id   src_seq_id,
+                  llama_pos   p0,
+                  llama_pos   p1,
+                   uint32_t   il0,
+                   uint32_t   il1,
+                     size_t * bytes_copied) {
+    if (bytes_copied) {
+        *bytes_copied = 0;
+    }
+    if (!dst || !src) {
+        return false;
+    }
+
+    auto * dst_kv = dynamic_cast<llama_kv_cache *>(dst->get_memory());
+    const auto * src_kv = dynamic_cast<const llama_kv_cache *>(src->get_memory());
+    if (!dst_kv || !src_kv) {
+        LLAMA_LOG_ERROR("%s: one or both contexts do not use an ordinary KV cache\n", __func__);
+        return false;
+    }
+
+    size_t copied = 0;
+    const bool ok = dst_kv->wavefront_copy_from(
+            *src_kv, dst_seq_id, src_seq_id, p0, p1, il0, il1, copied);
+    if (bytes_copied) {
+        *bytes_copied = copied;
+    }
+    return ok;
 }
 
 llama_memory_status llama_kv_cache_context::get_status() const {

@@ -1,24 +1,327 @@
-# Project Log - Q-PIM Funnel
+# Project Log - Active Warm-Tier Multi-Model Serving
 
 > Running progress record. **Current status** is at the top and kept up to date.
 > The **log** below is newest-first; every entry is timestamped.
-> Goal: normalize heterogeneous phone-prefix activations into one continuously
-> batched A6000 tail while preserving mixed-priority SLOs and reducing selected
-> GPU memory or energy per completed equal-work workload.
+> Goal: keep one GPU-nonresident model executable across OP12 and OP15, serve it
+> during a GPU model change, batch-reconstruct live request state on CUDA, and
+> rotate the displaced model back into the phone warm tier.
 
 ---
 
-## Current status - `2026-07-19 EDT`
+## Current status - `2026-07-24 EDT`
+
+**DIRECTION RESET TO ACTIVE WARM-TIER MULTI-MODEL SERVING.** One desktop GPU
+holds one hot large model while OP15 and OP12 collectively hold one other
+executable warm model. Phones serve the warm model while the GPU drains and
+loads its local checkpoint. CUDA then batch-prefills prompt and committed token
+histories, catches the small phone token delta, and takes ownership at an exact
+token boundary. Phones subsequently prepare the displaced GPU model for the
+reverse switch. Direct KV migration and runtime checkpoint transfer are not the
+first path.
+
+**S39 W2 DIRECT MIXED-PHASE BATCH MECHANICS PASS; OVERLAP AND BENEFIT OPEN.**
+The direct Qwen route now admits new prefill while older requests retain live
+decode KV. One real OP15-to-OP12 run formed a 96-row `llama_decode` containing
+16 decode rows first and 80 prefill rows after them, then continued all 32
+streams in B32 decode calls. All 256 generated-token checks matched CUDA.
+Across nine calls the relay sent 7,864,320 activation bytes directly from OP15
+to OP12 and zero activation bytes through the host. Both worker lifecycle and
+placement certificates pass the independent reducer. Maximum completion was
+23.219 s, but no latency gain is claimed because W1's row ordering and device
+state differed. The relay is still synchronous and cannot overlap OP15 batch
+`k+1` with OP12 batch `k`. See
+`spikes/s39_phone_model_switch_trace/RESULTS_W2.md`.
+
+**S39 W1 DIRECT PHONE CHAIN MECHANICS PASS; PERFORMANCE AND ROUTE READINESS
+OPEN.** An additive relay on OP15 now keeps host-side admission, batching, route
+epochs, and result ownership while sending Qwen cut activations directly from
+OP15 `[0,30)` to OP12 `[30,40)` over WiFi. The corrected relay binary completed
+persistent B1 and B32 sessions with all 264 token checks exact. B32 formed one
+160-row prefill batch plus seven 32-row decode batches, moved 7,864,320
+activation bytes OP15-to-OP12, and moved zero activation bytes through the
+host. Both workers preserved PID/nonce across detach and stop with clean
+placement. The direct B1 point was only 0.76% faster than one separately loaded
+host-relay control, within observed run variation; B32 took 90.796 s. Status is
+`DIRECT_CHAIN_MECHANICS_PASS_REPEATS_PENDING`, not a latency or energy pass.
+Interface counters and a host-issued cryptographic reservation descriptor are
+still absent, so Qwen remains provisional. See
+`spikes/s39_phone_model_switch_trace/RESULTS_W1.md`.
+
+**S39 TRACE REPLAY READY; QWEN BATCH PROVISIONAL; W0 TWO-MODEL GATE BLOCKED.**
+Dense Qwen3 partial loading, layer-bounded graph execution, and layer-filtered
+KV run across OP15 `[0,30)` and OP12 `[30,40)`. Persistent workers completed
+B1, B8, and B32 cohorts with all 328 generated-token checks matching the
+same-artifact CUDA sequence. B32 executed one 160-row prefill and seven 32-row
+decode calls. Request throughput improved only 1.40x over B1, so useful
+continuous service is not yet proven. USB provisioned the weights before the
+run; 15.00 MiB of B32 activation payload traversed the two WiFi relay legs.
+Because endpoint/interface evidence was not captured by the runner, Qwen is
+`PROVISIONAL_BATCH`, not `PASS`. Gemma Q4 still differs from CUDA at token zero.
+The hash-bound controller refuses both routes with `E_ROUTE_NOT_READY`. No
+switch, handoff, SLO, latency, or energy benefit is claimed. See
+`spikes/s39_phone_model_switch_trace/RESULTS_W0.md`.
+
+**S38 F16 LONG-CONTEXT MIXED MECHANICS PASS; MATCHED RAG ROUTE BLOCKED.** The
+S36 runtime now releases long prompts in 64-token quanta and stops on declared
+EOG tokens. On OP15, two real S38 prompts of 1,507 and 2,532 tokens produced six
+physical B64 HTP calls containing one live decode row plus 63 prefill rows.
+All 16 bounded token decisions match a split-CUDA F16 control, placement is
+`SCHEDULED_PLACEMENT_OK`, and selected-CUDA compute time falls 23.01%. This is
+not yet an SLO or energy win: the 500 ms mechanics gather window makes request
+latency worse, F16 does not match the frozen Q8_0 C0 artifact, and raw StageNet
+argmax does not reproduce llama-server's reasoning-budget sampler. Positive
+reasoning-budget work now falls back before phone dispatch. Matched Q8 C2/C3,
+answer quality, and energy remain blocked. See
+`spikes/s38_distributed_rag_trace/RESULTS.md`.
+
+**S38 MATCHED SERVER-ONLY RAG CONTROL PASS; MATCHED PHONE CONTROLS NOT RUN.** A frozen
+320-request cohort proportionally covers every RAG question/evidence stratum
+and replays 151.55 s of offered arrivals. One A6000 and one RTX 4060 Ti each ran
+the full all-local BGE embed -> 7,008-chunk retrieval -> BGE rerank -> Gemma-4
+12B Q8_0 generation DAG using identical trace, index, payload, and model hashes.
+Both meet the requested run bound: 10.20 and 17.70 min. Throughput is 0.523 and
+0.301 req/s, versus 2.112 req/s offered; corrected response p95 is 443.86 and
+869.22 s because queueing is real. Answer EM is 55.94% on both. Generation is
+over 99.7% of median service time. The matched validator passes all 320 request
+identities and timing equations. No SLO, phone, or energy benefit is claimed;
+next certify the phone reranker and run C1 distributed retrieval. See
+`spikes/s38_distributed_rag_trace/`.
+
+**S38 MIXED-GENERATION ADAPTER READY; MATCHED PHONE ROUTE BLOCKED.** The S38
+generation seam now uses llama-server's exact chat template and tokenizer,
+then admits eligible work to the existing S36 `DynamicRouteRunner`. Prefill
+and decode rows therefore enter the same cut-homogeneous continuous batcher,
+with a request-pinned layer cut through decode. Admission binds the live route
+device, cut, GGUF type, context, stream count, and row capacity and rejects
+missing correctness, placement, latency, shape, identity, or SLO evidence.
+The frozen Q8_0 RAG control still selects the server for all requests: its real
+prompts are 1,507 to 2,532 tokens, the prior mixed phone proof used four-token
+F16 prompts and an eight-token context, and the measured same-Q8_0 HTP route
+failed quality. The auxiliary F16 mechanics point above expands the context
+envelope but does not repair that Q8_0 quality gate. Nine adapter tests, three
+subset tests, six baseline tests, and all 41 S36 tests pass. Next produce a
+matched-quality Q8_0 phone route and compatible sampler before C2/C3; do not
+copy the Qwen-only non-SWA S33 wavefront into Gemma.
+
+**S36/S37 REAL CONTINUOUS-BATCH AND ARBITRARY-CUT MECHANICS PASS; CUDA RELIEF
+FAILS.** Both phones now run B32 with llama.cpp unified KV: the previous OP12
+469 MiB independent-stream allocation becomes a 14 MiB, 256-cell shared cache.
+On the frozen 60-request mixed-priority trace, each of three treatment runs
+used both phones and cuts 4/8, preserved all tokens and SLOs, drained all state,
+and produced a real OP12 HTP batch mixing three decode rows with 32 prefill
+rows in one `llama_decode`. The follow-up physical sweep ran every jointly
+resident cut 4, 5, 6, 7, and 8 twice on each phone with identical tokens.
+However, selected-CUDA stage relief reproduced in only one of three pairs;
+median treatment was 1.86% slower. The cut-specific tails fragmented CUDA work.
+Next implement the already scoped cut lift to canonical cut 8 and one shared
+tail; do not claim energy savings from S36/S37. See
+`spikes/s36_dynamic_cut_scheduler/RESULTS.md` and
+`spikes/s37_arbitrary_layer_exit/RESULTS.md`.
+
+**S35 MIXED PHONE BATCH AND DYNAMIC LAYER HANDOFF PASS.** One physical B5
+`llama_decode` call on each phone mixed one decode-shaped row from an existing
+sequence with four prompt rows from a newly admitted sequence. Against a
+same-worker serial oracle, maximum relative L2 was 4.03e-7 on OP15 and 7.00e-7
+on OP12; both placement certificates passed with zero missing compute buffers.
+The experimental StageNet path now also selects any active Gemma-4 interval
+inside already resident weights. A sequence pins its interval, batches group
+only equal intervals, and graph reuse includes the interval. Both phones
+switched `[0,1)` -> `[0,2)` -> `[0,1)` without a weight reload and rejected a
+live-sequence cut mutation. Finally, one resident OP12 `[0,8)` worker and one
+resident A6000 `[4,48)` tail completed full-model routes with cuts 4 and 8;
+both produced tokens `[236761,236744,236761]`. This is a mechanics result, not
+an energy, SLO-policy, throughput, or semantic early-termination claim. See
+`spikes/s35_mixed_prefill_dynamic_cut/RESULTS.md`.
+
+**S34 SAME-QUANTIZATION ADMISSION PASS; NUMERICAL REPAIR STILL OPEN.** The
+StageNet worker now has an opt-in model-identity capability that reports the
+GGUF `general.file_type` and launcher-verified SHA-256. The S31 physical route
+requires one exact Q8_0 identity across every CUDA and phone stage before it
+creates batchers. Its launch and evidence paths also reject unequal hashes.
+The new protocol was built for CUDA and Android and queried on an RTX 4060 Ti,
+OP12, and OP15: all reported file type 7 and Q8_0 SHA-256
+`7b56cbd0...3d492848`. The desktop's older same-type but different-digest Q8
+file was rejected, and the exact 12.67 GB artifact is now installed there.
+Future S31 campaigns use the full shared Q8_0 GGUF on both phones instead of
+the historical F16 shards. This closes mixed-quantization admission, not S33's
+separate HTP-versus-CUDA numerical divergence; quantized routes remain outside
+the eligible scheduler until that kernel-quality gate passes.
+
+**S33 FULL QUANTIZED CAPACITY PASS; QUALITY FAIL.** Full Q4_0 and Q8_0 files
+are stored on both phones, but neither full 48-layer graph passes the zero-swap
+execution gate. Partial Q4_0 residency reaches OP12 `[0,12)` and OP15
+`[4,24)` at B32 with zero process swap, creating an eight-layer overlap.
+However, the frozen 128-prompt, eight-output same-GGUF quality gate fails:
+Q4_0 reaches 80.5% first-token, 61.6% token-decision, and 43.0% exact-sequence
+agreement; Q8_0 reaches 82.0%, 70.4%, and 58.6%. Both routes are also 13-20x
+slower per B32 cohort than the one-A6000 reference. The independent binder
+installs zero scheduler rows. Keep F16 phone execution until the quantized HTP
+kernel path is repaired. Evidence is under `spikes/s33_full_quantized_routes/`.
+
+**S32 QUANTIZED CAPACITY GAIN; EXACT ROUTE FAIL.** Q8_0 expanded the largest
+zero-swap tested B32 windows to OP12 `[0,4)` and OP15 `[4,16)`, with median
+stage times 762.1 and 222.8 ms. Larger windows used process swap or aborted in
+DSP execution. Q8_0 and Q4_0 both failed the frozen same-GGUF CPU-versus-HTP
+relative-L2 gate (Q8_0 1.15-1.36%; Q4_0 1.15-1.93%). A real same-Q8 route
+`OP12 [0,4) -> OP15 [4,16) -> A6000 [16,48)` matched a CUDA reference for
+32/32 cloned BOS requests, but only 18/32 distinct-input four-token requests
+(101/128 token decisions). The fail-closed binder therefore produced no
+eligible case. Q8/Q4 capacity is measured, but quantized phone routes stay out
+of the exact scheduler. Evidence is under
+`spikes/s32_quantized_overlap_residency/`.
+
+**S31 LATENCY-BALANCED CUT PASS; ENERGY AND QUALITY OPEN.** A finite real-device
+cut sweep replaced S29's fixed OP12 `[0,6)` -> OP15 `[6,8)` partition with the
+measured winner OP12 `[0,1)` -> OP15 `[1,8)`, keeping the CUDA tail at
+`[8,48)`. At B32, the phone-stage p95 bottleneck fell 1.499 -> 0.399 s and the
+balance ratio rose 0.178 -> 0.771. A fresh matched 60-request run completed
+R0=28/R2=32 with zero synthetic SLO misses and B32 on both phones. Selected
+CUDA compute fell 7.166 -> 5.095 s (-28.90%), P0 p95 fell 1.175 -> 0.643 s,
+and treatment makespan improved 29.63% versus S29, although it remains 1.93x
+the all-CUDA control. Only 21/60 token sequences match across F16-phone and
+Q8-CUDA routes; phone/network/total energy remain unknown. Evidence is under
+`spikes/s31_latency_balanced_cut/`.
+
+**S29 REAL B32 PRIORITY TRACE PASS; THROUGHPUT, ENERGY, AND QUALITY OPEN.**
+The RTX 4060 Ti, OP12, and OP15 completed the frozen 60-request trace with 32
+resident slots per worker. R2 is OP12 `[0,6)` -> OP15 `[6,8)` -> CUDA `[8,48)`;
+R0 uses matching CUDA cuts and the same tail. Fresh B1/B4/B24/B32 calibration
+preceded the run. Control completed R0=60; treatment completed R0=28/R2=32.
+Both phones executed B32 for all four decode steps, all 60 requests completed,
+and no synthetic SLO was missed. A one-second online P0-quiet guard preserved
+priority: P0 p95 improved 1.386 -> 0.636 s. Summed CUDA compute fell 6.668 ->
+5.609 s (-15.88%), while makespan rose 4.505 -> 12.138 s (2.69x). Therefore
+this is a server-work/priority mechanics pass, not a throughput win. Phone,
+network, and total energy remain unknown; F16-phone/Q8-CUDA tokens match only
+6/60, so numeric quality is uncertified. Evidence is under
+`spikes/s29_large_batch_trace/`.
+
+**S28 REAL PRIORITY-SAFE SHARED TAIL PASS; ENERGY AND NUMERIC QUALITY OPEN.**
+One RTX 4060 Ti tail queue served urgent R0 and background R2 rows from OP12
+HTP0 `[0,8)` and OP15 HTP0 `[8,16)` on the frozen 60-request dense mechanics
+trace. Control completed R0=60; treatment completed R0=10/R2=50. Both had zero
+synthetic SLO misses, P0 p95 changed 860,246 -> 850,127 us, and summed CUDA
+island compute fell 5,766,619 -> 4,697,047 us (-18.55%). OP12/OP15 mean batch
+was 3.846/4. The tail interleaved R0/R2 seven times and never mixed P0 with
+background work. The cost is a 5.007 -> 41.977 s makespan increase from waiting
+toward latest-safe start. F16-phone/Q8-server tokens are uncertified (10/60
+matched); no energy boundary was measured. Evidence is under
+`spikes/s28_priority_shared_tail/`.
+
+**S26 PRIORITY-SAFE PHYSICAL SCHEDULER PASS; ENERGY NOT MEASURED.** A matched
+real-device run used one coordinator and lockstep B4 execution for both the
+all-CUDA control and treatment. Control ran three R0 B4 groups on the RTX 4060
+Ti. Treatment kept the four P0 requests on R0 B4 and sent the P1/P2 groups over
+OP12 HTP0 `[0,8)` -> OP15 HTP0 `[8,16)` -> CUDA `[16,48)`. All 12 requests met
+their 2/8/15 s SLOs. P0 p95 was preserved (observed 341,517 -> 241,203 us) and
+summed CUDA island compute fell 770,196 -> 579,537 us (-24.75%). Low-priority
+slack paid the cost: makespan rose 0.789 -> 4.301 s. Every active stage used B4;
+placement, lineage, KV drain, worker persistence, route-point token oracles,
+and three fail-closed mutations passed. This is selected-CUDA-compute evidence,
+not GPU-board or total-system energy. Evidence is under
+`spikes/s26_priority_scheduler/`.
+
+**S25 REAL CONTINUOUS REQUEST LIFECYCLE PASS.** The actual OP12 HTP0 `[0,8)`,
+OP15 HTP0 `[8,16)`, and RTX 4060 Ti CUDA0 `[16,48)` workers executed unequal
+request lengths with changing physical memberships `AB, AB, CB, CB, CD, D`.
+C reused A's sequence slot while B remained live; D reused B's slot while C
+remained live. Every stage observed B2 until the final B1 row, all four dynamic
+greedy sequences matched same-route B1, every placement certificate passed,
+and all workers drained to zero and stopped. Verdict:
+`THREE_DEVICE_CONTINUOUS_LIFECYCLE_PASS`. This is real runtime mechanics, not
+simulation, semantic early termination, or an energy/throughput claim. Evidence
+is under `spikes/s25_continuous_lifecycle/`.
+
+**S24 FIXED-DIAMOND MECHANICS PASS; BENEFIT GATE FAIL.** A real RTX 4060 Ti,
+OP12, and OP15 execution completed the frozen R0/R1/R2 diamond. CP4 passed all
+11 physical sessions: OP12 and OP15 selected B4 knees, R2 reached B4 across
+both phones and the CUDA tail, OP15 formed mixed R1/R2 batches, and the CUDA
+tail formed mixed R0/R1/R2 batches. Placement, lineage, finite outputs, KV
+cleanup, leases, and same-route repeatability passed. Phone-F16 versus
+desktop-Q8 boundaries remain numerically uncertified even though this
+synthetic screen produced equal greedy tokens.
+
+CP5 then rejected the system claim on 12 real equal-work control runs. Shared
+convergence improved OP15 mean batch from 2.0 to 3.0 and reduced median
+makespan 34.3%, but priority-0 TTFT and latency regressed 30.0% and 32.5%.
+The SLO router increased summed CUDA island compute 48.6%, introduced two SLO
+misses, and raised median selected-GPU board energy from 35.18 J to 163.26 J.
+Final verdict: `BENEFIT_GATE_FAIL`. CP6 is stopped; phone, network, A6000 host,
+and total-system energy remain unknown. Evidence is under
+`spikes/s24_overlap_handoff_poc/results/{cp4_fixed_diamond,cp5_controls}/`.
+
+**S22 CP7 BATCH-SHAPE ORACLE REPAIRED; PHONE QUALITY STILL OPEN.** The prior
+chunked-prefill token mismatch is not by itself an exactness failure. A new
+same-process boundary probe found byte-identical sequential repeats. Chunked
+versus sequential layer-8 activations have maximum relative L2 0.219% on CPU
+F16 and 0.307% on A6000 F16, both below the existing 0.5% gate; 4060 Ti Q8 is
+5.317% and fails. More importantly, the unsplit full-F16 A6000 model itself
+changes the frozen prompt's last greedy token between sequential and chunk-4
+execution while both sequential repeats match. Exact token agreement across
+batch shapes is therefore not a valid standalone oracle. The mixed route stays
+numerically uncertified until both phone HTP boundary rows and a real-prompt
+output-quality set pass. The terminal V3 worker now also supports a full
+`[0,48)` server-control route. Python tests are 42/42; CPU, CUDA, and Android
+builds pass.
+
+**S22 MIXED-SLO ROUTER MECHANICS PASS; NUMERIC QUALITY OPEN.** A finite
+profile-driven router selected CUDA `[0,8)` for two 1.4 s requests, OP15
+`[0,8)` for two 2.2 s requests, and OP12 `[0,8)` for two 3.5 s requests. All
+six ran concurrently into one 4060 Ti `[8,48)` tail and met SLO: actual maxima
+were 1.219 s, 1.299 s, and 2.228 s. Slack-bounded gather raised tail mean batch
+from 1.04 to 2.40 and max B2 to B4 without a global barrier. Placement passed
+on all lanes. The CUDA route is explicitly numerically uncertified: its last
+token differs from the phone routes and needs a mechanics-only override.
+Four-token prompt batching reaches B8 on both phones and the tail, but the
+same-route OP15 sequential versus chunk-4 control produces different tokens;
+chunked prefill is mechanics-pass but not yet quality-certified. The Python
+suite at this checkpoint was 30/30. No energy or arbitrary-cut claim.
+
+**S22 CP3 REAL THREE-DEVICE ASYNC BATCH MECHANICS PASS.**
+Current-source Gemma-4-12B executed on OP15 HTP0 `[0,8)`, OP12 HTP0 `[0,8)`,
+and one shared RTX 4060 Ti CUDA0 `[8,48)` tail. Four live requests per phone
+formed B4 locally for four decode steps; the shared tail formed eight B4
+batches at the two independent arrival cadences without a global phone
+barrier. All eight requests completed, met the configured 30 s mechanics gate,
+and returned the same four token IDs. Placement is certified on all three
+devices. This proves resident distributed KV, per-sequence admission/removal,
+bounded asynchronous fan-in, and device-local ready-row rebatching. It does not
+yet prove multi-token prefill, a desktop-only control route, mixed-SLO route
+selection, arbitrary early exits, or energy savings. OP12 also fails closed at
+32 resident 512-token slots because its HTP KV allocation is too large; the
+successful run uses eight slots. Evidence is under
+`spikes/s22_slo_overlap_pipeline/`.
 
 **Authoritative direction: FOCUSED Q-PIM FUNNEL.** The paper-critical system has
 one generation model, one foreground embedding service, one selected A6000, and
 two phones. OP12 executes Gemma `[0,6)` and a CUDA `[6,8)` bridge normalizes its
 activation; OP15 executes `[0,8)` directly. Both enter one continuously batched
-CUDA `[8,48)` tail. The three contributions are heterogeneous-cut
-normalization, pipeline-wide continuous batching with distributed sequence/KV
-ownership, and deadline-aware merge release. Dynamic weight replacement,
+CUDA `[8,48)` tail. The core mechanism is stateful cut lifting plus batch
+morphing: each phone uses an independent measured batch and cadence, the bridge
+advances OP12 rows to the canonical cut, and the tail reforms compatible ready
+rows into a new batch with exact row lineage and distributed per-layer KV
+ownership. Credit- and slack-bounded fan-in prevents a slow phone from creating
+a global barrier but is policy, not a standalone contribution. Ordinary
+continuous batching and dynamic rebatching are reused ideas, not the novelty. The slow
+external desktop link and second A6000 are outside the paper-critical path.
+Dynamic weight replacement,
 general DAG scheduling, R2 phone-to-phone execution, solver optimality, and
 DVFS are future work, not current gates.
+
+**S20 SERVER-ONLY REAL-TRACE TIMELINE PASS.** Replayed the frozen 32-request
+BurstGPT cohort through current-source Gemma-4-12B F16 `llama-server` on one
+A6000 with continuous batching. The cohort preserves 21 arrivals at relative
+0 s, 11 at 1 s, 21,203 observed input tokens, and 1,898 observed output tokens;
+only token values are synthetic because BurstGPT publishes no text. Nsight
+GA10x metrics sampled at 1 kHz show 8.1 s prefill-only (mean tensor active
+44.1%, DRAM pressure 42.0%), 3.0 s mixed prefill+decode, then 11.7 s decode-only
+(mean tensor active 6.8%, DRAM 76.0%, peak 89.3%). All 32 exact token-count
+responses completed; GPU1 stayed at 0% utilization over 328 control samples.
+Verdict `SERVER_TRACE_TIMELINE_PASS`; phase-derived model-level classification,
+not a per-kernel roofline certificate. Graph and harness are in
+`spikes/s20_server_trace_roofline/`; raw evidence is in scratchpad. The first
+acquisition was rejected for a `/slots.next_token` response-shape parser error;
+the repaired full rerun alone enters the result.
 
 **S19 CONTINUOUS-BATCH REUSE AUDIT COMPLETE; RUNTIME NOT YET CLAIMED.** The
 llama-server implementation confirms the correct lifecycle: one slot per
@@ -1308,6 +1611,41 @@ break-even interval.
 
 ---
 
+## S38 matched server-only RAG baseline - `2026-07-22 EDT`
+
+`MATCHED_SERVER_C0_PASS; PHONE_ASSISTED_CONTROLS_NOT_RUN`. Built an exact-token
+BGE index over all 609 MultiHop-RAG documents (7,008 chunks), then froze a
+deterministic 320-request cohort from the dense-512 RAGPulse/MultiHop trace. The
+cohort covers every question/evidence stratum, carries 943,165 requested input
+and 79,685 requested output tokens, and replays 151.55 s of offered arrivals.
+
+One A6000 and one RTX 4060 Ti each ran the same all-local pipeline and exact
+model hashes: BGE-small F16 embed, cosine top-20, bge-reranker-base F16 top-6,
+and two-slot continuously batched Gemma-4 12B IT Q8_0. A6000 wall time was
+612.25 s at 0.523 req/s; desktop wall time was 1,062.10 s at 0.301 req/s. Both
+answer EM values were 55.94%. The offered 2.112 req/s overloaded the hosts by
+4.04x and 7.01x. Corrected response p95 values are 443.86 and 869.22 s; the
+earlier harness field that omitted executor queue time was replaced before the
+final runs by separate queue, service, and response fields.
+
+The matched validator proves all 320 request identities, model/index/trace
+bindings, manifest hashes, and timestamp equations. A6000 is 1.735x faster in
+requests/s. Cross-GPU retrieved chunk sets agree 97.81%, reranked sets 97.50%,
+and normalized answers 86.56%, while aggregate recall and answer quality remain
+nearly identical. No phone, SLO, GPU-energy, or total-energy claim is made.
+
+## S26 priority-safe matched physical scheduler - `2026-07-21 EDT`
+
+`S26_PRIORITY_PHYSICAL_PASS`. Added a measured request-level controller with
+strict priority, same-batch CUDA-relief admission, latest-start bounds, exact
+resource credits, immutable route epochs, and grouped completion. Isolated
+physical R0/R2 B4 profiles made admission like-for-like: R0 used 313,949 us of
+CUDA work and R2 used 208,875 us. The final matched run used identical grouped
+execution in control and treatment; it completed all 12 requests with zero SLO
+misses and reduced selected CUDA compute 24.75% while preserving P0 p95. The
+low-priority makespan increase to 4.301 s is recorded as the cost. GPU-board,
+phone, network, and total energy remain unmeasured.
+
 ## S15 persistent OP15 plus A6000 tail: two real B32 exchanges pass - `2026-07-18 EDT`
 
 `PERSISTENT_OP15_B32_HOST_AND_PHONE_PASS_ENERGY_UNKNOWN`. Added opt-in
@@ -2006,6 +2344,122 @@ energy verdict still needs matched physical power boundaries and sustained therm
 ---
 
 ## Log
+
+### 2026-07-24 EDT - S39 W2 direct mixed decode/prefill batch passes
+
+- Added a bounded route-local batcher that orders decode rows first, fills
+  remaining capacity with prefill, dispatches at the batch knee or earliest
+  deadline, and fails closed on queue or compute errors.
+- Executed Qwen3 14B Q4_K_M on OP15 `[0,30)` and OP12 `[30,40)`. The physical
+  pattern was `80P, 16D+80P, 6x32D, 16D`.
+- All 32 requests produced the same eight tokens as CUDA. Relay, session,
+  placement, row, and activation-byte conservation passed.
+- Recorded 23.219 s maximum completion and 20.169 s for the newly admitted
+  cohort. This is not compared against W1 because ordering and device state
+  were not held constant.
+- The next gate is a matched sorted-versus-shuffled ordering experiment,
+  followed by a bounded multi-inflight relay for inter-stage overlap.
+
+### 2026-07-23 EDT - S39 W1 direct OP15-to-OP12 route passes mechanics
+
+- Added an opt-in terminal relay on OP15 without changing the legacy StageNet
+  wire path. It validates both worker identities, cut continuity, capacity,
+  lineage, status, and sequence cleanup.
+- Real OP15 `[0,30)` -> OP12 `[30,40)` B1 and B32 runs produced 264/264 exact
+  Qwen token checks. B32 used one 160-row prefill batch and seven 32-row decode
+  batches.
+- The relay moved 7,864,320 B of B32 activation directly to OP12 and returned
+  only tokens to the host. Both phone workers persisted across the two sessions
+  and stopped cleanly.
+- A corrected-binary B1 point was 5.653 s versus 5.696 s for one host-relay
+  control. This is within run variation, so no latency win is claimed.
+- Strict, ASan, and UBSan builds pass. The relay self-test covers the happy
+  path, `n_batch` overflow, and invalid status capacity. The evidence reducer
+  and eight mutation tests pass.
+- Honest status:
+  `DIRECT_CHAIN_MECHANICS_PASS_REPEATS_PENDING`. Qwen route readiness remains
+  provisional and the two-model W0 gate remains blocked.
+
+### 2026-07-23 EDT - S39 W0 trace/controller mechanics pass; routes blocked
+
+- Implemented dense Qwen3 partial weight load, partial graph execution,
+  injected activation input, and layer-filtered KV. Host full/split checks are
+  exact at cuts 24, 30, and 32; Android and CUDA builds pass.
+- Real OP15 `[0,30)` plus OP12 `[30,40)` Qwen B1 execution matches all eight
+  same-artifact CUDA tokens. Phone TTFT is 1.574 s and phone service wall is
+  3.668 s versus 0.163 s on CUDA. This is provisional, not an eligible route.
+- Real Gemma Q4 at cut 30 has clean phone placement but produces different
+  tokens from CUDA. A same-host CUDA split matches monolithic output, narrowing
+  the failure to the heterogeneous phone route or backend numerics.
+- The active trace reduces deterministically to five promotion windows and
+  nine target changes. Replay rebuild is byte-identical.
+- Added a hash-before-parse route reducer and a fail-closed promotion
+  controller. Tests pass: replay 18, readiness 6, controller 11. The real
+  readiness file causes the controller to exit 2 with `E_ROUTE_NOT_READY`.
+- Verdict: `TRACE_REPLAY_MECHANICS_PASS; TWO_MODEL_ROUTE_GATE_BLOCKED`.
+
+### 2026-07-23 EDT - Active warm-tier direction and S39 gates frozen
+
+The primary target changed from fixed phone prefixes and a shared CUDA suffix
+to cyclic multi-model residency. One desktop GPU holds one hot model; OP15 and
+OP12 collectively hold one executable warm model. During promotion, phones
+continue serving while CUDA loads, batch-prefills committed token histories,
+catches the token delta, and takes ownership at a token boundary. After
+cutover, phones prepare the displaced model. `ACTIVE_WARM_TIER_DESIGN.md`
+freezes the state machine, ownership invariants, controls, scheduler scope,
+metrics, W0-W5 milestones, and stop rules. S39 retains its real trace but now
+stops first at the honest two-model eligibility atlas. No direct KV, latency,
+SLO, or energy result is claimed.
+
+### 2026-07-21 EDT - S33 full quantized files add residency, not valid routes
+
+Stored identical full Q4_0 and Q8_0 GGUF files on OP12 and OP15, screened full
+graphs, and measured partial B32 windows. Q4_0 reaches clean windows of
+OP12 `[0,12)` and OP15 `[4,24)`, but full-graph Q4_0 and Q8_0 both violate the
+zero-swap execution gate.
+
+Froze 128 natural WikiText prompts before measurement and compared physical
+two-phone routes with same-GGUF one-A6000 references for eight greedy output
+tokens. Q4_0 and Q8_0 both miss all three quality thresholds by large margins.
+The binder recomputes metrics and validates model hashes, placement, topology,
+and worker steps; it refuses both routes. No thresholds were changed and no
+quantized route was added to the scheduler.
+
+### 2026-07-21 EDT - S31 measured cut removes the OP12 bottleneck
+
+Measured every `k=1..6` OP12/OP15 cut that shifts work from the S29 baseline
+toward OP15 while preserving the layer-8 phone output boundary. A
+deterministic, digest-bound selector minimizes the physical B32
+phone-stage p95 bottleneck and chose OP12 `[0,1)` plus OP15 `[1,8)`. The
+selected bottleneck is 0.399 s versus 1.499 s for S29's cut 6, and route p95 is
+3.144 s versus 6.635 s. Selection replay, worker ranges, batch size, drain,
+placement, model hashes, and SLO are fail-closed.
+
+The fresh three-session campaign retained all five worker identities and ran
+the same 60-request control/treatment trace. Treatment formed one R2 B32
+cohort, cut selected CUDA compute 28.90%, preserved all SLOs, and reduced
+makespan 29.63% versus S29. It is still 1.93x slower than all-CUDA. An unrelated
+OP15 HTP run invalidated one attempt, and ascending B1/B4/B24/B32 reproduced a
+shape-growth stall; both attempts are excluded. Numeric quality and
+total-system energy remain unclaimed.
+
+### 2026-07-21 EDT - S28 real priority-safe shared CUDA tail passes
+
+Replaced S26's route-isolated tail queues with one priority-aware physical
+queue. P0 is ordered before background by latest-safe start and FIFO, while
+P0 and P1/P2 are forbidden from sharing a physical batch. Route lineage now
+carries priority into every stage event, with mutation tests for ordering,
+isolation, topology aliasing, conservation, and persisted-result validation.
+
+The same resident OP12, OP15, and RTX 4060 Ti workers ran an all-CUDA control
+then a phone-offload treatment over the 60-request dense mechanics trace. All
+60 requests completed with no synthetic SLO miss in each run. Treatment sent
+50 background requests through OP12 -> OP15 -> CUDA tail, reduced summed CUDA
+island compute 18.55%, and preserved P0 p95. Both phone stages averaged B3.846
+with max B4. The shared tail switched between R0 and R2 seven times without an
+urgent/background batch mix. Treatment used background slack aggressively and
+took 41.977 s versus 5.007 s control. Numeric quality and every energy boundary
+remain unclaimed.
 
 ### 2026-07-18 EDT - S15 persistent OP15 B32 passes seven real sessions
 

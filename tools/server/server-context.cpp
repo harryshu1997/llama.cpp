@@ -3052,6 +3052,12 @@ private:
         int32_t n_batch  = llama_n_batch(ctx_tgt);
         int32_t n_ubatch = llama_n_ubatch(ctx_tgt);
 
+        // bound mixed iterations without forcing one synchronization per ubatch
+        const int32_t n_mixed_batch = n_ubatch > n_batch/2 ? n_batch : 2*n_ubatch;
+        const int32_t n_batch_limit = generating.empty()
+            ? n_batch
+            : std::min(n_batch, std::max(n_mixed_batch, batch.size()));
+
         auto & alora_scale       = batch.alora_scale;
         auto & alora_disabled_id = batch.alora_disabled_id;
 
@@ -3060,7 +3066,7 @@ private:
             bool add_ok = true; // false means the batch is full, skip remaining slots
 
             iterate(slots, [&](server_slot & slot) {
-                if (!add_ok || batch.size() >= n_batch) {
+                if (!add_ok || batch.size() >= n_batch_limit) {
                     return; // batch is full, skip remaining slots
                 }
 
@@ -3379,7 +3385,7 @@ private:
 
                     if (!slot.can_split()) {
                         // cannot fit the prompt in the current batch - will try next iter
-                        if (batch.size() + slot.task->n_tokens() > n_batch) {
+                        if (batch.size() + slot.task->n_tokens() > n_batch_limit) {
                             return;
                         }
                     }
@@ -3464,7 +3470,7 @@ private:
                     const auto last_user_pos = spans.last_user_message_pos();
 
                     // add prompt tokens for processing in the current batch
-                    while (slot.prompt.n_tokens() < slot.task->n_tokens() && batch.size() < n_batch) {
+                    while (slot.prompt.n_tokens() < slot.task->n_tokens() && batch.size() < n_batch_limit) {
                         // get next token to process
                         llama_token cur_tok = input_tokens[slot.prompt.n_tokens()];
                         if (cur_tok == LLAMA_TOKEN_NULL) {

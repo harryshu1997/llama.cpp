@@ -100,6 +100,13 @@ LLAMA_API void llama_set_embeddings_nextn(struct llama_context * ctx, bool value
 // chain multiple trained NextN heads. Default 0 (first head).
 LLAMA_API void llama_set_nextn_layer_offset(struct llama_context * ctx, int32_t offset);
 
+// Select the active Gemma4 or Qwen3 layer interval for the next graph. The model must
+// already contain every weight in the requested interval.
+LLAMA_API bool llama_set_layersplit_range(
+        struct llama_context * ctx,
+                       int32_t start,
+                       int32_t end);
+
 // mirrors:
 // LLAMA_API float * llama_get_embeddings(struct llama_context * ctx);
 LLAMA_API float * llama_get_embeddings_nextn(struct llama_context * ctx);
@@ -115,6 +122,26 @@ LLAMA_API void llama_set_embeddings_layer_inp(struct llama_context * ctx, uint32
 LLAMA_API float * llama_get_embeddings_layer_inp(struct llama_context * ctx, uint32_t lid);
 
 LLAMA_API llama_context * llama_get_ctx_other(struct llama_context * ctx);
+
+// Experimental helpers for the heterogeneous layer-wavefront prototype.
+// These only support ordinary attention KV caches. The copy call must be made
+// while both source and destination backends are idle at graph boundaries.
+LLAMA_API bool llama_kv_cache_wavefront_reserve(
+        struct llama_context * ctx,
+                 llama_seq_id   seq_id,
+                    llama_pos   p0,
+                    llama_pos   p1);
+
+LLAMA_API bool llama_kv_cache_wavefront_copy(
+              struct llama_context * dst,
+        const struct llama_context * src,
+                       llama_seq_id   dst_seq_id,
+                       llama_seq_id   src_seq_id,
+                          llama_pos   p0,
+                          llama_pos   p1,
+                           uint32_t   il0,
+                           uint32_t   il1,
+                             size_t * bytes_copied);
 
 //
 // model/context data extraction

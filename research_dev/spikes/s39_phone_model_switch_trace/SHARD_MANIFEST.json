@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-07-23T21:13:16Z",
+  "readiness": "STAGED_ONLY",
+  "readiness_reason": "Gemma Q4_0 numerical eligibility and Qwen3 partial graph/KV execution are not certified",
+  "adb_server_port": 5038,
+  "remote_root": "/data/local/tmp/s39-active-warm/v1/models",
+  "sharder": {
+    "path": "research_dev/shard_gguf.py",
+    "sha256": "32bee37838bf3b84f08bf0b7d7d5ef15bcbc31d21f96f8cd54bf6948e32713c7"
+  },
+  "models": {
+    "gemma-4-12b-it-q4_0": {
+      "source": {
+        "file_name": "gemma-4-12B-it-Q4_0.gguf",
+        "bytes": 6975878176,
+        "sha256": "494518c2262a26e2a607af0e40bca11c4de5a0b108e7c21308906dbbfb1c6f8c",
+        "architecture": "gemma4",
+        "block_count": 48
+      },
+      "placements": {
+        "op15": {
+          "serial": "3C15AU002CL00000",
+          "layer_start": 0,
+          "layer_end": 36,
+          "bytes": 5442281344,
+          "sha256": "f43fd1d0cd90783e69e8b004dff21d973a6305f58ed1b71979deb27c389fcc79",
+          "remote_path": "/data/local/tmp/s39-active-warm/v1/models/gemma-4-12b-it-q4_0/weights.gguf"
+        },
+        "op12": {
+          "serial": "5ae7a43d",
+          "layer_start": 24,
+          "layer_end": 48,
+          "bytes": 3908715488,
+          "sha256": "f21c70a202ee2817ddb39e111de0f3ea886ef022fafac04e01e56f8596d0329b",
+          "remote_path": "/data/local/tmp/s39-active-warm/v1/models/gemma-4-12b-it-q4_0/weights.gguf"
+        }
+      },
+      "candidate_cut_min": 24,
+      "candidate_cut_max": 36
+    },
+    "qwen3-14b-q4_k_m": {
+      "source": {
+        "file_name": "Qwen3-14B-Q4_K_M.gguf",
+        "bytes": 9001752960,
+        "sha256": "500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0",
+        "architecture": "qwen3",
+        "block_count": 40
+      },
+      "placements": {
+        "op15": {
+          "serial": "3C15AU002CL00000",
+          "layer_start": 0,
+          "layer_end": 32,
+          "bytes": 6730922144,
+          "sha256": "ba56b9c5e19b3a4512777e6a47803cc03261c2d3c2734965cd5ec96b7c6c59fb",
+          "remote_path": "/data/local/tmp/s39-active-warm/v1/models/qwen3-14b-q4_k_m/weights.gguf"
+        },
+        "op12": {
+          "serial": "5ae7a43d",
+          "layer_start": 24,
+          "layer_end": 40,
+          "bytes": 4274027712,
+          "sha256": "72e312af745160dc33a0ba39ba94fbbce6112950d0409d39c42ddc3b25e756ab",
+          "remote_path": "/data/local/tmp/s39-active-warm/v1/models/qwen3-14b-q4_k_m/weights.gguf"
+        }
+      },
+      "candidate_cut_min": 24,
+      "candidate_cut_max": 32
+    }
+  }
+}

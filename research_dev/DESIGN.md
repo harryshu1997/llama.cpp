@@ -1,13 +1,13 @@
 # Historical Design A - 3-Stage Pipeline-Parallel Phone-Offload LLM Serving
 
 > **STATUS: HISTORICAL SUBSTRATE, NOT THE CURRENT IMPLEMENTATION CONTRACT.**
-> The primary target is now mixed-workload resident operator-island reverse
-> offload. Read [MIXED_WORKLOAD_DESIGN.md](MIXED_WORKLOAD_DESIGN.md),
+> The primary target is now the executable phone warm tier in
+> [ACTIVE_WARM_TIER_DESIGN.md](ACTIVE_WARM_TIER_DESIGN.md). Read that file,
 > [NEXT_PLAN.md](NEXT_PLAN.md), and the top of [talks.md](talks.md). Design A is
 > retained as route `A0`: a proven Gemma pipeline and source of transport,
-> sharding, local-KV, and shared-weight mechanisms. The timestamped material
-> below is preserved for design intent and experimental provenance; do not
-> execute its old next-step statements as the live roadmap.
+> sharding, local-KV, persistent-worker, and continuous-batch mechanisms. The
+> timestamped material below is preserved for design intent and experimental
+> provenance; do not execute its old next-step statements as the live roadmap.
 
 *System design plan · Gemma-4 12B (fp16) · A6000 → OP15 → OP12 → A6000 · drafted 2026-07-06*
 

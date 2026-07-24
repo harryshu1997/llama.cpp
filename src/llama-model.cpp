@@ -2143,7 +2143,7 @@ llama_memory_i * llama_model::create_memory(const llama_memory_params & params, 
                     llama_memory_i::layer_reuse_cb reuse = nullptr;
                     llama_kv_cache::layer_share_cb share = nullptr;
 
-                    if (arch == LLM_ARCH_GEMMA4) {
+                    if (arch == LLM_ARCH_GEMMA4 || arch == LLM_ARCH_QWEN3) {
                         const char * env_start = getenv("LLAMA_LAYER_START");
                         const char * env_end   = getenv("LLAMA_LAYER_END");
                         if (env_start || env_end) {
@@ -2169,11 +2169,11 @@ llama_memory_i * llama_model::create_memory(const llama_memory_params & params, 
                                 !parse_layer(env_end, (int) hparams.n_layer(), layer_end) ||
                                 layer_start >= layer_end ||
                                 layer_end > (int) hparams.n_layer()) {
-                                throw std::runtime_error(
-                                        "Gemma 4 LayerSplit has an invalid layer range");
+                                throw std::runtime_error("LayerSplit has an invalid layer range");
                             }
 
-                            if (hparams.n_layer_kv_from_start < (int32_t) hparams.n_layer_all) {
+                            if (arch == LLM_ARCH_GEMMA4 &&
+                                    hparams.n_layer_kv_from_start < (int32_t) hparams.n_layer_all) {
                                 for (int il = layer_start; il < layer_end; ++il) {
                                     if (il < hparams.n_layer_kv_from_start) {
                                         continue;
@@ -2191,8 +2191,7 @@ llama_memory_i * llama_model::create_memory(const llama_memory_params & params, 
                                 return il >= (uint32_t) layer_start && il < (uint32_t) layer_end;
                             };
                             LLAMA_LOG_INFO(
-                                    "%s: Gemma 4 LayerSplit KV range = [%d, %d)\n",
-                                    __func__, layer_start, layer_end);
+                                    "%s: LayerSplit KV range = [%d, %d)\n", __func__, layer_start, layer_end);
                         }
                     }
 

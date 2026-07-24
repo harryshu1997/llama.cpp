@@ -212,8 +212,11 @@ llama_model_gemma4::graph::graph(const llama_model & model, const llm_graph_para
     int ls = 0, le = (int) n_layer;
     if (const char * e = getenv("LLAMA_LAYER_START")) ls = atoi(e);
     if (const char * e = getenv("LLAMA_LAYER_END"))   le = atoi(e);
+    if (cparams.layersplit_start >= 0) ls = cparams.layersplit_start;
+    if (cparams.layersplit_end   >= 0) le = cparams.layersplit_end;
     if (ls < 0)             ls = 0;
     if (le > (int) n_layer) le = (int) n_layer;
+    GGML_ASSERT(ls < le);
     const bool split_tail_stage = (le == (int) n_layer);
 
     // [plan-a port] LayerSplit tail stage (ls>0): the batch is DUAL — a relayed input token (so the

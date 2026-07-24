@@ -1,0 +1,259 @@
+{
+  "schema": "layer-wavefront-op15-v3-audited",
+  "date": "2026-07-21",
+  "scheduler_scope": "fixed_mixed_batch_not_continuous_batching",
+  "historical_measurement_status": "timings_retained_but_strict_placement_not_certified",
+  "device": {
+    "name": "OP15",
+    "model": "CPH2749",
+    "device": "OP611FL1",
+    "soc": "SM8850"
+  },
+  "model": {
+    "name": "Qwen2.5 0.5B Instruct Q8_0",
+    "layers": 24
+  },
+  "workload": {
+    "ubatch": 32,
+    "prompt_tokens": 128,
+    "decode_context_tokens": 16,
+    "decode_requests": 1,
+    "decode_steps_limit": 8
+  },
+  "backends": {
+    "gpu": "GPUOpenCL",
+    "npu": "HTP0"
+  },
+  "samples_ms": {
+    "all_npu_mixed_full": [229.119323, 229.266, 227.181],
+    "legacy_full_state_handoff": [
+      {"gpu_control": 283.927552, "decode_ready": 71.537968, "prefill_ready": 246.212656},
+      {"gpu_control": 254.949063, "decode_ready": 62.899323, "prefill_ready": 194.200},
+      {"gpu_control": 284.142864, "decode_ready": 71.500052, "prefill_ready": 247.863}
+    ],
+    "wavefront_8_layers": [
+      {"gpu_control": 256.487604, "decode_ready": 67.771822, "prefill_ready": 164.256666},
+      {"gpu_control": 288.028229, "decode_ready": 76.083281, "prefill_ready": 206.611},
+      {"gpu_control": 256.593750, "decode_ready": 67.649947, "prefill_ready": 163.376}
+    ]
+  },
+  "median_ms": {
+    "all_npu_mixed_full": 229.119323,
+    "legacy_gpu_control": 283.927552,
+    "legacy_decode_ready": 71.500052,
+    "legacy_prefill_ready": 246.212656,
+    "wavefront_gpu_control": 256.593750,
+    "wavefront_decode_ready": 67.771822,
+    "wavefront_prefill_ready": 164.256666
+  },
+  "derived": {
+    "raw_decode_improvement_vs_legacy": 0.052143,
+    "raw_prefill_improvement_vs_legacy": 0.332867,
+    "normalized_decode_overhead_vs_legacy": 0.049747,
+    "normalized_prefill_improvement_vs_legacy": 0.261494,
+    "decode_improvement_vs_all_npu": 0.704207,
+    "prefill_improvement_vs_all_npu": 0.283096
+  },
+  "validation": {
+    "historical_same_backend_first_outputs_exact": true,
+    "cross_backend_prefill_argmax_match": true,
+    "cross_backend_continuation_argmax_match": true,
+    "historical_continuation_steps": 1,
+    "gpu_target_fraction": 0.998127,
+    "npu_target_fraction": 0.996255,
+    "fractional_placement_criterion_deprecated": true,
+    "strict_placement_certified": false
+  },
+  "multi_decode_16": {
+    "historical_capture": "raw/2026-07-21-op15-multi16-recovered",
+    "corrected_capture": "raw/2026-07-22-op15-audit-fix-r5",
+    "workload": {
+      "ubatch": 32,
+      "prompt_tokens": 128,
+      "decode_context_tokens_per_request": 16,
+      "decode_requests": 16,
+      "prefill_requests": 1,
+      "decode_steps_limit": 8,
+      "first_ubatch_decode_rows": 16,
+      "first_ubatch_prefill_rows": 16,
+      "npu_remainder_rows": 112
+    },
+    "historical_samples_ms": {
+      "gpu_only": [
+        {"backend_ready": 320.878750, "mixed_logits_ready": 328.849531, "decode_tokens_ready": 352.826458},
+        {"backend_ready": 336.318073, "mixed_logits_ready": 353.134427, "decode_tokens_ready": 417.483385},
+        {"backend_ready": 319.865469, "mixed_logits_ready": 327.359375, "decode_tokens_ready": 350.187396},
+        {"backend_ready": 335.377552, "mixed_logits_ready": 350.870624, "decode_tokens_ready": 415.476770},
+        {"backend_ready": 322.487500, "mixed_logits_ready": 330.498646, "decode_tokens_ready": 355.057136}
+      ],
+      "npu_only": [
+        {"backend_ready": 267.663073, "mixed_logits_ready": 275.352239, "decode_tokens_ready": 298.510781},
+        {"backend_ready": 560.441093, "mixed_logits_ready": 576.278749, "decode_tokens_ready": 641.214791},
+        {"backend_ready": 271.580416, "mixed_logits_ready": 278.931093, "decode_tokens_ready": 302.773749},
+        {"backend_ready": 570.845312, "mixed_logits_ready": 587.194583, "decode_tokens_ready": 652.048958},
+        {"backend_ready": 268.315573, "mixed_logits_ready": 274.940156, "decode_tokens_ready": 295.777500}
+      ],
+      "legacy_full_state_handoff": [
+        {"decode_backend_ready": 110.315416, "decode_logits_ready": 125.744375, "decode_tokens_ready": 190.294739, "prefill_ready": 325.701197, "prefill_gpu_ready": 423.733541, "transfer": 2.108855},
+        {"decode_backend_ready": 100.793802, "decode_logits_ready": 108.633489, "decode_tokens_ready": 135.288281, "prefill_ready": 262.541302, "prefill_gpu_ready": 277.316562, "transfer": 1.178594},
+        {"decode_backend_ready": 111.289635, "decode_logits_ready": 127.085729, "decode_tokens_ready": 193.342187, "prefill_ready": 325.100729, "prefill_gpu_ready": 422.179999, "transfer": 2.198229},
+        {"decode_backend_ready": 110.496771, "decode_logits_ready": 125.632552, "decode_tokens_ready": 190.544844, "prefill_ready": 325.460312, "prefill_gpu_ready": 421.496771, "transfer": 2.182760},
+        {"decode_backend_ready": 110.103490, "decode_logits_ready": 124.689323, "decode_tokens_ready": 189.196771, "prefill_ready": 322.296459, "prefill_gpu_ready": 424.686615, "transfer": 2.216147}
+      ],
+      "wavefront_8_layers": [
+        {"decode_backend_ready": 114.195209, "decode_logits_ready": 118.821094, "decode_tokens_ready": 134.705573, "prefill_ready": 204.386459, "prefill_gpu_ready": 268.873907, "transfer": 0.196770, "compute_overlap": 22.192292},
+        {"decode_backend_ready": 125.938593, "decode_logits_ready": 140.905416, "decode_tokens_ready": 206.130885, "prefill_ready": 236.270312, "prefill_gpu_ready": 248.209374, "transfer": 0.415572, "compute_overlap": 24.519895},
+        {"decode_backend_ready": 126.879791, "decode_logits_ready": 142.228021, "decode_tokens_ready": 208.555937, "prefill_ready": 247.176771, "prefill_gpu_ready": 258.777291, "transfer": 0.478282, "compute_overlap": 24.775052},
+        {"decode_backend_ready": 128.258229, "decode_logits_ready": 147.991770, "decode_tokens_ready": 215.283958, "prefill_ready": 244.732968, "prefill_gpu_ready": 256.910781, "transfer": 0.380207, "compute_overlap": 24.592396},
+        {"decode_backend_ready": 114.424792, "decode_logits_ready": 122.088646, "decode_tokens_ready": 147.931198, "prefill_ready": 177.877604, "prefill_gpu_ready": 183.752500, "transfer": 0.223125, "compute_overlap": 20.988021}
+      ]
+    },
+    "historical_median_ms": {
+      "gpu_only_backend_ready": 322.487500,
+      "gpu_only_mixed_logits_ready": 330.498646,
+      "gpu_only_decode_tokens_ready": 355.057136,
+      "npu_only_backend_ready": 271.580416,
+      "npu_only_mixed_logits_ready": 278.931093,
+      "npu_only_decode_tokens_ready": 302.773749,
+      "legacy_decode_backend_ready": 110.315416,
+      "legacy_decode_logits_ready": 125.632552,
+      "legacy_decode_tokens_ready": 190.294739,
+      "legacy_prefill_ready": 325.100729,
+      "legacy_prefill_gpu_ready": 422.179999,
+      "legacy_transfer": 2.182760,
+      "wavefront_decode_backend_ready": 125.938593,
+      "wavefront_decode_logits_ready": 140.905416,
+      "wavefront_decode_tokens_ready": 206.130885,
+      "wavefront_prefill_ready": 236.270312,
+      "wavefront_prefill_gpu_ready": 256.910781,
+      "wavefront_transfer": 0.380207,
+      "wavefront_compute_overlap": 24.519895
+    },
+    "historical_derived": {
+      "wavefront_decode_backend_improvement_vs_npu": 0.536275,
+      "wavefront_decode_tokens_improvement_vs_npu": 0.319192,
+      "wavefront_prefill_improvement_vs_npu": 0.152944,
+      "wavefront_decode_tokens_improvement_vs_gpu": 0.419443,
+      "wavefront_prefill_improvement_vs_gpu": 0.285110,
+      "wavefront_decode_backend_overhead_vs_legacy": 0.141623,
+      "wavefront_decode_tokens_overhead_vs_legacy": 0.083219,
+      "wavefront_prefill_improvement_vs_legacy": 0.273240,
+      "wavefront_prefill_gpu_ready_improvement_vs_legacy": 0.391466,
+      "wavefront_transfer_time_improvement_vs_legacy": 0.825814
+    },
+    "corrected_median_ms": {
+      "gpu_only_backend_ready": 322.340729,
+      "gpu_only_mixed_logits_ready": 329.357239,
+      "gpu_only_decode_tokens_ready": 356.588124,
+      "npu_only_backend_ready": 284.905521,
+      "npu_only_mixed_logits_ready": 291.450833,
+      "npu_only_decode_tokens_ready": 312.292761,
+      "legacy_decode_backend_ready": 110.515677,
+      "legacy_decode_tokens_ready": 190.867239,
+      "legacy_prefill_ready": 330.884323,
+      "legacy_prefill_gpu_ready": 428.309636,
+      "legacy_transfer": 2.992865,
+      "wavefront_decode_backend_ready": 124.399270,
+      "wavefront_decode_tokens_ready": 206.672864,
+      "wavefront_prefill_ready": 238.433281,
+      "wavefront_prefill_gpu_ready": 260.230572,
+      "wavefront_transfer": 0.371302,
+      "wavefront_compute_overlap": 25.194584
+    },
+    "corrected_range_ms": {
+      "gpu_only_backend_ready": [319.610052, 335.938646],
+      "gpu_only_decode_tokens_ready": [351.844636, 418.288697],
+      "gpu_only_mixed_logits_ready": [326.807084, 351.927812],
+      "npu_only_backend_ready": [278.027239, 578.021093],
+      "npu_only_decode_tokens_ready": [308.153645, 659.817656],
+      "npu_only_mixed_logits_ready": [284.645781, 594.713854],
+      "legacy_decode_backend_ready": [110.078541, 111.131875],
+      "legacy_decode_tokens_ready": [189.621458, 207.433541],
+      "legacy_prefill_ready": [329.015677, 345.116198],
+      "wavefront_decode_backend_ready": [113.116042, 125.617604],
+      "wavefront_decode_tokens_ready": [133.265156, 211.316250],
+      "wavefront_prefill_ready": [180.949583, 258.079114]
+    },
+    "corrected_derived": {
+      "wavefront_decode_backend_improvement_vs_npu": 0.563367,
+      "wavefront_decode_tokens_improvement_vs_npu": 0.338208,
+      "wavefront_prefill_improvement_vs_npu": 0.181909,
+      "wavefront_decode_tokens_improvement_vs_gpu": 0.420416,
+      "wavefront_prefill_improvement_vs_gpu": 0.276065,
+      "wavefront_decode_backend_overhead_vs_legacy": 0.125626,
+      "wavefront_decode_tokens_overhead_vs_legacy": 0.082810,
+      "wavefront_prefill_improvement_vs_legacy": 0.279406,
+      "wavefront_prefill_gpu_ready_improvement_vs_legacy": 0.392424,
+      "wavefront_transfer_time_improvement_vs_legacy": 0.875938
+    },
+    "validation": {
+      "samples_per_configuration": 5,
+      "decode_first_output_argmax_matches": 160,
+      "decode_first_output_argmax_checks": 160,
+      "cross_backend_prefill_argmax_match": true,
+      "cross_backend_continuation_argmax_match": true,
+      "historical_continuation_steps": 1,
+      "corrected_continuation_steps_per_hybrid_run": 4,
+      "corrected_continuation_argmax_matches": 40,
+      "corrected_continuation_argmax_checks": 40,
+      "corrected_continuation_numeric_matches": 40,
+      "corrected_continuation_numeric_checks": 40,
+      "corrected_continuation_relative_l2_max": 0.039355591,
+      "corrected_nonfinite_values": 0,
+      "same_backend_cpu_first_outputs_exact": true,
+      "npu_only_decode_argmax_matches_gpu": 15,
+      "npu_only_decode_argmax_checks": 16,
+      "legacy_fractional_placement_audit_status": "ok",
+      "strict_placement_audit_status": "placement_fallback",
+      "strict_placement_certified": false,
+      "npu_only_bimodal": true,
+      "historical_battery_temperature_c_range": [29.6, 31.3],
+      "corrected_battery_temperature_c_range": [26.3, 27.6]
+    },
+    "representative_wavefront_trace_ms": [
+      {"tile": 0, "layers": [0, 8], "gpu_done": 37.508542, "transfer": 0.079011, "npu_release": 37.589948, "npu_done": 48.978959, "compute_overlap": 11.389011},
+      {"tile": 1, "layers": [8, 16], "gpu_done": 59.916302, "transfer": 0.165261, "npu_release": 60.254480, "npu_done": 72.481667, "compute_overlap": 12.227187},
+      {"tile": 2, "layers": [16, 24], "gpu_done": 82.965469, "transfer": 0.142865, "npu_release": 83.226719, "npu_done": 95.414063, "compute_overlap": 0.0}
+    ],
+    "conclusion": "The fully captured corrected timing shows wavefront beating the NPU-only median for decode and prefill readiness. Four-step correctness passes, but strict placement is not certified."
+  },
+  "audit_fixes_2026_07_22": {
+    "fail_closed_exit_code": 4,
+    "same_backend_relative_l2_limit": 0.000001,
+    "cross_backend_relative_l2_limit": 0.05,
+    "nonfinite_logits_fail": true,
+    "transferred_prefill_continuation_steps": 4,
+    "corrected_smoke": {
+      "legacy_status": "ok",
+      "wavefront_status": "ok",
+      "continuation_argmax_matches": 4,
+      "continuation_numeric_matches": 4,
+      "continuation_relative_l2_max": 0.039355591,
+      "nonfinite_values": 0
+    },
+    "corrected_five_round_capture": {
+      "performance_runs": 20,
+      "performance_exit_codes_all_zero": true,
+      "hybrid_runs": 10,
+      "hybrid_correctness_all_passed": true,
+      "continuation_argmax_matches": 40,
+      "continuation_numeric_matches": 40,
+      "continuation_relative_l2_max": 0.039355591,
+      "nonfinite_values": 0
+    },
+    "strict_placement": {
+      "status": "placement_fallback",
+      "exit_code": 5,
+      "gpu_unexpected_compute": {"CPU": {"GET_ROWS": 18}},
+      "npu_unexpected_compute": {"CPU": {"GET_ROWS": 8, "MUL_MAT": 8}}
+    }
+  },
+  "reproducibility": {
+    "capture_script": "reproduce_op15.sh",
+    "historical_recovered_capture": "raw/2026-07-21-op15-multi16-recovered",
+    "corrected_complete_smoke_capture": "raw/2026-07-22-op15-audit-fix-smoke",
+    "corrected_five_round_capture": "raw/2026-07-22-op15-audit-fix-r5",
+    "historical_full_stdout_available": false
+  },
+  "conclusion": "The timing benefit remains an experimental observation for a fixed mixed batch. Correctness is now fail closed and multi-token, while strict placement currently fails because real CPU compute fallbacks remain."
+}

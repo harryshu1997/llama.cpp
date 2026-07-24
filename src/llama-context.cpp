@@ -1160,6 +1160,24 @@ void llama_context::set_nextn_layer_offset(int32_t offset) {
     cparams.nextn_layer_offset = offset;
 }
 
+bool llama_context::set_layersplit_range(int32_t start, int32_t end) {
+    if (model.arch != LLM_ARCH_GEMMA4 && model.arch != LLM_ARCH_QWEN3) {
+        return false;
+    }
+    const int32_t n_layer = (int32_t) model.hparams.n_layer();
+    if (start < 0 || start >= end || end > n_layer) {
+        return false;
+    }
+    if (cparams.layersplit_start == start && cparams.layersplit_end == end) {
+        return true;
+    }
+
+    synchronize();
+    cparams.layersplit_start = start;
+    cparams.layersplit_end   = end;
+    return true;
+}
+
 void llama_context::set_causal_attn(bool value) {
     LLAMA_LOG_DEBUG("%s: value = %d\n", __func__, value);
 
@@ -3709,6 +3727,10 @@ void llama_set_embeddings_layer_inp(llama_context * ctx, uint32_t lid, bool valu
 
 void llama_set_nextn_layer_offset(llama_context * ctx, int32_t offset) {
     ctx->set_nextn_layer_offset(offset);
+}
+
+bool llama_set_layersplit_range(llama_context * ctx, int32_t start, int32_t end) {
+    return ctx != nullptr && ctx->set_layersplit_range(start, end);
 }
 
 llama_memory_t llama_get_memory(const struct llama_context * ctx) {

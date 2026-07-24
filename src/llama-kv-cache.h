@@ -164,6 +164,18 @@ public:
     std::vector<uint32_t> get_layer_ids() const;
     ggml_tensor * get_k_storage(int32_t il) const;
 
+    // Experimental helpers used by the heterogeneous layer-wavefront harness.
+    bool wavefront_reserve(llama_seq_id seq_id, llama_pos p0, llama_pos p1);
+    bool wavefront_copy_from(
+            const llama_kv_cache & src,
+                   llama_seq_id   dst_seq_id,
+                   llama_seq_id   src_seq_id,
+                      llama_pos   p0,
+                      llama_pos   p1,
+                       uint32_t   il0,
+                       uint32_t   il1,
+                         size_t & bytes_copied);
+
     //
     // graph_build API
     //
@@ -291,6 +303,12 @@ private:
 
     size_t size_k_bytes() const;
     size_t size_v_bytes() const;
+
+    bool wavefront_sequence_cells(
+            llama_seq_id seq_id,
+               llama_pos p0,
+               llama_pos p1,
+            std::vector<uint32_t> & indices) const;
 
     ggml_tensor * build_rope_shift(
             const llama_cparams & cparams,

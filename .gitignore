@@ -155,6 +155,27 @@ flake.lock
 /research_dev/spikes/**/artifacts/
 /research_dev/spikes/**/logs*/
 /research_dev/spikes/**/scratchpad/
+/research_dev/spikes/**/raw/
+/research_dev/spikes/**/results/**/artifacts/
+/research_dev/spikes/**/results/**/executed-sources/
+/research_dev/spikes/**/results/**/*.cmdline
+/research_dev/spikes/**/results/**/*.command.txt
+/research_dev/spikes/**/results/**/*.csv
+/research_dev/spikes/**/results/**/*.html
+/research_dev/spikes/**/results/**/*.jsonl
+/research_dev/spikes/**/results/**/*.pid
+/research_dev/spikes/**/results/**/*.png
+/research_dev/spikes/**/results/**/*.strings
+/research_dev/spikes/**/results/**/*.svg
+/research_dev/spikes/**/results/**/runtime.json
+/research_dev/spikes/**/bundle*/trace_timeline.png
+/research_dev/spikes/**/bundle*/trace_timeline.svg
+/research_dev/*_preview.png
+/research_dev/*.drawio
+/research_dev/slides/
+
+# S39 logs are small, load-bearing evidence for the checked-in reducers.
+!/research_dev/spikes/s39_phone_model_switch_trace/results/**/*.log
 
 # IDE
 

@@ -1,24 +1,70 @@
-# Q-PIM Funnel: heterogeneous continuous activation batching
+# Historical Q-PIM Funnel: stateful cut lifting and batch morphing
 
-Status: authoritative focused paper scope as of 2026-07-19.
+> **STATUS: HISTORICAL MECHANISM DESIGN.** The active paper direction is
+> [ACTIVE_WARM_TIER_DESIGN.md](ACTIVE_WARM_TIER_DESIGN.md), and its first
+> executable gate is [S39](spikes/s39_phone_model_switch_trace/PLAN.md). This
+> file remains the authority for prior cut-lifting, batch-morphing, priority,
+> and continuous-batch mechanisms. Its old next-step statements are not the
+> live roadmap.
 
-Q-PIM Funnel uses two server-managed phones as resident prefix accelerators for
-one busy A6000. The phones hold fixed Gemma-4-12B prefix weights and prefix KV.
+Status: historical mechanism design, superseded 2026-07-23.
+
+S36/S37 now provide the real substrate assumed below. OP12 and OP15 run B32
+with unified KV, one phone HTP call physically mixed prefill and decode rows,
+and requests completed at every jointly resident cut 4 through 8. The first
+dynamic-cut scheduler preserved tokens, SLOs, and priority but failed
+selected-CUDA relief in two of three paired runs. The measured cause is
+cut-specific tail fragmentation. This makes canonical cut lifting and shared
+tail batch morphing the next gate, not an optional optimization.
+
+S35 adds a measured execution primitive beneath this design. A phone can put
+prompt rows for a newly admitted request and a decode row for an existing
+request into one physical `llama_decode` batch. It can also choose a
+request-pinned active layer interval inside weights that are already resident.
+The cut is not semantic early termination: the server suffix executes every
+remaining layer. One physical batch has one cut, so the scheduler groups rows
+by `(device, cut, priority-band)` and may switch cuts only between graph
+batches. Prefill and decode may share a compatible batch. A
+live request keeps the same cut for prefill and decode until its sequence state
+is removed. Real routes at every jointly resident cut establish the mechanics;
+canonical cut normalization and a benefit comparison remain the next gate.
+
+The current execution server is one selected A6000. The same host provisions
+and controls both USB-attached phones and executes the measured CUDA suffix.
+The second A6000 is excluded. This physical boundary keeps server-managed
+resident phone islands, exact layer-boundary handoff, per-layer KV ownership,
+and compatible row reformation at one shared CUDA suffix.
+
+S24 physically proved cross-route batching but rejected its fixed policy on
+priority latency, CUDA work, SLO misses, and selected-GPU energy. S25 then
+closed a lower-level gap on the real devices: variable-row continuous batches,
+unequal request retirement, sequence-slot reuse, and a stable request route all
+work through OP12 `[0,8)`, OP15 `[8,16)`, and CUDA `[16,48)`. S25 is substrate,
+not the final route or benefit result. The next implementation must retain
+these mechanics and replace fixed routing with priority-safe, latest-start
+admission based only on measured finite-route profiles.
+
+Q-PIM Funnel uses two server-managed phones as resident accelerators for one
+busy CUDA server. The phones hold fixed Gemma-4-12B layer islands and their KV.
 They return boundary activations to a small cut-normalization stage and one
 shared continuously batched CUDA tail. This is PIM-style function shipping,
 not coherent memory mapping.
+
+The paper-critical compute hardware is exactly one selected CUDA GPU, OP12, and
+OP15. The current selected GPU is one A6000. The second A6000 is excluded from
+route computation and energy accounting.
 
 The paper asks one question:
 
 > Can heterogeneous phone prefixes feed one continuously batched GPU suffix,
 > through a small cut-normalization stage, while preserving a high-priority
-> service SLO and reducing one-GPU HBM or selected-GPU energy per completed
+> service SLO and reducing selected-GPU HBM or board energy per completed
 > mixed workload?
 
 The exact first topology is:
 
 ~~~text
-high-priority BGE ------------------------------------> A6000
+high-priority BGE ------------------------------> selected A6000
 
 low-priority Gemma on OP12 [0,6) -> CUDA bridge [6,8) --+
 low-priority Gemma on OP15 [0,8) -----------------------+-> one CUDA tail [8,48)
@@ -32,28 +78,92 @@ prototype may duplicate the small `[6,8)` range between that head and the
 bridge, which must be measured explicitly; it may not duplicate `[8,48)`. All
 requests enter the tail at layer 8, so server, OP12, and OP15 rows can share one
 native tail batch and one tail weight image. Phone weights are provisioned
-before the measured run. The second A6000 is excluded.
+before the measured run. The second A6000 remains outside route computation
+and energy accounting.
 
 ## Frozen contributions
 
 The work claims at most three system contributions:
 
-1. **Heterogeneous-cut normalization.** Device-specific prefix depths are
-   converted to one canonical merge cut without duplicating the common GPU
-   suffix. This allows a slower phone to offload fewer layers while a faster
-   phone offloads more.
-2. **Pipeline-wide continuous batching.** A request retains one sequence and KV
-   owner in every stage. Requests may enter and leave at token boundaries while
-   other requests continue. Ready normalized activations from both phones form
-   one changing CUDA-tail batch.
-3. **Deadline-aware merge release.** Each phone and the shared tail release at a
-   measured useful batch candidate or the earliest latest-start time. The
-   scheduler chooses only server-only, OP12-prefix, or OP15-prefix routes and
-   never waits unconditionally for B32.
+1. **Route-induced batch fragmentation.** The system identifies and measures a
+   stateful LLM serving problem that appears when heterogeneous prefix devices
+   need different layer cuts. Forcing the shallowest common cut wastes the
+   stronger phone, while route-specific CUDA tails duplicate suffix weights and
+   fragment ready rows. A serial fleet pipeline couples progress to the slowest
+   device.
+2. **Stateful cut lifting and batch morphing.** For a route ending at layer
+   `k`, a bounded lift executes exactly `[k,K)` and advances its activation and
+   per-layer KV state to canonical cut `K`. The shared `[K,L)` suffix then
+   repacks compatible rows from independently released upstream batches while
+   preserving request, position, epoch, and distributed KV ownership. The
+   complete model remains exact; no layer is skipped and no approximate exit is
+   used.
+3. **A physical mixed-workload implementation and decomposition.** The runtime
+   combines phone HTP prefixes, one CUDA lift, and one CUDA suffix on commodity
+   hardware. Matched controls separately measure shared-tail consolidation,
+   asymmetric cut lifting, and cross-stage batch reformation under mixed SLOs.
 
-These are one mechanism: heterogeneous prefixes create ready activations,
-continuous batching coalesces them at a canonical cut, and the release rule
-prevents batching from violating the SLO.
+Credit reservation, latest-start release, continuous batching within one
+executor, adaptive batch sizing, and priority scheduling are required substrate
+or policy. They are not claimed as individually novel techniques.
+
+### What batch morphing means
+
+The runtime does not preserve a fixed microbatch through the complete model.
+For example, OP15 may complete an eligible B24 prefix while OP12 completes B8.
+The bridge advances only the OP12 rows from layer 6 to layer 8. The tail may
+then execute B32, or release a smaller compatible subset when a latest-start
+expires. In a later token step, finished rows leave and new rows may enter each
+stage independently.
+
+~~~text
+OP12 local batch A:  [r0..r7]  --[0,6)--bridge--+
+OP15 local batch B:  [r8..r31] --[0,8)----------+-> tail batch X: [r0..r31]
+
+next step:
+OP12 local batch C:  [r32..r39] --bridge--------+
+OP15 survivors:      [r8..r23] -----------------+-> tail batch Y: [r8..r23,r32..r39]
+~~~
+
+Rows can split across release times and merge with rows from a different
+upstream route, but a row never changes request identity, route, sequence, KV
+owner, position, or epoch. This exact row-level transformation is the
+paper-critical mechanism to implement and measure.
+
+For route `r` with cut `k_r` and canonical cut `K`:
+
+~~~text
+lift(r,K) = layers [k_r,K)
+tail(K)   = layers [K,L)
+~~~
+
+`lift(r,K)` owns KV only for its layer interval and only for rows using that
+route. `tail(K)` owns one suffix weight image and suffix KV for every admitted
+row. This cut-lifting contract, rather than rebatching alone, is the proposed
+abstraction.
+
+### Prior-work boundary
+
+Q-PIM does not claim continuous batching, dynamic rebatching, chunked prefill,
+heterogeneous pipeline partitioning, adaptive batch sizing, edge/cloud split
+inference, or generic SLO scheduling by themselves. Close boundaries are:
+
+- BATON dynamically inserts and retires LLM requests within one batch.
+- DREX reforms batches at early-exit layer points.
+- Multi-user Co-inference independently chooses mobile split points and batches
+  matching stateless DNN subtasks at an edge GPU.
+- EdgeShard and Helix place LLM shards across heterogeneous devices or GPUs.
+- PPipe combines heterogeneous GPU pipelines with reservation-based adaptive
+  batching.
+- Libra splits LLM requests at token boundaries, transfers KV, and performs
+  two-level SLO-aware batching across GPU instances.
+
+The proposed distinction is the combination these systems do not directly
+provide: exact autoregressive execution across asymmetric *layer* cuts, a
+cut-lifting state transformation with per-layer distributed KV, independently
+changing upstream batches, and one shared suffix batch and weight image on a
+server GPU. This is a defensible research hypothesis, not a verified novelty
+claim, until the physical ablations and a full publication review pass.
 
 Authority order:
 
