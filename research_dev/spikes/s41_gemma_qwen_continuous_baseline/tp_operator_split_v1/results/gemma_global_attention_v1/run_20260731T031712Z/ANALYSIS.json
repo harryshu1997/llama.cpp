@@ -1,0 +1,103 @@
+{
+  "calibration": {
+    "a6000_240_5001_cuda_median_ms": 6.724929,
+    "a6000_900_5001_cuda_median_ms": 2.49456,
+    "a6000_990_5001_cuda_median_ms": 2.354921,
+    "matched_proxy_error_percent": -0.315,
+    "physical_4060_ti_cuda_median_ms": 2.362369
+  },
+  "correctness": {
+    "local_partition_relative_l2_4096": 0.0000701079695,
+    "local_partition_relative_l2_8192": 0.000159988994,
+    "phone_component_relative_l2_4096": 0.00017435276,
+    "phone_component_relative_l2_8192": 0.000223563286,
+    "phone_log_z_max_absolute_error": 0.000000953674316,
+    "treatment_relative_l2_4096": 0.0000702414828,
+    "treatment_relative_l2_8192": 0.000160199655
+  },
+  "geometry": {
+    "attention_heads": 16,
+    "global_kv_tokens": 262144,
+    "head_dimension": 512,
+    "kv_heads": 1,
+    "kv_type": "f16",
+    "model_geometry": "Gemma-4-12B global attention",
+    "request_bytes": 16428,
+    "response_bytes": 16564
+  },
+  "hardware": {
+    "phone": "OnePlus 15 HTP v81",
+    "proxy_gpu": "NVIDIA RTX A6000",
+    "proxy_gpu_graphics_mhz": 990,
+    "proxy_gpu_memory_mhz": 5001,
+    "reference_gpu": "NVIDIA GeForce RTX 4060 Ti",
+    "transport": "direct AOA USB"
+  },
+  "physical_4060_ti_controls": [
+    {
+      "context_tokens": 65536,
+      "cuda_median_ms": 0.595295
+    },
+    {
+      "context_tokens": 131072,
+      "cuda_median_ms": 1.186375
+    },
+    {
+      "context_tokens": 262144,
+      "cuda_median_ms": 2.362369
+    }
+  ],
+  "results": {
+    "phone_4096_gapped": {
+      "cuda_median_ms": 2.355132,
+      "cuda_p90_ms": 2.361203,
+      "cuda_shard_median_ms": 2.318972,
+      "latency_change_percent": -0.701,
+      "p90_change_percent": 10.588,
+      "phone_median_ms": 1.945623,
+      "phone_p90_ms": 2.545908,
+      "per_repetition_latency_change_percent": [
+        -0.593,
+        -0.691,
+        -0.727
+      ],
+      "split_median_ms": 2.33863,
+      "split_p90_ms": 2.611204
+    },
+    "phone_8192_gapped": {
+      "cuda_median_ms": 2.356254,
+      "cuda_p90_ms": 2.361114,
+      "cuda_shard_median_ms": 2.28153,
+      "latency_change_percent": 3.173,
+      "p90_change_percent": 10.471,
+      "phone_median_ms": 2.225502,
+      "phone_p90_ms": 2.561219,
+      "per_repetition_latency_change_percent": [
+        -1.239,
+        4.143,
+        3.166
+      ],
+      "split_median_ms": 2.431027,
+      "split_p90_ms": 2.608339
+    },
+    "phone_8192_steady": {
+      "cuda_median_ms": 2.353188,
+      "cuda_p90_ms": 2.358147,
+      "cuda_shard_median_ms": 2.281019,
+      "latency_change_percent": -2.239,
+      "p90_change_percent": -1.705,
+      "phone_median_ms": 2.006581,
+      "phone_p90_ms": 2.090131,
+      "per_repetition_latency_change_percent": [
+        -2.297,
+        -2.227,
+        -2.187
+      ],
+      "split_median_ms": 2.300496,
+      "split_p90_ms": 2.317941
+    }
+  },
+  "schema": "s41-gemma-global-attention-context-shard-v1",
+  "scope": "PROJECTED_Q_RESIDENT_KV_ATTENTION_CORE_ONLY",
+  "verdict": "MECHANISM_PASS_NARROW_STEADY_WIN_GAPPED_TAIL_FAIL"
+}

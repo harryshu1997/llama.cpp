@@ -1,0 +1,149 @@
+{
+  "limitations": [
+    "no real cross-device launch contention or USB-bus interference",
+    "quantilewise max is a proxy, not a paired order-statistic measurement",
+    "HTP uses the OpenCL full-width result as oracle because full-width HTP returned zeros after VTCM-TOO-SMALL",
+    "equal-power energy is normalized and is not a power measurement"
+  ],
+  "merge_ms": 0.0038,
+  "routes": [
+    {
+      "baseline": {
+        "median_ms": 31.4653265,
+        "p90_ms": 34.560737,
+        "p99_ms": 36.190121
+      },
+      "correctness_vs_full_opencl": {
+        "argmax_matches": 1,
+        "argmax_rows": 1,
+        "max_absolute": 9.1552734375e-05,
+        "non_finite": 0,
+        "relative_l2": 0.0002879554295526755
+      },
+      "equal_power_energy_change_percent": -28.19116941309985,
+      "label": "ffn_opencl",
+      "left": {
+        "median_ms": 11.2936415,
+        "p90_ms": 13.148044,
+        "p99_ms": 13.623799
+      },
+      "median_latency_reduction_percent": 64.09558470654993,
+      "median_speedup": 2.785172775623578,
+      "method": "quantilewise max of independently measured OP15 legs plus measured 0.0038 ms host sum",
+      "right": {
+        "median_ms": 9.9969365,
+        "p90_ms": 11.956011,
+        "p99_ms": 12.828018
+      },
+      "simulated_pair": {
+        "median_ms": 11.2974415,
+        "p90_ms": 13.151844,
+        "p99_ms": 13.627599
+      }
+    },
+    {
+      "baseline": {
+        "median_ms": 31.4653265,
+        "p90_ms": 34.560737,
+        "p99_ms": 36.190121
+      },
+      "correctness_vs_full_opencl": {
+        "argmax_matches": 1,
+        "argmax_rows": 1,
+        "max_absolute": 0.0028371810913085938,
+        "non_finite": 0,
+        "relative_l2": 0.012252612237341592
+      },
+      "equal_power_energy_change_percent": -68.14124588854973,
+      "label": "ffn_htp",
+      "left": {
+        "median_ms": 5.008430499999999,
+        "p90_ms": 5.585405,
+        "p99_ms": 5.638878
+      },
+      "median_latency_reduction_percent": 84.07062294427487,
+      "median_speedup": 6.277709395048772,
+      "method": "quantilewise max of independently measured OP15 legs plus measured 0.0038 ms host sum",
+      "right": {
+        "median_ms": 4.257531,
+        "p90_ms": 4.666818,
+        "p99_ms": 4.715512
+      },
+      "simulated_pair": {
+        "median_ms": 5.012230499999999,
+        "p90_ms": 5.589205,
+        "p99_ms": 5.642678
+      }
+    },
+    {
+      "baseline": {
+        "median_ms": 32.3937325,
+        "p90_ms": 34.991516,
+        "p99_ms": 35.949458
+      },
+      "correctness_vs_full_opencl": {
+        "argmax_matches": 1,
+        "argmax_rows": 1,
+        "max_absolute": 1.9073486328125e-06,
+        "non_finite": 0,
+        "relative_l2": 0.0002994546284821911
+      },
+      "equal_power_energy_change_percent": 47.18537914703098,
+      "label": "attention_opencl",
+      "left": {
+        "median_ms": 23.142685999999998,
+        "p90_ms": 25.267639,
+        "p99_ms": 25.757441
+      },
+      "median_latency_reduction_percent": 26.40731042648451,
+      "median_speedup": 1.3588306199912004,
+      "method": "quantilewise max of independently measured OP15 legs plus measured 0.0038 ms host sum",
+      "right": {
+        "median_ms": 23.835619,
+        "p90_ms": 26.256111,
+        "p99_ms": 27.952904
+      },
+      "simulated_pair": {
+        "median_ms": 23.839419,
+        "p90_ms": 26.259911,
+        "p99_ms": 27.956704
+      }
+    },
+    {
+      "baseline": {
+        "median_ms": 32.3937325,
+        "p90_ms": 34.991516,
+        "p99_ms": 35.949458
+      },
+      "correctness_vs_full_opencl": {
+        "argmax_matches": 1,
+        "argmax_rows": 1,
+        "max_absolute": 0.0015206336975097656,
+        "non_finite": 0,
+        "relative_l2": 0.4256566513790354
+      },
+      "equal_power_energy_change_percent": -68.64385109063922,
+      "label": "attention_htp",
+      "left": {
+        "median_ms": 5.0273065,
+        "p90_ms": 5.5879,
+        "p99_ms": 5.773497
+      },
+      "median_latency_reduction_percent": 84.32192554531962,
+      "median_speedup": 6.3783342966678465,
+      "method": "quantilewise max of independently measured OP15 legs plus measured 0.0038 ms host sum",
+      "right": {
+        "median_ms": 5.0749135,
+        "p90_ms": 5.618749,
+        "p99_ms": 5.711338
+      },
+      "simulated_pair": {
+        "median_ms": 5.0787135,
+        "p90_ms": 5.622549,
+        "p99_ms": 5.777297
+      }
+    }
+  ],
+  "schema": "s41-two-op15-simulation-v1",
+  "scope": "two OP15-equivalent phones; concurrency simulated, each leg measured"
+}

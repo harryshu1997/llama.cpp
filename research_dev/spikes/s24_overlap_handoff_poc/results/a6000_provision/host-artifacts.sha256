@@ -1,0 +1,15 @@
+bac4e29337273d1cb41aa36f4209ebcf63baa1162e6ab4dc55f6034b3d69b35a  /home/myid/zs89458/Documents/models/gemma-4-12B-it-f16.gguf
+37959e304f5f251171f2e74a7c3bdebdd6279eb99a9136806147da15f15e9394  /home/myid/zs89458/Documents/models/12b-f16-mid-8-16-s24.gguf
+2120b6a0e2af73a1f02d0f72879f062518b3dbfaf3da1264c3744da63b958a71  /home/myid/zs89458/Documents/llama.cpp-release/examples/layersplit/layersplit.cpp
+32bee37838bf3b84f08bf0b7d7d5ef15bcbc31d21f96f8cd54bf6948e32713c7  /home/myid/zs89458/Documents/llama.cpp-release/research_dev/shard_gguf.py
+01aab37abaf3af658edb1856f333636d7b2f2ac14661b7b6cc953f4b6ac8600f  /home/myid/zs89458/Documents/llama.cpp-release/npu-harness/build/llamacpp/android-arm64-hexagon-release-eafdc75e/bin/llama-layersplit
+e26616f6529a8f4d7ecc8b51a12d8129d27061cffc76c13fdc627e79b71e946b  /home/myid/zs89458/Documents/llama.cpp-release/npu-harness/build/llamacpp/android-arm64-hexagon-release-eafdc75e/bin/libggml-base.so
+00741a30f03f9c91d68f2ff78b7bfc1be8516993d98fd9bee748a129be47f6bb  /home/myid/zs89458/Documents/llama.cpp-release/npu-harness/build/llamacpp/android-arm64-hexagon-release-eafdc75e/bin/libggml-cpu.so
+d10238a4e6676bd780420586df575f7d5cd49c78707c498020e3b0f34d1c8f12  /home/myid/zs89458/Documents/llama.cpp-release/npu-harness/build/llamacpp/android-arm64-hexagon-release-eafdc75e/bin/libggml-hexagon.so
+70fca0359ffc50d52c591fd04829ca92f1561e19f10c1be059324f3c61a963c9  /home/myid/zs89458/Documents/llama.cpp-release/npu-harness/build/llamacpp/android-arm64-hexagon-release-eafdc75e/bin/libggml-opencl.so
+5d5c200754697e4149f90400fc4b47a63c2dc801c5ced500764db400c46a7372  /home/myid/zs89458/Documents/llama.cpp-release/npu-harness/build/llamacpp/android-arm64-hexagon-release-eafdc75e/bin/libggml.so
+7b04bb7965c07fbaada4184e9a299244b841c0228e0f58b8b1642556c5d3fddd  /home/myid/zs89458/Documents/llama.cpp-release/npu-harness/build/llamacpp/android-arm64-hexagon-release-eafdc75e/bin/libllama-common.so
+4dd5bd8cd2a52f82ddb8fc753885c50dee264d40e101d738facfcb2ef9851640  /home/myid/zs89458/Documents/llama.cpp-release/npu-harness/build/llamacpp/android-arm64-hexagon-release-eafdc75e/bin/libllama.so
+77a34d3f03b17709f3f6473f37cb7795314e51fa3e5e652b5c37d53cfd05c754  /home/myid/zs89458/Documents/llama.cpp-release/npu-harness/build/llamacpp/android-arm64-hexagon-release-eafdc75e/ggml/src/ggml-hexagon/ship/libc++_shared.so
+39c952422e4012abd32ac25a1fba44dfa8a6877e3c84bb968ab964913ae7a2ba  /home/myid/zs89458/Documents/llama.cpp-release/npu-harness/build/llamacpp/android-arm64-hexagon-release-eafdc75e/ggml/src/ggml-hexagon/libggml-htp-v75.so
+bbaf7ee312e488a35afcc2db194b44f02e0eb93d0c09f4ae9c1de21742635f94  /home/myid/zs89458/Documents/llama.cpp-release/npu-harness/build/llamacpp/android-arm64-hexagon-release-eafdc75e/ggml/src/ggml-hexagon/libggml-htp-v81.so

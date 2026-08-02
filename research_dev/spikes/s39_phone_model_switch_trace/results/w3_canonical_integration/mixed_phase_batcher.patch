@@ -1,0 +1,56 @@
+diff --git a/research_dev/spikes/s39_phone_model_switch_trace/mixed_phase_batcher.py b/research_dev/spikes/s39_phone_model_switch_trace/mixed_phase_batcher.py
+index 245c62b47..b3cefb085 100644
+--- a/research_dev/spikes/s39_phone_model_switch_trace/mixed_phase_batcher.py
++++ b/research_dev/spikes/s39_phone_model_switch_trace/mixed_phase_batcher.py
+@@ -200,7 +200,10 @@ class MixedPhaseBatcher:
+         return 0 if pending.entry.phase == PHASE_DECODE else 1
+ 
+     @classmethod
+-    def _dispatch_order(cls, pending: _Pending) -> tuple[int, int, int, int]:
++    def _selection_order(
++        cls,
++        pending: _Pending,
++    ) -> tuple[int, int, int, int]:
+         return (
+             cls._phase_rank(pending),
+             pending.entry.priority,
+@@ -208,6 +211,21 @@ class MixedPhaseBatcher:
+             pending.order,
+         )
+ 
++    @classmethod
++    def _physical_order(
++        cls,
++        pending: _Pending,
++    ) -> tuple[int, int, int, int, int, int]:
++        row = pending.entry.row
++        return (
++            cls._phase_rank(pending),
++            row.seq_id,
++            row.position,
++            row.route_epoch,
++            row.request_id,
++            pending.order,
++        )
++
+     @staticmethod
+     def _deadline_order(pending: _Pending) -> tuple[int, int, int]:
+         return (
+@@ -248,7 +266,7 @@ class MixedPhaseBatcher:
+                     for item in self._pending
+                     if id(item) not in selected_ids
+                 ),
+-                key=self._dispatch_order,
++                key=self._selection_order,
+             )
+             selected.extend(remainder[: self.max_rows - len(selected)])
+ 
+@@ -256,7 +274,7 @@ class MixedPhaseBatcher:
+         self._pending = [
+             item for item in self._pending if id(item) not in selected_ids
+         ]
+-        selected.sort(key=self._dispatch_order)
++        selected.sort(key=self._physical_order)
+         self._condition.notify_all()
+         return selected, reason
+ 

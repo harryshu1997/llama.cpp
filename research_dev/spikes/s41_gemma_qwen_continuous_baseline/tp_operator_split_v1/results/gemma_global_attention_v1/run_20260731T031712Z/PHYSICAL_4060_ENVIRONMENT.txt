@@ -1,0 +1,4 @@
+NVIDIA GeForce RTX 4060 Ti, GPU-3d43c513-5a75-7fd0-a503-da920e0ffa08, 595.84, 3165 MHz, 9001 MHz
+ce0acca64a540aaf5278f3eec5e68383bf4f36dc1a2922a36754820ae8199603  /dev/shm/s41-gemma-global-attention-host
+758a4476d7a4a181f640a8d671fc22cefec61f81fd2360816e186ecceb3a7243  /tmp/s41-gemma-global-build/gemma_global_attention_host.cpp
+ab1d1235468d43ce9fd6d04304a612ad69044ed2122f787f77ae22380d702a5a  /tmp/s41-gemma-global-build/gemma_global_attention_protocol.h

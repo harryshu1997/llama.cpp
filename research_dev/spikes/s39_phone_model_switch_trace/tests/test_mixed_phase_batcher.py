@@ -75,6 +75,93 @@ class MixedPhaseBatcherTests(unittest.TestCase):
         )
         self.assertTrue(batcher.events[0]["mixed_phase"])
 
+    def test_physical_rows_are_canonical_and_futures_keep_ownership(self):
+        client = FakeClient()
+        batcher = MixedPhaseBatcher("test", client, 8, 5, 100000, 8)
+        entries = (
+            PhaseRow(row(23, 3, 1), PHASE_PREFILL, 0),
+            PhaseRow(row(15, 5, 5), PHASE_DECODE, 0),
+            PhaseRow(row(21, 1, 2), PHASE_PREFILL, 0),
+            PhaseRow(row(12, 2, 5), PHASE_DECODE, 0),
+            PhaseRow(row(21, 1, 0), PHASE_PREFILL, 0),
+        )
+        futures = batcher.submit_many(entries, 1.0)
+        results = tuple(future.result(timeout=1.0) for future in futures)
+        batcher.stop(1.0)
+
+        self.assertEqual(
+            [
+                (item.seq_id, item.position)
+                for item in client.calls[0]
+            ],
+            [(2, 5), (5, 5), (1, 0), (1, 2), (3, 1)],
+        )
+        self.assertEqual(
+            [result.request_id for result in results],
+            [23, 15, 21, 12, 21],
+        )
+        self.assertEqual(
+            [result.position for result in results],
+            [1, 5, 2, 5, 0],
+        )
+
+    def test_priority_does_not_fragment_physical_order(self):
+        client = FakeClient()
+        batcher = MixedPhaseBatcher("test", client, 8, 2, 100000, 8)
+        entries = (
+            PhaseRow(row(17, 7, 5), PHASE_DECODE, 0),
+            PhaseRow(row(11, 1, 5), PHASE_DECODE, 9),
+        )
+        futures = batcher.submit_many(entries, 1.0)
+        tuple(future.result(timeout=1.0) for future in futures)
+        batcher.stop(1.0)
+
+        self.assertEqual(
+            [item.seq_id for item in client.calls[0]],
+            [1, 7],
+        )
+        self.assertEqual(
+            batcher.events[0]["priorities"],
+            [9, 0],
+        )
+
+    def test_shuffled_b32_prefill_is_physically_canonical(self):
+        client = FakeClient()
+        batcher = MixedPhaseBatcher("test", client, 160, 160, 100000, 160)
+        shuffled = [(17 * index + 11) % 32 for index in range(32)]
+        entries = tuple(
+            PhaseRow(
+                row(1000 + sequence_id, sequence_id, position),
+                PHASE_PREFILL,
+                0,
+            )
+            for sequence_id in shuffled
+            for position in range(5)
+        )
+        futures = batcher.submit_many(entries, 1.0)
+        results = tuple(future.result(timeout=1.0) for future in futures)
+        batcher.stop(1.0)
+
+        self.assertEqual(
+            [
+                (item.seq_id, item.position)
+                for item in client.calls[0]
+            ],
+            [
+                (sequence_id, position)
+                for sequence_id in range(32)
+                for position in range(5)
+            ],
+        )
+        self.assertEqual(
+            [result.seq_id for result in results],
+            [
+                sequence_id
+                for sequence_id in shuffled
+                for _ in range(5)
+            ],
+        )
+
     def test_deadline_releases_partial_batch(self):
         client = FakeClient()
         batcher = MixedPhaseBatcher("test", client, 8, 8, 1000, 8)

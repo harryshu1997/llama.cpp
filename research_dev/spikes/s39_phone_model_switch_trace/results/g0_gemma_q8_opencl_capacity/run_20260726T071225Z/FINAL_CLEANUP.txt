@@ -1,0 +1,17 @@
+2026-07-26T07:18:02.372462213Z
+DEVICE=3C15AU002CL00000
+serial=3C15AU002CL00000
+boot_id=be64b1d1-91b9-4791-a559-3754d9df3ff1
+matching_process_count=0
+MemAvailable:   11581836 kB
+SwapTotal:       9961468 kB
+SwapFree:        7732380 kB
+DEVICE=5ae7a43d
+serial=5ae7a43d
+boot_id=3ba01077-fa7c-4a69-859d-705eee5041f9
+matching_process_count=0
+MemAvailable:    7356392 kB
+SwapTotal:       7864316 kB
+SwapFree:        5698812 kB
+FORWARDS
+

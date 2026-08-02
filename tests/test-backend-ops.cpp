@@ -1551,6 +1551,16 @@ struct test_case {
             n_runs = (int)std::min<int64_t>(ggml_graph_size(gf) - ggml_graph_n_nodes(gf), target_size / op_size(out)) + 1;
         }
 
+        // opt-in cap: the Hexagon session aborts in dspqueue_read when a graph
+        // carries more ops than its queue depth (n-ops 1024), so allow the
+        // caller to bound the duplication. Unset => unchanged behaviour.
+        if (const char * cap_env = getenv("TP_RUNS")) {
+            const int cap = atoi(cap_env);
+            if (cap > 0 && cap < n_runs) {
+                n_runs = cap;
+            }
+        }
+
         // duplicate the op
         for (int i = 1; i < n_runs; i++) {
             ggml_graph_add_node(gf, out);
@@ -4292,6 +4302,71 @@ struct test_gemm_roofline : public test_gemm_batch {
     test_gemm_roofline(int64_t M) : test_gemm_batch(GGML_TYPE_F16, GGML_TYPE_F32, 4096, 3840, M) {}
     std::string op_desc(ggml_tensor * t) override { GGML_UNUSED(t); return "GEMM_ROOFLINE"; }
 };
+
+// TP-slice study (s41 follow-up): env-driven arbitrary-shape matmul so sliced
+// tensor-parallel candidates can be timed on any backend with one tool.
+// Spec via env TP_SLICE="type:NxK;type:NxK@M;..." - M defaults to 1 (decode
+// GEMV); "@64" times the same slice as a 64-token prefill GEMM.
+// Self-contained on test_case so the same patch drops into any checkout.
+struct test_tp_slice : public test_case {
+    const ggml_type type_w;
+    const int64_t   N;
+    const int64_t   K;
+    const int64_t   M;
+
+    test_tp_slice(ggml_type type_w, int64_t N, int64_t K, int64_t M)
+        : type_w(type_w), N(N), K(K), M(M) {}
+
+    std::string op_desc(ggml_tensor * t) override { GGML_UNUSED(t); return "TP_SLICE"; }
+    std::string vars()                   override { return VARS_TO_STR4(type_w, N, K, M); }
+    double   max_nmse_err()              override { return 5e-4; }
+    uint64_t op_flops(ggml_tensor * t)   override { GGML_UNUSED(t); return 2ull * N * K * M; }
+
+    ggml_tensor * build_graph(ggml_context * ctx) override {
+        ggml_tensor * w = ggml_new_tensor_2d(ctx, type_w, K, N); ggml_set_name(w, "w");
+        ggml_tensor * a = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, K, M); ggml_set_name(a, "a");
+        ggml_tensor * out = ggml_mul_mat(ctx, w, a);
+        ggml_set_name(out, "out");
+        return out;
+    }
+};
+
+static void add_tp_slice_cases(std::vector<std::unique_ptr<test_case>> & test_cases) {
+    const char * env = getenv("TP_SLICE");
+    if (env == nullptr) {
+        return;
+    }
+    std::string spec(env);
+    size_t pos = 0;
+    while (pos < spec.size()) {
+        const size_t semi = spec.find(';', pos);
+        const std::string item = spec.substr(pos, semi == std::string::npos ? std::string::npos : semi - pos);
+        pos = semi == std::string::npos ? spec.size() : semi + 1;
+        const size_t c = item.find(':');
+        const size_t x = item.find('x', c == std::string::npos ? 0 : c);
+        if (c == std::string::npos || x == std::string::npos) {
+            continue;
+        }
+        const std::string tn = item.substr(0, c);
+        ggml_type tw = GGML_TYPE_COUNT;
+        for (int t = 0; t < GGML_TYPE_COUNT; t++) {
+            const char * nm = ggml_type_name((ggml_type) t);
+            if (nm != nullptr && tn == nm) { tw = (ggml_type) t; break; }
+        }
+        if (tw == GGML_TYPE_COUNT) {
+            fprintf(stderr, "TP_SLICE: unknown type '%s'\n", tn.c_str());
+            continue;
+        }
+        const int64_t n = atoll(item.substr(c + 1, x - c - 1).c_str());
+        const size_t at = item.find('@', x);
+        const int64_t k = atoll(item.substr(x + 1,
+            at == std::string::npos ? std::string::npos : at - x - 1).c_str());
+        const int64_t m = at == std::string::npos ? 1 : atoll(item.substr(at + 1).c_str());
+        if (n > 0 && k > 0 && m > 0) {
+            test_cases.emplace_back(new test_tp_slice(tw, n, k, m));
+        }
+    }
+}
 
 // GGML_HINT_SRC0_IS_HADAMARD
 struct test_mul_mat_hadamard : public test_mul_mat {
@@ -9509,6 +9584,12 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
 // Test cases for performance evaluation: should be representative of real-world use cases
 static std::vector<std::unique_ptr<test_case>> make_test_cases_perf() {
     std::vector<std::unique_ptr<test_case>> test_cases;
+
+    // TP-slice study: when TP_SLICE is set, run exactly the requested shapes.
+    add_tp_slice_cases(test_cases);
+    if (!test_cases.empty()) {
+        return test_cases;
+    }
 
     // Conv2d: K=CRS=NPQ=4096 matmul performance
     uint32_t                        iwh_idx  = 0;

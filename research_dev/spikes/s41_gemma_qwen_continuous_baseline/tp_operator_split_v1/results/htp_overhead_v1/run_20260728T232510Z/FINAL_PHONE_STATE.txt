@@ -1,0 +1,9 @@
+Bus 008 Device 075: ID 22d9:2772 OPPO Electronics Corp. OnePlus 15
+List of devices attached
+3C15AU002CL00000       device usb:8-3 product:CPH2749 model:CPH2749 device:OP611FL1 transport_id:27
+5ae7a43d               device usb:6-2 product:CPH2583 model:CPH2583 device:OP595DL1 transport_id:2
+172.20.173.218:5555    device product:CPH2749 model:CPH2749 device:OP611FL1 transport_id:25
+
+usb_config=ptp,adb
+idle_timer=80
+worker_pids=

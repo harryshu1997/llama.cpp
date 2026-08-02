@@ -1,0 +1,1 @@
+{"completed":60,"control":"C3","output":"research_dev/spikes/s24_overlap_handoff_poc/results/cp6_batchfix_real_workloads/runs/dense-mechanics/runtime.json","slo_misses":0,"status":"RUN_COMPLETE"}

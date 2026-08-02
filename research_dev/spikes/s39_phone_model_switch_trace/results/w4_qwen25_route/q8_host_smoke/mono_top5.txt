@@ -1,0 +1,6 @@
+ARGMAX: id=12095 logit=20.010298 piece=' Paris'
+  0  id=12095  logit=20.010298  piece=' Paris'
+  1  id=510  logit=19.337484  piece=':
+  2  id=1304  logit=18.618015  piece=' __'
+  3  id=30743  logit=18.202093  piece=' ____'
+  4  id=32671  logit=18.170080  piece=' ______'

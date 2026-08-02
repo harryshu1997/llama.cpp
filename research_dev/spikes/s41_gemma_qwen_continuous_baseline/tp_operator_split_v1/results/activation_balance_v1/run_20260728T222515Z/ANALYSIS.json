@@ -1,0 +1,125 @@
+{
+  "schema": "s41.activation_balance.analysis.v1",
+  "date": "2026-07-28",
+  "verdict": "QWEN_GATE_UP_1792_MEDIAN_PARITY; P90_TAIL_WAIT_REMAINS; ENERGY_UNMEASURED",
+  "scope": {
+    "model_shape": "qwen3_14b",
+    "operation": "one synthetic M=1 FFN layer after the causal attention boundary",
+    "phone_work": "suffix columns of fused gate, up, SiLU, and multiply",
+    "server_work": "complementary gate/up prefix followed by suffix down and add",
+    "weight_type": "q8_0",
+    "input_transport_type": "scaled_i8",
+    "return_transport_type": "f16_activation",
+    "mode": "steady_corun"
+  },
+  "hardware": {
+    "server_gpu": {
+      "name": "NVIDIA RTX A6000",
+      "uuid": "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f",
+      "graphics_clock_mhz": 405,
+      "memory_clock_mhz": 5001,
+      "note": "The A6000 is a transport host and clock-reduced proxy, not an exact RTX 4060 Ti substitute."
+    },
+    "phone": {
+      "model": "CPH2749",
+      "serial": "3C15AU002CL00000",
+      "backend": "HTP v81",
+      "transport": "direct AOA USB",
+      "worker_affinity": "CPUs 6-7",
+      "worker_scheduler": "SCHED_FIFO priority 20"
+    }
+  },
+  "objective": {
+    "expression": "minimize max(cuda_prefix, phone_total) + late_cuda",
+    "note": "Equal phone and CUDA prefix times alone are insufficient because the returned activation still requires a suffix down projection on CUDA."
+  },
+  "single_process_sweep": [
+    {"phone_cols": 256,  "cuda_prefix_median_ms": 0.650923, "phone_median_ms": 0.317832, "phone_p90_ms": 0.363400, "late_cuda_median_ms": 0.042151, "split_total_median_ms": 0.693144, "latency_change_percent": 3.535},
+    {"phone_cols": 512,  "cuda_prefix_median_ms": 0.641585, "phone_median_ms": 0.361586, "phone_p90_ms": 0.410390, "late_cuda_median_ms": 0.045929, "split_total_median_ms": 0.688565, "latency_change_percent": 2.874},
+    {"phone_cols": 768,  "cuda_prefix_median_ms": 0.632838, "phone_median_ms": 0.395421, "phone_p90_ms": 0.440278, "late_cuda_median_ms": 0.048894, "split_total_median_ms": 0.682594, "latency_change_percent": 1.985},
+    {"phone_cols": 1024, "cuda_prefix_median_ms": 0.623811, "phone_median_ms": 0.436501, "phone_p90_ms": 0.485815, "late_cuda_median_ms": 0.061368, "split_total_median_ms": 0.686261, "latency_change_percent": 2.513},
+    {"phone_cols": 1280, "cuda_prefix_median_ms": 0.615625, "phone_median_ms": 0.482389, "phone_p90_ms": 0.547464, "late_cuda_median_ms": 0.065827, "split_total_median_ms": 0.682684, "latency_change_percent": 1.974},
+    {"phone_cols": 1536, "cuda_prefix_median_ms": 0.605866, "phone_median_ms": 0.525372, "phone_p90_ms": 0.575438, "late_cuda_median_ms": 0.068642, "split_total_median_ms": 0.675811, "latency_change_percent": 0.987},
+    {"phone_cols": 1600, "cuda_prefix_median_ms": 0.606147, "phone_median_ms": 0.531273, "phone_p90_ms": 0.582441, "late_cuda_median_ms": 0.075525, "split_total_median_ms": 0.683405, "latency_change_percent": 2.073},
+    {"phone_cols": 1664, "cuda_prefix_median_ms": 0.603401, "phone_median_ms": 0.552003, "phone_p90_ms": 0.593613, "late_cuda_median_ms": 0.075616, "split_total_median_ms": 0.680440, "latency_change_percent": 1.689},
+    {"phone_cols": 1728, "cuda_prefix_median_ms": 0.602670, "phone_median_ms": 0.538827, "phone_p90_ms": 0.626005, "late_cuda_median_ms": 0.075565, "split_total_median_ms": 0.679979, "latency_change_percent": 1.600},
+    {"phone_cols": 1792, "cuda_prefix_median_ms": 0.597089, "phone_median_ms": 0.555058, "phone_p90_ms": 0.602861, "late_cuda_median_ms": 0.071568, "split_total_median_ms": 0.670431, "latency_change_percent": 0.169},
+    {"phone_cols": 1856, "cuda_prefix_median_ms": 0.597089, "phone_median_ms": 0.560318, "phone_p90_ms": 0.614643, "late_cuda_median_ms": 0.077961, "split_total_median_ms": 0.676742, "latency_change_percent": 1.044},
+    {"phone_cols": 1920, "cuda_prefix_median_ms": 0.594184, "phone_median_ms": 0.575268, "phone_p90_ms": 0.630233, "late_cuda_median_ms": 0.078010, "split_total_median_ms": 0.679979, "latency_change_percent": 1.514},
+    {"phone_cols": 1984, "cuda_prefix_median_ms": 0.593212, "phone_median_ms": 0.584936, "phone_p90_ms": 0.635764, "late_cuda_median_ms": 0.078251, "split_total_median_ms": 0.682264, "latency_change_percent": 1.949},
+    {"phone_cols": 2048, "cuda_prefix_median_ms": 0.588092, "phone_median_ms": 0.605095, "phone_p90_ms": 0.644240, "late_cuda_median_ms": 0.074724, "split_total_median_ms": 0.684809, "latency_change_percent": 2.314}
+  ],
+  "fresh_process_repetitions": {
+    "iterations_per_process": 500,
+    "processes_per_candidate": 3,
+    "candidate_1536": {
+      "median_of_process_medians": {
+        "cuda_full_ms": 0.669499,
+        "cuda_prefix_ms": 0.605766,
+        "phone_total_ms": 0.528377,
+        "phone_p90_ms": 0.572382,
+        "exposed_wait_p90_ms": 0.0,
+        "late_cuda_ms": 0.068853,
+        "split_total_ms": 0.676041,
+        "latency_change_percent": 0.947,
+        "hidden_fraction": 0.946
+      },
+      "final_relative_l2": 0.00389676255,
+      "classification": "conservative_tail_safe_cut"
+    },
+    "candidate_1664": {
+      "median_of_process_medians": {
+        "cuda_full_ms": 0.669259,
+        "cuda_prefix_ms": 0.603301,
+        "phone_total_ms": 0.549037,
+        "phone_p90_ms": 0.599153,
+        "exposed_wait_p90_ms": 0.0,
+        "late_cuda_ms": 0.075365,
+        "split_total_ms": 0.680099,
+        "latency_change_percent": 1.637,
+        "hidden_fraction": 0.902
+      },
+      "final_relative_l2": 0.00403059429,
+      "classification": "rejected_cuda_shape_discontinuity"
+    },
+    "candidate_1792": {
+      "median_of_process_medians": {
+        "cuda_full_ms": 0.669488,
+        "cuda_prefix_ms": 0.597330,
+        "phone_total_ms": 0.561561,
+        "phone_p90_ms": 0.609964,
+        "exposed_wait_p90_ms": 0.016021,
+        "late_cuda_ms": 0.071748,
+        "split_total_ms": 0.670651,
+        "latency_change_percent": 0.214,
+        "hidden_fraction": 0.756
+      },
+      "final_relative_l2": 0.00431994134,
+      "classification": "selected_median_latency_cut"
+    }
+  },
+  "selection": {
+    "median_latency_cut_phone_cols": 1792,
+    "tail_safe_cut_phone_cols": 1536,
+    "reason": "1792 is aligned to seven 256-column quantization groups, keeps the phone median 0.035769 ms ahead of the CUDA prefix, and makes the saved CUDA prefix work approximately equal to the late CUDA continuation.",
+    "claim": "median parity, not a speedup",
+    "not_claimed": [
+      "p90 parity",
+      "all-sample no-wait",
+      "full-model improvement",
+      "continuous-batch improvement",
+      "RTX 4060 Ti treatment performance",
+      "server or fleet energy improvement"
+    ]
+  },
+  "source_sha256": {
+    "causal_activation_host.cpp": "41e03e35820f600bc91f68e442bafd7ad34c772b26694a93c04fd8991a288446",
+    "causal_activation_worker.cpp": "e0ef5f2fb9541252e5ade1b20671d7a3b83a92a8903f1a483499e9d272b3ec73",
+    "causal_ffn_protocol.h": "fd13ea2810c0f2352c711b564e8112820bd0cf26e48ec814232af59cd17c5b4d",
+    "causal_quantized_weights.h": "f571dbf0d57f05e456e0bbd5e6f63a7078e6d80e89b9ad20ecb97c2bc1e5dbda"
+  },
+  "binary_sha256": {
+    "host": "4a396e6153bdffdf6734892462cfa64fac8afd7f18e27e38e855236d4a5810e6",
+    "phone": "05ec1ad07c7670a91c31e6d7f43f9ceba6c37debc65a4e033d3bf5c8b8e3ffd4"
+  }
+}

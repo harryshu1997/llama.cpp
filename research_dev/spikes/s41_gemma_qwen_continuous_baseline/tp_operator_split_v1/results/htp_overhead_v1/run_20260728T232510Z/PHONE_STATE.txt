@@ -1,0 +1,24 @@
+model=CPH2749
+serial=3C15AU002CL00000
+boot_id=acd37315-dce4-4c24-8e04-fc0060d992a2
+usb_config=accessory,adb
+idle_timer=worker_pids=battery=Current OPLUS Battery Service state:
+  Charger voltage : 5007
+  Battery current : -252
+  ChargerTechnology: 0
+  ChargeFastCharger: false
+  PlugType: 2
+  UpdatesStopped: false
+  UsbHwStatus: 0
+  BatteryHwStatus: 0
+  HwStatusIsSet: 1
+  BatteryIcStatus: 0
+  IcStatusIsSet: 1
+
+  mUsbStatus: 0
+  PhoneTemp: 270
+  ThermalFeatureOn: true
+Current Battery Service state:
+  AC powered: false
+  USB powered: true
+  Wireless powered: false

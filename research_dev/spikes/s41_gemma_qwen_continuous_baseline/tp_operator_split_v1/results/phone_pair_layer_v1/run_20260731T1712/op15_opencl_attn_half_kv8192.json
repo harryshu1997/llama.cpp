@@ -1,0 +1,70 @@
+{
+  "correctness": {
+    "argmax_matches": 0,
+    "argmax_rows": 1,
+    "max_absolute": 0.0010361671447753906,
+    "non_finite": 0,
+    "relative_l2": 0.40549843097189237
+  },
+  "geometry": {
+    "batch": 1,
+    "counts": [
+      4
+    ],
+    "k": 5120,
+    "n_ff": null,
+    "n_kv": 8192,
+    "offsets": [
+      0
+    ]
+  },
+  "iterations": 30,
+  "label": "op15_opencl_attn_half_kv8192",
+  "legs": [
+    {
+      "compute_us": {
+        "max_ms": 20.538,
+        "median_ms": 18.717,
+        "min_ms": 18.286,
+        "p90_ms": 19.086,
+        "p99_ms": 19.649
+      },
+      "get_us": {
+        "max_ms": 0.094,
+        "median_ms": 0.0205,
+        "min_ms": 0.018,
+        "p90_ms": 0.029,
+        "p99_ms": 0.029
+      },
+      "index": 0,
+      "latency": {
+        "max_ms": 26.009286,
+        "median_ms": 23.142685999999998,
+        "min_ms": 22.145794,
+        "p90_ms": 25.267639,
+        "p99_ms": 25.757441
+      },
+      "set_us": {
+        "max_ms": 0.114,
+        "median_ms": 0.038,
+        "min_ms": 0.018,
+        "p90_ms": 0.074,
+        "p99_ms": 0.075
+      }
+    }
+  ],
+  "operator": "attention",
+  "output_fast_hash": "5f91f6ff",
+  "pair_makespan": {
+    "max_ms": 26.009286,
+    "median_ms": 23.142685999999998,
+    "min_ms": 22.145794,
+    "p90_ms": 25.267639,
+    "p99_ms": 25.757441
+  },
+  "schema": "s41-phone-pair-client-v1",
+  "transports": [
+    "aoa"
+  ],
+  "warmup": 10
+}

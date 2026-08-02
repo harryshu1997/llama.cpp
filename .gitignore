@@ -26,11 +26,44 @@
 *.stdout
 *.DS_Store
 
+# Model checkpoints / tensor data
+
+*.ckpt
+*.npy
+*.npz
+*.onnx
+*.pt
+*.pth
+*.safetensors
+*.tflite
+
+# Profiler captures / local databases
+
+*.db
+*.nsys-rep
+*.qdrep
+*.sqlite
+*.sqlite3
+
+# Generated archives
+
+*.7z
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+*.zst
+
 # IDE / OS
 
 /.cache/
 /.ccls-cache/
 /.direnv/
+*.env
+.env
+.env.*
+!*.env.example
+!.env.example
 /.envrc
 /.idea/
 /.swiftpm
@@ -99,11 +132,16 @@
 # Python
 
 /.venv
+**/.venv/
 __pycache__/
 */poetry.lock
 poetry.toml
 poetry.lock
 uv.lock
+
+# Local dependency trees
+
+node_modules/
 
 # Nix
 
@@ -168,6 +206,10 @@ flake.lock
 /research_dev/spikes/**/results/**/*.strings
 /research_dev/spikes/**/results/**/*.svg
 /research_dev/spikes/**/results/**/runtime.json
+/research_dev/spikes/**/results/**/*.raw
+/research_dev/spikes/**/results/**/BIN/
+/research_dev/spikes/**/results/**/FINAL_BINARIES/
+/research_dev/spikes/**/results/**/PHYSICAL_*_BIN/
 /research_dev/spikes/**/bundle*/trace_timeline.png
 /research_dev/spikes/**/bundle*/trace_timeline.svg
 /research_dev/*_preview.png

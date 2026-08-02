@@ -1,0 +1,47 @@
+{
+  "schema": "s22-route-profiles-v1",
+  "routes": [
+    {
+      "route_id": "R0_CUDA",
+      "head_name": "cuda",
+      "offloaded_layers": 0,
+      "fixed_us": 0,
+      "p95_step_us": 200000,
+      "profiled_batch": 4,
+      "max_active": 4,
+      "gather_cap_us": 100000,
+      "wait_stages_per_step": 2,
+      "evidence_sha256": "sha256:84f4cfaf054fc97941b9ffe7069cd4039e3d32286c7ea1f397cd810b4c6881d6",
+      "evidence_path": "results/r0-cuda-b4.json",
+      "correctness_scope": "NUMERICALLY_UNCERTIFIED"
+    },
+    {
+      "route_id": "R1_OP15",
+      "head_name": "op15",
+      "offloaded_layers": 8,
+      "fixed_us": 0,
+      "p95_step_us": 450000,
+      "profiled_batch": 4,
+      "max_active": 4,
+      "gather_cap_us": 100000,
+      "wait_stages_per_step": 2,
+      "evidence_sha256": "sha256:cbd24fe01ee440cdc6ec658c2c1e8d7ff7c2b5c6c97408eac00fd487284c3896",
+      "evidence_path": "results/three-device-4060-b4.json",
+      "correctness_scope": "NUMERICALLY_UNCERTIFIED"
+    },
+    {
+      "route_id": "R2_OP12",
+      "head_name": "op12",
+      "offloaded_layers": 8,
+      "fixed_us": 0,
+      "p95_step_us": 700000,
+      "profiled_batch": 4,
+      "max_active": 4,
+      "gather_cap_us": 100000,
+      "wait_stages_per_step": 2,
+      "evidence_sha256": "sha256:cbd24fe01ee440cdc6ec658c2c1e8d7ff7c2b5c6c97408eac00fd487284c3896",
+      "evidence_path": "results/three-device-4060-b4.json",
+      "correctness_scope": "NUMERICALLY_UNCERTIFIED"
+    }
+  ]
+}

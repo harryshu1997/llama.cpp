@@ -1,0 +1,1 @@
+python3 /home/myid/zs89458/Documents/llama.cpp-release/research_dev/shard_gguf.py /home/myid/zs89458/Documents/models/gemma-4-12B-it-f16.gguf /home/myid/zs89458/Documents/models/12b-f16-mid-8-16-s24.gguf --start 8 --end 16 

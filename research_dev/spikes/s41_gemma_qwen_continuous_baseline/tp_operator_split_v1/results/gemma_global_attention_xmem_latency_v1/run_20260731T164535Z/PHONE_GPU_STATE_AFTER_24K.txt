@@ -1,0 +1,10 @@
+/sys/class/kgsl/kgsl-3d0/gpuclk
+222000000
+/sys/class/kgsl/kgsl-3d0/max_gpuclk
+500000000
+/sys/class/kgsl/kgsl-3d0/thermal_pwrlevel
+9
+/sys/class/kgsl/kgsl-3d0/default_pwrlevel
+15
+/sys/class/kgsl/kgsl-3d0/idle_timer
+80

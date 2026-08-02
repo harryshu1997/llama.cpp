@@ -1,0 +1,87 @@
+{
+  "schema": "s41-causal-q8-final-analysis-v1",
+  "verdict": "CAUSAL_PHONE_FFN_OFFLOAD_CORRECT_BUT_LATENCY_AND_GPU_ENERGY_NEGATIVE",
+  "scope": {
+    "server_treatment": "RTX A6000 at locked 405 MHz graphics and 5001 MHz memory",
+    "phone": "OnePlus 15 HTP over direct AOA USB",
+    "workload": "one synthetic decode layer with a 512-entry KV cache",
+    "precision": "q8_0 on CUDA and HTP",
+    "phone_columns": 256,
+    "repetitions": 3,
+    "power_scope": "GPU_BOARD_ONLY"
+  },
+  "qwen3_14b": {
+    "shape": {
+      "n_embd": 5120,
+      "n_head": 40,
+      "n_head_kv": 8,
+      "head_dim": 128,
+      "n_ff": 17408
+    },
+    "weight_hash": "e3ef03dd51249350",
+    "correctness": {
+      "phone_slice_relative_l2": 0.0148265369,
+      "final_relative_l2": 0.000935434539,
+      "final_argmax_reference": 284,
+      "final_argmax_treatment": 284,
+      "non_finite": 0
+    },
+    "latency_ms": {
+      "real_4060_ti_monolithic_median": 1.367026,
+      "a6000_monolithic_median": 1.031305,
+      "a6000_plus_phone_median": 1.636709,
+      "treatment_over_a6000_control": 1.5870271161,
+      "treatment_over_real_4060_control": 1.1972771549
+    },
+    "a6000_gpu_board": {
+      "monolithic_power_w_median": 124.6771173479,
+      "treatment_power_w_median": 97.3216150904,
+      "power_change_fraction": -0.2194107695,
+      "monolithic_j_per_layer_median": 0.1286399269,
+      "treatment_j_per_layer_median": 0.1678576188,
+      "energy_change_fraction": 0.3048640716
+    }
+  },
+  "gemma4_12b": {
+    "shape": {
+      "n_embd": 3840,
+      "n_head": 16,
+      "n_head_kv": 8,
+      "head_dim": 256,
+      "n_ff": 15360
+    },
+    "weight_hash": "2e263bfde29814ac",
+    "correctness": {
+      "phone_slice_relative_l2": 0.0134083866,
+      "final_relative_l2": 0.000530642404,
+      "final_argmax_reference": 284,
+      "final_argmax_treatment": 284,
+      "non_finite": 0
+    },
+    "latency_ms": {
+      "real_4060_ti_monolithic_median": 0.950149,
+      "a6000_monolithic_median": 0.772977,
+      "a6000_plus_phone_median": 1.311043,
+      "treatment_over_a6000_control": 1.6960957441,
+      "treatment_over_real_4060_control": 1.3798288479
+    },
+    "a6000_gpu_board": {
+      "monolithic_power_w_median": 123.2495869493,
+      "treatment_power_w_median": 94.6082152659,
+      "power_change_fraction": -0.2323851332,
+      "monolithic_j_per_layer_median": 0.0953198944,
+      "treatment_j_per_layer_median": 0.1316616355,
+      "energy_change_fraction": 0.3812608205
+    }
+  },
+  "interpretation": [
+    "The A6000 treatment GPU is faster than the real 4060 Ti control for both q8_0 shapes, so the cross-host latency comparison is conservative for the phone treatment.",
+    "Lower A6000 board power does not compensate for longer execution; GPU-board energy rises before any phone energy is included.",
+    "Phone energy is not quantified because USB input was 494000 uA against a 500000 uA limit and the battery was charging at low state of charge.",
+    "This is a synthetic layer mechanism test, not a full-model decode, BurstGPT trace, capacity, or fleet-energy result."
+  ],
+  "supersedes": [
+    "All latency, energy, and scaling claims produced by legacy full_layer_host.cpp",
+    "Any N greater than 1 scaling projection derived from that legacy result"
+  ]
+}

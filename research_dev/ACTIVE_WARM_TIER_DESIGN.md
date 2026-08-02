@@ -1,6 +1,195 @@
 # Active Warm-Tier Multi-Model Serving
 
-Status: current primary research direction, frozen 2026-07-23.
+Status: S40 Qwen/Qwen warm-tier path active; one real no-reboot joint B8
+prototype passes execution with 60/64 diagnostic phone/CUDA token agreement;
+formal V2.4/V2.6 Qwen3-14B A_ONLY remains blocked before model launch.
+
+Operator-split checkpoint, 2026-07-29: one Qwen3-14B q8_0 FFN layer now runs
+with distinct M-row inputs across CUDA and OP15 HTP over AOA. Three live
+A6000 240/5001 plus OP15 repetitions improve median latency by 9.79%, 7.43%,
+and 5.24% at M=1,2,4, reach only 0.61% at M=8, and lose 40.71% at M=16.
+The physical 4060 is much more efficient than the throttled A6000 at M>=4; a
+physical dual-CUDA delay-injection profile predicts that M=8 is already 6.81%
+slower. This mechanism is therefore eligible only as an M<=4 candidate and
+does not authorize prefill, energy, full-model, or switch claims. Direct AOA
+on the physical 4060 remains required. See
+`spikes/s41_gemma_qwen_continuous_baseline/tp_operator_split_v1/RESULTS.md`.
+
+Operator-island successor, 2026-07-29: three single-row routes now pass on
+real OP15 HTP plus the 240/5001 MHz A6000 proxy. A complete FFN residual slice
+improves median latency by 7.54% for Qwen3-14B and 9.64% for Gemma-4-12B. A
+sharded vocabulary head that reduces the phone suffix to one token and score
+improves it by 16.10% and 17.12%. One Qwen GQA group with an in-graph current
+K/V cache write improves median and p90 by about 9.6% at 8,192 cache entries,
+but is rejected below that context because latency or tails regress. Each
+selected result has three fresh 300-iteration workers and passes exact final
+argmax plus the route-specific numerical gate.
+
+These probes do not authorize a full-model or energy claim. The next narrow
+core change is the disabled-by-default sharded greedy vocabulary head, followed
+by complete FFN residual slices. Attention remains diagnostic until native
+Q/K normalization, RoPE, masking, and rolling-cache semantics are present.
+The direct AOA treatment must then run on the physical RTX 4060 Ti before a
+BurstGPT or energy campaign.
+
+Prototype checkpoint, 2026-07-27: Qwen3-14B executed concurrently on the
+RTX 4060 Ti and the OP15 `[0,30)` plus OP12 `[30,40)` OpenCL route. Both
+routes completed eight requests with eight continuation tokens and cleaned
+from eight to zero live sequences. The phone route took 45.239 seconds versus
+1.601 seconds for concurrent CUDA and relayed 15,626,240 activation bytes
+directly over phone-to-phone Wi-Fi. This is functional evidence, not a
+performance, quality, energy, or V2.4/V2.6 qualification pass. See
+`spikes/s39_phone_model_switch_trace/v26_readiness/prototype_v1/RESULTS.md`.
+
+Current checkpoint, 2026-07-26: CP0-R1 V2.4 is the sole prospective A_ONLY
+exit authority for the S40 Qwen3-14B/Qwen3-8B path. It binds the canonical
+64-item MMLU corpus and B8 token histories, exact RTX 4060 Ti and phone
+identities, runtime bundles, producer process provenance, four orchestration
+programs, their complete source support closure, and the final raw-bundle
+reevaluation. The production sequence is artifact root -> phone reboot
+preparation -> phase lock and exact preflight -> post-reboot identity and
+network binding -> fast fresh readiness -> monolithic CUDA and joint
+phone/CUDA capture -> fan-in -> authority. The prospective route remains
+immutable; a separate bound root carries the observed boot IDs and WiFi
+addresses used by the executed route. The live no-model topology now passes
+on the exact RTX 4060 Ti, both physical USB phones, and all six WiFi
+reachability edges. The prospective A_ONLY adapter passes its tests and the
+frozen originator accepts the route shape. A versioned wrapper now adapts the
+historical launcher to exact physical USB selectors without changing its
+remaining validation or execution. Long pre-reboot and short post-reboot
+artifact receipts remain unfinished. The sequence has not executed a model or
+qualified a route.
+Qwen3-8B phone provisioning, B_ONLY, PAIR, the reduced A -> B -> A cycle,
+trace campaigns, and energy comparison remain blocked until Qwen3-14B A_ONLY
+passes.
+
+Preserved alternative checkpoint, 2026-07-26: the server-only S41 baseline uses
+Gemma 4 12B IT Q8_0 and Qwen3 14B Q4_K_M on the real RTX 4060 Ti. Both models
+pass independent full-CUDA B8 service and physical non-co-residency in both
+orders. Two valid warm-cache GPU-switch repetitions complete 74/74 requests;
+all three cold-NVMe repetitions strand the 57 Gemma requests. A dual-ready
+Gemma-GPU/Qwen-CPU run completes but fails the zero-swap gate, while the
+Qwen-GPU/Gemma-CPU direction passes resource gates but is CPU-bound. The raw
+trace, normalized metrics, and server-only graphs are in
+`spikes/s41_gemma_qwen_continuous_baseline/RESULTS.md`. No phone inference is
+included in these baselines.
+
+Implementation checkpoint, 2026-07-26: S40 now uses one experimental
+llama.cpp router/controller with interchangeable GPU, CPU, and phone executors.
+The feature is disabled by default. Its deterministic mechanics suite passes
+249/249 tests, and both pinned desktop models pass real B1 and B8 execution
+through the same native executor on the exact RTX 4060 Ti. Qwen3 8B Q8_0
+completed B1/B8 in 0.336/0.983 seconds; Qwen3 14B Q4_K_M completed them in
+0.349/1.452 seconds. Both produced exactly eight continuation tokens per
+request and unloaded cleanly. At that checkpoint, the next physical gate was
+the prospectively frozen V2.3 Qwen3 14B A_ONLY qualification across the RTX
+4060 Ti, OP15, and OP12. Qwen3 8B phone provisioning, B_ONLY, PAIR, the
+A -> B -> A cycle, trace campaigns, and energy comparison remained forbidden
+until their preceding gates passed. This is the historical S40 Qwen/Qwen path;
+its V2.3 authority cannot authorize S41 Gemma. See
+`spikes/s40_shared_warm_tier_server/PLAN.md`.
+
+Implementation checkpoint, 2026-07-25: CP0-D is complete on the target RTX
+4060 Ti. Qwen3 8B Q8_0 and Qwen3 14B Q4_K_M each pass the independent B8
+serving envelope, and simultaneous load attempts prove non-co-residency in
+both orders. All three warm-page-cache replays complete 74/74 requests and
+meet 74/74 synthetic SLOs. All three cold-NVMe replays fail closed with 17/74
+requests complete, 2/74 within SLO, and 57 Qwen3 8B requests stranded. Mean
+cold load is about 8 seconds versus about 1.7 seconds warm, so target changes
+become overdue before useful admission. Selected-GPU board energy is measured;
+server-wall and total-system energy remain unknown. See
+`spikes/s39_desktop_swap_baseline/RESULTS.md`.
+
+Implementation checkpoint, 2026-07-25: phone qualification is paused. The next
+gate was a desktop-only two-model control on the target RTX 4060 Ti. It
+measures what a one-GPU server does without a phone warm tier: Qwen3 8B Q8_0
+and Qwen3 14B Q4_K_M run independently, their required serving envelopes are
+tested for non-co-residency, and the frozen frequent-switch trace runs under
+one drain, unload, load, and publish policy. Three warm-page-cache and three
+cold-NVMe repetitions use the same request bytes, arrival order, SLOs, server
+arguments, and switch intents. The gate records request TTFT and completion,
+queueing, model publication gaps, SLO goodput, load/unload time, VRAM/RAM, and
+selected-GPU board energy. Whole-server energy remains unknown without a wall
+instrument. Only the pinned Qwen3 8B desktop artifact was acquired; this
+gate created no phone shards and executed no phone commands. See
+`spikes/s39_desktop_swap_baseline/PLAN.md`.
+
+Historical evidence checkpoint, 2026-07-25: CP0-R1 V2.2 introduced the raw
+phase bundle and remains an immutable parent. V2.3 became the Qwen/Qwen
+readiness authority for A_ONLY and B_ONLY because it additionally binds long artifact
+hashing, fresh post-lock identities, boot IDs, runtime executables, the exact
+RTX 4060 Ti, and activation-byte interface counters. V2.2 permits an A-only
+qualification, then a B qualification that re-evaluates
+the raw A bundle, then a pair phase that re-evaluates both model bundles. Every
+phase lock, readiness probe, and acquired event is bound to its own
+`HOST_MONOTONIC_RAW` interval. The evaluator closes the corpus/output, exact
+CUDA memory, oracle-length and B8 geometry, bridge linkage, exact activation
+size, and full-shard UFS gaps. V2.2 additionally exact-checks the frozen
+64-row pinned-revision MMLU corpus, a 25/64 CUDA sanity floor, incumbent A's
+candidate route, eight-token continuations, causal publication timing, and
+distinct phase IDs. Full device and artifact readiness uses
+exact-checked commands and must finish immediately before each acquisition.
+Final cycle authorization must reopen all three raw roots and pass the current
+authority; status-only results are rejected.
+This contract work does not qualify either phone route. The subsequent
+desktop-only CP0-D gate acquired the pinned Qwen3 8B desktop artifact and ran
+desktop control measurements; it did not authorize phone acquisition, phone
+execution, or a phone-assisted switch cycle. See
+`spikes/s39_phone_model_switch_trace/RESULTS_CP0_R1_V2_2.md`.
+
+Historical initial CP0-R1 checkpoint, 2026-07-25: the next gate was
+`TWO_ROUTE_ELIGIBILITY`, not a forward/reverse model-switch cycle. One
+model-independent contract now applies symmetrically to Qwen3 14B Q4_K_M and
+the only new candidate, Qwen3 8B Q8_0. Qwen3 14B remains
+`PROVISIONAL_BATCH`; Qwen3 8B is selected but not acquired. Both must pass B8
+target-4060 service, measured non-co-residency, complete direct two-phone
+execution, memory and zero-swap gates, exact state mechanics, an independent
+path-matched CUDA oracle, prospective task-quality noninferiority, pre-ready
+live publication, and bounded local-UFS reprepare. Only a derived
+`TWO_ROUTE_ELIGIBILITY_PASS` authorizes one reduced A -> B -> A cycle. See
+`spikes/s39_phone_model_switch_trace/CP0_R1_TWO_ROUTE_ELIGIBILITY_CONTRACT.json`.
+
+Implementation checkpoint, 2026-07-25: the separate CUDA-only replay-partition
+diagnostic explains W9's exactness refusal without rerunning or repairing W9.
+Two fresh `[8,3]+[1]` repetitions, two fresh `6 x [2]` repetitions, two fresh
+`[8,4]` repetitions, and one same-process remove/replay sequence are each
+internally exact. The incremental path matches W9's ledger, same-process
+cleanup matches fresh execution, and both one-shot F1 geometries match each
+other. Only incremental F0-plus-delta versus one-shot F1 differs. Future gates
+must use a path-matched exact oracle and treat cross-geometry agreement as
+diagnostic. The Qwen Q8 route remains stopped by task quality. See
+`spikes/s39_replay_partition_diagnostic/RESULTS.md`.
+
+Implementation checkpoint, 2026-07-25: S39 W9 failed closed on the first
+prospective paid treatment. The real B8 route reached `F0`, exercised one
+in-flight phone batch, replayed and caught up CUDA, durably changed ownership,
+and published 13 post-start tokens per request. Its incremental CUDA
+continuation then disagreed with the mandatory fresh same-frontier CUDA replay.
+The frozen no-replacement rule stopped before the paired control and P2-P4, so
+W9 has no repeated latency result and no pass certificate. See
+`spikes/s39_phone_model_switch_trace/RESULTS_W9.md`.
+
+Implementation checkpoint, 2026-07-25: S39 W8-R1 passed one real B8
+live-session trace-mechanics gate. OP15 and OP12 held active KV and delivered
+two decode rounds per request, 16 tokens in aggregate, before fresh CUDA
+workers became ready. Promotion-trigger-to-next-token latency was 1.357 seconds
+versus 3.283 seconds for the fresh CUDA teacher-forced trace control. This is
+not new-request TTFT because prompt KV and two output tokens per request existed
+before the paid clock. CUDA replayed the dynamic frontier, took ownership, and
+continued exactly with zero leaked state. Full completion was 93.2 percent
+slower because the fixed two-token-per-request post-frontier phone delta took
+2.762 seconds while CUDA replay took 0.173 seconds. At that historical
+checkpoint, the next bounded gate selected the number of intentionally
+scheduled extra phone batches, `k_extra`; this measured regime selected
+`k_extra=0`.
+
+W8-R1 ran process-cold with a warm host page cache on CUDA0, an RTX A6000 with
+48,530 MiB, not the target 16 GiB RTX 4060 Ti. It did not drain or replace an
+already-resident model and used separate CUDA head and tail processes rather
+than one native continuous server instance. The Qwen2.5 Q8 phone route remains
+scheduler-ineligible after its separate task-quality failure, so no
+multi-model, capacity, scheduler, target-GPU, trace, or energy pass is
+authorized.
 
 This document defines the paper-critical system. Earlier Q-PIM layer-split,
 continuous-batch, transport, and mixed-workload results are retained as
@@ -99,20 +288,37 @@ routing are required substrate. They are not individually claimed as novel.
 
 The first proof of concept is intentionally narrow:
 
-- one RTX 4060 Ti or one selected A6000;
+- one target RTX 4060 Ti for paper-level evaluation; a selected A6000 may be
+  used only for labeled mechanics development;
 - OP15 and OP12 as one collective phone tier;
 - two decoder models that cannot reside together in GPU memory;
 - one executable model resident across the phones at a time;
-- identical model digest, tokenizer, chat template, quantization, KV types, and
-  context parameters on every route for that model;
+- identical parent model digest, tokenizer, chat template, quantization, KV
+  types, and context parameters on every route for that model; phone shard
+  digests and layer ranges are independently derivation-bound to that parent;
 - greedy decoding first, then deterministic stochastic sampling;
 - direct phone-to-phone activation transfer with host-issued reservations;
 - no total-system energy claim until phone and host energy are measurable.
 
-The existing Gemma and Qwen assignment in S39 is provisional. A model enters a
-physical switch experiment only after both its CUDA route and complete
-collective-phone route pass identity, placement, correctness, memory, and
-latency gates. Storage residency alone is not eligibility.
+The S39 Gemma HTP result remains negative evidence, but it does not exclude a
+different phone backend. The current bounded pair is Gemma 4 12B IT Q8_0 plus
+Qwen3 14B Q4_K_M. Gemma CUDA uses the exact parent Q8_0 artifact; each phone
+uses an independently hashed Q8_0 shard whose layer range and derivation bind
+back to that parent. Its first new gate is an all-phone Adreno OpenCL capacity
+and kernel screen; the known HTP windows do not cover the full model without a
+CUDA tail.
+Qwen3 remains on GPUOpenCL because the phone HTP backend does not support
+Q4_K_M. A model enters a physical switch experiment only after both its CUDA
+route and complete collective-phone route pass identity, placement,
+task-quality, memory, continuous-batching, and latency gates. Storage
+residency alone is not eligibility.
+
+The primary paper objective is service capacity and continuity at a fixed
+one-GPU memory budget. The final evaluation must measure and show that both
+models cannot coexist on the target GPU under the exact serving configuration.
+Energy is secondary. The work can stop with a capacity result; an energy
+contribution requires whole-server wall energy plus both phone chargers and
+networking, not GPU board power alone.
 
 ## Residency and transition state
 
@@ -171,29 +377,82 @@ Global invariants:
 
 Suppose model A is hot and model B is warm.
 
-1. Existing A requests continue on the GPU. The first prototype drains them
+1. A B request that triggers promotion is admitted to the still-authoritative
+   phone tier before the same-timestamp promotion intent is applied.
+2. Existing A requests continue on the GPU. The first prototype drains them
    rather than migrating them.
-2. New B requests are admitted to the phone fleet and continuously batched.
-3. The slow loop observes sustained B demand and begins B promotion.
-4. The GPU stops admitting work that would make A impossible to drain within
+3. New B requests are admitted to the phone fleet and continuously batched.
+4. The slow loop observes sustained B demand and begins B promotion.
+5. The GPU stops admitting work that would make A impossible to drain within
    the promotion bound.
-5. The desktop loads B from local NVMe or host memory. Phones continue serving
+6. The desktop loads B from local NVMe or host memory. Phones continue serving
    B throughout this interval.
-6. When B is ready on CUDA, the coordinator snapshots each live B request's
-   committed token frontier.
-7. CUDA batch-prefills the prompts and committed token histories to construct
-   native CUDA KV. This is a logical batched reconstruction phase and may be
-   split into bounded ubatches.
-8. Phones remain authoritative and may generate a small token delta while CUDA
-   prefill runs. CUDA consumes that delta without publishing output.
-9. Once CUDA reaches the same frontier, the coordinator commits a new ownership
-   epoch. Phones stop B at that exact token boundary and CUDA joins the
-   requests to its continuous decode batch.
-10. After every B request and buffer is released from the phone tier, the
+7. When B is ready on CUDA, the coordinator snapshots each live B request's
+   last committed phone frontier `F0` and immediately starts CUDA replay from
+   `F0`.
+8. The coordinator stops new phone submissions after the zero or one batch
+   already in flight, plus only the extra batches authorized by the frozen
+   cutover policy. Phones remain the only publication owner during this
+   interval.
+9. The phones acknowledge a final frontier `F1` with token-history digest and
+   ownership epoch. At `F1` they cease dispatch and publication but retain KV
+   under the old epoch for rollback. CUDA consumes exactly `F1 - F0`; a
+   zero-width delta is a valid explicit no-op path.
+10. Once CUDA reaches `F1`, the coordinator durably commits the new ownership
+    epoch. CUDA cannot publish before this commit. Only then may the phone KV
+    be released and CUDA join the requests to its continuous decode batch.
+11. After every B request and buffer is released from the phone tier, the
     phones prepare model A from local UFS and publish a new ready certificate.
+
+The trace gate requires real requests for both A and B. Each model must execute
+on the phone tier while warm and on CUDA after promotion. Alternating residency
+records without corresponding request/result ownership records do not count as
+a model-switch result.
 
 If A demand returns before A is ready on the phones, the request follows an
 explicit bounded fallback. The system must not report A as warm.
+
+For the bounded cutover policy, `k_extra` counts intentionally scheduled
+complete phone decode batches after an optional zero-or-one batch already in
+flight at CUDA readiness. It does not count that optional batch. For a fixed
+homogeneous cohort, one such batch produces one token per live request.
+`K_max` is finite and comes from the remaining output budget while preserving
+at least one CUDA continuation token:
+
+```text
+phone_side_us(k) =
+    predicted_inflight_remaining_us + predicted_phone_extra_us(k)
+
+predicted_delta_tokens(k) = max_inflight_tokens + k
+
+cutover_us(k) =
+    max(predicted_cuda_replay_us, phone_side_us(k))
+    + predicted_delta_ingest_us(predicted_delta_tokens(k))
+    + predicted_commit_us
+
+completion_us(k) =
+    cutover_us(k) + predicted_cuda_remaining_us(k)
+
+k_extra = max(
+    {0} union
+    {integer k in [1, K_max] where
+        phone_side_us(k)
+            <= predicted_cuda_replay_us - cutover_margin_us
+        and completion_us(k) <= completion_us(0)}
+)
+```
+
+Predictors are cumulative, monotone, integer microsecond estimates rounded up.
+The margin is nonzero and all inputs are frozen before acquisition. The final
+realized delta is the optional in-flight result plus `k_extra`, and may be zero
+when no batch was in flight. CUDA replay of `F0` overlaps a remaining phone
+batch when one exists; it must not wait for `F1` before starting. A later
+scheduler may optimize a broader SLO objective, but the first prospective gate
+evaluates only this bounded rule.
+
+On any failure before the durable CUDA commit, CUDA state is discarded and the
+phones remain authoritative under the old epoch. After the commit, the old
+phone epoch can never publish again.
 
 ## Request-state contract
 
@@ -287,19 +546,21 @@ on different devices.
 
 ## Feasibility conditions
 
-The mechanism is useful only when all of the following hold:
+The live-session bridge is useful only when all of the following hold:
 
 ```text
-phone_warm_TTFT < GPU_model_ready_time
+live_phone_next_token_time < GPU_model_ready_time
 phone_capacity >= arrivals_during_promotion
 CUDA_decode_rate > phone_decode_rate
 catchup_time <= remaining_request_slack
 phone_rewarm_time < expected_time_to_next_reverse_switch
 ```
 
-If the first inequality fails, phones may still be useful for low-rate models
-by avoiding promotion entirely. If both bridge service and avoided switches
-fail, stop the direction.
+New-request TTFT is a separate gate. If phone prefill does not beat GPU
+readiness, do not claim a new-request bridge; already-live sessions may still
+benefit, and phones may still serve low-rate models by avoiding promotion
+entirely. If both live-session continuity and avoided switches fail, stop the
+direction.
 
 ## Controls
 
@@ -312,6 +573,9 @@ fail, stop the direction.
   reverse switch.
 - `C4 oracle`: both models resident on separate GPUs. This is a performance
   bound, not the resource-matched baseline.
+- `C5 host_warm_executor`: the alternate model is executable from desktop
+  CPU/RAM while the one GPU changes residency. This is the simplest
+  resource-matched alternative to the phone tier.
 
 All controls execute the same request identities and token budgets.
 
@@ -320,8 +584,12 @@ All controls execute the same request identities and token budgets.
 Primary:
 
 - switch-period SLO goodput;
-- P50/P95/P99 TTFT;
-- maximum inter-token gap across handoff;
+- P50/P95/P99 TTFT for genuinely new requests;
+- promotion-trigger-to-next-token latency for already-live sessions;
+- common promotion-period response gap: request arrival or previous published
+  token to the next publication, defined for every control;
+- route-specific last-phone-to-first-CUDA handoff gap;
+- per-request TPOT and aggregate decode throughput;
 - model-load blackout duration;
 - useful tokens produced by phones during promotion;
 - CUDA replay and delta-catch-up time;
@@ -341,18 +609,42 @@ Secondary:
 `PHONE_ENERGY`, `HOST_ENERGY`, and `TOTAL_SYSTEM_ENERGY` remain unknown until a
 valid physical boundary exists. Selected-GPU energy is reported as such.
 
+Persist unambiguous metric names. `new_request_ttft_us` is reserved for a
+request whose prompt was not prepared before the clock.
+`promotion_next_token_us` measures an already-live session from promotion
+trigger to its next published token. `promotion_response_gap_us` is the common
+arrival-or-previous-token to next-publication metric. `cuda_ready_us`,
+`handoff_gap_us`, and `completion_us` retain their literal event boundaries.
+Do not relabel promotion latency as TTFT.
+
 ## Milestones
 
-### W0 - Eligible two-model atlas
+### S41-R1 - Gemma-Qwen two-route eligibility
 
-- Freeze exact model, tokenizer, template, quantization, and context digests.
-- Prove one complete collective-phone route and one CUDA route per model.
-- Measure memory, placement, correctness, warm TTFT, decode rate, and useful
-  batch candidates.
-- Measure CUDA warm-load, cold-load, unload, and context construction.
+- Freeze a new S41 successor contract before any paid phone attempt. Reuse the
+  S39 evidence mechanics, but do not let its Qwen/Qwen V2.3 authority authorize
+  Gemma.
+- Bind the Gemma Q8_0 and Qwen3 Q4_K_M parent artifacts, plus independently
+  hashed OP15 and OP12 shards with exact derivation and layer ranges.
+- Preserve the completed target-4060 qualification and physical
+  non-co-residency evidence for both parent models.
+- Run only the remaining Gemma cut-31 capacity attempt. Stop the current
+  Gemma/Qwen phone campaign if either phone swaps or misses the memory or
+  placement gate.
+- If capacity passes, prospectively select the phone kernel using B1, B8,
+  mixed prefill/decode, thermal, and quality evidence. Then prove dynamic
+  continuous admission, retirement, and slot reuse.
+- Refresh Qwen3 phone evidence and apply one pinned task-quality
+  noninferiority gate against each same-parent CUDA route. Cross-backend and
+  cross-geometry greedy agreement remains diagnostic only.
+- Prove direct activation transfer, exact state mechanics, path-matched CUDA
+  replay, useful phone publication before CUDA readiness, and both local-UFS
+  reprepare directions.
 
-Exit: two executable models exist, or the experiment narrows to a smaller
-second model. No scheduler may treat storage-only residency as executable.
+Exit: a new S41 evaluator reopens the raw Gemma, Qwen, pair, and reprepare
+roots and emits one S41-specific reduced-cycle authorization. S39 V1, V2,
+V2.1, V2.2, V2.3, and status-only records cannot authorize that cycle. No
+scheduler may treat storage-only or provisional residency as executable.
 
 ### W1 - One-request non-blocking catch-up
 
@@ -387,16 +679,21 @@ weights, stale KV, or false readiness.
 ### W4 - Frozen multi-model trace
 
 - Replay the S39 trace or a denser trace with the same frozen provenance.
-- Run C0-C3 with identical work.
+- Run C0-C3 and C5 with identical work; report C4 as an upper bound.
 - Sweep promotion threshold and hysteresis from a predeclared finite set.
 - Report queueing, handoff, rewarm, batching, and switch avoidance.
 
-Exit: C2 or C3 improves switch-period SLO goodput or P95 TTFT by at least 20
-percent without losing requests or regressing steady-state hot-model SLO.
+Exit: C2 or C3 improves switch-period SLO goodput or SLO-valid admitted
+capacity by at least 20 percent over the best resource-matched control, without
+losing requests or regressing steady-state hot-model SLO. P95 new-request TTFT
+and the common promotion-period response gap must each be at most 110 percent
+of the best resource-matched control. Report route-specific handoff gap as a
+diagnostic, not as an independent paper pass.
 
 ### W5 - Benefit and robustness
 
-- Repeat across at least three arrival regimes and model-switch frequencies.
+- Repeat only the three predeclared regimes: sparse alternate-model demand,
+  one sustained alternate-model burst, and oscillating A/B demand.
 - Inject phone disconnect, failed load, stale epoch, and delayed rewarm.
 - Measure selected-GPU energy only after the latency mechanism passes.
 
@@ -408,7 +705,8 @@ it is not. Do not generalize beyond measured devices and models.
 Stop or narrow the design when:
 
 - no second model passes a complete collective-phone execution gate;
-- phone warm TTFT is not earlier than measured GPU readiness;
+- phones cannot publish useful live-session work before measured GPU readiness
+  and cannot avoid a GPU switch for low-rate demand;
 - CUDA cannot catch up to ongoing phone decode;
 - batched replay dominates the entire model-switch interval;
 - the phone tier cannot rewarm before realistic reverse demand;
@@ -419,13 +717,16 @@ Stop or narrow the design when:
 
 The comparison must include:
 
-- PRIMA for fixed local-storage paging and layer-ring execution;
+- Prima.cpp for heterogeneous single-model local-storage paging and layer-ring
+  execution; phone sharding alone is not a contribution;
 - ServerlessLLM and HydraServe for checkpoint loading and cold-start overlap;
+  token-history replay while a source continues is not a contribution;
 - Llumnix for live request migration;
 - EdgeShard for static heterogeneous layer placement;
 - DroidSpeak and edge handover work for KV reuse, transfer, and recomputation.
 
-The claimed distinction is not live migration alone. It is an asymmetric,
-collectively sharded, low-power executable warm tier with continuous service
-during model promotion, batch-preserving token catch-up, and cyclic preparation
-of the displaced model.
+The claimed distinction is not heterogeneous inference or live migration
+alone. It is an asymmetric executable standby that substitutes for a second
+server GPU during hot-set transitions: collectively sharded low-power devices
+remain authoritative while a memory-limited GPU changes model residency, then
+transfer live requests and cyclically prepare the displaced model.

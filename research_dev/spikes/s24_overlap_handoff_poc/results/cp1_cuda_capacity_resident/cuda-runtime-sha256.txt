@@ -1,0 +1,5 @@
+schema=s24-cuda-runtime-sha256-v1
+link_directory=/mnt/storage/s21_deps/cuda-13.2.1/lib64
+c7eaa64c99c20484b7401352aff99a8c5ab947abaab3a9bbb70142312da1fe18  773920  /mnt/storage/s21_deps/cuda-13.2.1/lib/libcudart.so.13.2.75
+5589b43e2aae4790ccb2abd22733eae0b6d4fe9503dcc4dbfe219fd857ddac41  54198912  /mnt/storage/s21_deps/cuda-13.2.1/lib/libcublas.so.13.4.0.1
+ac76bbb85d74313bba0d71029c71389616205f4018c8ff31d57c38f6e61100bd  508260928  /mnt/storage/s21_deps/cuda-13.2.1/lib/libcublasLt.so.13.4.0.1

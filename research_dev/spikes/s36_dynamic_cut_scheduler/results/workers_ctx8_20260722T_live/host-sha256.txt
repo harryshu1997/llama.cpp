@@ -1,0 +1,2 @@
+57e12992c12f3c8f872bc7ce7b5530314cd85fbfe9f6db5e2090e3ec9a7a23e9  /home/myid/zs89458/Documents/llama.cpp-release/build-cuda/bin/llama-layersplit
+bac4e29337273d1cb41aa36f4209ebcf63baa1162e6ab4dc55f6034b3d69b35a  /home/myid/zs89458/Documents/models/gemma-4-12B-it-f16.gguf

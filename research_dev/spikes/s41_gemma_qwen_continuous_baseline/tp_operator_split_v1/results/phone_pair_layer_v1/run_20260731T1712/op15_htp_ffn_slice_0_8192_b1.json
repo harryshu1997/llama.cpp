@@ -1,0 +1,42 @@
+{
+  "geometry": {
+    "batch": 1,
+    "counts": [
+      8192
+    ],
+    "k": 3840,
+    "n_ff": 15360,
+    "n_kv": null,
+    "offsets": [
+      0
+    ]
+  },
+  "iterations": 20,
+  "label": "op15_htp_ffn_slice_0_8192_b1",
+  "legs": [
+    {
+      "index": 0,
+      "latency": {
+        "max_ms": 5.382184,
+        "median_ms": 4.9704125,
+        "min_ms": 4.872494,
+        "p90_ms": 5.098248,
+        "p99_ms": 5.26053
+      }
+    }
+  ],
+  "operator": "ffn",
+  "output_fast_hash": "e384ef83",
+  "pair_makespan": {
+    "max_ms": 5.382184,
+    "median_ms": 4.9704125,
+    "min_ms": 4.872494,
+    "p90_ms": 5.098248,
+    "p99_ms": 5.26053
+  },
+  "schema": "s41-phone-pair-client-v1",
+  "transports": [
+    "aoa"
+  ],
+  "warmup": 10
+}

@@ -1,0 +1,11 @@
+{
+  "schema": "s22-mixed-slo-trace-v1",
+  "requests": [
+    {"request_id": 3001, "arrival_us": 0, "slo_us": 1400000, "steps": 4, "priority": 0},
+    {"request_id": 3002, "arrival_us": 0, "slo_us": 1400000, "steps": 4, "priority": 0},
+    {"request_id": 3003, "arrival_us": 0, "slo_us": 2200000, "steps": 4, "priority": 1},
+    {"request_id": 3004, "arrival_us": 0, "slo_us": 2200000, "steps": 4, "priority": 1},
+    {"request_id": 3005, "arrival_us": 0, "slo_us": 3500000, "steps": 4, "priority": 2},
+    {"request_id": 3006, "arrival_us": 0, "slo_us": 3500000, "steps": 4, "priority": 2}
+  ]
+}

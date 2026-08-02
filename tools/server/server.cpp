@@ -4,6 +4,7 @@
 #include "server-cors-proxy.h"
 #include "server-stream.h"
 #include "server-tools.h"
+#include "server-warm-tier-runtime.h"
 
 #include "arg.h"
 #include "build-info.h"
@@ -14,6 +15,7 @@
 
 #include <atomic>
 #include <clocale>
+#include <cstdlib>
 #include <exception>
 #include <signal.h>
 #include <thread> // for std::thread::hardware_concurrency
@@ -110,6 +112,23 @@ int llama_server(int argc, char ** argv) {
     const bool is_router_server = params.model.path.empty()
                                && params.model.hf_repo.empty();
 
+    std::string warm_tier_internal_token;
+    if (is_router_server) {
+        const char * warm_tier_config =
+            std::getenv("LLAMA_SERVER_WARM_TIER_CONFIG");
+        if (warm_tier_config != nullptr && warm_tier_config[0] != '\0') {
+            try {
+                warm_tier_internal_token =
+                    server_warm_tier_internal_token_from_env();
+            } catch (const std::exception & e) {
+                SRV_ERR(
+                    "failed to load warm-tier internal capability: %s\n",
+                    e.what());
+                return 1;
+            }
+        }
+    }
+
     // skip device enumeration so the CUDA primary context stays uncreated
     common_params_print_info(params, !is_router_server);
 
@@ -159,7 +178,8 @@ int llama_server(int argc, char ** argv) {
     if (is_router_server) {
         // setup server instances manager
         try {
-            models_routes.emplace(params, argc, argv);
+            models_routes.emplace(
+                params, argc, argv, warm_tier_internal_token);
         } catch (const std::exception & e) {
             SRV_ERR("failed to initialize router models: %s\n", e.what());
             return 1;
@@ -200,6 +220,32 @@ int llama_server(int argc, char ** argv) {
         ctx_http.post("/models/unload",        ex_wrapper(models_routes->post_router_models_unload));
         ctx_http.get ("/models/sse",           ex_wrapper(models_routes->get_router_models_sse));
         ctx_http.del ("/models",               ex_wrapper(models_routes->del_router_models));
+        if (models_routes->warm_tier_enabled()) {
+            ctx_http.post(
+                "/experimental/warm-tier/activate",
+                ex_wrapper(models_routes->post_warm_tier_activate));
+            ctx_http.get(
+                "/experimental/warm-tier/activate",
+                ex_wrapper(models_routes->get_warm_tier_activate));
+            ctx_http.post(
+                "/experimental/warm-tier/completion",
+                ex_wrapper(models_routes->post_warm_tier_completion));
+            ctx_http.post(
+                "/experimental/warm-tier/requests",
+                ex_wrapper(models_routes->post_warm_tier_request));
+            ctx_http.get(
+                "/experimental/warm-tier/requests/:request_id",
+                ex_wrapper(models_routes->get_warm_tier_request));
+            ctx_http.post(
+                "/experimental/warm-tier/finalize",
+                ex_wrapper(models_routes->post_warm_tier_finalize));
+            ctx_http.get(
+                "/experimental/warm-tier/finalize",
+                ex_wrapper(models_routes->get_warm_tier_finalize));
+            ctx_http.post(
+                "/experimental/warm-tier/switch",
+                ex_wrapper(models_routes->post_warm_tier_switch));
+        }
     }
 
     ctx_http.get ("/health",                   ex_wrapper(routes.get_health)); // public endpoint (no API key check)

@@ -1,0 +1,6 @@
+captured_utc=2026-07-26T07:16:19.451402361Z
+serial=5ae7a43d
+boot_id=3ba01077-fa7c-4a69-859d-705eee5041f9
+workers=MemAvailable:    7464396 kB
+SwapTotal:       7864316 kB
+SwapFree:        5679868 kB

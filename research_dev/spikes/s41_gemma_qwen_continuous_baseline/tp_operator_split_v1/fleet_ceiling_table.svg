@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1213" height="546" viewBox="0 0 1213 546" font-family="DejaVu Sans, Helvetica, Arial, sans-serif">
+<rect width="1213" height="546" fill="#ffffff"/>
+<text x="44" y="52" font-size="23" font-weight="700" fill="#1a1d21">Phone FFN offload &#8212; idealized fleet ceiling</text>
+<text x="44" y="77" font-size="14" fill="#5b6470">Qwen3-14B, M=1 decode, 17,408 FFN columns. Upper bound only: assumes linear power scaling, latency parity, zero coordination cost.</text>
+<rect x="44" y="100" width="1125" height="74" fill="#2b3440"/>
+<text x="89" y="142" font-size="13.5" font-weight="600" fill="#ffffff" text-anchor="middle">Phones</text>
+<text x="245" y="133" font-size="13.5" font-weight="600" fill="#ffffff" text-anchor="end">Columns/</text>
+<text x="245" y="151" font-size="13.5" font-weight="600" fill="#ffffff" text-anchor="end">phone</text>
+<text x="395" y="133" font-size="13.5" font-weight="600" fill="#ffffff" text-anchor="end">FFN columns</text>
+<text x="395" y="151" font-size="13.5" font-weight="600" fill="#ffffff" text-anchor="end">offloaded</text>
+<text x="580" y="133" font-size="13.5" font-weight="600" fill="#ffffff" text-anchor="end">Compute-only</text>
+<text x="580" y="151" font-size="13.5" font-weight="600" fill="#ffffff" text-anchor="end">server work saved</text>
+<text x="745" y="133" font-size="13.5" font-weight="600" fill="#ffffff" text-anchor="end">Maximum</text>
+<text x="745" y="151" font-size="13.5" font-weight="600" fill="#ffffff" text-anchor="end">speedup ceiling</text>
+<text x="885" y="133" font-size="13.5" font-weight="600" fill="#ffffff" text-anchor="end">Ideal server</text>
+<text x="885" y="151" font-size="13.5" font-weight="600" fill="#ffffff" text-anchor="end">power</text>
+<text x="1000" y="133" font-size="13.5" font-weight="600" fill="#ffffff" text-anchor="end">Phone</text>
+<text x="1000" y="151" font-size="13.5" font-weight="600" fill="#ffffff" text-anchor="end">power</text>
+<text x="1155" y="133" font-size="13.5" font-weight="600" fill="#ffffff" text-anchor="end">Best-case</text>
+<text x="1155" y="151" font-size="13.5" font-weight="600" fill="#ffffff" text-anchor="end">fleet saving</text>
+<line x1="44" y1="174" x2="1169" y2="174" stroke="#d4d9e0" stroke-width="1"/>
+<text x="89" y="202" font-size="15" font-weight="700" fill="#1a1d21" text-anchor="middle">1</text>
+<text x="245" y="202" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">1,792</text>
+<text x="395" y="202" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">10.3%</text>
+<text x="580" y="202" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">6.9%</text>
+<text x="745" y="202" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">1.07x</text>
+<text x="885" y="202" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">116.1 W</text>
+<text x="1000" y="202" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">4.5 W</text>
+<rect x="1020" y="181" width="135" height="32" rx="5" fill="rgba(0,158,115,0.179)"/>
+<text x="1149" y="202" font-size="15" font-weight="600" fill="#1a1d21" text-anchor="end">+3.3%</text>
+<rect x="44" y="220" width="1125" height="46" fill="#f6f8fa"/>
+<line x1="44" y1="220" x2="1169" y2="220" stroke="#d4d9e0" stroke-width="1"/>
+<text x="89" y="248" font-size="15" font-weight="700" fill="#1a1d21" text-anchor="middle">2</text>
+<text x="245" y="248" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">1,792</text>
+<text x="395" y="248" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">20.6%</text>
+<text x="580" y="248" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">13.7%</text>
+<text x="745" y="248" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">1.16x</text>
+<text x="885" y="248" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">107.6 W</text>
+<text x="1000" y="248" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">9 W</text>
+<rect x="1020" y="227" width="135" height="32" rx="5" fill="rgba(0,158,115,0.255)"/>
+<text x="1149" y="248" font-size="15" font-weight="600" fill="#1a1d21" text-anchor="end">+6.5%</text>
+<line x1="44" y1="266" x2="1169" y2="266" stroke="#d4d9e0" stroke-width="1"/>
+<text x="89" y="294" font-size="15" font-weight="700" fill="#1a1d21" text-anchor="middle">4</text>
+<text x="245" y="294" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">1,792</text>
+<text x="395" y="294" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">41.2%</text>
+<text x="580" y="294" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">27.5%</text>
+<text x="745" y="294" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">1.38x</text>
+<text x="885" y="294" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">90.5 W</text>
+<text x="1000" y="294" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">18 W</text>
+<rect x="1020" y="273" width="135" height="32" rx="5" fill="rgba(0,158,115,0.410)"/>
+<text x="1149" y="294" font-size="15" font-weight="600" fill="#1a1d21" text-anchor="end">+13.0%</text>
+<rect x="44" y="312" width="1125" height="46" fill="#eef7f4"/>
+<line x1="44" y1="312" x2="1169" y2="312" stroke="#d4d9e0" stroke-width="1"/>
+<text x="89" y="340" font-size="15" font-weight="700" fill="#1a1d21" text-anchor="middle">8</text>
+<text x="245" y="340" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">1,792</text>
+<text x="395" y="340" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">82.4%</text>
+<text x="580" y="340" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">54.9%</text>
+<text x="745" y="340" font-size="15" font-weight="600" fill="#0072B2" text-anchor="end">2.22x</text>
+<text x="885" y="340" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">56.2 W</text>
+<text x="1000" y="340" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">36 W</text>
+<rect x="1020" y="319" width="135" height="32" rx="5" fill="rgba(0,158,115,0.720)"/>
+<text x="1149" y="340" font-size="15" font-weight="700" fill="#ffffff" text-anchor="end">+26.0%</text>
+<line x1="44" y1="358" x2="1169" y2="358" stroke="#d4d9e0" stroke-width="1"/>
+<text x="89" y="386" font-size="15" font-weight="700" fill="#1a1d21" text-anchor="middle">16</text>
+<text x="245" y="386" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">1,088</text>
+<text x="395" y="386" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">100%</text>
+<text x="580" y="386" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">66.7%</text>
+<text x="745" y="386" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">3.00x</text>
+<text x="885" y="386" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">41.6 W</text>
+<text x="1000" y="386" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">72 W</text>
+<rect x="1020" y="365" width="135" height="32" rx="5" fill="rgba(0,158,115,0.312)"/>
+<text x="1149" y="386" font-size="15" font-weight="600" fill="#1a1d21" text-anchor="end">+8.9%</text>
+<rect x="44" y="404" width="1125" height="46" fill="#f6f8fa"/>
+<line x1="44" y1="404" x2="1169" y2="404" stroke="#d4d9e0" stroke-width="1"/>
+<text x="89" y="432" font-size="15" font-weight="700" fill="#1a1d21" text-anchor="middle">32</text>
+<text x="245" y="432" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">544</text>
+<text x="395" y="432" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">100%</text>
+<text x="580" y="432" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">66.7%</text>
+<text x="745" y="432" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">3.00x</text>
+<text x="885" y="432" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">41.6 W</text>
+<text x="1000" y="432" font-size="15" font-weight="400" fill="#1a1d21" text-anchor="end">144 W</text>
+<rect x="1020" y="411" width="135" height="32" rx="5" fill="#D55E00"/>
+<text x="1149" y="432" font-size="15" font-weight="700" fill="#ffffff" text-anchor="end">-48.8%</text>
+<line x1="44" y1="450" x2="1169" y2="450" stroke="#2b3440" stroke-width="2"/>
+<text x="32" y="340" font-size="15" font-weight="700" fill="#009E73" text-anchor="end">&#9654;</text>
+<text x="44" y="476" font-size="12.5" fill="#5b6470">Offloading gate+up only; the down projection stays on the server, capping compute savings at 66.7%. Server power scaled from a 124.7 W measured baseline.</text>
+<text x="44" y="495" font-size="12.5" fill="#5b6470">Beyond 16 phones the column budget is exhausted, so added phones raise fleet power without removing further server work.</text>
+<text x="44" y="516" font-size="12.5" fill="#D55E00"><tspan font-weight="700">Modelled, not measured.</tspan><tspan> The only measured configuration is N=1, where the observed speedup is ~0.5&#8211;0.9% (not 1.07x).</tspan></text>
+<text x="44" y="535" font-size="12.5" fill="#D55E00">Fleet energy has never been measured at any N; the one measured energy acquisition was +30.5% per layer, a loss.</text>
+</svg>

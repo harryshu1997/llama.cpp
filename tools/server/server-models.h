@@ -15,6 +15,10 @@
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <vector>
+
+std::vector<std::string> server_models_sanitize_child_environment(
+    const std::vector<std::string> & environment);
 
 /**
  * state diagram:
@@ -84,6 +88,8 @@ struct server_model_meta {
     int exit_code = 0; // exit code of the model instance process (only valid if status == FAILED)
     int stop_timeout = 0; // seconds to wait before force-killing the model instance during shutdown
     mtmd_caps multimodal; // multimodal capabilities
+    int64_t process_id = 0;
+    std::string instance_id;
     // bool need_download = false; // whether the model needs to be downloaded before loading // TODO @ngxson: implement this
 
     bool is_ready() const {
@@ -104,6 +110,7 @@ struct server_model_meta {
 
 struct server_models_routes;
 struct server_subproc; // defined in server-models.cpp
+struct server_warm_tier_controller;
 
 struct server_models {
     friend struct server_models_routes;
@@ -285,22 +292,17 @@ struct server_models_routes {
     json ui_settings = json::object();     // Primary: new name
     std::atomic<bool> stopping = false;    // for graceful disconnecting SSE clients during shutdown
     server_models models;
-    server_models_routes(const common_params & params, int argc, char ** argv)
-            : params(params), models(params, argc, argv) {
-        const std::string & cfg = this->params.ui_config_json;
-        if (!cfg.empty()) {
-            try {
-                json json_settings = json::parse(cfg);
-                ui_settings = json_settings;
-            } catch (const std::exception & e) {
-                LOG_ERR("%s: failed to parse UI config: %s\n", __func__, e.what());
-                throw;
-            }
-        }
-        init_routes();
-    }
+    std::shared_ptr<server_warm_tier_controller> warm_tier;
+    std::string warm_tier_internal_token;
+
+    server_models_routes(
+        const common_params & params,
+        int argc,
+        char ** argv,
+        const std::string & warm_tier_internal_token);
 
     void init_routes();
+    bool warm_tier_enabled() const;
     // handlers using lambda function, so that they can capture `this` without `std::bind`
     server_http_context::handler_t get_router_props;
     server_http_context::handler_t proxy_get;
@@ -312,6 +314,14 @@ struct server_models_routes {
     server_http_context::handler_t get_router_models_sse;
     server_http_context::handler_t post_router_models;
     server_http_context::handler_t del_router_models;
+    server_http_context::handler_t post_warm_tier_activate;
+    server_http_context::handler_t get_warm_tier_activate;
+    server_http_context::handler_t post_warm_tier_completion;
+    server_http_context::handler_t post_warm_tier_request;
+    server_http_context::handler_t get_warm_tier_request;
+    server_http_context::handler_t post_warm_tier_finalize;
+    server_http_context::handler_t get_warm_tier_finalize;
+    server_http_context::handler_t post_warm_tier_switch;
 
     // router side handlers for the resumable streaming routes. each resolves the child that owns
     // a conversation through the conv_id -> model map, no probing or fan out

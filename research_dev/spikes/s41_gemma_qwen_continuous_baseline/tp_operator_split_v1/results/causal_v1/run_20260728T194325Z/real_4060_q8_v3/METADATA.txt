@@ -1,0 +1,7 @@
+2026-07-28T20:12:57Z
+zhihao-Z690-C-ac
+NVIDIA GeForce RTX 4060 Ti, GPU-3d43c513-5a75-7fd0-a503-da920e0ffa08, 595.84, P8, 210 MHz, 405 MHz, 165.00 W
+ece5ce938c2483592a85764b4fa4c991c0d7ba6f6d323c7b98d2790b07ddf6ac  /tmp/s41-causal-v3/causal_layer_host
+596e282330b75212fbfc56d88573073c1e6db4424d474a53570da81b379b0fb1  /tmp/s41-causal-v3/causal_layer_host.cpp
+6bac280bf24e60c9590f99989e3aa5988b2ef231898743d1733d18994f243fe9  /tmp/s41-causal-v3/causal_ffn_protocol.h
+f571dbf0d57f05e456e0bbd5e6f63a7078e6d80e89b9ad20ecb97c2bc1e5dbda  /tmp/s41-causal-v3/causal_quantized_weights.h

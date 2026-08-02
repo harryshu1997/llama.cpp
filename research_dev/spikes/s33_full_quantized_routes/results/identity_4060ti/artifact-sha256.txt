@@ -1,0 +1,3 @@
+7b56cbd0e0d96d5c8d7df9c21b39d67264e58cbabf7a96d4681eff8b3d492848  /home/zhihao/models/gemma-4-12B-it-Q8_0-7b56.gguf
+56759235bafd45b071c0cbcb3107e1d9cc93b1c66df98364a5faa2505c518db6  /home/zhihao/llama.cpp-release/build-s21-cuda/bin/llama-layersplit
+104d3485432acf2d70596d62748ffe1c0c19f41366e502425be0af8c7cdb07d8  /home/zhihao/llama.cpp-release/examples/layersplit/layersplit.cpp

@@ -1,0 +1,19 @@
+2026-07-28T20:12:56Z
+FCHLLX01
+NVIDIA RTX A6000, GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f, 580.159.03, P3, 405 MHz, 5001 MHz, 300.00 W
+30bf55e9173ca2dc44be3738dc227ab0fc1ff6878234f9a31f8f6d6cde7ffa85  /tmp/s41-causal-v1/causal_layer_host
+54e3230d1cf0f52cc37aa1df5aa3963a59cd84758183801ce6e712feefe9f0fb  /tmp/s41-causal-v1/causal_ffn_worker
+6bac280bf24e60c9590f99989e3aa5988b2ef231898743d1733d18994f243fe9  research_dev/spikes/s41_gemma_qwen_continuous_baseline/tp_operator_split_v1/causal_ffn_protocol.h
+f571dbf0d57f05e456e0bbd5e6f63a7078e6d80e89b9ad20ecb97c2bc1e5dbda  research_dev/spikes/s41_gemma_qwen_continuous_baseline/tp_operator_split_v1/causal_quantized_weights.h
+1870e0e52ae817e6f66c188330dbbbb9004d0f7318008abe0b81e968328f86e9  research_dev/spikes/s41_gemma_qwen_continuous_baseline/tp_operator_split_v1/causal_ffn_worker.cpp
+596e282330b75212fbfc56d88573073c1e6db4424d474a53570da81b379b0fb1  research_dev/spikes/s41_gemma_qwen_continuous_baseline/tp_operator_split_v1/causal_layer_host.cpp
+5fb6fca34f07a4d9f9fd4a8dc8a8acd90b394e517696e4b86c8930bda7929bc3  research_dev/spikes/s41_gemma_qwen_continuous_baseline/tp_operator_split_v1/measure_causal_gpu_energy.py
+Bus 008 Device 064: ID 18d1:2d01 Google Inc. Android Open Accessory device (accessory + ADB)
+CPH2749
+acd37315-dce4-4c24-8e04-fc0060d992a2
+54e3230d1cf0f52cc37aa1df5aa3963a59cd84758183801ce6e712feefe9f0fb  /data/local/tmp/tp_htp/causal_ffn_worker
+capacity=4
+charge_counter=206000
+usb_current_now=494000
+usb_input_current_limit=500000
+charging_enable=1

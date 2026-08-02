@@ -1,0 +1,2 @@
+53469e92d1315452d521314345d655d0c89c7fcee16ef174108ff0c177493680  /data/local/tmp/ls-s35/llama-layersplit
+a74845294bc1a3cba6ac26c747615d64d9127c904aae04c43c7ea2ebc1ea25c8  /data/local/tmp/ls-npu/12b-f16-head-0-8.gguf

@@ -1,0 +1,13 @@
+case	repetition	control	cuda_session_id	phone_session_id	session_end
+c0-rep-1	1	C0	1	1	detach
+c1-rep-1	1	C1	2	2	detach
+c2-rep-1	1	C2	3	3	detach
+c3-rep-1	1	C3	4	4	detach
+c3-rep-2	2	C3	5	5	detach
+c2-rep-2	2	C2	6	6	detach
+c1-rep-2	2	C1	7	7	detach
+c0-rep-2	2	C0	8	8	detach
+c1-rep-3	3	C1	9	9	detach
+c0-rep-3	3	C0	10	10	detach
+c3-rep-3	3	C3	11	11	detach
+c2-rep-3	3	C2	12	12	stop

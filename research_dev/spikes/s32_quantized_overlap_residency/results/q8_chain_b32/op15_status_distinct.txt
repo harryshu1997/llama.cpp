@@ -1,0 +1,54 @@
+Name:	llama-layerspli
+Umask:	0000
+State:	S (sleeping)
+Tgid:	11655
+Ngid:	0
+Pid:	11655
+PPid:	6105
+TracerPid:	0
+Uid:	2000	2000	2000	2000
+Gid:	2000	2000	2000	2000
+FDSize:	64
+Groups:	1004 1007 1011 1015 1028 1078 1079 3001 3002 3003 3006 3009 3011 3012 
+Kthread:	0
+VmPeak:	18756132 kB
+VmSize:	18756132 kB
+VmLck:	       0 kB
+VmPin:	       0 kB
+VmHWM:	10253624 kB
+VmRSS:	 7141960 kB
+RssAnon:	   56652 kB
+RssFile:	 7084896 kB
+RssShmem:	     412 kB
+VmData:	  185816 kB
+VmStk:	     136 kB
+VmExe:	     240 kB
+VmLib:	   34764 kB
+VmPTE:	   31764 kB
+VmSwap:	   69852 kB
+CoreDumping:	0
+THP_enabled:	1
+untag_mask:	0xffffffffffffff
+Threads:	10
+SigQ:	1/57207
+SigPnd:	0000000000000000
+ShdPnd:	0000000000000000
+SigBlk:	0000000080000000
+SigIgn:	0000002000000000
+SigCgt:	0000104c400086f8
+CapInh:	0000000000000000
+CapPrm:	0000000000000000
+CapEff:	0000000000000000
+CapBnd:	00000000008000c0
+CapAmb:	0000000000000000
+NoNewPrivs:	0
+Seccomp:	0
+Seccomp_filters:	0
+Speculation_Store_Bypass:	thread vulnerable
+SpeculationIndirectBranch:	unknown
+Cpus_allowed:	ff
+Cpus_allowed_list:	0-7
+Mems_allowed:	1
+Mems_allowed_list:	0
+voluntary_ctxt_switches:	2994
+nonvoluntary_ctxt_switches:	1259

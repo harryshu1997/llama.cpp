@@ -1,0 +1,70 @@
+{
+  "correctness": {
+    "argmax_matches": 0,
+    "argmax_rows": 1,
+    "max_absolute": 0.0011849403381347656,
+    "non_finite": 0,
+    "relative_l2": 0.46838900352267493
+  },
+  "geometry": {
+    "batch": 1,
+    "counts": [
+      4
+    ],
+    "k": 5120,
+    "n_ff": null,
+    "n_kv": 8192,
+    "offsets": [
+      4
+    ]
+  },
+  "iterations": 30,
+  "label": "op15_htp_attn_half1_kv8192",
+  "legs": [
+    {
+      "compute_us": {
+        "max_ms": 1.918,
+        "median_ms": 1.489,
+        "min_ms": 1.423,
+        "p90_ms": 1.782,
+        "p99_ms": 1.813
+      },
+      "get_us": {
+        "max_ms": 0.006,
+        "median_ms": 0.005,
+        "min_ms": 0.004,
+        "p90_ms": 0.006,
+        "p99_ms": 0.006
+      },
+      "index": 0,
+      "latency": {
+        "max_ms": 5.750222,
+        "median_ms": 5.0749135,
+        "min_ms": 4.81844,
+        "p90_ms": 5.618749,
+        "p99_ms": 5.711338
+      },
+      "set_us": {
+        "max_ms": 0.007,
+        "median_ms": 0.007,
+        "min_ms": 0.004,
+        "p90_ms": 0.007,
+        "p99_ms": 0.007
+      }
+    }
+  ],
+  "operator": "attention",
+  "output_fast_hash": "76084f2f",
+  "pair_makespan": {
+    "max_ms": 5.750222,
+    "median_ms": 5.0749135,
+    "min_ms": 4.81844,
+    "p90_ms": 5.618749,
+    "p99_ms": 5.711338
+  },
+  "schema": "s41-phone-pair-client-v1",
+  "transports": [
+    "aoa"
+  ],
+  "warmup": 10
+}

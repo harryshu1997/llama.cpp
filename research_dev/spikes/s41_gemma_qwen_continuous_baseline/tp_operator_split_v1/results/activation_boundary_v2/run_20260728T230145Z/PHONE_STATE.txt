@@ -1,0 +1,4 @@
+capture_utc=2026-07-28T23:11:34Z
+model=CPH2749
+serial=3C15AU002CL00000
+worker_pids=idle_timer=80

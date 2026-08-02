@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "models": [
+    {
+      "model_id": "bge-small-en-v1.5-f16",
+      "role": "query_and_document_embedding",
+      "path": "models/bge-small-en-v1.5-f16.gguf",
+      "bytes": 67582656,
+      "sha256": "4cd429b83d2805e4028d96f6174b153bc87657808ba9f3b3c4f84d374b481e03",
+      "status": "existing_phone_htp_measured"
+    },
+    {
+      "model_id": "bge-reranker-base-f16",
+      "role": "local_candidate_reranking",
+      "source_revision": "2cfc18c9415c912f9d8155881c133215df768a70",
+      "path": "/home/myid/zs89458/Documents/rag_assets/models/bge-reranker-base/bge-reranker-base-f16.gguf",
+      "bytes": 563949984,
+      "sha256": "db2b401a00831766ebdbfee42a2761857cd9c26725b4e208278f3cdf26777772",
+      "status": "server_runtime_measured_phone_runtime_pending"
+    },
+    {
+      "model_id": "qwen3-0.6b-q8_0",
+      "role": "optional_local_query_rewrite_or_evidence_compression",
+      "path": "Qwen3-0.6B-Q8_0.gguf",
+      "bytes": 804753632,
+      "sha256": "361cc68159042c36ebff7715dc5a2e4612153e88f3e9c9c234820849d6dc9e1d",
+      "status": "existing_optional_not_in_initial_dag"
+    },
+    {
+      "model_id": "gemma-4-12b-it-f16",
+      "role": "collaborative_final_reasoning",
+      "path": "/home/myid/zs89458/Documents/models/gemma-4-12B-it-f16.gguf",
+      "bytes": 23832065056,
+      "sha256": "bac4e29337273d1cb41aa36f4209ebcf63baa1162e6ab4dc55f6034b3d69b35a",
+      "status": "existing_not_used_for_matched_server_baseline"
+    },
+    {
+      "model_id": "gemma-4-12b-it-q8_0",
+      "role": "matched_server_baseline_and_future_collaborative_reasoning",
+      "path": "/home/myid/zs89458/Documents/models/gemma-4-12B-it-Q8_0.gguf",
+      "bytes": 12669645856,
+      "sha256": "7b56cbd0e0d96d5c8d7df9c21b39d67264e58cbabf7a96d4681eff8b3d492848",
+      "status": "matched_a6000_rtx4060ti_server_runtime_measured"
+    }
+  ]
+}

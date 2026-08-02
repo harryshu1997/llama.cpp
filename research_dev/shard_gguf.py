@@ -4,14 +4,14 @@
 # Keeps ORIGINAL block indices (blk.17.* stays blk.17.*) and copies ALL metadata verbatim
 # (block_count, sliding_window_pattern array, rope, tokenizer, ...), so the SWA/rope per-layer
 # indexing is identical to the full model. The loader (gemma4.cpp load_arch_tensors, env
-# LLAMA_LAYER_START/END) then creates exactly this slice — no "tensor not found", no wasted RAM.
+# LLAMA_LAYER_START/END) then creates exactly this slice - no "tensor not found", no wasted RAM.
 #
 # Tensor selection for range [start, end) of n_layer (= block_count):
 #   blk.<N>.*        keep iff start <= N < end
-#   token_embd.*     keep iff start==0 (head embeds) or end==n_layer (terminal tied lm_head)
+#   token_embd.*     keep for the head and for a terminal stage with a tied lm_head
 #   output(.weight)  keep iff end==n_layer (terminal lm_head)
 #   output_norm.*    keep iff end==n_layer
-#   everything else  keep (global tables, e.g. gemma-3n per_layer_* — needed by every stage)
+#   everything else  keep (global tables, e.g. gemma-3n per_layer_* - needed by every stage)
 #
 # Usage:
 #   shard_gguf.py IN.gguf OUT.gguf --start 17 --end 35
@@ -27,12 +27,21 @@ logger = logging.getLogger("shard_gguf")
 BLK_RE = re.compile(r"^blk\.(\d+)\.")
 
 
-def want_tensor(name: str, start: int, end: int, n_layer: int) -> bool:
+def want_tensor(
+    name: str,
+    start: int,
+    end: int,
+    n_layer: int,
+    *,
+    arch: str | None = None,
+    has_output_weight: bool = False,
+) -> bool:
     m = BLK_RE.match(name)
     if m:
         return start <= int(m.group(1)) < end
     if name.startswith("token_embd"):
-        return start == 0 or end == n_layer
+        qwen2_has_untied_output = arch == "qwen2" and has_output_weight
+        return start == 0 or (end == n_layer and not qwen2_has_untied_output)
     if name == "output.weight" or name.startswith("output_norm"):
         return end == n_layer
     # global (non per-layer) tensors: keep in every shard
@@ -73,7 +82,19 @@ def main() -> None:
             writer.add_key_value(field.name, val, val_type, sub_type=sub_type)
 
     # --- select tensors ---
-    kept = [t for t in reader.tensors if want_tensor(t.name, args.start, args.end, n_layer)]
+    has_output_weight = any(t.name == "output.weight" for t in reader.tensors)
+    kept = [
+        t
+        for t in reader.tensors
+        if want_tensor(
+            t.name,
+            args.start,
+            args.end,
+            n_layer,
+            arch=arch,
+            has_output_weight=has_output_weight,
+        )
+    ]
     dropped = len(reader.tensors) - len(kept)
     kept_bytes = sum(t.n_bytes for t in kept)
     total_bytes = sum(t.n_bytes for t in reader.tensors)

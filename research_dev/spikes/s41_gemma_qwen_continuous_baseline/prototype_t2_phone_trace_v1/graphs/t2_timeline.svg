@@ -1,0 +1,143 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="720" viewBox="0 0 1240 720">
+<style>text{font-family:Arial,sans-serif;fill:#20242a}.title{font-size:22px;font-weight:700}.subtitle{font-size:13px}.axis{font-size:12px}.small{font-size:11px}.mode{font-size:11px;font-weight:600}</style>
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text class="title" x="620" y="30" text-anchor="middle">Throughput timeline: t2-phone-trace-prototype</text>
+<text class="subtitle" x="620" y="51" text-anchor="middle">T2_PHONE_NO_PROMOTION_PROTOTYPE | gemma-cuda-resident, qwen-phone-resident | repeat 1</text>
+<line x1="88" y1="535.0" x2="1168" y2="535.0" stroke="#d9dde3"/>
+<text class="axis" x="80" y="539.0" text-anchor="end">0.00</text>
+<line x1="88" y1="427.5" x2="1168" y2="427.5" stroke="#d9dde3"/>
+<text class="axis" x="80" y="431.5" text-anchor="end">20.70</text>
+<line x1="88" y1="320.0" x2="1168" y2="320.0" stroke="#d9dde3"/>
+<text class="axis" x="80" y="324.0" text-anchor="end">41.40</text>
+<line x1="88" y1="212.5" x2="1168" y2="212.5" stroke="#d9dde3"/>
+<text class="axis" x="80" y="216.5" text-anchor="end">62.10</text>
+<line x1="88" y1="105.0" x2="1168" y2="105.0" stroke="#d9dde3"/>
+<text class="axis" x="80" y="109.0" text-anchor="end">82.80</text>
+<line x1="88" y1="105" x2="88" y2="535" stroke="#20242a"/>
+<line x1="88" y1="535" x2="1168" y2="535" stroke="#20242a"/>
+<text class="axis" x="40" y="320" text-anchor="middle" transform="rotate(-90 40 320)">output tokens/s</text>
+<line x1="88.0" y1="105" x2="88.0" y2="535" stroke="#d9dde3"/>
+<text class="axis" x="88.0" y="557" text-anchor="middle">0.0</text>
+<line x1="304.0" y1="105" x2="304.0" y2="535" stroke="#d9dde3"/>
+<text class="axis" x="304.0" y="557" text-anchor="middle">24.9</text>
+<line x1="520.0" y1="105" x2="520.0" y2="535" stroke="#d9dde3"/>
+<text class="axis" x="520.0" y="557" text-anchor="middle">49.8</text>
+<line x1="736.0" y1="105" x2="736.0" y2="535" stroke="#d9dde3"/>
+<text class="axis" x="736.0" y="557" text-anchor="middle">74.6</text>
+<line x1="952.0" y1="105" x2="952.0" y2="535" stroke="#d9dde3"/>
+<text class="axis" x="952.0" y="557" text-anchor="middle">99.5</text>
+<line x1="1168.0" y1="105" x2="1168.0" y2="535" stroke="#d9dde3"/>
+<text class="axis" x="1168.0" y="557" text-anchor="middle">124.4</text>
+<text class="axis" x="628" y="580" text-anchor="middle">time since paid start (s)</text>
+<polyline points="96.7,535.0 105.4,535.0 114.1,535.0 122.7,535.0 131.4,535.0 140.1,535.0 148.8,493.5 157.5,493.5 166.2,368.8 174.8,285.7 183.5,285.7 192.2,161.1 200.9,493.5 209.6,493.5 218.3,451.9 226.9,451.9 235.6,493.5 244.3,451.9 253.0,535.0 261.7,535.0 270.4,535.0 279.0,493.5 287.7,368.8 296.4,535.0 305.1,535.0 313.8,535.0 322.5,535.0 331.1,493.5 339.8,493.5 348.5,493.5 357.2,493.5 365.9,535.0 374.6,535.0 383.2,535.0 391.9,493.5 400.6,535.0 409.3,535.0 418.0,493.5 426.7,493.5 435.3,535.0 444.0,410.4 452.7,535.0 461.4,535.0 470.1,535.0 478.8,493.5 487.4,535.0 496.1,535.0 504.8,535.0 513.5,535.0 522.2,493.5 530.9,493.5 539.5,535.0 548.2,493.5 556.9,535.0 565.6,451.9 574.3,535.0 583.0,535.0 591.6,535.0 600.3,535.0 609.0,535.0 617.7,535.0 626.4,535.0 635.1,535.0 643.7,535.0 652.4,535.0 661.1,535.0 669.8,535.0 678.5,535.0 687.2,535.0 695.8,535.0 704.5,535.0 713.2,535.0 721.9,535.0 730.6,535.0 739.3,535.0 747.9,535.0 756.6,535.0 765.3,535.0 774.0,535.0 782.7,535.0 791.4,535.0 800.0,535.0 808.7,535.0 817.4,535.0 826.1,535.0 834.8,535.0 843.5,535.0 852.1,535.0 860.8,535.0 869.5,535.0 878.2,535.0 886.9,535.0 895.6,535.0 904.2,535.0 912.9,535.0 921.6,535.0 930.3,535.0 939.0,535.0 947.7,535.0 956.3,535.0 965.0,535.0 973.7,535.0 982.4,535.0 991.1,535.0 999.8,535.0 1008.4,535.0 1017.1,535.0 1025.8,535.0 1034.5,535.0 1043.2,535.0 1051.9,535.0 1060.5,535.0 1069.2,535.0 1077.9,535.0 1086.6,535.0 1095.3,535.0 1104.0,535.0 1112.6,535.0 1121.3,535.0 1130.0,535.0 1138.7,535.0 1147.4,535.0 1156.1,535.0 1164.7,535.0 1168.0,535.0" fill="none" stroke="#0072b2" stroke-width="3"/>
+<line x1="100" y1="75" x2="132" y2="75" stroke="#0072b2" stroke-width="4"/>
+<text class="axis" x="140" y="79">Gemma 4 12B Q8_0</text>
+<polyline points="96.7,535.0 105.4,535.0 114.1,535.0 122.7,535.0 131.4,535.0 140.1,535.0 148.8,535.0 157.5,535.0 166.2,535.0 174.8,535.0 183.5,535.0 192.2,535.0 200.9,535.0 209.6,535.0 218.3,535.0 226.9,535.0 235.6,535.0 244.3,535.0 253.0,535.0 261.7,535.0 270.4,535.0 279.0,535.0 287.7,535.0 296.4,535.0 305.1,535.0 313.8,535.0 322.5,535.0 331.1,535.0 339.8,535.0 348.5,535.0 357.2,535.0 365.9,535.0 374.6,535.0 383.2,535.0 391.9,535.0 400.6,535.0 409.3,535.0 418.0,535.0 426.7,535.0 435.3,535.0 444.0,535.0 452.7,535.0 461.4,535.0 470.1,535.0 478.8,535.0 487.4,535.0 496.1,535.0 504.8,535.0 513.5,535.0 522.2,535.0 530.9,535.0 539.5,535.0 548.2,535.0 556.9,535.0 565.6,535.0 574.3,493.5 583.0,493.5 591.6,535.0 600.3,535.0 609.0,493.5 617.7,535.0 626.4,535.0 635.1,535.0 643.7,535.0 652.4,535.0 661.1,535.0 669.8,535.0 678.5,535.0 687.2,535.0 695.8,535.0 704.5,493.5 713.2,535.0 721.9,535.0 730.6,535.0 739.3,535.0 747.9,535.0 756.6,451.9 765.3,535.0 774.0,535.0 782.7,493.5 791.4,535.0 800.0,535.0 808.7,535.0 817.4,535.0 826.1,535.0 834.8,535.0 843.5,535.0 852.1,535.0 860.8,535.0 869.5,535.0 878.2,535.0 886.9,535.0 895.6,535.0 904.2,535.0 912.9,535.0 921.6,535.0 930.3,535.0 939.0,535.0 947.7,493.5 956.3,535.0 965.0,535.0 973.7,535.0 982.4,535.0 991.1,535.0 999.8,535.0 1008.4,535.0 1017.1,535.0 1025.8,535.0 1034.5,535.0 1043.2,535.0 1051.9,535.0 1060.5,451.9 1069.2,535.0 1077.9,493.5 1086.6,535.0 1095.3,535.0 1104.0,535.0 1112.6,535.0 1121.3,493.5 1130.0,451.9 1138.7,493.5 1147.4,535.0 1156.1,535.0 1164.7,493.5 1168.0,424.6" fill="none" stroke="#d55e00" stroke-width="3"/>
+<line x1="400" y1="75" x2="432" y2="75" stroke="#d55e00" stroke-width="4"/>
+<text class="axis" x="440" y="79">Qwen3 14B Q4_K_M</text>
+<line x1="710" y1="75" x2="742" y2="75" stroke="#666" stroke-dasharray="5,4"/>
+<text class="axis" x="750" y="79">intent</text>
+<line x1="835" y1="75" x2="867" y2="75" stroke="#009e73" stroke-dasharray="2,3"/>
+<text class="axis" x="875" y="79">publication</text>
+<text class="axis" x="88" y="604">phone executing: measured batch spans on OP15 + OP12 (57 physical batches)</text>
+<rect x="88" y="612" width="1080" height="20" fill="#f2f4f7"/>
+<rect x="105.0" y="612" width="38.6" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="146.0" y="612" width="24.1" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="171.0" y="612" width="23.1" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="194.2" y="612" width="29.1" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="225.8" y="612" width="23.3" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="249.5" y="612" width="22.9" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="275.5" y="612" width="23.5" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="299.1" y="612" width="24.8" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="324.1" y="612" width="24.7" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="348.9" y="612" width="23.9" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="373.0" y="612" width="24.7" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="398.0" y="612" width="24.6" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="422.7" y="612" width="30.0" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="452.9" y="612" width="31.0" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="484.2" y="612" width="10.9" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="495.4" y="612" width="26.3" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="522.0" y="612" width="12.7" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="534.7" y="612" width="12.1" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="546.9" y="612" width="10.1" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="557.0" y="612" width="11.0" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="568.1" y="612" width="9.9" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="578.2" y="612" width="29.2" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="610.2" y="612" width="25.8" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="636.1" y="612" width="33.8" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="670.0" y="612" width="30.0" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="700.1" y="612" width="26.2" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="726.5" y="612" width="25.9" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="752.5" y="612" width="28.2" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="780.9" y="612" width="23.9" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="804.9" y="612" width="26.6" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="833.2" y="612" width="28.5" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="862.0" y="612" width="26.2" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="888.3" y="612" width="25.1" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="913.5" y="612" width="22.6" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="936.3" y="612" width="9.9" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="946.4" y="612" width="12.4" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="959.0" y="612" width="25.5" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="984.6" y="612" width="12.8" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="997.6" y="612" width="10.0" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="1007.9" y="612" width="26.3" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="1034.4" y="612" width="12.3" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="1046.9" y="612" width="10.5" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="1057.6" y="612" width="11.3" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="1069.1" y="612" width="18.5" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="1087.8" y="612" width="11.4" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="1099.4" y="612" width="9.5" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="1109.2" y="612" width="10.4" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="1119.8" y="612" width="3.1" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="1124.1" y="612" width="9.8" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="1134.0" y="612" width="3.2" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="1138.3" y="612" width="4.1" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="1142.6" y="612" width="3.3" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="1146.9" y="612" width="3.2" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="1151.2" y="612" width="3.8" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="1155.3" y="612" width="3.8" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="1159.5" y="612" width="3.3" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<rect x="1163.5" y="612" width="4.1" height="20" fill="#d55e00" fill-opacity="0.85"/>
+<text class="axis" x="88" y="654">phone request arrivals and completions</text>
+<line x1="88" y1="668" x2="1168" y2="668" stroke="#d9dde3"/>
+<circle cx="119.3" cy="668" r="5" fill="#ffffff" stroke="#d55e00" stroke-width="2"/>
+<circle cx="114.1" cy="668" r="5" fill="#ffffff" stroke="#d55e00" stroke-width="2"/>
+<circle cx="104.9" cy="668" r="5" fill="#ffffff" stroke="#d55e00" stroke-width="2"/>
+<circle cx="125.3" cy="668" r="5" fill="#ffffff" stroke="#d55e00" stroke-width="2"/>
+<circle cx="192.6" cy="668" r="5" fill="#ffffff" stroke="#d55e00" stroke-width="2"/>
+<circle cx="243.4" cy="668" r="5" fill="#ffffff" stroke="#d55e00" stroke-width="2"/>
+<circle cx="222.6" cy="668" r="5" fill="#ffffff" stroke="#d55e00" stroke-width="2"/>
+<circle cx="243.9" cy="668" r="5" fill="#ffffff" stroke="#d55e00" stroke-width="2"/>
+<circle cx="277.7" cy="668" r="5" fill="#ffffff" stroke="#d55e00" stroke-width="2"/>
+<circle cx="301.2" cy="668" r="5" fill="#ffffff" stroke="#d55e00" stroke-width="2"/>
+<circle cx="304.2" cy="668" r="5" fill="#ffffff" stroke="#d55e00" stroke-width="2"/>
+<circle cx="508.7" cy="668" r="5" fill="#ffffff" stroke="#d55e00" stroke-width="2"/>
+<circle cx="483.1" cy="668" r="5" fill="#ffffff" stroke="#d55e00" stroke-width="2"/>
+<circle cx="444.5" cy="668" r="5" fill="#ffffff" stroke="#d55e00" stroke-width="2"/>
+<circle cx="483.5" cy="668" r="5" fill="#ffffff" stroke="#d55e00" stroke-width="2"/>
+<circle cx="572.5" cy="668" r="5" fill="#ffffff" stroke="#d55e00" stroke-width="2"/>
+<circle cx="589.0" cy="668" r="5" fill="#ffffff" stroke="#d55e00" stroke-width="2"/>
+<circle cx="568.2" cy="668" r="5" fill="#d55e00" stroke="#ffffff" stroke-width="1"/>
+<circle cx="579.0" cy="668" r="5" fill="#d55e00" stroke="#ffffff" stroke-width="1"/>
+<circle cx="608.6" cy="668" r="5" fill="#d55e00" stroke="#ffffff" stroke-width="1"/>
+<circle cx="700.3" cy="668" r="5" fill="#d55e00" stroke="#ffffff" stroke-width="1"/>
+<circle cx="753.4" cy="668" r="5" fill="#d55e00" stroke="#ffffff" stroke-width="1"/>
+<circle cx="753.6" cy="668" r="5" fill="#d55e00" stroke="#ffffff" stroke-width="1"/>
+<circle cx="780.8" cy="668" r="5" fill="#d55e00" stroke="#ffffff" stroke-width="1"/>
+<circle cx="947.1" cy="668" r="5" fill="#d55e00" stroke="#ffffff" stroke-width="1"/>
+<circle cx="1058.5" cy="668" r="5" fill="#d55e00" stroke="#ffffff" stroke-width="1"/>
+<circle cx="1058.6" cy="668" r="5" fill="#d55e00" stroke="#ffffff" stroke-width="1"/>
+<circle cx="1069.8" cy="668" r="5" fill="#d55e00" stroke="#ffffff" stroke-width="1"/>
+<circle cx="1119.8" cy="668" r="5" fill="#d55e00" stroke="#ffffff" stroke-width="1"/>
+<circle cx="1123.1" cy="668" r="5" fill="#d55e00" stroke="#ffffff" stroke-width="1"/>
+<circle cx="1123.3" cy="668" r="5" fill="#d55e00" stroke="#ffffff" stroke-width="1"/>
+<circle cx="1137.3" cy="668" r="5" fill="#d55e00" stroke="#ffffff" stroke-width="1"/>
+<circle cx="1162.9" cy="668" r="5" fill="#d55e00" stroke="#ffffff" stroke-width="1"/>
+<circle cx="1168.0" cy="668" r="5" fill="#d55e00" stroke="#ffffff" stroke-width="1"/>
+<rect x="700" y="86" width="26" height="11" fill="#d55e00" fill-opacity="0.85"/>
+<text class="small" x="734" y="96">phone executing</text>
+<circle cx="856" cy="92" r="4.5" fill="#ffffff" stroke="#d55e00" stroke-width="2"/>
+<text class="small" x="868" y="96">arrival</text>
+<circle cx="936" cy="92" r="4.5" fill="#d55e00"/>
+<text class="small" x="948" y="96">completion</text>
+</svg>

@@ -1,0 +1,29 @@
+captured_utc=2026-07-26T07:15:09.531357544Z
+serial=5ae7a43d
+boot_id=3ba01077-fa7c-4a69-859d-705eee5041f9
+pid=31361
+exe=/data/local/tmp/s39-active-warm/v1/runtime-qwen-partial-v1/llama-layersplit
+cmdline=./llama-layersplit -m /data/local/tmp/ls-s32/gemma-4-12B-it-Q8_0.gguf --mode tailv3 --port 41632 --driver-batch 8 --driver-context 256 --driver-max-prefill 64 --devices GPUOpenCL -ngl 99 
+environment=GGML_DECODE_NO_FA=1
+GGML_OPENCL_DISABLE_FUSION=1
+LAYERSPLIT_MODEL_SHA256=7b56cbd0e0d96d5c8d7df9c21b39d67264e58cbabf7a96d4681eff8b3d492848
+LAYERSPLIT_PLACEMENT_CERT=1
+LLAMA_LAYER_END=48
+LLAMA_LAYER_START=32
+Name:	llama-layerspli
+Pid:	31361
+VmPeak:	21564468 kB
+VmSize:	21401908 kB
+VmHWM:	 4803780 kB
+VmRSS:	  779876 kB
+VmSwap:	  110120 kB
+Threads:	8
+MemTotal:       11482988 kB
+MemFree:          270540 kB
+MemAvailable:    1417312 kB
+Buffers:            1412 kB
+Cached:          1615608 kB
+SwapCached:        20496 kB
+SwapTotal:       7864316 kB
+SwapFree:        5550588 kB
+process_match=31361 llama-layersplit            llama-layersplit -m /data/local/tmp/ls-s32/gemma-4-12B-it-Q8_0.gguf --mode tailv3 --port 41632 --driver-batch 8 --driver-context 256 --driver-max-prefill 64 --devices GPUOpenCL -ngl 99

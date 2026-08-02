@@ -1,0 +1,72 @@
+{
+  "schema": "s41-sharded-vocabulary-head-analysis-v1",
+  "hardware": {
+    "gpu": "NVIDIA RTX A6000 GPU 0",
+    "gpu_graphics_clock_mhz": 240,
+    "gpu_memory_clock_mhz": 5001,
+    "phone": "OP15 3C15AU002CL00000",
+    "phone_backend": "HTP0 v81",
+    "transport": "direct AOA USB"
+  },
+  "method": {
+    "batch": 1,
+    "weight_type": "q8_0",
+    "input_type": "f16",
+    "phone_operation": "vocabulary_matmul_and_arm_top1",
+    "phone_result_bytes": 8,
+    "repetitions": 3,
+    "iterations_per_repetition": 300
+  },
+  "qwen3_14b": {
+    "vocabulary_size": 151936,
+    "phone_vocabulary_rows": 25600,
+    "phone_row_fraction": 0.1684921275,
+    "cuda_full_median_ms": 3.205491,
+    "cuda_full_p90_ms": 3.208247,
+    "phone_total_median_ms": 2.649331,
+    "phone_total_p90_ms": 2.800071,
+    "split_total_median_ms": 2.689107,
+    "split_total_p90_ms": 2.828496,
+    "latency_change_percent": -16.104,
+    "hidden_fraction": 0.566667,
+    "phone_score_relative_error": 0.000649204392,
+    "phone_local_top1_exact": true,
+    "merged_top1_exact": true,
+    "all_repetition_median_wins": true,
+    "all_repetition_p90_wins": true,
+    "raw_host_logs": [
+      "HOST_FINAL_REP1.log",
+      "HOST_FINAL_REP2.log",
+      "HOST_FINAL_REP3.log"
+    ]
+  },
+  "gemma4_12b": {
+    "vocabulary_size": 262144,
+    "phone_vocabulary_rows": 46080,
+    "phone_row_fraction": 0.17578125,
+    "cuda_full_median_ms": 4.374291,
+    "cuda_full_p90_ms": 4.377007,
+    "phone_total_median_ms": 3.558601,
+    "phone_total_p90_ms": 3.663813,
+    "split_total_median_ms": 3.625239,
+    "split_total_p90_ms": 3.691367,
+    "latency_change_percent": -17.124,
+    "hidden_fraction": 0.796667,
+    "phone_score_relative_error": 0.000965938412,
+    "phone_local_top1_exact": true,
+    "merged_top1_exact": true,
+    "all_repetition_median_wins": true,
+    "all_repetition_p90_wins": true,
+    "raw_host_logs": [
+      "HOST_FINAL_GEMMA_REP1.log",
+      "HOST_FINAL_GEMMA_REP2.log",
+      "HOST_FINAL_GEMMA_REP3.log"
+    ]
+  },
+  "claim_limits": [
+    "Synthetic standalone output head only.",
+    "The phone uses ARM for local top-1 after HTP computes its logits.",
+    "The A6000 clock setting is a kernel-specific latency proxy, not a physical RTX 4060 Ti treatment.",
+    "No sampling, full-model, energy, BurstGPT, or multi-phone result is claimed."
+  ]
+}

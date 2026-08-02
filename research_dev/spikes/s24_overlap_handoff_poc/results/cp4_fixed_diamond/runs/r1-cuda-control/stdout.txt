@@ -1,0 +1,1 @@
+{"completed":1,"control":"C0","output":"/home/zhihao/llama.cpp-release/research_dev/spikes/s24_overlap_handoff_poc/results/cp4_fixed_diamond/runs/r1-cuda-control/runtime.json","slo_misses":0,"status":"RUN_COMPLETE"}

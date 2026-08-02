@@ -1,0 +1,20 @@
+CPH2749
+OP611FL1
+acd37315-dce4-4c24-8e04-fc0060d992a2
+ece0593ff882fc4019d05634bf16207da5f524c6f1f0b6c0f989d88783fecfa9  /data/local/tmp/s41-gemma-global-v1/gemma_global_attention_worker
+ggml_opencl: OpenCL profiling enabled
+ggml_opencl: selected platform: 'QUALCOMM Snapdragon(TM)'
+
+ggml_opencl: device: 'QUALCOMM Adreno(TM) 840 (OpenCL 3.0 Adreno(TM) 840)'
+ggml_opencl: default device: 'QUALCOMM Adreno(TM) 840 (OpenCL 3.0 Adreno(TM) 840)'
+ggml-hex: Loading driver libcdsprpc.so
+ggml-hex: Hexagon backend (experimental) : allocating new registry : ndev 1
+ggml-hex: Hexagon Arch version v81
+ggml-hex: HTP0 allocating new session
+ggml-hex: HTP0 hwinfo: threads 8, hvx 8, hmx 1, vtcm 8 MB
+ggml-hex: HTP0 new session : session-id 0 domain-id 3 uri file:///libggml-htp-v81.so?htp_iface_skel_handle_invoke&_modver=1.0&_dom=nsp1000&_session=0 handle 0xb400007b3da22640
+ggml-hex: HTP0 op batching: n-bufs 16 n-tensors 7168 n-ops 1024 vmem 3355443200
+[gemma-attention-worker] backend=HTP0 description=Hexagon
+[gemma-attention-worker] initializing KV shard
+[gemma-attention-worker] ready total_kv=262144 segment=[258048,262144) kv_hash=44f5d7184811f6e7 nodes=9
+[gemma-attention-worker] endpoint open

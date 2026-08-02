@@ -1,0 +1,63 @@
+{
+  "geometry": {
+    "batch": 1,
+    "counts": [
+      8
+    ],
+    "k": 5120,
+    "n_ff": null,
+    "n_kv": 8192,
+    "offsets": [
+      0
+    ]
+  },
+  "iterations": 100,
+  "label": "op15_opencl_attn_full_kv8192",
+  "legs": [
+    {
+      "compute_us": {
+        "max_ms": 31.723,
+        "median_ms": 28.084,
+        "min_ms": 23.961,
+        "p90_ms": 30.235,
+        "p99_ms": 30.767
+      },
+      "get_us": {
+        "max_ms": 0.11,
+        "median_ms": 0.025500000000000002,
+        "min_ms": 0.013,
+        "p90_ms": 0.031,
+        "p99_ms": 0.034
+      },
+      "index": 0,
+      "latency": {
+        "max_ms": 36.001358,
+        "median_ms": 32.3937325,
+        "min_ms": 27.902639,
+        "p90_ms": 34.991516,
+        "p99_ms": 35.949458
+      },
+      "set_us": {
+        "max_ms": 0.184,
+        "median_ms": 0.036,
+        "min_ms": 0.014,
+        "p90_ms": 0.073,
+        "p99_ms": 0.165
+      }
+    }
+  ],
+  "operator": "attention",
+  "output_fast_hash": "1015018e",
+  "pair_makespan": {
+    "max_ms": 36.001358,
+    "median_ms": 32.3937325,
+    "min_ms": 27.902639,
+    "p90_ms": 34.991516,
+    "p99_ms": 35.949458
+  },
+  "schema": "s41-phone-pair-client-v1",
+  "transports": [
+    "aoa"
+  ],
+  "warmup": 20
+}

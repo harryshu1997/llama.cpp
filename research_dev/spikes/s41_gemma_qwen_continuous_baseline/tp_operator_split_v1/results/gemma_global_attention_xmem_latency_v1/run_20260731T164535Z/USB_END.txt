@@ -1,0 +1,14 @@
+Bus 001 Device 001: ID 1d6b:0002 Linux Foundation 2.0 root hub
+Bus 001 Device 002: ID 413c:2113 Dell Computer Corp. KB216 Wired Keyboard
+Bus 002 Device 001: ID 1d6b:0003 Linux Foundation 3.0 root hub
+Bus 003 Device 001: ID 1d6b:0002 Linux Foundation 2.0 root hub
+Bus 003 Device 002: ID 413c:250e Dell Computer Corp. Dell Laser Mouse MS3220
+Bus 004 Device 001: ID 1d6b:0003 Linux Foundation 3.0 root hub
+Bus 005 Device 001: ID 1d6b:0002 Linux Foundation 2.0 root hub
+Bus 006 Device 001: ID 1d6b:0003 Linux Foundation 3.0 root hub
+Bus 006 Device 033: ID 22d9:2769 OPPO Electronics Corp. OnePlus 12
+Bus 007 Device 001: ID 1d6b:0002 Linux Foundation 2.0 root hub
+Bus 007 Device 002: ID 0bda:4c55 Realtek Semiconductor Corp. USB audio Rear
+Bus 007 Device 003: ID 0bda:4c54 Realtek Semiconductor Corp. USB audio FRONT
+Bus 008 Device 001: ID 1d6b:0003 Linux Foundation 3.0 root hub
+Bus 008 Device 047: ID 22d9:2769 OPPO Electronics Corp. OnePlus 15

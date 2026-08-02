@@ -1,0 +1,111 @@
+{
+  "schema": "s41-activation-return-analysis-v1",
+  "date": "2026-07-28",
+  "verdict": [
+    "PHONE_LEG_HIDDEN_AT_STEADY_P90",
+    "M1_END_TO_END_LATENCY_NEGATIVE",
+    "ACTIVATION_RETURN_ENERGY_NOT_MEASURED"
+  ],
+  "hardware": {
+    "host_gpu": {
+      "name": "NVIDIA RTX A6000",
+      "uuid": "GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f",
+      "graphics_clock_mhz": 405,
+      "memory_clock_mhz": 5001
+    },
+    "phone": {
+      "model": "CPH2749",
+      "serial": "3C15AU002CL00000",
+      "backend": "HTP v81",
+      "transport": "AOA bulk USB",
+      "worker_policy": "SCHED_FIFO",
+      "worker_priority": 20,
+      "worker_cpus": "6-7"
+    }
+  },
+  "configuration": {
+    "weight_type": "q8_0",
+    "input_wire_type": "scaled_i8",
+    "output_wire_type": "f16",
+    "phone_columns": 256,
+    "samples_per_process": 500,
+    "independent_processes": 3,
+    "mode": "steady_corun",
+    "phone_result": "gate_up_silu_mul_activation",
+    "cuda_continuation": "down_projection_plus_prefix_bias"
+  },
+  "results": {
+    "qwen3_14b": {
+      "cuda_full_median_ms": 0.669519,
+      "cuda_prefix_median_ms": 0.650833,
+      "phone_total_median_ms": 0.314676,
+      "phone_total_p90_ms": 0.358831,
+      "late_cuda_median_ms": 0.041991,
+      "split_total_median_ms": 0.693044,
+      "latency_change_percent": 3.514,
+      "median_hidden_fraction": 0.990,
+      "phone_activation_relative_l2": 0.00749761369,
+      "final_relative_l2": 0.00162728578,
+      "argmax_match": true,
+      "evidence": [
+        "qwen_final_steady_rep1",
+        "qwen_final_steady_rep2",
+        "qwen_final_steady_rep3"
+      ]
+    },
+    "gemma4_12b": {
+      "cuda_full_median_ms": 0.475796,
+      "cuda_prefix_median_ms": 0.460526,
+      "phone_total_median_ms": 0.303565,
+      "phone_total_p90_ms": 0.348000,
+      "late_cuda_median_ms": 0.041840,
+      "split_total_median_ms": 0.503198,
+      "latency_change_percent": 5.778,
+      "median_hidden_fraction": 0.980,
+      "phone_activation_relative_l2": 0.00836556601,
+      "final_relative_l2": 0.00180247147,
+      "argmax_match": true,
+      "evidence": [
+        "gemma_best_steady_rep1",
+        "gemma_best_steady_rep2",
+        "gemma_best_steady_rep3"
+      ]
+    }
+  },
+  "cadence_diagnostic": {
+    "qwen_back_to_back_phone_only_median_ms": 0.474644,
+    "qwen_gap_1500us_phone_only_median_ms": 0.802144,
+    "finding": "Request spacing changes USB and HTP service time even without CUDA. Alternating treatment and controls is not a valid steady-path latency estimate."
+  },
+  "mechanical_changes": [
+    "Fused gate and up into one resident HTP matmul.",
+    "Used scaled int8 input and f16 activation output on the wire.",
+    "Replaced scalar lround input quantization with equivalent vectorizable rounding.",
+    "Pinned the root phone worker to CPUs 6-7 under SCHED_FIFO priority 20.",
+    "Built the late CUDA graph with the completed prefix as an external leaf.",
+    "Fused the suffix down projection and prefix bias into one two-node CUDA graph."
+  ],
+  "interpretation": {
+    "phone_wait": "The steady phone path is below the CUDA prefix at p90 for both shapes. Rare outliers remain, so an all-sample no-wait claim is rejected.",
+    "latency": "The phone is no longer the median or p90 critical path. The late CUDA continuation is larger than the CUDA work removed by a 256-column cut, so M=1 remains slower.",
+    "energy": "No power acquisition was run for this successor. The prior full-output server-energy result must not be reused.",
+    "next_bounded_test": "Batch independent requests so one late continuation and transport cadence are amortized. Test B=2,4,8 and stop unless total CUDA-plus-phone latency or useful throughput beats the matched CUDA control."
+  },
+  "limitations": [
+    "This is a synthetic FFN probe, not full-model llama decode.",
+    "The input is already host-resident; a real CUDA-to-host FFN-input handoff is not included.",
+    "Only one OP15 participates.",
+    "The A6000 is clock-limited but is not a faithful RTX 4060 Ti substitute for every kernel.",
+    "Phone and fleet energy are unmeasured in this successor."
+  ],
+  "source_sha256": {
+    "causal_activation_host.cpp": "41e03e35820f600bc91f68e442bafd7ad34c772b26694a93c04fd8991a288446",
+    "causal_activation_worker.cpp": "e0ef5f2fb9541252e5ade1b20671d7a3b83a92a8903f1a483499e9d272b3ec73",
+    "causal_ffn_protocol.h": "fd13ea2810c0f2352c711b564e8112820bd0cf26e48ec814232af59cd17c5b4d",
+    "causal_quantized_weights.h": "f571dbf0d57f05e456e0bbd5e6f63a7078e6d80e89b9ad20ecb97c2bc1e5dbda"
+  },
+  "binary_sha256": {
+    "host": "4a396e6153bdffdf6734892462cfa64fac8afd7f18e27e38e855236d4a5810e6",
+    "phone": "05ec1ad07c7670a91c31e6d7f43f9ceba6c37debc65a4e033d3bf5c8b8e3ffd4"
+  }
+}

@@ -1,0 +1,49 @@
+schema=s41-gemma-global-attention-context-shard-metadata-v1
+scope=PROJECTED_Q_RESIDENT_KV_ATTENTION_CORE_ONLY
+verdict=MECHANISM_PASS_NARROW_STEADY_WIN_GAPPED_TAIL_FAIL
+git_commit=7d1926dffc0e9666ec5aa507e688727048827676
+
+proxy_gpu=NVIDIA RTX A6000
+proxy_gpu_uuid=GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f
+proxy_gpu_graphics_mhz=990
+proxy_gpu_memory_mhz=5001
+proxy_gpu_driver=580.159.03
+
+reference_gpu=NVIDIA GeForce RTX 4060 Ti
+reference_gpu_uuid=GPU-3d43c513-5a75-7fd0-a503-da920e0ffa08
+reference_gpu_driver=595.84
+reference_host=zhihao@172.20.74.85
+
+phone_model=CPH2749
+phone_device=OP611FL1
+phone_serial=3C15AU002CL00000
+phone_boot_id=acd37315-dce4-4c24-8e04-fc0060d992a2
+phone_backend=HTP0
+phone_arch=v81
+transport=direct_AOA_USB
+aoa_bus=8
+aoa_address=21
+
+total_kv_tokens=262144
+phone_suffix_tokens=4096_or_8192
+query_heads=16
+kv_heads=1
+head_dimension=512
+kv_type=f16
+query_batch=1
+request_bytes=16428
+response_bytes=16564
+
+local_host_compile=g++ -O3 -std=c++17 -Wall -Wextra -Wpedantic -Iggml/include gemma_global_attention_host.cpp -Lbuild-cuda/bin -Wl,-rpath,/home/myid/zs89458/Documents/llama.cpp-release/build-cuda/bin -Wl,--no-as-needed -lggml-cuda -lggml -lggml-base /lib/x86_64-linux-gnu/libusb-1.0.so.0 -pthread
+phone_worker_compile=/home/myid/zs89458/android/android-ndk-r27c/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++ --target=aarch64-none-linux-android31 --sysroot=/home/myid/zs89458/android/android-ndk-r27c/toolchains/llvm/prebuilt/linux-x86_64/sysroot -O3 -DNDEBUG -std=c++17 -Wall -Wextra -Wpedantic -fPIE -pie -Iggml/include gemma_global_attention_worker.cpp -Lbuild-snapdragon/bin -Wl,-rpath,$ORIGIN -lggml -lggml-base
+
+physical_4060_compile=TMPDIR=/dev/shm g++ -O3 -std=c++17 -Wall -Wextra -Wpedantic -I/home/zhihao/llama.cpp-release/ggml/include gemma_global_attention_host.cpp -L/home/zhihao/llama.cpp-release/build-s21-cuda/bin -Wl,-rpath,/home/zhihao/llama.cpp-release/build-s21-cuda/bin -Wl,-rpath,/home/zhihao/cuda_v13 -Wl,--no-as-needed -lggml-cuda -lggml -lggml-base /home/zhihao/cuda_v13/libcudart.so.13 /home/zhihao/cuda_v13/libcublas.so.13 /lib/x86_64-linux-gnu/libusb-1.0.so.0 -pthread
+
+cuda_control_command=gemma_global_attention_host 262144 8192 50 cuda_only
+steady_treatment_command=gemma_global_attention_host 262144 8192 60 steady_corun
+gapped_8192_command=gemma_global_attention_host 262144 8192 60 corun
+gapped_4096_command=gemma_global_attention_host 262144 4096 60 corun
+
+energy_status=NOT_RUN
+complete_layer_status=NOT_RUN
+full_model_status=NOT_RUN

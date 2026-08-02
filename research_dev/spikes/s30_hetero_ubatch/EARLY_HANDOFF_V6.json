@@ -1,0 +1,187 @@
+{
+  "schema": "hetero-ubatch-early-handoff-v1",
+  "date": "2026-07-21",
+  "device": {
+    "name": "OP15",
+    "serial": "3C15AU002CL00000",
+    "gpu": "GPUOpenCL",
+    "npu": "HTP0"
+  },
+  "workload": {
+    "model": "qwen2.5-0.5b-instruct-q8_0.gguf",
+    "ubatch": 64,
+    "prompt_len": 500,
+    "decode_ctx": 32,
+    "decode_steps": 64,
+    "n_gpu_layers": 99,
+    "hexagon_mbuf": 3072
+  },
+  "implementation": {
+    "result_schema": "hetero-ubatch-v6",
+    "source": "examples/layersplit/hetero-ubatch.cpp",
+    "source_sha256": "1eafa4a6d004529f5934f264d895dccc9bb64b2e95a7635295b055a76a18829c",
+    "android_binary_sha256": "4a6b36945d1a414c9196d78ab15a4d4f771d8664ee94d847d7d5e9ef844c66b8",
+    "worker_model": "The NPU worker is armed before treatment, waits on an atomic phase bit, exports the GPU prefix immediately after U0, signals GPU context reuse, imports the prefix, and starts HTP compute in the same thread.",
+    "dependency": "HTP U1 cannot execute until GPU U0 has produced and exported sequence 1 KV state. The worker is ready concurrently, but dependent NPU compute starts after import."
+  },
+  "build_and_correctness": {
+    "host_build": "pass",
+    "android_build": "pass",
+    "host_same_backend_test": "pass",
+    "op15_tiny_smoke": "pass",
+    "op15_qwen_runs": 5,
+    "op15_qwen_status_ok": 5,
+    "argmax_checks_per_run": 3,
+    "argmax_checks_passed": 15
+  },
+  "scheduler_decomposition": {
+    "definition": "B HTP ready - A ready - NPU remainder compute - prefix export - prefix import",
+    "v4_five_run_median_ms": 2.569529948684706,
+    "v5_five_run_median_ms": 0.4857820924148779,
+    "v6_five_run_median_ms": 0.06171892756652042,
+    "v6_vs_v4_saved_ms": 2.5078110211181854,
+    "v6_vs_v4_reduction_percent": 97.60,
+    "v6_vs_v5_saved_ms": 0.4240631648483575,
+    "v6_vs_v5_reduction_percent": 87.29,
+    "note": "The three medians come from separate five-run series. Use the same-state rows below to check binary-level behavior."
+  },
+  "v6_five_run_stage_rows": [
+    {
+      "run": 1,
+      "battery_temperature_c": 35.2,
+      "gpu_control_ms": 898.638958,
+      "a_ready_ms": 108.44145798683167,
+      "b_htp_ready_ms": 402.35895800590515,
+      "npu_compute_ms": 292.866719,
+      "prefix_transfer_ms": 1.045677,
+      "worker_wake_ms": 0.001667022705078125,
+      "scheduler_only_ms": 0.0051040190734972235
+    },
+    {
+      "run": 2,
+      "battery_temperature_c": 35.2,
+      "gpu_control_ms": 893.927656,
+      "a_ready_ms": 107.7521870136261,
+      "b_htp_ready_ms": 394.0991139411926,
+      "npu_compute_ms": 285.451771,
+      "prefix_transfer_ms": 0.833437,
+      "worker_wake_ms": 0.059062957763671875,
+      "scheduler_only_ms": 0.06171892756652042
+    },
+    {
+      "run": 3,
+      "battery_temperature_c": 35.6,
+      "gpu_control_ms": 894.514687,
+      "a_ready_ms": 107.72843706607819,
+      "b_htp_ready_ms": 393.4204680919647,
+      "npu_compute_ms": 284.840052,
+      "prefix_transfer_ms": 0.806198,
+      "worker_wake_ms": 0.04354202747344971,
+      "scheduler_only_ms": 0.04578102588652144
+    },
+    {
+      "run": 4,
+      "battery_temperature_c": 35.6,
+      "gpu_control_ms": 894.5245309999999,
+      "a_ready_ms": 107.8184380531311,
+      "b_htp_ready_ms": 394.92531299591064,
+      "npu_compute_ms": 286.013021,
+      "prefix_transfer_ms": 0.836354,
+      "worker_wake_ms": 0.2548959255218506,
+      "scheduler_only_ms": 0.25749994277956034
+    },
+    {
+      "run": 5,
+      "battery_temperature_c": 35.8,
+      "gpu_control_ms": 894.1261979999999,
+      "a_ready_ms": 107.59322893619537,
+      "b_htp_ready_ms": 393.8207290172577,
+      "npu_compute_ms": 285.17729099999997,
+      "prefix_transfer_ms": 0.83427,
+      "worker_wake_ms": 0.21354210376739502,
+      "scheduler_only_ms": 0.2159390810623486
+    }
+  ],
+  "v6_five_run_medians": {
+    "gpu_control_ms": 894.514687,
+    "a_ready_ms": 107.7521870136261,
+    "npu_start_ms": 108.64723896980286,
+    "b_htp_ready_ms": 394.0991139411926,
+    "b_gpu_ready_ms": 416.55276095867157,
+    "npu_compute_ms": 285.451771,
+    "prefix_transfer_ms": 0.83427,
+    "scheduler_only_ms": 0.06171892756652042,
+    "worker_wake_ms": 0.059062957763671875,
+    "worker_wake_max_ms": 0.2548959255218506,
+    "prefix_export_overlap_a_host_ms": 0.3625519275665283,
+    "npu_release_after_import_ms": 0.00010395050048828125
+  },
+  "same_fast_device_state_check": [
+    {
+      "schema": "hetero-ubatch-v5",
+      "gpu_control_ms": 586.139218,
+      "a_ready_ms": 73.58119797706604,
+      "b_htp_ready_ms": 359.40463495254517,
+      "npu_compute_ms": 285.145625,
+      "prefix_transfer_ms": 0.67177,
+      "scheduler_only_ms": 0.006041975479130546
+    },
+    {
+      "schema": "hetero-ubatch-v6",
+      "gpu_control_ms": 586.021666,
+      "a_ready_ms": 73.79114592075348,
+      "b_htp_ready_ms": 359.4887499809265,
+      "npu_compute_ms": 284.969115,
+      "prefix_transfer_ms": 0.72349,
+      "scheduler_only_ms": 0.004999060173046743
+    },
+    {
+      "schema": "hetero-ubatch-v4",
+      "gpu_control_ms": 586.250104,
+      "a_ready_ms": 73.82979094982147,
+      "b_htp_ready_ms": 371.04739594459534,
+      "npu_compute_ms": 292.790104,
+      "prefix_transfer_ms": 1.81375,
+      "scheduler_only_ms": 2.6137509947738797
+    }
+  ],
+  "fresh_all_npu_comparison": {
+    "pairs": 3,
+    "alternating_order": true,
+    "rows": [
+      {
+        "pair": 1,
+        "all_npu_ms": 392.99901,
+        "heterogeneous_a_ready_ms": 74.07479202747345,
+        "heterogeneous_b_htp_ready_ms": 373.2913019657135,
+        "a_speedup": 5.305435212754177,
+        "b_ratio_heterogeneous_over_all_npu": 0.949853
+      },
+      {
+        "pair": 2,
+        "all_npu_ms": 338.75989599999997,
+        "heterogeneous_a_ready_ms": 73.636146068573,
+        "heterogeneous_b_htp_ready_ms": 381.63849008083344,
+        "a_speedup": 4.600456624719779,
+        "b_ratio_heterogeneous_over_all_npu": 1.126575
+      },
+      {
+        "pair": 3,
+        "all_npu_ms": 332.35531199999997,
+        "heterogeneous_a_ready_ms": 81.23791706562042,
+        "heterogeneous_b_htp_ready_ms": 434.88437509536743,
+        "a_speedup": 4.091135322087812,
+        "b_ratio_heterogeneous_over_all_npu": 1.308492
+      }
+    ],
+    "paired_median_a_speedup": 4.600456624719779,
+    "paired_median_b_ratio_heterogeneous_over_all_npu": 1.126575,
+    "paired_median_b_slowdown_percent": 12.66,
+    "paired_median_b_slowdown_ms": 42.878594080833466
+  },
+  "interpretation": {
+    "synchronization_result": "The early handoff removes almost all host scheduling delay and overlaps prefix export with A host-side logits processing.",
+    "endpoint_result": "No universal B-completion speedup is demonstrated. The fresh paired median remains slower than all-NPU for B-on-HTP, while A is serviceable much earlier.",
+    "device_state_caveat": "OP15 GPU and NPU timings changed between distinct performance states while temperature remained close. Raw endpoint values must be compared in alternating pairs and reported with stage decomposition."
+  }
+}

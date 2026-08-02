@@ -1,0 +1,272 @@
+{
+  "aggregates": {
+    "2048": {
+      "all_correctness_pass": true,
+      "all_median_wins": false,
+      "all_p90_wins": false,
+      "cuda_full_median_ms": 0.491757,
+      "cuda_full_p90_ms": 0.493991,
+      "hidden_fraction": 0.06,
+      "iterations_per_repetition": [
+        300
+      ],
+      "latency_change_percent": 0.363,
+      "phone_total_median_ms": 0.469033,
+      "phone_total_p90_ms": 0.553596,
+      "repetitions": 1,
+      "split_total_median_ms": 0.49354,
+      "split_total_p90_ms": 0.593202
+    },
+    "4096": {
+      "all_correctness_pass": true,
+      "all_median_wins": true,
+      "all_p90_wins": false,
+      "cuda_full_median_ms": 0.610145,
+      "cuda_full_p90_ms": 0.614313,
+      "hidden_fraction": 0.496667,
+      "iterations_per_repetition": [
+        300
+      ],
+      "latency_change_percent": -3.296,
+      "phone_total_median_ms": 0.553706,
+      "phone_total_p90_ms": 0.619753,
+      "repetitions": 3,
+      "split_total_median_ms": 0.589945,
+      "split_total_p90_ms": 0.679709
+    },
+    "512": {
+      "all_correctness_pass": true,
+      "all_median_wins": false,
+      "all_p90_wins": false,
+      "cuda_full_median_ms": 0.406633,
+      "cuda_full_p90_ms": 0.408567,
+      "hidden_fraction": 0.0,
+      "iterations_per_repetition": [
+        300
+      ],
+      "latency_change_percent": 18.218,
+      "phone_total_median_ms": 0.45179,
+      "phone_total_p90_ms": 0.547504,
+      "repetitions": 1,
+      "split_total_median_ms": 0.480715,
+      "split_total_p90_ms": 0.725006
+    },
+    "8192": {
+      "all_correctness_pass": true,
+      "all_median_wins": true,
+      "all_p90_wins": true,
+      "cuda_full_median_ms": 0.824137,
+      "cuda_full_p90_ms": 0.829457,
+      "hidden_fraction": 0.92,
+      "iterations_per_repetition": [
+        300
+      ],
+      "latency_change_percent": -9.567,
+      "phone_total_median_ms": 0.63918,
+      "phone_total_p90_ms": 0.702072,
+      "repetitions": 3,
+      "split_total_median_ms": 0.745125,
+      "split_total_p90_ms": 0.768259
+    }
+  },
+  "claim_limits": [
+    "One synthetic Qwen3-14B attention projection and KV-cache slice.",
+    "No RoPE, Q/K normalization, causal mask, or full decoder layer.",
+    "A6000 at 240/5001 MHz is a kernel-specific latency proxy only.",
+    "No physical RTX 4060 Ti treatment, energy, or multi-phone result."
+  ],
+  "mechanism": {
+    "cache_mode": "last_slot_update",
+    "gpu_groups": 7,
+    "kv_heads_per_phone_group": 1,
+    "model_shape": "qwen3_14b",
+    "phone_groups": 1,
+    "q_heads_per_phone_group": 5,
+    "weight_type": "q8_0"
+  },
+  "policy_interpretation": {
+    "2048": "reject_latency",
+    "4096": "diagnostic_median_only_tail_regression",
+    "512": "reject_latency",
+    "8192": "prototype_eligible_median_and_p90"
+  },
+  "raw_runs": [
+    {
+      "cache_mode": "last_slot_update",
+      "correctness": {
+        "local_partition": true,
+        "phone": true,
+        "split": true
+      },
+      "correctness_pass": true,
+      "cuda_full_median_ms": 0.491757,
+      "cuda_full_p90_ms": 0.493991,
+      "cuda_shard_median_ms": 0.461178,
+      "file": "HOST_KV2048_G1_R1.log",
+      "hidden_fraction": 0.06,
+      "iterations": 300,
+      "latency_change_percent": 0.363,
+      "n_kv": 2048,
+      "phone_total_median_ms": 0.469033,
+      "phone_total_p90_ms": 0.553596,
+      "repetition": 1,
+      "split_total_median_ms": 0.49354,
+      "split_total_p90_ms": 0.593202
+    },
+    {
+      "cache_mode": "last_slot_update",
+      "correctness": {
+        "local_partition": true,
+        "phone": true,
+        "split": true
+      },
+      "correctness_pass": true,
+      "cuda_full_median_ms": 0.610285,
+      "cuda_full_p90_ms": 0.613931,
+      "cuda_shard_median_ms": 0.550931,
+      "file": "HOST_KV4096_G1_R1.log",
+      "hidden_fraction": 0.49,
+      "iterations": 300,
+      "latency_change_percent": -1.506,
+      "n_kv": 4096,
+      "phone_total_median_ms": 0.557783,
+      "phone_total_p90_ms": 0.619753,
+      "repetition": 1,
+      "split_total_median_ms": 0.601097,
+      "split_total_p90_ms": 0.679709
+    },
+    {
+      "cache_mode": "last_slot_update",
+      "correctness": {
+        "local_partition": true,
+        "phone": true,
+        "split": true
+      },
+      "correctness_pass": true,
+      "cuda_full_median_ms": 0.610054,
+      "cuda_full_p90_ms": 0.614633,
+      "cuda_shard_median_ms": 0.550539,
+      "file": "HOST_KV4096_G1_R2.log",
+      "hidden_fraction": 0.496667,
+      "iterations": 300,
+      "latency_change_percent": -3.296,
+      "n_kv": 4096,
+      "phone_total_median_ms": 0.553706,
+      "phone_total_p90_ms": 0.621306,
+      "repetition": 2,
+      "split_total_median_ms": 0.589945,
+      "split_total_p90_ms": 0.728903
+    },
+    {
+      "cache_mode": "last_slot_update",
+      "correctness": {
+        "local_partition": true,
+        "phone": true,
+        "split": true
+      },
+      "correctness_pass": true,
+      "cuda_full_median_ms": 0.610145,
+      "cuda_full_p90_ms": 0.614313,
+      "cuda_shard_median_ms": 0.55035,
+      "file": "HOST_KV4096_G1_R3.log",
+      "hidden_fraction": 0.533333,
+      "iterations": 300,
+      "latency_change_percent": -5.685,
+      "n_kv": 4096,
+      "phone_total_median_ms": 0.522005,
+      "phone_total_p90_ms": 0.609714,
+      "repetition": 3,
+      "split_total_median_ms": 0.575458,
+      "split_total_p90_ms": 0.6439
+    },
+    {
+      "cache_mode": "last_slot_update",
+      "correctness": {
+        "local_partition": true,
+        "phone": true,
+        "split": true
+      },
+      "correctness_pass": true,
+      "cuda_full_median_ms": 0.406633,
+      "cuda_full_p90_ms": 0.408567,
+      "cuda_shard_median_ms": 0.379982,
+      "file": "HOST_KV512_G1_R1.log",
+      "hidden_fraction": 0.0,
+      "iterations": 300,
+      "latency_change_percent": 18.218,
+      "n_kv": 512,
+      "phone_total_median_ms": 0.45179,
+      "phone_total_p90_ms": 0.547504,
+      "repetition": 1,
+      "split_total_median_ms": 0.480715,
+      "split_total_p90_ms": 0.725006
+    },
+    {
+      "cache_mode": "last_slot_update",
+      "correctness": {
+        "local_partition": true,
+        "phone": true,
+        "split": true
+      },
+      "correctness_pass": true,
+      "cuda_full_median_ms": 0.823846,
+      "cuda_full_p90_ms": 0.829237,
+      "cuda_shard_median_ms": 0.733412,
+      "file": "HOST_KV8192_G1_R1.log",
+      "hidden_fraction": 0.92,
+      "iterations": 300,
+      "latency_change_percent": -9.555,
+      "n_kv": 8192,
+      "phone_total_median_ms": 0.63918,
+      "phone_total_p90_ms": 0.709486,
+      "repetition": 1,
+      "split_total_median_ms": 0.745125,
+      "split_total_p90_ms": 0.768259
+    },
+    {
+      "cache_mode": "last_slot_update",
+      "correctness": {
+        "local_partition": true,
+        "phone": true,
+        "split": true
+      },
+      "correctness_pass": true,
+      "cuda_full_median_ms": 0.824557,
+      "cuda_full_p90_ms": 0.829457,
+      "cuda_shard_median_ms": 0.733472,
+      "file": "HOST_KV8192_G1_R2.log",
+      "hidden_fraction": 0.976667,
+      "iterations": 300,
+      "latency_change_percent": -9.72,
+      "n_kv": 8192,
+      "phone_total_median_ms": 0.632668,
+      "phone_total_p90_ms": 0.680981,
+      "repetition": 2,
+      "split_total_median_ms": 0.744413,
+      "split_total_p90_ms": 0.750986
+    },
+    {
+      "cache_mode": "last_slot_update",
+      "correctness": {
+        "local_partition": true,
+        "phone": true,
+        "split": true
+      },
+      "correctness_pass": true,
+      "cuda_full_median_ms": 0.824137,
+      "cuda_full_p90_ms": 0.830509,
+      "cuda_shard_median_ms": 0.733342,
+      "file": "HOST_KV8192_G1_R3.log",
+      "hidden_fraction": 0.92,
+      "iterations": 300,
+      "latency_change_percent": -9.567,
+      "n_kv": 8192,
+      "phone_total_median_ms": 0.642647,
+      "phone_total_p90_ms": 0.702072,
+      "repetition": 3,
+      "split_total_median_ms": 0.745295,
+      "split_total_p90_ms": 0.775273
+    }
+  ],
+  "schema": "s41-attention-group-analysis-v1"
+}

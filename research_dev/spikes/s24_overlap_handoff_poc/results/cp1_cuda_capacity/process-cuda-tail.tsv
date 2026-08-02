@@ -1,0 +1,2 @@
+worker	pid	vmrss_kib	vmhwm_kib	pss_kib
+cuda-tail	315551	12803388	12804696	4478663

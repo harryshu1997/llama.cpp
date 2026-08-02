@@ -1,0 +1,215 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1120" viewBox="0 0 1800 1120">
+  <defs>
+    <marker id="gray-arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#475569"/>
+    </marker>
+    <marker id="red-arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#dc2626"/>
+    </marker>
+    <marker id="blue-arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#2563eb"/>
+    </marker>
+    <marker id="green-arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#059669"/>
+    </marker>
+    <marker id="gold-arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#d97706"/>
+    </marker>
+    <style>
+      .title { font-family: Helvetica, Arial, sans-serif; font-size: 31px; font-weight: 700; fill: #0f172a; }
+      .subtitle { font-family: Helvetica, Arial, sans-serif; font-size: 17px; font-weight: 400; fill: #475569; }
+      .panel-label { font-family: Helvetica, Arial, sans-serif; font-size: 25px; font-weight: 700; fill: #0f172a; }
+      .panel-title { font-family: Helvetica, Arial, sans-serif; font-size: 22px; font-weight: 700; fill: #0f172a; }
+      .lane { font-family: Helvetica, Arial, sans-serif; font-size: 18px; font-weight: 700; fill: #334155; }
+      .box-title { font-family: Helvetica, Arial, sans-serif; font-size: 17px; font-weight: 700; fill: #0f172a; text-anchor: middle; }
+      .box-text { font-family: Helvetica, Arial, sans-serif; font-size: 15px; font-weight: 400; fill: #334155; text-anchor: middle; }
+      .small { font-family: Helvetica, Arial, sans-serif; font-size: 13px; font-weight: 400; fill: #475569; text-anchor: middle; }
+      .tiny { font-family: Helvetica, Arial, sans-serif; font-size: 12px; font-weight: 400; fill: #475569; }
+      .metric-title { font-family: Helvetica, Arial, sans-serif; font-size: 18px; font-weight: 700; fill: #0f172a; }
+      .metric { font-family: Helvetica, Arial, sans-serif; font-size: 15px; font-weight: 400; fill: #334155; }
+      .metric-strong { font-family: Helvetica, Arial, sans-serif; font-size: 17px; font-weight: 700; fill: #0f172a; }
+      .decision-title { font-family: Helvetica, Arial, sans-serif; font-size: 16px; font-weight: 700; fill: #0f172a; text-anchor: middle; }
+      .decision-text { font-family: Helvetica, Arial, sans-serif; font-size: 13px; font-weight: 400; fill: #475569; text-anchor: middle; }
+      .edge-gray { fill: none; stroke: #475569; stroke-width: 2.2; marker-end: url(#gray-arrow); }
+      .edge-red { fill: none; stroke: #dc2626; stroke-width: 3; marker-end: url(#red-arrow); }
+      .edge-blue { fill: none; stroke: #2563eb; stroke-width: 2.8; marker-end: url(#blue-arrow); }
+      .edge-green { fill: none; stroke: #059669; stroke-width: 2.8; marker-end: url(#green-arrow); }
+      .edge-gold { fill: none; stroke: #d97706; stroke-width: 2.8; marker-end: url(#gold-arrow); }
+      .edge-control { fill: none; stroke: #64748b; stroke-width: 2.2; stroke-dasharray: 8 6; marker-end: url(#gray-arrow); }
+    </style>
+  </defs>
+
+  <rect width="1800" height="1120" fill="#ffffff"/>
+  <text x="50" y="48" class="title">Direct all-NPU baseline versus GPU-first / HTP scheduling</text>
+  <text x="50" y="78" class="subtitle">Five alternating-order OP15 pairs: Qwen2.5 0.5B Q8_0, prompt = 500, ubatch = 64, decode context = 32</text>
+
+  <!-- Panel (a): original all-NPU -->
+  <rect x="42" y="108" width="1716" height="270" rx="12" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="62" y="143" class="panel-label">(a)</text>
+  <text x="105" y="143" class="panel-title">Original: one HTP context runs the complete mixed logical batch</text>
+
+  <rect x="80" y="184" width="220" height="100" rx="9" fill="#ffffff" stroke="#64748b" stroke-width="1.7"/>
+  <text x="190" y="215" class="box-title">Request scheduler</text>
+  <text x="190" y="242" class="box-text">A: one decode row</text>
+  <text x="190" y="264" class="box-text">B: 500 prefill rows</text>
+
+  <rect x="355" y="184" width="240" height="100" rx="9" fill="#ffffff" stroke="#64748b" stroke-width="1.7"/>
+  <text x="475" y="215" class="box-title">One llama_decode()</text>
+  <text x="475" y="242" class="box-text">[D, P0, P1, ..., P499]</text>
+  <text x="475" y="264" class="small">501 logical rows</text>
+
+  <rect x="660" y="169" width="700" height="130" rx="10" fill="#ecfdf5" stroke="#059669" stroke-width="2"/>
+  <text x="1010" y="195" class="box-title">NPU / HTP: one host submission, eight physical ubatches</text>
+  <rect x="686" y="216" width="124" height="54" rx="6" fill="#a7f3d0" stroke="#059669"/>
+  <text x="748" y="238" class="box-title">U0</text>
+  <text x="748" y="259" class="small">D + 63P</text>
+  <rect x="830" y="216" width="82" height="54" rx="6" fill="#d1fae5" stroke="#34d399"/>
+  <text x="871" y="248" class="box-title">U1</text>
+  <rect x="932" y="216" width="82" height="54" rx="6" fill="#d1fae5" stroke="#34d399"/>
+  <text x="973" y="248" class="box-title">U2</text>
+  <text x="1040" y="249" class="panel-title">...</text>
+  <rect x="1090" y="216" width="82" height="54" rx="6" fill="#d1fae5" stroke="#34d399"/>
+  <text x="1131" y="248" class="box-title">U7</text>
+  <rect x="1192" y="216" width="142" height="54" rx="6" fill="#ffffff" stroke="#64748b"/>
+  <text x="1263" y="238" class="box-title">API return</text>
+  <text x="1263" y="259" class="small">390.07 ms median</text>
+
+  <rect x="1440" y="184" width="270" height="100" rx="9" fill="#fff7ed" stroke="#d97706" stroke-width="2"/>
+  <text x="1575" y="215" class="box-title">Both requests released</text>
+  <text x="1575" y="242" class="box-text">A logits + B logits</text>
+  <text x="1575" y="264" class="small">B KV remains on HTP</text>
+
+  <path d="M300 234 H355" class="edge-gray"/>
+  <path d="M595 234 H660" class="edge-gray"/>
+  <path d="M1360 234 H1440" class="edge-gold"/>
+  <path d="M748 216 V166 H1408 V209 H1440" fill="none" stroke="#dc2626" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#red-arrow)"/>
+  <text x="1082" y="158" class="small" fill="#dc2626">A logits exist after U0 but remain behind the API boundary</text>
+
+  <!-- Panel (b): heterogeneous -->
+  <rect x="42" y="405" width="1716" height="558" rx="12" fill="#ffffff" stroke="#94a3b8" stroke-width="1.7"/>
+  <text x="62" y="442" class="panel-label">(b)</text>
+  <text x="105" y="442" class="panel-title">GPU-first: release A after U0 while HTP completes B</text>
+
+  <rect x="65" y="466" width="1390" height="93" rx="7" fill="#fff7ed" stroke="#fed7aa"/>
+  <rect x="65" y="574" width="1390" height="123" rx="7" fill="#eff6ff" stroke="#bfdbfe"/>
+  <rect x="65" y="712" width="1390" height="93" rx="7" fill="#fffbeb" stroke="#fde68a"/>
+  <rect x="65" y="820" width="1390" height="119" rx="7" fill="#ecfdf5" stroke="#a7f3d0"/>
+  <text x="88" y="520" class="lane">Scheduler / response</text>
+  <text x="88" y="644" class="lane">GPU / OpenCL</text>
+  <text x="88" y="766" class="lane">Host KV</text>
+  <text x="88" y="888" class="lane">NPU / HTP</text>
+
+  <rect x="240" y="486" width="225" height="54" rx="7" fill="#ffffff" stroke="#64748b" stroke-width="1.6"/>
+  <text x="352" y="508" class="box-title">Decode-first order</text>
+  <text x="352" y="530" class="small">[D, P0 ... P62] | [P63 ...]</text>
+
+  <rect x="830" y="478" width="210" height="65" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="2"/>
+  <text x="935" y="503" class="box-title">A logits available</text>
+  <text x="935" y="527" class="box-text">80.36 ms median</text>
+  <rect x="1090" y="478" width="225" height="65" rx="8" fill="#ffffff" stroke="#dc2626" stroke-width="1.8"/>
+  <text x="1202" y="503" class="box-title">Sample + output queue</text>
+  <text x="1202" y="527" class="small">A no longer waits for B</text>
+
+  <rect x="440" y="599" width="205" height="73" rx="8" fill="#bfdbfe" stroke="#2563eb" stroke-width="2"/>
+  <text x="542" y="623" class="box-title">GPU mixed U0</text>
+  <text x="542" y="647" class="box-text">1 decode + 63 prefill</text>
+  <text x="542" y="666" class="small">one completion fence</text>
+
+  <rect x="690" y="599" width="115" height="73" rx="8" fill="#ffffff" stroke="#2563eb" stroke-width="2"/>
+  <text x="747" y="624" class="box-title">Fence</text>
+  <text x="747" y="648" class="small">logits + KV</text>
+
+  <rect x="850" y="599" width="225" height="73" rx="8" fill="#dbeafe" stroke="#2563eb" stroke-width="1.8"/>
+  <text x="962" y="623" class="box-title">Continue A decode</text>
+  <text x="962" y="647" class="box-text">5-10 additional graphs</text>
+  <text x="962" y="666" class="small">overlapped with B</text>
+
+  <rect x="1160" y="599" width="150" height="73" rx="8" fill="#ffffff" stroke="#64748b" stroke-width="1.7"/>
+  <text x="1235" y="623" class="box-title">FINAL gate</text>
+  <text x="1235" y="647" class="box-text">stop new graph</text>
+  <text x="1235" y="666" class="small">before HTP U7</text>
+
+  <rect x="1340" y="599" width="95" height="73" rx="8" fill="#dbeafe" stroke="#2563eb" stroke-width="1.8"/>
+  <text x="1387" y="624" class="box-title">Import</text>
+  <text x="1387" y="648" class="small">full B KV</text>
+
+  <rect x="650" y="730" width="175" height="58" rx="8" fill="#fef3c7" stroke="#d97706" stroke-width="1.8"/>
+  <text x="737" y="753" class="box-title">Export B prefix</text>
+  <text x="737" y="776" class="small">0.78 MB host state</text>
+  <rect x="860" y="730" width="155" height="58" rx="8" fill="#ffffff" stroke="#d97706" stroke-width="1.8"/>
+  <text x="937" y="753" class="box-title">Import on HTP</text>
+  <text x="937" y="776" class="small">request B owner</text>
+  <rect x="1190" y="730" width="165" height="58" rx="8" fill="#fef3c7" stroke="#d97706" stroke-width="1.8"/>
+  <text x="1272" y="753" class="box-title">Export full B</text>
+  <text x="1272" y="776" class="small">6.15 MB host state</text>
+
+  <rect x="850" y="843" width="175" height="72" rx="8" fill="#d1fae5" stroke="#059669" stroke-width="1.8"/>
+  <text x="937" y="867" class="box-title">B prefix imported</text>
+  <text x="937" y="891" class="box-text">positions 0 ... 62</text>
+
+  <rect x="1055" y="843" width="200" height="72" rx="8" fill="#a7f3d0" stroke="#059669" stroke-width="2"/>
+  <text x="1155" y="867" class="box-title">Grouped U1 ... U6</text>
+  <text x="1155" y="891" class="box-text">384 rows / one submit</text>
+
+  <rect x="1285" y="843" width="145" height="72" rx="8" fill="#ffffff" stroke="#64748b" stroke-width="1.7"/>
+  <text x="1357" y="867" class="box-title">FINAL bit + U7</text>
+  <text x="1357" y="891" class="small">B ready: 430.24 ms</text>
+
+  <path d="M465 513 H505 V599" class="edge-gray"/>
+  <path d="M645 636 H690" class="edge-blue"/>
+  <path d="M805 618 H820 V510 H830" class="edge-red"/>
+  <path d="M1040 510 H1090" class="edge-red"/>
+  <path d="M805 652 H850" class="edge-blue"/>
+  <path d="M1075 636 H1160" class="edge-blue"/>
+  <path d="M805 652 V700 H737 V730" class="edge-gold"/>
+  <path d="M825 759 H860" class="edge-gold"/>
+  <path d="M937 788 V843" class="edge-gold"/>
+  <path d="M1025 879 H1055" class="edge-green"/>
+  <path d="M1255 879 H1285" class="edge-green"/>
+  <path d="M1430 879 H1445 V690 H1235 V672" class="edge-control"/>
+  <path d="M1357 843 V812 H1272 V788" class="edge-gold"/>
+  <path d="M1355 759 H1387 V672" class="edge-gold"/>
+
+  <!-- Comparison metrics -->
+  <rect x="1480" y="466" width="252" height="473" rx="10" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="1500" y="498" class="metric-title">Paired comparison</text>
+  <text x="1500" y="522" class="tiny">5 pairs; alternating process order</text>
+  <line x1="1500" y1="538" x2="1712" y2="538" stroke="#cbd5e1"/>
+
+  <text x="1500" y="568" class="metric">A logits ready</text>
+  <text x="1500" y="593" class="tiny">all-NPU: 390.07 ms</text>
+  <text x="1500" y="615" class="metric-strong" fill="#dc2626">hetero: 80.36 ms</text>
+  <rect x="1500" y="628" width="128" height="29" rx="14" fill="#fee2e2" stroke="#fca5a5"/>
+  <text x="1564" y="648" class="box-title" fill="#b91c1c">4.80x sooner</text>
+  <text x="1500" y="676" class="tiny">paired range 4.11x-5.32x</text>
+
+  <text x="1500" y="714" class="metric">B ready on HTP</text>
+  <text x="1500" y="739" class="tiny">all-NPU: 390.07 ms</text>
+  <text x="1500" y="761" class="metric-strong" fill="#059669">hetero: 430.24 ms</text>
+  <rect x="1500" y="774" width="132" height="29" rx="14" fill="#fef3c7" stroke="#fbbf24"/>
+  <text x="1566" y="794" class="box-title" fill="#92400e">1.12x slower</text>
+  <text x="1500" y="822" class="tiny">median delta +45.57 ms</text>
+
+  <text x="1500" y="856" class="metric">B restored on GPU</text>
+  <text x="1500" y="880" class="metric-strong" fill="#2563eb">536.86 ms median</text>
+  <text x="1500" y="902" class="tiny">+149.63 ms vs NPU-local endpoint</text>
+  <text x="1500" y="925" class="tiny">15/15 hetero checks; tokens match</text>
+
+  <!-- Policy conclusion -->
+  <rect x="70" y="990" width="500" height="82" rx="10" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.5"/>
+  <text x="320" y="1018" class="decision-title">Latency-critical active decode</text>
+  <text x="320" y="1042" class="decision-text">Choose GPU-first: A is released about 309 ms earlier</text>
+  <text x="320" y="1061" class="decision-text">and 5-10 more A graphs overlap B prefill</text>
+
+  <rect x="650" y="990" width="500" height="82" rx="10" fill="#ecfdf5" stroke="#6ee7b7" stroke-width="1.5"/>
+  <text x="900" y="1018" class="decision-title">Prefill throughput / B stays on HTP</text>
+  <text x="900" y="1042" class="decision-text">Choose all-NPU: B usually completes earlier</text>
+  <text x="900" y="1061" class="decision-text">and avoids the 6.15 MB NPU-to-GPU migration</text>
+
+  <rect x="1230" y="990" width="500" height="82" rx="10" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="1480" y="1018" class="decision-title">Scheduler policy</text>
+  <text x="1480" y="1042" class="decision-text">Use request priority and KV owner as the routing key</text>
+  <text x="1480" y="1061" class="decision-text">This is a QoS tradeoff, not a universal speedup</text>
+
+  <text x="50" y="1103" class="subtitle">Figure: GPU-first scheduling trades later B completion for much earlier service of A; all values are paired medians, and NPU-local versus GPU-restored B are different ownership endpoints.</text>
+</svg>

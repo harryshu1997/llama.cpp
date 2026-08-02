@@ -1,0 +1,143 @@
+{
+  "binary": "/tmp/s41-current-cuda/s41-causal-v2-host-energy",
+  "binary_sha256": "5ed68836bbbf244d85304d1f02e2d7de8bdc301b9a830f107b462bd86b67c87f",
+  "median_energy_per_iteration_j": {
+    "monolithic": 0.11524450595406496
+  },
+  "method": "100ms nvidia-smi arrival timestamps with ZOH integration",
+  "power_samples": "/tmp/s41-current-cuda/physical_4060_control_20260729T035025Z/GPU_POWER_SAMPLES.jsonl",
+  "power_samples_sha256": "d2b335701ce290d6f54c2c9d9f0d4447398ab08d8627224283f1b1d083d27c2a",
+  "runs": [
+    {
+      "average_power_w": 106.09994761618384,
+      "average_utilization_pct": 96.19354838709677,
+      "command": [
+        "/tmp/s41-current-cuda/s41-causal-v2-host-energy",
+        "12000",
+        "3328",
+        "q8_0",
+        "qwen3_14b",
+        "f16",
+        "cuda_energy",
+        "f16",
+        "f32_async"
+      ],
+      "duration_s": 12.744802087,
+      "energy_j": 1352.2228338093305,
+      "energy_per_iteration_j": 0.11268523615077754,
+      "graphics_mhz_max": 2835.0,
+      "graphics_mhz_min": 2595.0,
+      "index": 1,
+      "iterations": 12000,
+      "max_sample_gap_s": 0.051836172,
+      "memory_mhz_max": 8751.0,
+      "memory_mhz_min": 8751.0,
+      "mode": "monolithic",
+      "phone_columns": 0,
+      "power_limit_w_values": [
+        165.0
+      ],
+      "process_ended_ns": 1785297040692766136,
+      "process_started_ns": 1785297026967252290,
+      "raw_log": "/tmp/s41-current-cuda/physical_4060_control_20260729T035025Z/energy_01_monolithic.log",
+      "raw_log_sha256": "b60916be5b324ad106fea91c2009ef23548194e995a588295c5753fcf26670dc",
+      "result_line": "CUDA_ONLY shape=qwen3_14b type=q8_0 n=12000 cuda_full_median_ms=1.061857 cuda_full_p90_ms=1.062743 sample=-0.0771855712 non_finite=0",
+      "sample_count": 248,
+      "window_ended_ns": 1785297040618088124,
+      "window_started_ns": 1785297027873286037
+    },
+    {
+      "average_power_w": 108.51234633700463,
+      "average_utilization_pct": 97.61290322580645,
+      "command": [
+        "/tmp/s41-current-cuda/s41-causal-v2-host-energy",
+        "12000",
+        "3328",
+        "q8_0",
+        "qwen3_14b",
+        "f16",
+        "cuda_energy",
+        "f16",
+        "f32_async"
+      ],
+      "duration_s": 12.744485933,
+      "energy_j": 1382.9340714487796,
+      "energy_per_iteration_j": 0.11524450595406496,
+      "graphics_mhz_max": 2835.0,
+      "graphics_mhz_min": 2595.0,
+      "index": 2,
+      "iterations": 12000,
+      "max_sample_gap_s": 0.051822727,
+      "memory_mhz_max": 8751.0,
+      "memory_mhz_min": 8751.0,
+      "mode": "monolithic",
+      "phone_columns": 0,
+      "power_limit_w_values": [
+        165.0
+      ],
+      "process_ended_ns": 1785297055401765568,
+      "process_started_ns": 1785297041694400315,
+      "raw_log": "/tmp/s41-current-cuda/physical_4060_control_20260729T035025Z/energy_02_monolithic.log",
+      "raw_log_sha256": "2e6ff0ba5c17b795cc77616ef962c1b2dfb5b7176a1a21889971de0ac0a05284",
+      "result_line": "CUDA_ONLY shape=qwen3_14b type=q8_0 n=12000 cuda_full_median_ms=1.061829 cuda_full_p90_ms=1.062741 sample=-0.0771855712 non_finite=0",
+      "sample_count": 248,
+      "window_ended_ns": 1785297055322951692,
+      "window_started_ns": 1785297042578465759
+    },
+    {
+      "average_power_w": 108.79374898547198,
+      "average_utilization_pct": 95.80645161290323,
+      "command": [
+        "/tmp/s41-current-cuda/s41-causal-v2-host-energy",
+        "12000",
+        "3328",
+        "q8_0",
+        "qwen3_14b",
+        "f16",
+        "cuda_energy",
+        "f16",
+        "f32_async"
+      ],
+      "duration_s": 12.743757413,
+      "energy_j": 1386.44114512167,
+      "energy_per_iteration_j": 0.1155367620934725,
+      "graphics_mhz_max": 2820.0,
+      "graphics_mhz_min": 2595.0,
+      "index": 3,
+      "iterations": 12000,
+      "max_sample_gap_s": 0.051795779,
+      "memory_mhz_max": 8751.0,
+      "memory_mhz_min": 8751.0,
+      "mode": "monolithic",
+      "phone_columns": 0,
+      "power_limit_w_values": [
+        165.0
+      ],
+      "process_ended_ns": 1785297070105090643,
+      "process_started_ns": 1785297056403369787,
+      "raw_log": "/tmp/s41-current-cuda/physical_4060_control_20260729T035025Z/energy_03_monolithic.log",
+      "raw_log_sha256": "191553a33963b14b56c82cad176fec154a1135e904cf9c7a15581f0f7a38b5a5",
+      "result_line": "CUDA_ONLY shape=qwen3_14b type=q8_0 n=12000 cuda_full_median_ms=1.061762 cuda_full_p90_ms=1.062655 sample=-0.0771855712 non_finite=0",
+      "sample_count": 248,
+      "window_ended_ns": 1785297070016998635,
+      "window_started_ns": 1785297057273241222
+    }
+  ],
+  "schedule": [
+    "monolithic",
+    "monolithic",
+    "monolithic"
+  ],
+  "schema": "s41-activation-gpu-energy-v1",
+  "scope": "GPU_BOARD_ONLY",
+  "shape": "qwen3_14b",
+  "source_sha256": {
+    "causal_activation_host.cpp": "ce0d8d557adcb121fb3a0ff8fe8402aabf4128151e53f03aea7a19976e764a27",
+    "causal_activation_worker.cpp": "e0ef5f2fb9541252e5ade1b20671d7a3b83a92a8903f1a483499e9d272b3ec73",
+    "causal_ffn_protocol.h": "fd13ea2810c0f2352c711b564e8112820bd0cf26e48ec814232af59cd17c5b4d",
+    "causal_quantized_weights.h": "f571dbf0d57f05e456e0bbd5e6f63a7078e6d80e89b9ad20ecb97c2bc1e5dbda",
+    "measure_causal_gpu_energy.py": "ec924afb89797953fdbb4b1ad0df8dc0aad11e799a84de063506346f7f78272d"
+  },
+  "split_gpu_energy_change_fraction": null,
+  "weight_type": "q8_0"
+}

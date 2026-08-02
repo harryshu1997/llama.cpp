@@ -1,0 +1,105 @@
+3ba01077-fa7c-4a69-859d-705eee5041f9
+MemTotal:       11482988 kB
+MemFree:          240552 kB
+MemAvailable:     671160 kB
+Buffers:            1316 kB
+Cached:           936940 kB
+SwapCached:        22928 kB
+Active:           333804 kB
+Inactive:         624668 kB
+Active(anon):     123896 kB
+Inactive(anon):   179728 kB
+Active(file):     209908 kB
+Inactive(file):   444940 kB
+Unevictable:      285452 kB
+Mlocked:          283140 kB
+SwapTotal:       7864316 kB
+SwapFree:        6395580 kB
+Dirty:               448 kB
+Writeback:             0 kB
+AnonPages:        303344 kB
+Mapped:           635972 kB
+Shmem:              6860 kB
+KReclaimable:     188500 kB
+Slab:             658120 kB
+SReclaimable:     183192 kB
+SUnreclaim:       474928 kB
+KernelStack:       84288 kB
+ShadowCallStack:       0 kB
+PageTables:       101056 kB
+SecPageTables:         0 kB
+NFS_Unstable:          0 kB
+Bounce:                0 kB
+WritebackTmp:          0 kB
+CommitLimit:    13605808 kB
+Committed_AS:   178556052 kB
+VmallocTotal:   259653632 kB
+VmallocUsed:      341084 kB
+VmallocChunk:          0 kB
+Percpu:            12896 kB
+AnonHugePages:         0 kB
+ShmemHugePages:        0 kB
+ShmemPmdMapped:        0 kB
+FileHugePages:         0 kB
+FilePmdMapped:         0 kB
+HugePagePool:          0 kB
+DoubleMapTHP:          0 kB
+CmaTotal:         618496 kB
+CmaFree:               0 kB
+IonTotalCache:         0 kB
+IonTotalUsed:     251380 kB
+RsvPool:          577540 kB
+GPUTotalUsed:    7190744 kB
+PID=3918
+Name:	llama-layerspli
+Umask:	0000
+State:	S (sleeping)
+Tgid:	3918
+Ngid:	0
+Pid:	3918
+PPid:	1
+TracerPid:	0
+Uid:	2000	2000	2000	2000
+Gid:	2000	2000	2000	2000
+FDSize:	64
+Groups:	1004 1007 1011 1015 1028 1078 1079 3001 3002 3003 3006 3009 3011 3012 
+VmPeak:	16106744 kB
+VmSize:	10083652 kB
+VmLck:	       0 kB
+VmPin:	       0 kB
+VmHWM:	 6055516 kB
+VmRSS:	   37792 kB
+RssAnon:	     632 kB
+RssFile:	   36684 kB
+RssShmem:	     476 kB
+VmData:	  173608 kB
+VmStk:	     152 kB
+VmExe:	     244 kB
+VmLib:	   36808 kB
+VmPTE:	     828 kB
+VmSwap:	   77952 kB
+CoreDumping:	0
+THP_enabled:	1
+Threads:	8
+SigQ:	0/42211
+SigPnd:	0000000000000000
+ShdPnd:	0000000000000000
+SigBlk:	0000000080000000
+SigIgn:	0000002000000001
+SigCgt:	0000104c400086f8
+CapInh:	0000000000000000
+CapPrm:	0000000000000000
+CapEff:	0000000000000000
+CapBnd:	00000000008000c0
+CapAmb:	0000000000000000
+NoNewPrivs:	0
+Seccomp:	0
+Seccomp_filters:	0
+Speculation_Store_Bypass:	thread vulnerable
+SpeculationIndirectBranch:	unknown
+Cpus_allowed:	ff
+Cpus_allowed_list:	0-7
+Mems_allowed:	1
+Mems_allowed_list:	0
+voluntary_ctxt_switches:	5479
+nonvoluntary_ctxt_switches:	3136

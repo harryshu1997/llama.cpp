@@ -1,0 +1,11 @@
+{
+  "graph_artifact_count": 16,
+  "graph_manifest_sha256": "9f7ce3e3963c7ef318bf34c74a081f29d809f46e98621f7e300970ddccd1f748",
+  "normalized_summary_sha256": "60ff1561889d3a9d91057c5825945c0707b24bd07837e5735235d4402437d0cb",
+  "raw_roots": [
+    "../server_gpu_switch_20260726T073202Z",
+    "../server_dual_ready_20260726T073202Z"
+  ],
+  "schema": "s41-server-baseline-snapshot-v1",
+  "status": "IMMUTABLE_ACQUIRED_SNAPSHOT_REPLICATION_INCOMPLETE"
+}

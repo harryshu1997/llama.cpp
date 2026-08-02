@@ -1,0 +1,1 @@
+{"chunked":[532,236772,236772,236761],"elapsed_ms":{"chunked":43.184508,"sequential_a":200.574303,"sequential_b":150.949958},"prompt_tokens":[2,532,236772,564],"schema":"s22-token-compare-v1","sequential_a":[532,236772,236772,236789],"sequential_b":[532,236772,236772,236789],"verdict":"MODE_DIVERGENCE","worker":{"layer_end":48,"layer_start":0,"n_batch":256,"n_ubatch":256}}

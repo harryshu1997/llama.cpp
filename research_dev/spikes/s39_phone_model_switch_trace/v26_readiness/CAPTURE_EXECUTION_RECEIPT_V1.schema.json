@@ -1,0 +1,328 @@
+{
+  "$id": "s39-cp0-r1-capture-execution-receipt-v2.6.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "capture_kind": {
+      "enum": [
+        "artifact_root",
+        "fast_fresh_readiness"
+      ]
+    },
+    "clock_id": {
+      "const": "HOST_MONOTONIC_RAW"
+    },
+    "completed_monotonic_ns": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "completed_utc_ns": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "contract_sha256": {
+      "$ref": "#/$defs/digest"
+    },
+    "execution_plan_sha256": {
+      "$ref": "#/$defs/digest"
+    },
+    "inputs": {
+      "items": {
+        "$ref": "#/$defs/input"
+      },
+      "minItems": 5,
+      "type": "array"
+    },
+    "invocation": {
+      "$ref": "#/$defs/invocation"
+    },
+    "model_id": {
+      "const": "qwen3-14b-q4_k_m"
+    },
+    "phase": {
+      "const": "A_ONLY"
+    },
+    "phase_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "process": {
+      "$ref": "#/$defs/process"
+    },
+    "producer_role": {
+      "enum": [
+        "capture.artifact_root",
+        "capture.fast_fresh_readiness"
+      ]
+    },
+    "result": {
+      "$ref": "#/$defs/result"
+    },
+    "runtime_bundle_plan_sha256": {
+      "$ref": "#/$defs/digest"
+    },
+    "schema": {
+      "const": "s39-cp0-r1-capture-execution-receipt-v2.6"
+    },
+    "source": {
+      "$ref": "#/$defs/source"
+    },
+    "started_monotonic_ns": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "started_utc_ns": {
+      "minimum": 1,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "capture_kind",
+    "clock_id",
+    "completed_monotonic_ns",
+    "completed_utc_ns",
+    "contract_sha256",
+    "execution_plan_sha256",
+    "inputs",
+    "invocation",
+    "model_id",
+    "phase",
+    "phase_id",
+    "process",
+    "producer_role",
+    "result",
+    "runtime_bundle_plan_sha256",
+    "schema",
+    "source",
+    "started_monotonic_ns",
+    "started_utc_ns"
+  ],
+  "title": "S39 V2.6 capture execution receipt",
+  "type": "object",
+  "$defs": {
+    "base64": {
+      "pattern": "^[A-Za-z0-9+/]*={0,2}$",
+      "type": "string"
+    },
+    "digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "environment": {
+      "additionalProperties": {
+        "maxLength": 8192,
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "path": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "role": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        },
+        "stat_after": {
+          "$ref": "#/$defs/stat"
+        },
+        "stat_before": {
+          "$ref": "#/$defs/stat"
+        }
+      },
+      "required": [
+        "bytes",
+        "path",
+        "role",
+        "sha256",
+        "stat_after",
+        "stat_before"
+      ],
+      "type": "object"
+    },
+    "invocation": {
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "items": {
+            "maxLength": 8192,
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 2,
+          "type": "array"
+        },
+        "cwd": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "env": {
+          "$ref": "#/$defs/environment"
+        },
+        "timeout_seconds": {
+          "maximum": 7200,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "argv",
+        "cwd",
+        "env",
+        "timeout_seconds"
+      ],
+      "type": "object"
+    },
+    "process": {
+      "additionalProperties": false,
+      "properties": {
+        "returncode": {
+          "const": 0
+        },
+        "stderr_b64": {
+          "$ref": "#/$defs/base64"
+        },
+        "stderr_bytes": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "stderr_sha256": {
+          "$ref": "#/$defs/digest"
+        },
+        "stdout_b64": {
+          "$ref": "#/$defs/base64"
+        },
+        "stdout_bytes": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "stdout_sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "returncode",
+        "stderr_b64",
+        "stderr_bytes",
+        "stderr_sha256",
+        "stdout_b64",
+        "stdout_bytes",
+        "stdout_sha256"
+      ],
+      "type": "object"
+    },
+    "result": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "content_b64": {
+          "$ref": "#/$defs/base64"
+        },
+        "path": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        },
+        "stat": {
+          "$ref": "#/$defs/stat"
+        }
+      },
+      "required": [
+        "bytes",
+        "content_b64",
+        "path",
+        "sha256",
+        "stat"
+      ],
+      "type": "object"
+    },
+    "source": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "execution_mode": {
+          "const": "VERIFIED_OPEN_FD"
+        },
+        "path": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        },
+        "stat_after": {
+          "$ref": "#/$defs/stat"
+        },
+        "stat_before": {
+          "$ref": "#/$defs/stat"
+        }
+      },
+      "required": [
+        "bytes",
+        "execution_mode",
+        "path",
+        "sha256",
+        "stat_after",
+        "stat_before"
+      ],
+      "type": "object"
+    },
+    "stat": {
+      "additionalProperties": false,
+      "properties": {
+        "ctime_ns": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "device_id": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "inode": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "mode": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "mtime_ns": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "size": {
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ctime_ns",
+        "device_id",
+        "inode",
+        "mode",
+        "mtime_ns",
+        "size"
+      ],
+      "type": "object"
+    }
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "correctness": {
+    "argmax_matches": 1,
+    "argmax_rows": 1,
+    "max_absolute": 0.001953125,
+    "non_finite": 0,
+    "relative_l2": 0.012424069093301213
+  },
+  "geometry": {
+    "batch": 1,
+    "counts": [
+      6912
+    ],
+    "k": 3840,
+    "n_ff": 15360,
+    "n_kv": null,
+    "offsets": [
+      8448
+    ]
+  },
+  "iterations": 30,
+  "label": "op15_htp_ffn_part1_b1",
+  "legs": [
+    {
+      "index": 0,
+      "latency": {
+        "max_ms": 4.769105,
+        "median_ms": 4.257531,
+        "min_ms": 4.034682,
+        "p90_ms": 4.666818,
+        "p99_ms": 4.715512
+      }
+    }
+  ],
+  "operator": "ffn",
+  "output_fast_hash": "3a433a52",
+  "pair_makespan": {
+    "max_ms": 4.769105,
+    "median_ms": 4.257531,
+    "min_ms": 4.034682,
+    "p90_ms": 4.666818,
+    "p99_ms": 4.715512
+  },
+  "schema": "s41-phone-pair-client-v1",
+  "transports": [
+    "aoa"
+  ],
+  "warmup": 10
+}

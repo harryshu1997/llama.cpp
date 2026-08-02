@@ -2143,7 +2143,7 @@ llama_memory_i * llama_model::create_memory(const llama_memory_params & params, 
                     llama_memory_i::layer_reuse_cb reuse = nullptr;
                     llama_kv_cache::layer_share_cb share = nullptr;
 
-                    if (arch == LLM_ARCH_GEMMA4 || arch == LLM_ARCH_QWEN3) {
+                    if (arch == LLM_ARCH_GEMMA4 || arch == LLM_ARCH_QWEN2 || arch == LLM_ARCH_QWEN3) {
                         const char * env_start = getenv("LLAMA_LAYER_START");
                         const char * env_end   = getenv("LLAMA_LAYER_END");
                         if (env_start || env_end) {

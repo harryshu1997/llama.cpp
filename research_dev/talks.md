@@ -8,7 +8,424 @@
 
 ---
 
-## Current status - `2026-07-24 EDT`
+## Current status - `2026-07-31 EDT`
+
+**XMEM MAKES THE 1M GEMMA PHONE ATTENTION LEG FIT AT THE MEDIAN; NUMERICAL
+CORRECTNESS AND P90 STILL FAIL.**
+
+The OP15 global-attention worker now uses the opt-in Adreno xmem GEMM for QK
+and probability-times-V, keeps both resident KV prepacking and scratch images
+warm, and overlaps an 8K-token phone suffix with the A6000 CUDA prefix. Three
+real A6000 990/5001 plus OP15 release runs improve the one-layer attention-core
+median by 0.851%, 0.823%, and 0.862%. The median-of-run result is 9.203865 ms
+versus 9.282255 ms CUDA-only; phone return is 8.244780 ms and therefore hidden
+under the 9.180550 ms CUDA prefix.
+
+This is explicitly a latency-only ceiling. The xmem phone component has
+relative L2 0.353682 and fails its normal numerical gate. Treatment p90 is
+10.810555 ms versus 9.293427 ms control (+16.325%). The physical 4060 Ti
+treatment was not run, and the 990 MHz A6000 is about 9.2% faster than the
+existing physical-4060 1M control for this operator. No full-layer, full-model,
+quality, or energy claim follows. Evidence:
+`spikes/s41_gemma_qwen_continuous_baseline/tp_operator_split_v1/RESULTS_GEMMA_GLOBAL_ATTENTION_XMEM_LATENCY_V1.md`.
+
+**GEMMA 262K GLOBAL-ATTENTION CONTEXT SHARD PASSES ONLY IN THE CONTINUOUS
+REGIME; GAPPED TAIL LATENCY FAILS.**
+
+A new bounded path splits one Gemma-4-12B global-attention KV sequence between
+CUDA and OP15, then performs an exact online-softmax merge from compact
+per-shard state and log-sum-exp evidence. The physical 4060 Ti takes 2.362369
+ms at 262K. An operator-specific A6000 lock of 990/5001 takes 2.354921 ms,
+within 0.315%. The old 240/5001 setting takes 6.724929 ms for this graph and is
+not a valid 4060 proxy for this operator.
+
+With an 8K-token phone suffix and continuous phone requests, three real OP15
+runs improve median by 2.297%, 2.227%, and 2.187%; aggregate p90 improves
+1.705%. With gaps, the same suffix regresses median 3.173% and p90 10.471%.
+A 4K suffix gives a repeatable 0.593-0.727% median win under gaps, but p90
+still regresses 10.588%. Final relative L2 is at most 0.0001602.
+
+This is only projected-Q plus resident-KV attention, not a complete layer,
+full model, capacity, or energy result. Do not integrate it yet. The next gate
+is continuous cross-request scheduling or a measured keep-warm mechanism,
+followed by a mandatory p90 and total-energy non-regression. Evidence:
+`spikes/s41_gemma_qwen_continuous_baseline/tp_operator_split_v1/RESULTS_GEMMA_GLOBAL_ATTENTION_V1.md`.
+
+**THREE REAL OP15 OPERATOR ISLANDS PASS ON THE 240 MHZ A6000 PROXY; FULL
+MODEL AND PHYSICAL 4060 TREATMENT REMAIN OPEN.**
+
+The complete FFN residual path now keeps gate, up, SiLU, multiply, and down
+for one column slice on HTP and returns one K-wide f16 residual. Three fresh
+300-request workers improve median latency from 1.080500 to 0.999154 ms
+(-7.54%) for Qwen3-14B and from 0.769121 to 0.695068 ms (-9.64%) for
+Gemma-4-12B. Every repetition also improves p90. Exact argmax and the 0.005
+final relative-L2 gate pass, although Gemma at 0.004992 has almost no
+numerical margin.
+
+The new sharded vocabulary head is the strongest isolated route. CUDA computes
+the vocabulary prefix while OP15 computes the suffix, reduces it locally, and
+returns only an eight-byte token/score candidate. Three fresh 300-request
+workers improve Qwen from 3.205491 to 2.689107 ms (-16.10%) and Gemma from
+4.374291 to 3.625239 ms (-17.12%). Phone-local and merged top-1 tokens match
+their CUDA oracles in every run, and every p90 beats monolithic CUDA.
+
+The bounded Qwen attention probe assigns one full GQA group, five Q heads and
+one KV head, to OP15. Both CUDA and HTP write the current projected K/V into
+the last resident cache slot before flash attention. It loses 18.2% at 512
+entries and 0.4% at 2,048. At 4,096, three medians improve by an aggregate
+3.3% but all p90 values regress. At 8,192, three runs improve median by 9.6%,
+all p90 values improve, and the phone is hidden behind CUDA in 92-98% of
+iterations. The prototype policy threshold is therefore 8,192 entries.
+
+These are operator probes, not additive full-model speedups. The head and
+attention kernels have not been calibrated against the physical RTX 4060 Ti,
+and none of these successor paths has an energy acquisition. The next narrow
+implementation order is a disabled-by-default sharded greedy head in the
+native llama.cpp executor, then complete FFN residual slices. Attention waits
+for Q/K normalization, RoPE, masking, rolling cache positions, and an 8k
+full-model oracle. Only a direct AOA treatment on the physical 4060 can
+authorize a BurstGPT or energy run. Evidence:
+`spikes/s41_gemma_qwen_continuous_baseline/tp_operator_split_v1/RESULTS.md`.
+
+**BATCHED REAL-DEVICE FFN CROSSOVER MEASURED; OFFLOAD ONLY FOR M<=4.**
+The Qwen3-14B q8_0 activation-return path now supports distinct multi-row
+inputs with a batch-1-compatible wire encoding and an exact per-row argmax
+gate. A strided-view HTP implementation returned `NO-SUPPORT` and zeros; the
+passing worker preserves the stacked gate/up path for M=1 and uses separate
+contiguous gate/up matmuls for M>1.
+
+Three fresh 500-request A6000 240/5001 plus OP15 AOA repetitions give median
+changes of -9.79%, -7.43%, -5.24%, -0.61%, and +40.71% for
+M=1,2,4,8,16. All selected points pass relative-L2 <=0.005, exact row argmax,
+and finite-output checks. The physical 4060 Ti exposes a critical calibration
+limit: the throttled A6000 is only 1.83% slower at M=1, but 57.1% slower at
+M=4 and 144.9% slower at M=8. A physical-4060 dual-CUDA profile with the
+measured phone-ready delay injected predicts -8.20% at M=2, -5.03% at M=4,
++6.81% at M=8, and +142.56% at M=16.
+
+Policy implication: phone FFN offload is a decode/small-continuous-batch
+mechanism on this hardware, not a prefill mechanism. Route M<=4 to the phone
+candidate and M>=8 to all-CUDA. The 4060 treatment remains composed because
+the phone cable is on the A6000; direct OP15 AOA on the 4060 is required
+before latency or energy publication. Evidence:
+`spikes/s41_gemma_qwen_continuous_baseline/tp_operator_split_v1/results/causal_batch_v1/run_20260729T043608Z/`.
+
+**QWEN M=1 SPLIT BEATS CUDA AT THE MEDIAN; HTP QUEUE FIX REMOVES THE P90
+PENALTY.** The Hexagon backend reserved a pinned descriptor arena for 1,024
+operations despite its existing 256-request limit. Changing the default to
+`HTP_OP_MAX_REQS` shrinks that arena from 9.5 to 2.4 MiB.
+
+Three real OP15 phone-only repetitions reduce median round trip from 0.581 to
+0.484 ms and worker graph time from 398 to 307 us. Native HTP operations stay
+at 262-263 us in the paired profiler control, so this is queue-envelope
+overhead, not a kernel speedup. The exact compiled successor passes the same
+correctness gate.
+
+In matched phone plus A6000 co-runs, split p90 falls from 0.686 to 0.670 ms
+and exposed wait p90 falls from 0.0206 ms to zero. Split median is 0.665 ms
+versus 0.670 ms CUDA-only, a 0.63% speedup. Aggregate p90 is only 0.11% below
+CUDA-only, so robust tail speedup is not claimed; the previous 2.30% p90
+penalty is removed. Reducing queue depth does not help, and a 10 us DSP poll
+build is rejected because it slows native HTP work without improving tails.
+
+A 1.5 ms request gap still raises USB OUT latency. The M=1 stacked q8 matmul
+also remains weight-DMA-bound. The next kernel optimization is multi-row
+batching for weight reuse and natural HMX eligibility, after a broad Hexagon
+graph regression for the new default.
+
+No power acquisition was run for this successor. The older full-output path
+remains GPU-board-energy negative, but its energy numbers cannot be reused.
+Evidence:
+`spikes/s41_gemma_qwen_continuous_baseline/tp_operator_split_v1/RESULTS.md`.
+
+**FIRST REAL BURSTGPT MIXED-DEVICE PROTOTYPE COMPLETE; PERFORMANCE FAILS.**
+The exact 74-request S41 trace ran end to end with Gemma Q8 continuously on
+RTX 4060 Ti and Qwen3-14B continuously on OP15 `[0,30)` plus OP12 `[30,40)`.
+All 74 requests and 592 output tokens completed. Gemma met 57/57 synthetic
+SLOs with 1.029 s P95 TTFT; Qwen met 0/17 with 57.436 s P95 TTFT and
+89.913 s P95 completion. Aggregate throughput was 4.760 token/s versus
+9.818 token/s for the existing warm-cache all-server C1 median. This is a
+T2 no-promotion transport prototype, not a capacity, handoff, switching, or
+energy result.
+
+The first paid attempt exposed a real concurrency defect: StageNet batch and
+sequence-removal replies interleaved on one socket. A prototype-only
+serialized client wrapper removed the protocol/status errors in the passing
+rerun. The core still needs a single serialized protocol owner plus
+credit-aware admission and a concurrent batch-plus-remove test. All phone and
+CUDA processes cleaned to zero. See
+`spikes/s41_gemma_qwen_continuous_baseline/prototype_t2_phone_trace_v1/RESULTS.md`.
+
+**FIRST REAL JOINT B8 PROTOTYPE COMPLETE; FORMAL A_ONLY REMAINS BLOCKED.**
+The no-reboot prototype ran Qwen3-14B concurrently on RTX 4060 Ti CUDA0 and
+the OP15 `[0,30)` plus OP12 `[30,40)` OpenCL route. Both routes completed
+8 requests x 8 continuation tokens and cleaned to zero state. Phone execution
+was 45.239 seconds versus 1.601 seconds for concurrent CUDA. Greedy agreement
+was 60/64, labeled diagnostic cross-backend divergence. The phone relay sent
+19 batches and 15,626,240 bytes directly over Wi-Fi.
+
+The frozen qualification status is unchanged:
+The human-authorized V2.4.1 quoting repair works on the real RTX 4060 Ti,
+OP15, and OP12. Repeated runs pass artifact hashing, physical phone reboots,
+phase lock, and post-reboot identity binding, then refuse fail-closed at
+`fresh_readiness`.
+
+```text
+stages 1-4  artifact_root, preparation, phase_lock, identity_binding PASS
+stage 5     fresh_readiness REFUSED
+             - frozen thermalservice/awk SIGPIPE race on OP12 or OP15
+             - OP15 192.168.1.97 -> 172.20.173.218 after identity binding
+stages 6-10 NOT REACHED
+paid files  0
+model runs  0
+```
+
+The latest clean bounded loop used fresh V2.6 roots
+`production_materialization_20260727T025451Z`,
+`production_materialization_20260727T025859Z`, and
+`production_materialization_20260727T030320Z`; every associated V2.4.1 plan
+set validated. It exhausted at `fresh_readiness` with no paid marker and no
+model process. One inherited background setup attempt overlapped the first
+refresh and both sides refused before payment; they are recorded and excluded.
+
+Distance to the first end-to-end A_ONLY result: stabilize OP15 on one Wi-Fi
+network and either authorize the small contract-pinned thermal capture repair
+or accept bounded retries; then pass stage 5 and readiness projection, run
+the first non-retryable CUDA-monolithic and joint phone+CUDA captures, fan in,
+and wrap the V2.4 verdict with V2.6 authority. The pipeline is stage-close,
+but all model-execution evidence is still ahead. See
+`spikes/s39_phone_model_switch_trace/v26_readiness/RESULTS.md`.
+
+**V2.4 PLAN SET MATERIALIZED THROUGH THE V2.6 ADAPTER; A_ONLY STILL NOT RUN.**
+The five missing V2.4 production inputs now exist and validate. The new
+bounded adapter `materialize_v24_plan_set_v26.py` derives the closure input,
+operator input, and desktop inventory from the V2.6 evidence, mirrors the
+byte-verified frozen V2.4 tools to the acquisition desktop, and drives the
+UNMODIFIED frozen `materialize_a_only_inputs_v1 -> originate_runtime_v1`
+chain there.
+
+```text
+v26 phase  cp0-r1-v26-a-only-20260726T220529Z-6176d8d7 (fresh, 40 components)
+plan set   v24_readiness/results/prephase_20260726T0915Z/
+           runtime-bundle-plan 933bbf49... cuda-route-launch f8c7fb0b...
+           phone-route-launch 6c6dc78e... joint-capture-plan b6b7e215...
+           prospective-runtime-root 4ede29fe...
+evidence   v26_readiness/results/v24_plan_set_20260726T221842Z/
+checks     authority validate_runtime_plan PASS; frozen launcher-compat,
+           live-identity, originator revalidation all in path; NEXT-STAGE
+           materialize_config_v1 accepts the set (config+plan built);
+           15 new adversarial tests; all suites 74+93+132+132 green
+```
+
+Two fail-closed refusals were kept and fixed honestly: ns-exact remote stats
+(seconds-granularity stat -c vs frozen os.stat pins) and the orchestration
+source-pin rule (capture entrypoints must reference repo producer sources;
+solved by widening the cuda_route confinement root). Recorded seams before
+the joint capture can execute: the frozen 5-element phone process argv vs the
+USB launcher's --boot-id, and the probe argv vs the v23 probe's per-run
+pid/boot interface -> one bounded execution adapter
+(boot_id_source=phase_fresh_snapshot) is the next gate, then reboot
+preparation, V2.4 phase lock, identity binding, receipts, integrated
+preflight, and exactly one A_ONLY acquisition. No model process was launched;
+a foreign CPU-only llama-cli (user hyzheng) was observed on OP15 and left
+untouched. See
+`spikes/s39_phone_model_switch_trace/v26_readiness/RESULTS.md`.
+
+**V2.6 RUNTIME INVENTORY + A_ONLY PHASE LOCK MATERIALIZED; A_ONLY STILL NOT RUN.**
+The missing V2.6 production step now exists: `materialize_production_v26.py`
+builds the canonical spec, reuses `materialize_runtime_inventory()` unchanged,
+and publishes one exclusive, all-or-nothing evidence root.
+
+```text
+phase   cp0-r1-v26-a-only-20260726T170336Z-9fbfbe34
+root    v26_readiness/results/production_materialization_20260726T170521Z/
+bound   38 components / 5 bundles / 4 managed launch-plan pairs
+        boot IDs cuda 2f68fcf5... op12 2ca4b7a3... op15 3eb99d7e...
+        shards + 9GB desktop artifact re-hashed live == frozen digests
+checks  27/27 new adversarial tests; V2.4 93/93; V2.4 desktop 132/132;
+        V2.5 132/132; independent validate PASS; live boot check PASS
+```
+
+The lock binds contract/spec/inventory/topology/launch digests, device
+identities, boot IDs, and a HOST_MONOTONIC_RAW interval; the offline validator
+recomputes all four managed launch plans from external anchors, so even a
+digest-consistent argv rewrite is rejected. A_ONLY itself stopped fail-closed
+with zero model processes launched: the inner V2.4 chain still lacks its five
+prephase production inputs (runtime-bundle-plan, both launch plans, joint
+capture plan, prospective root) whose only historical builder refuses by
+design. Next bounded gate: one V2.6-to-V2.4 plan-set adapter, then the
+integrated preflight and exactly one A_ONLY acquisition. See
+`spikes/s39_phone_model_switch_trace/v26_readiness/RESULTS.md`.
+
+**STOCK-DEFAULT DESKTOP CONTROLS COMPLETE.**
+The same 74-request trace now has three repetitions each under the exact
+`llama-server` defaults. Warm one-model swapping completes 74/74 at 1.221
+request/s and 3147.3 J selected-GPU energy; cold-NVMe swapping completes only
+17/74, meets 1/74 SLOs, and strands all 57 Qwen3 8B requests. Two simultaneous
+default servers complete 74/74 at 1.214 request/s and 3211.4 J, but only
+because auto-fit keeps Qwen3 8B at 37/37 CUDA layers and moves Qwen3 14B to
+0/41 CUDA layers with 11.62 GiB combined process RSS. Thus it is a valid
+GPU-plus-CPU fallback baseline, not dual GPU residency. CPU, server-wall, phone,
+and total-system energy remain unknown. See
+`spikes/s39_desktop_default_controls/RESULTS.md`.
+
+**CP0-D DESKTOP BASELINE: WARM PASS, COLD FAIL; PHONES PAUSED.**
+On the target RTX 4060 Ti, Qwen3 8B Q8_0 and Qwen3 14B Q4_K_M each pass the
+frozen B8 envelope, and physical attempts in both orders prove that they
+cannot coexist under that envelope. Three warm-page-cache replays complete all
+74 requests within the synthetic SLO at 1.228 request/s. Three cold-NVMe
+replays each complete only 17/74 requests, meet two SLOs, and strand all 57
+Qwen3 8B requests: approximately 8-second loads overtake the 20x switch
+schedule. The result is selected-GPU-board energy only; server-wall and total
+energy remain unknown. No phone command ran and no phone shard was created.
+See `spikes/s39_desktop_swap_baseline/RESULTS.md`.
+
+**CP0-R1 V2.2 EVIDENCE READY; A QUALIFICATION NOT RUN.**
+V1, V2, and V2.1 remain immutable parents. V2.2 is the sole exit authority.
+It exact-checks the frozen pinned-revision 64-row MMLU corpus, requires CUDA
+to score at least 25/64, binds incumbent A to the candidate's exact cut,
+stored ranges, backend, and shards, requires eight continuation tokens on all
+three B8 paths, and orders linked phone completion, publication, and CUDA
+readiness. A, B, and PAIR IDs must be distinct. Final cycle authorization
+reopens all three V2.2 roots and cannot consume legacy status records. Thirteen
+focused V2.2 tests and all 323 S39 tests pass. No hardware acquisition or
+model execution ran, so every physical gate remains blocked. See
+`spikes/s39_phone_model_switch_trace/RESULTS_CP0_R1_V2_2.md`.
+
+**HISTORICAL CP0-R1 V1 CONTRACT FROZEN; PHYSICAL GATE WAS NOT RUN.**
+Qwen3 14B remains `PROVISIONAL_BATCH`; it is not an eligible incumbent.
+Qwen3 8B Q8_0 is the only permitted new candidate and is selected but not
+acquired. One model-independent, fail-closed evaluator now requires independent
+B8 service on the target RTX 4060 Ti, measured pair non-co-residency, complete
+direct OP15-to-OP12 execution, memory and zero-swap evidence, exact state
+mechanics, an independent path-matched CUDA oracle, prospective task-quality
+noninferiority, pre-ready phone publication in both directions, and local-UFS
+reprepare within 30 seconds. Its current output is
+`CONTRACT_VALID_CANDIDATE_NOT_ACQUIRED`; no cycle, trace, controller, or energy
+work is authorized. The phones are absent from both ADB servers, and the
+reachable 4060 Ti host currently has an NVML driver/library mismatch. See
+`spikes/s39_phone_model_switch_trace/RESULTS_CP0_R1.md`.
+
+**CUDA REPLAY-PARTITION DIAGNOSTIC COMPLETE; PATH-MATCHED ORACLE REQUIRED.**
+Without rerunning or changing W9, seven fresh CUDA route launches consumed its
+exact digest-matching F0/F1 histories. Every identical geometry repeats
+exactly, same-process remove/replay matches fresh execution with state
+`0 -> 8 -> 0`, and all incremental paths reproduce W9's continuation. Full F1
+`6 x [2]` and `[8,4]` also agree exactly, but both differ from incremental
+`[8,3]+[1]`. The diagnosis is partition-path numerical sensitivity, not
+observed nondeterminism or cleanup leakage. Future exact gates use a
+path-matched oracle; cross-geometry equality is diagnostic. Qwen Q8 remains
+stopped by task quality, and the next bounded physical test moves to an
+eligible pair on the actual RTX 4060 Ti. See
+`spikes/s39_replay_partition_diagnostic/RESULTS.md`.
+
+**S39 W9 PROFILED ZERO-EXTRA CUTOVER FAILS AT P1.T EXACTNESS; STOP.**
+The prospective contract and preflight passed, but the first paid B8 treatment
+failed its mandatory same-frontier CUDA continuation comparison after the real
+in-flight, catch-up, durable-commit, and 13-token publication paths completed.
+The 114-record ledger, placement certificates, GPU brackets, cleanup, and root
+manifest validate. Because P1.T was consumed, the frozen no-replacement rule
+stopped before P1.C and P2-P4; no four-pair median or W9 pass exists. W8-R1
+remains the latest passing live-session mechanics result. See
+`spikes/s39_phone_model_switch_trace/RESULTS_W9.md`.
+
+**S39 W8-R1 LIVE-SESSION TRACE MECHANICS PASS; FULL COMPLETION SLOWER.**
+With B8 KV already active on OP15 `[0,30)` plus OP12 `[30,48)`, the phones
+delivered the first token in 1.357 seconds and two tokens before fresh CUDA
+workers became ready. A same-token fresh-CUDA control reached first token in
+3.283 seconds, so the live phone tier reduced TTFT by 58.7 percent. CUDA
+replayed the dynamic frontier, consumed the phone delta, continued exactly,
+and all state returned to zero with valid OpenCL/CUDA placement. Completion
+was 7.256 seconds versus 3.756 seconds for the control: the fixed two-token
+phone delta cost 2.762 seconds while CUDA replay cost only 0.173 seconds. W9
+must therefore select the post-ready delta count from measured leg times; this
+regime selects zero. Independent greedy W8 failed before R1, and the larger
+Q8 task-quality gate remains failed, so scheduler eligibility and energy
+remain unclaimed. See
+`spikes/s39_phone_model_switch_trace/RESULTS_W8.md`.
+
+**S39 W7 NEW-REQUEST COLD-PROMOTION GATE FAIL; LIVE-SESSION DECODE IS NEXT.**
+Two prospective real B8 runs started the request before fresh CUDA workers.
+The second run explicitly prepared both phone workers, ended preparation with
+`DETACH`, and proved the paid request reused the same resident PIDs/nonces with
+exact cumulative steps. Both runs failed the unchanged readiness-order gate:
+the process-cold CUDA route became ready before the collective-phone route
+produced a token for the new prompt. This rejects phone prefill as a bridge for
+the measured A6000 page-cache load regime. W8 will start from already-live
+phone KV and test decode continuity during the same cold process launch. No
+scheduler, task-quality, latency, or energy pass is claimed. See
+`spikes/s39_phone_model_switch_trace/RESULTS_W7.md`.
+
+**S39 W6 REAL B8 CONCURRENT PHONE-DELTA CATCH-UP MECHANICS PASS; MODEL LOAD
+AND SCHEDULER ELIGIBILITY OPEN.** OP15 `[0,30)` plus OP12 `[30,48)` generated
+two additional Qwen2.5 Q8 tokens while CUDA0 replayed the preceding snapshot
+for the same eight live requests. CUDA snapshot replay took 174,719 us and
+overlapped 99.81 percent with the shorter concurrent leg. After the phone
+frontier, CUDA delta ingestion plus continuation took 333,057 us versus
+522,081 us for full-history replay plus continuation, a 36.21 percent
+single-run critical-path reduction. All eight continuations are exact, the
+run-unique six-record ownership journal completes, every state count returns
+to zero, and a prospective physical gate validates exact artifacts, device
+boots, executed steps, and realized OpenCL/CUDA placement. The first physical
+run was not selected because its certificate did not consume placement logs;
+the hardened rerun is the reportable result. CUDA weights were already
+resident, the separate Q8 task-quality gate still fails, and no scheduler,
+model-load, SLO, or energy claim is authorized. See
+`spikes/s39_phone_model_switch_trace/RESULTS_W6.md`.
+
+**S39 W5 REAL B8 PHONE-TO-CUDA HANDOFF MECHANICS PASS; ROUTE STILL
+INELIGIBLE.** A prospective mechanics-only contract froze Qwen2.5 14B Q8_0,
+eight requests, four phone-authoritative tokens, eight CUDA continuation
+tokens, and replay chunk sizes before acquisition. OP15 `[0,30)` plus OP12
+`[30,48)` kept eight live states while CUDA reconstructed the exact prompt and
+committed-phone-token histories. The catch-up continuation matches a
+same-history CUDA control on all eight requests. Catch-up used two history
+batches versus six and took 408,641 us versus 555,645 us in the
+provenance-hardened repeat. All phone and CUDA placement certificates pass,
+all route states return to zero, both probe and validator exit zero, and all
+artifact hashes verify. The certificate binds the exact uncommitted Python
+sources, binaries, shards, boot IDs, contract, report, and run context.
+This closes only the fixed-frontier replay seam. It does not repair W4 task
+quality, prove concurrent phone delta, or authorize scheduling. See
+`spikes/s39_phone_model_switch_trace/RESULTS_W5.md`.
+
+**S39 W4 SECOND-MODEL Q4/Q8 QUALITY FAIL; REPLACEMENT PATH STOPPED.**
+Qwen2.5 14B Q4_0 now has complete HTP and GPUOpenCL two-phone corpus screens
+against a same-artifact CUDA split. The frozen 128-prompt B32 gate requires
+95 percent first-token agreement, 95 percent token-decision agreement, and
+80 percent exact eight-token sequences. HTP fused reaches 97.66/89.65/75.00
+percent, HTP explicit reaches 96.88/90.04/77.34 percent, and GPUOpenCL reaches
+95.31/85.94/70.31 percent. All routes therefore fail. The final GPUOpenCL run
+still proves clean mechanics: 44 batches, 1,920 rows, 39,321,600 direct
+OP15-to-OP12 activation bytes, zero host activation bytes, and clean placement.
+An independent reducer with same-boot post-run shard/runtime identity and six
+adversarial tests derives `QUALITY_FAIL`.
+Qwen2.5 Q8_0 was the final bounded candidate. OP15 `[0,30)` plus OP12
+`[30,48)` completed the same 128-prompt screen twice with identical token
+hashes and clean placement. It reaches 96.09 percent first-token agreement but
+only 85.16 percent token-decision agreement and 70.31 percent exact sequences,
+so it also fails. The Q8 terminal-shard change safely omits the unused
+827,228,160-byte token embedding; OP12 still uses about 78 MiB of process swap.
+The parameterized independent validator derives `QUALITY_FAIL` from the saved
+44-batch, 1,920-row evidence. Q4_0 and Q8_0 are scheduler-ineligible. The
+replacement path stops; the next review must choose exact greedy agreement or
+a predeclared task-quality contract before more device work. See
+`spikes/s39_phone_model_switch_trace/RESULTS_W4.md`.
+
+**S39 TWO-MODEL TRACE CONTRACT PASS; PHYSICAL BIDIRECTIONAL REPLAY BLOCKED.**
+The active BurstGPT-derived trace already contains 57 successful Gemma
+requests, 17 successful Qwen requests, five promotion windows, and nine
+alternating target changes. A new fail-closed contract binds every intent to a
+successful request for the current phone-warm model and requires both models
+to execute on phones and CUDA. Same-timestamp ordering is now explicit: admit
+the trigger to phones before starting promotion. This is a trace contract, not
+execution evidence. The real runs still exercise only Qwen on the phone tier;
+Gemma Q4 differs from its same-artifact CUDA control at token zero. Existing
+S33 128-prompt evidence closes further Gemma diagnosis: Gemma Q4 and Q8
+achieve only 61.6 and 70.4 percent token-decision agreement with clean
+placement. The next acquisition therefore screens a second 12-14B dense
+decoder, preferably on the already working Qwen-family substrate, then runs
+one complete bidirectional rotation before any full trace replay.
 
 **DIRECTION RESET TO ACTIVE WARM-TIER MULTI-MODEL SERVING.** One desktop GPU
 holds one hot large model while OP15 and OP12 collectively hold one other
@@ -18,6 +435,22 @@ histories, catches the small phone token delta, and takes ownership at an exact
 token boundary. Phones subsequently prepare the displaced GPU model for the
 reverse switch. Direct KV migration and runtime checkpoint transfer are not the
 first path.
+
+**S39 W3 ROW-ORDER EFFECT AND INTEGRATION PASS; OVERLAP STILL OPEN.** A real AB/BA
+comparison held the Qwen model, OP15 `[0,30)` -> OP12 `[30,40)` route, resident
+workers, 384 rows, eight physical batch shapes, tokens, and direct WiFi bytes
+fixed. Canonical sequence rows took 24.911 and 23.580 s; the fixed shuffled
+permutation took 110.115 and 109.498 s, a 4.528x aggregate effect. All 1,024
+token checks pass and treatment-start GPU temperatures are balanced. Worker
+certificates show the cause: canonical order yields eight graph executions,
+while shuffled order fragments into 136. This closes the unexplained W1/W2
+gap. Canonical row order is now a scheduler invariant, not a claimed system
+novelty. The shared batcher now separates priority/deadline admission from
+canonical physical layout. A new real mixed 16+16 session with the integrated
+code passes all 256 token checks and placement gates at 23.493 s maximum
+completion. The relay still has one in-flight batch, so bounded OP15/OP12
+overlap is next. See
+`spikes/s39_phone_model_switch_trace/RESULTS_W3.md`.
 
 **S39 W2 DIRECT MIXED-PHASE BATCH MECHANICS PASS; OVERLAP AND BENEFIT OPEN.**
 The direct Qwen route now admits new prefill while older requests retain live
@@ -450,6 +883,126 @@ request boundary certificates.
 
 Weight streaming remains a later slow-loop feature; the current worker still
 lacks per-slot residency generations needed for safe compute/stream overlap.
+
+### 2026-07-27 EDT - AOA transport 3.8x + GPU power-collapse cliff is the real phone-offload bottleneck
+
+Two results on OP15. **AOA works without an APK**: `/dev/usb_accessory` is
+root:usb 0660, but OP15 has Magisk root so a native daemon opens it directly;
+host uses libusb via ctypes. Phone re-enumerated as 18d1:2d01
+(accessory + ADB) so adb survived. Activation round trip
+**0.560 -> 0.171 ms f32 / 0.525 -> 0.137 ms q8_0 = 3.3-3.8x**; bandwidth
+barely moves (119 vs 99 MB/s), confirming the adb cost was per-transaction.
+W0 drops 1.090 -> 0.736 ms; operator split still 3.5x short of the A6000's
+0.210 ms for `{gate,up}`, and GPU dispatch is now 70% of W0.
+
+**Clock pinning does NOT work on Adreno 840** - min/max_pwrlevel accept
+writes but the GPU still idles at 160-222 MHz, force_clk_on/rail/no_nap
+refuse entirely (GMU firmware owns DVFS on 8xx). Measured effect: none
+(submit->start 337.8 vs 343.4 us).
+
+**The real bottleneck is power collapse at `idle_timer`=80 ms:**
+
+| inter-request gap | 0ms | 20ms | 60ms | 80ms | 100ms | 500ms |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| median RTT | 0.97 | 1.66 | 3.13 | **23.5** | 17.2 | 18.7 |
+
+A 17.7x cliff. Fixes: app keep-alive every 20 ms -> 1.74 ms (9.9x), or
+simply `echo 3000 > /sys/class/kgsl/kgsl-3d0/idle_timer` (root) -> 2.02 ms
+at 100 ms gap (8.5x) and 4.12 ms at 500 ms (4.5x), with no wasted work. Any
+sparse phone-serving deployment currently pays 16-23 ms of GPU wake per
+request. Evidence + harness (`aoa_daemon.c`, `aoa_bench.py`):
+`spikes/s41_gemma_qwen_continuous_baseline/tp_operator_split_v1/RESULTS.md`.
+Devices restored (idle_timer=80, pwrlevels default, AOA exited, no strays).
+
+### 2026-07-27 EDT - Operator split RUN on real A6000 + OP15 + OP12: 1.070x, but only at 60x model scale
+
+Built and ran the actual 3-device experiment: one q8_0 matmul split so the
+A6000 takes most rows and each phone takes a capacity-matched share, all
+finishing together. Real ggml OpenCL matmul on each phone (resident
+quantized weight slice, `tp_worker.cpp`), real ggml CUDA slice on the A6000
+the phones are USB-attached to (`tp_host.cpp`), phone sends issued before
+GPU compute so transfer overlaps.
+
+| N rows | matmul | GPU alone | 3-device | speedup |
+| ---: | ---: | ---: | ---: | ---: |
+| 15,360 (Gemma-12B Q8 gate - LARGEST in model) | 59 MB | 0.117 ms | NO VALID SPLIT | - |
+| 655,360 | 2.5 GB | 3.996 | 4.425 | 0.903x |
+| 983,040 | 3.8 GB | 6.023 | 5.630 | **1.070x** |
+
+Final split: GPU 93.4%, OP15 4.1%, OP12 2.5%; phones returned 4.92/5.37 ms
+against a 5.63 ms wall - balanced as designed, predicted 5.625 vs measured
+5.630 ms (0.1%).
+
+Key mechanism found: the RETURN payload scales with assigned rows, so wire
+is not a fixed cost. End-to-end effective rates collapse to OP15 7.91 and
+OP12 4.88 rows/us vs raw 16.25/13.89 - A6000 is 21x/34x faster end-to-end.
+Crossover N ~900k rows (~3.5 GB matmul); Gemma's largest is 60x too small.
+Analytic ceiling with these two phones = 1 + (r15+r12)/rg = 1.078x. Phones
+compute fine; the answer travelling back is what kills operator-level
+collaboration. Evidence:
+`spikes/s41_gemma_qwen_continuous_baseline/tp_operator_split_v1/RESULTS.md`.
+All workers killed, forwards removed, both A6000s idle.
+
+### 2026-07-27 EDT - TP-slice probe: 8-way tensor parallelism measured, wire loses at matmul granularity
+
+Design question from the T2 postmortem: would splitting each Gemma-12B Q8_0
+matmul across 8 phones with USB aggregation on the host beat one phone, and
+what does the server CPU give while the GPU serves another model? Built an
+env-driven `TP_SLICE` GEMV case in `test-backend-ops` and measured every
+column on real hardware (OP15 Adreno 840, OP12 Adreno 750, i9-12900K,
+RTX 4060 Ti).
+
+| per std layer (238 MB, 7 matmuls) | time | tok/s (x48) |
+| --- | ---: | ---: |
+| 1x OP15, no split | 3.53 ms | 5.9 |
+| TP8 compute only (straggler OP12) | 0.57 ms | (36.5) |
+| TP8 + collective per matmul | 20.5-71.6 ms | 0.3-1.0 |
+| TP8 Megatron 2-sync | 6.3-20.9 ms | 1.0-3.3 |
+| server CPU (llama-bench engine) | - | 2.35 |
+| 4060 Ti (scaled 269 GB/s) | - | ~21 |
+
+Slice compute scales ~perfectly (95-100% at N/8 or K/8) - the wire is the
+whole loss: one measured USB collective (15 KiB f32 scatter+gather, striped
+under the 42 ms >=8 KiB adb stall, both phones concurrent) costs 2.85 ms
+(10.15 ms with 8 phones emulated on 2 buses), while the largest matmul in
+the model saves only ~1.05 ms from an 8-way split. S5's "transport RTT >
+compute" now quantified per matmul.
+
+Exp 1: GPU 100% busy costs CPU decode nothing (2.35 -> 2.34 tok/s) and CPU
+prefill 42% (31.6 -> 18.4); GPU loses <3% in both directions. Bonus finding:
+phone GEMV bandwidth is 66-77 GB/s (OP15) / 52-57 (OP12) - 3x the T2
+chain's effective 22 GB/s, so most of the 379 ms decode step is
+relay/engine overhead, not matmul. Evidence:
+`spikes/s41_gemma_qwen_continuous_baseline/tp_slice_probe_v1/RESULTS.md`.
+All processes cleaned; tool left at `/data/local/tmp/tp_slice/`.
+
+Second pass - transport fixed: the 42 ms USB stall was phone-side Nagle
+(`nc` has no TCP_NODELAY); a 50-line NODELAY echo daemon + epoll client
+gives 15 KiB in 0.58 ms single-socket and a 2-phone collective of 1.02 ms
+(was 2.85), B=8 batched 0.31 ms wire/token. With that wire, ideal-bus
+Megatron TP8 would beat the 2-phone pipeline ~1.5x (first crossing), but
+per-matmul aggregation and 2-phone TP still lose. Real-pipeline transfers:
+C++ relay already NODELAY-clean; `stage_v3_client.py` hygiene only; the
+T2 B>=2 decode penalty is a FLAT ~+750 ms (fixed-stall signature, bug
+unlocated); routing the OP15->OP12 hop over USB-via-host would cut per-hop
+latency 10-45x vs WiFi (1.6 ms vs 11-73 ms).
+
+Fifth pass - NPU: `test-backend-ops` cannot drive HTP (every TP_SLICE perf
+case aborts in `dspqueue_read 0x2e` at any graph size), so NPU numbers are
+engine-level `llama-bench` on real `gemma-4-12B-it-Q4_0` (6.48 GiB) on OP15,
+same model+quant both backends: pp64 111.9 vs 88.0 GPU (1.27x), pp256 258.1
+vs 101.7 (2.54x), pp512 299.1 vs 94.3 (3.17x), tg24 6.20 vs 5.94 (1.04x).
+NPU wins prefill only, growing with prompt length (HMX); decode is a tie -
+both bandwidth-bound on the same LPDDR. Phone-vs-server gap narrows to 7.4x
+prefill / 3.3x decode at engine level. TP verdicts unchanged in direction.
+
+Third pass - slice-count sweep N in {1..32} measured on both phones: compute
+scales to 168/243 us/layer at N=32 (launch floor ~13-21 us/matmul) but the
+T(N) optimum is wire-set: real 2 buses -> N=2 optimal, ties the pipeline;
+one-bus-per-phone -> flattens at N=16, 9.3 tok/s (1.75x pipeline), wire 89%
+of token. B>=8 puts links in the bandwidth regime; structural ceiling
+2 x 30 KiB/layer/token through every phone's USB = ~76 tok/s max for
+Gemma-12B USB TP no matter how many phones.
 
 ### 2026-07-19 EDT - S18 real two-phone R1 passes mechanics, not relief
 
@@ -1611,6 +2164,81 @@ break-even interval.
 
 ---
 
+## S41 causal Q8 CUDA plus OP15 FFN revalidation - `2026-07-28 EDT`
+
+Verdict:
+`CAUSAL_PHONE_FFN_OFFLOAD_CORRECT; LATENCY_NEGATIVE; GPU_BOARD_ENERGY_NEGATIVE`.
+
+Replaced the invalid full-layer harness with a causal synthetic layer probe.
+CUDA now finishes attention before publishing the exact FFN input; CUDA and
+OP15 execute complementary slices derived from identical q8_0 bytes. Protocol
+v2 binds dimensions, request IDs, input/output hashes, and an exact weight
+fingerprint. A local CUDA partition oracle and the real phone treatment both
+must match monolithic CUDA. The Android AOA short-read overflow was fixed, and
+the weight gate caught and eliminated cross-architecture quantization drift.
+
+Three alternating long runs per control/treatment, at locked A6000 405/5001
+MHz:
+
+| shape | A6000 only | A6000 + OP15 | real 4060 Ti only | GPU J/layer control -> split |
+| --- | ---: | ---: | ---: | ---: |
+| Qwen3-14B q8_0 | 1.031 ms | 1.637 ms | 1.367 ms | 0.12864 -> 0.16786 |
+| Gemma-4-12B q8_0 | 0.773 ms | 1.311 ms | 0.950 ms | 0.09532 -> 0.13166 |
+
+Final relative L2 was `9.35e-4` for Qwen and `5.31e-4` for Gemma with exact
+argmax and zero non-finite values. Instantaneous A6000 board power fell about
+22%, but longer latency raised board energy 30.5% and 38.1%. Phone energy was
+not claimed because USB was pinned at its 500 mA limit and the low battery was
+charging. Since server-board energy alone regresses, total energy cannot
+improve.
+
+One A6000 frequency cannot emulate the 4060 Ti across q4_0 and q8_0 kernels:
+q4_0 matched within about 3.4% at 405 MHz, while q8_0 remained 18.6% to 24.5%
+faster. Direct 4060 controls are therefore authoritative. The A6000 treatment
+is conservative for latency because its GPU side is faster than the desktop.
+This is a one-layer M=1 mechanism result, not full-model, BurstGPT, capacity,
+or fleet-energy evidence.
+
+## S41 successor: 4060-matched Qwen split passes on A6000 plus OP15 - `2026-07-29 EDT`
+
+Verdict:
+`QWEN_M1_PROXY_LATENCY_PASS; A6000_SERVER_BOARD_ENERGY_PASS; PHYSICAL_4060_TREATMENT_NOT_RUN`.
+
+The corrected activation-return path now launches the phone suffix-down
+projection on a second CUDA stream while the primary stream finishes the
+prefix. Pinned host buffers receive both residual contributions. The selected
+OP15 cut is 3,328 of 17,408 Qwen FFN columns with identical q8_0 weights and
+f16 AOA input/output. Final relative L2 is 0.004946 against the 0.005 gate,
+with exact argmax and zero non-finite values.
+
+The physical RTX 4060 Ti runs this exact CUDA layer in 1.0616 ms. An A6000
+locked to 240/5001 MHz runs it in 1.0809 ms, 1.81% slower, and is used only as
+a latency proxy because the phone cable is attached to that host. Three fresh
+500-request workers reproduce split medians of 0.975659, 0.975969, and
+0.976550 ms against controls of 1.081653, 1.081012, and 1.081552 ms. Median
+speedup is 9.72%; all three split p90 values also beat their CUDA controls.
+
+Three alternating 12,000-layer paid-window pairs reduce measured A6000
+server-board energy from median 0.138340 to 0.124350 J/layer, or 10.11%.
+Median board power changes only 127.95 to 124.18 W; the shorter window provides
+most of the gain. Adding earlier phone-power estimates gives 7.21% to 8.85%
+proxy savings, but that is sensitivity analysis rather than synchronized
+fleet-energy evidence.
+
+The physical 4060 Ti all-server control is 1.0620 ms and median 0.115245
+J/layer across three sustained runs. No physical desktop treatment or energy
+win is claimed: A6000 clock matching does not emulate 4060 board power, and the
+A6000 split consumes 7.9% more raw J/layer than the physical 4060 control.
+The next decisive measurement is the same AOA treatment with the phone
+transport physically or transparently attached to the 4060 host.
+
+Evidence:
+`spikes/s41_gemma_qwen_continuous_baseline/tp_operator_split_v1/results/activation_4060_proxy_v1/run_20260729T034704Z/`
+and
+`spikes/s41_gemma_qwen_continuous_baseline/tp_operator_split_v1/results/physical_4060_control_v1/physical_4060_control_20260729T035025Z/`.
+Scope remains one synthetic causal Qwen FFN layer at M=1, not full-model,
+continuous-batch, BurstGPT, multi-phone, or system-paper evidence.
+
 ## S38 matched server-only RAG baseline - `2026-07-22 EDT`
 
 `MATCHED_SERVER_C0_PASS; PHONE_ASSISTED_CONTROLS_NOT_RUN`. Built an exact-token
@@ -2344,6 +2972,109 @@ energy verdict still needs matched physical power boundaries and sustained therm
 ---
 
 ## Log
+
+### 2026-07-25 EDT - stock-default desktop controls complete
+
+- Froze the exact `llama-server` binary/help digest and a forbidden tuning
+  option list before acquisition.
+- Ran three warm swaps, three cold-NVMe swaps, and three simultaneous
+  two-server controls on the RTX 4060 Ti with the same 74-request trace.
+- Warm swap passed 74/74; cold swap failed 3/3 with 57 Qwen3 8B requests
+  stranded; dual server passed 74/74 through full CPU fallback for Qwen3 14B.
+- Independently rebound every request and stream, recomputed GPU energy, checked
+  commands and placement, and generated separate throughput and cumulative
+  energy timelines.
+- No phone command, commit, or push.
+
+### 2026-07-25 EDT - CP0-D desktop baseline warm pass, cold fail
+
+- Acquired only the pinned Qwen3 8B Q8_0 desktop artifact; its size, digest,
+  and repository revision match the frozen contract.
+- Qwen3 8B and Qwen3 14B independently pass the RTX 4060 Ti B8 envelope.
+  Physical second-load attempts prove non-co-residency in both orders.
+- Three warm-cache replays complete 74/74 requests at 1.228 request/s with all
+  synthetic SLOs met.
+- Three cold-NVMe replays each complete 17/74 requests, meet two SLOs, and
+  strand 57 Qwen3 8B requests. Mean cold load is about 8 seconds.
+- The graph binds per-second model completions, all nine publication points,
+  and selected-GPU board power. Whole-server and total energy remain unknown.
+- No phone command ran, no phone shard was created, and phone qualification
+  remains paused.
+
+### 2026-07-25 EDT - CP0-R1 V2.2 evidence correction
+
+- Preserved V1, V2, and V2.1 byte-for-byte and made V2.2 the sole exit
+  authority.
+- Froze the canonical 64-row MMLU corpus from 57 pinned-revision test parquets
+  and exact-check it during every model phase.
+- Added the 25/64 CUDA floor, exact incumbent route, exact eight-token
+  continuations, causal bridge timing, and distinct phase IDs.
+- Cycle authorization now accepts only A, B, and PAIR raw roots and
+  re-evaluates all three.
+- Focused tests pass 13/13 and the full S39 suite passes 323/323. No acquisition
+  or model execution ran.
+
+### 2026-07-25 EDT - CP0-R1 V2.1 phased evidence correction
+
+- Preserved V1 and V2 and added one V2.1 authority with separate `A_ONLY`,
+  `B_ONLY`, and `PAIR` bundles.
+- Bound every phase lock, readiness command, and evidence row to that phase's
+  `HOST_MONOTONIC_RAW` interval. B re-evaluates A; the pair re-evaluates both.
+- Added exact full-readiness commands for the RTX 4060 Ti model and both phone
+  shards, with acquisition required within five seconds of completion.
+- Closed corpus/output, exact CUDA memory, oracle-length/B8 geometry,
+  bridge-linkage, activation-size, and full-shard local-UFS checks.
+- The focused suite passes 19/19. This is contract mechanics only; Qwen3 14B
+  qualification and every later phase remain unrun.
+
+### 2026-07-24 EDT - S39 W6 concurrent delta and durable cutover pass
+
+- Froze a B8 mechanics contract: four phone snapshot tokens, two concurrent
+  phone-delta tokens, and eight CUDA continuation tokens.
+- Phones advanced for 2,698,645 us while CUDA snapshot replay took 174,719 us;
+  99.81 percent of the shorter leg overlapped.
+- Post-frontier CUDA work fell from 522,081 us for full replay plus
+  continuation to 333,057 us for delta ingestion plus continuation.
+- All 8/8 continuations match, all sequence state is released, and the
+  six-record ownership journal terminates with no owner.
+- Rejected the first acquisition as the reportable result because placement
+  logs were not part of its certificate. Froze a physical gate and reran.
+- The selected rerun verifies exact binaries, shards, boot IDs, step counts,
+  and realized OpenCL/CUDA placement; 18 W6 and 175 S39 tests pass.
+- Scope remains mechanics-only. CUDA model loading, Q8 task quality, crash
+  recovery, unequal histories, trace benefit, and energy remain open.
+
+### 2026-07-24 EDT - S39 W4 Qwen2.5 Q4 corpus gate fails
+
+- Added experimental Qwen2 partial-layer loading using the existing Qwen3
+  LayerSplit boundaries and verified the boundary on a small host control.
+- Froze 128 Qwen-tokenized WikiText prompts and compared complete B32 phone
+  routes with a matched CUDA split over 1,024 greedy token decisions.
+- Screened HTP fused, HTP explicit, and GPUOpenCL. All pass first-token
+  agreement but fail the frozen decision and exact-sequence thresholds.
+- The final GPUOpenCL route completed 44 batches and 1,920 rows with clean
+  placement and direct OP15-to-OP12 transport, so the failure is numerical
+  quality rather than missing execution.
+- Added an independent evidence reducer and six adversarial tests. The
+  certificate is `QUALITY_FAIL`, `scheduler_eligible=false`.
+- Stopped before repeats, energy, trace integration, or bidirectional replay.
+
+### 2026-07-24 EDT - S39 W3 matched row-order gate passes
+
+- Added a frozen 32-request order probe, GPU thermal brackets, and an
+  independent fail-closed reducer.
+- Ran sorted->shuffled and shuffled->sorted on two real persistent OP15/OP12
+  worker pairs with identical model, cuts, rows, physical batch shapes, and
+  direct activation bytes.
+- Canonical order is 4.528x faster in aggregate. Both pair directions pass;
+  all 1,024 token checks and placement gates pass.
+- Compute-node evidence identifies internal graph fragmentation: eight graph
+  executions when canonical versus 136 when shuffled.
+- Integrated canonical physical sorting into `MixedPhaseBatcher` without
+  changing admission policy or result ownership. A new real mixed 16+16
+  session passes all 256 token and placement checks at 23.493 s.
+- Status is `CANONICAL_ROW_ORDER_INTEGRATED_REAL_DEVICE_PASS`. Energy, model
+  switching, and inter-stage overlap remain unmeasured.
 
 ### 2026-07-24 EDT - S39 W2 direct mixed decode/prefill batch passes
 

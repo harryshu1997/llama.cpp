@@ -1,0 +1,32 @@
+2026-07-26T07:13:25.962046152Z
+7d1926dffc0e9666ec5aa507e688727048827676
+List of devices attached
+
+List of devices attached
+3C15AU002CL00000       device usb:8-3 product:CPH2749 model:CPH2749 device:OP611FL1 transport_id:1
+5ae7a43d               device usb:6-2 product:CPH2583 model:CPH2583 device:OP595DL1 transport_id:2
+172.20.173.218:5555    device product:CPH2749 model:CPH2749 device:OP611FL1 transport_id:3
+
+serial=3C15AU002CL00000
+product=CPH2749
+model=CPH2749
+device=OP611FL1
+boot_id=be64b1d1-91b9-4791-a559-3754d9df3ff1
+MemAvailable:   11200980 kB
+SwapTotal:       9961468 kB
+SwapFree:        8410296 kB
+94160b3ccb731474b4aba77333ab1c95eb2651ae26bb9ce0f3377e9db24cc299  /data/local/tmp/s39-active-warm/v1/runtime-qwen-partial-v1/llama-layersplit
+70fca0359ffc50d52c591fd04829ca92f1561e19f10c1be059324f3c61a963c9  /data/local/tmp/s39-active-warm/v1/runtime-qwen-partial-v1/libggml-opencl.so
+7b56cbd0e0d96d5c8d7df9c21b39d67264e58cbabf7a96d4681eff8b3d492848  /data/local/tmp/ls-s32/gemma-4-12B-it-Q8_0.gguf
+serial=5ae7a43d
+product=CPH2583
+model=CPH2583
+device=OP595DL1
+boot_id=3ba01077-fa7c-4a69-859d-705eee5041f9
+MemAvailable:    6643484 kB
+SwapTotal:       7864316 kB
+SwapFree:        5395196 kB
+94160b3ccb731474b4aba77333ab1c95eb2651ae26bb9ce0f3377e9db24cc299  /data/local/tmp/s39-active-warm/v1/runtime-qwen-partial-v1/llama-layersplit
+70fca0359ffc50d52c591fd04829ca92f1561e19f10c1be059324f3c61a963c9  /data/local/tmp/s39-active-warm/v1/runtime-qwen-partial-v1/libggml-opencl.so
+7b56cbd0e0d96d5c8d7df9c21b39d67264e58cbabf7a96d4681eff8b3d492848  /data/local/tmp/ls-s32/gemma-4-12B-it-Q8_0.gguf
+

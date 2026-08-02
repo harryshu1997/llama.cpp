@@ -1,0 +1,132 @@
+{
+  "schema": "s41_htp_overhead_v1",
+  "verdict": "QUEUE_ARENA_DEFAULT_IMPROVES_PHONE_MEDIAN_AND_REMOVES_CORUN_P90_WAIT",
+  "scope": {
+    "device": "OnePlus 15",
+    "backend": "HTP v81",
+    "transport": "AOA bulk USB",
+    "server_gpu": "RTX A6000 GPU 0 at 405 MHz graphics and 5001 MHz memory",
+    "model_shape": "Qwen3-14B synthetic FFN",
+    "weight_type": "q8_0",
+    "input_type": "scaled_i8",
+    "output_type": "f16",
+    "phone_columns": 1792,
+    "iterations_per_repetition": 500
+  },
+  "implementation": {
+    "file": "ggml/src/ggml-hexagon/ggml-hexagon.cpp",
+    "old_default_ops_per_batch": 1024,
+    "new_default_ops_per_batch": 256,
+    "new_default_expression": "HTP_OP_MAX_REQS",
+    "queue_depth": 16,
+    "descriptor_sizes_bytes": {
+      "buffer": 24,
+      "tensor": 48,
+      "operation": 224,
+      "profile": 48
+    },
+    "pinned_queue_arena_bytes": {
+      "old": 9967616,
+      "new": 2496512,
+      "reduction_percent": 74.95377028970618
+    },
+    "source_sha256": "240d56efa49fd04d71df213bc79ad31a41b17ab87f4a0ea612407c711cd5b953",
+    "android_library_sha256": "0bad8c43166a0847fe43ab1c299da97d68f40163aa4e21358c499a8d87f5c241"
+  },
+  "phone_only_median_across_three_process_repetitions": {
+    "default_1024": {
+      "phone_total_ms": 0.580839,
+      "phone_p90_ms": 0.590958,
+      "worker_graph_compute_us": 398,
+      "worker_request_us": 421
+    },
+    "exact_graph_batch_3": {
+      "phone_total_ms": 0.480866,
+      "phone_p90_ms": 0.535842,
+      "worker_graph_compute_us": 302,
+      "worker_request_us": 325
+    },
+    "general_default_256": {
+      "phone_total_ms": 0.483581,
+      "phone_p90_ms": 0.586138,
+      "worker_graph_compute_us": 307,
+      "worker_request_us": 331
+    },
+    "default_1024_to_256_phone_median_improvement_percent": 16.744399050339254,
+    "default_1024_to_256_worker_compute_improvement_percent": 22.8643216080402
+  },
+  "native_profile_control": {
+    "default_1024": {
+      "batch_envelope_median_us": 361,
+      "native_operations_median_us": 263,
+      "non_operation_envelope_median_us": 98
+    },
+    "exact_graph_batch_3": {
+      "batch_envelope_median_us": 285,
+      "native_operations_median_us": 262,
+      "non_operation_envelope_median_us": 22
+    },
+    "interpretation": "The native matmul and activation time is unchanged. The improvement is in the host-to-HTP batch envelope."
+  },
+  "matched_corun_median_across_three_process_repetitions": {
+    "default_1024": {
+      "cuda_only_median_ms": 0.669519,
+      "cuda_only_p90_ms": 0.670951,
+      "split_median_ms": 0.665401,
+      "split_p90_ms": 0.686372,
+      "phone_median_ms": 0.551351,
+      "phone_p90_ms": 0.614513,
+      "exposed_wait_p90_ms": 0.020569,
+      "hidden_fraction": 0.846
+    },
+    "compiled_default_256": {
+      "cuda_only_median_ms": 0.669569,
+      "cuda_only_p90_ms": 0.671142,
+      "split_median_ms": 0.665351,
+      "split_p90_ms": 0.67043,
+      "phone_median_ms": 0.53505,
+      "phone_p90_ms": 0.586118,
+      "exposed_wait_p90_ms": 0,
+      "hidden_fraction": 0.938,
+      "split_median_speedup_vs_cuda_percent": 0.6299574801103313,
+      "split_p90_speedup_vs_cuda_percent": 0.10608783238123168
+    },
+    "split_p90_improvement_1024_to_256_percent": 2.3226471942328666
+  },
+  "negative_controls": {
+    "queue_depth_1": "No median benefit and worse tail in the measured run.",
+    "opbatch_2": "Split the three physical operations across two batches and was slower than batch 3.",
+    "dsp_poll_10_us": {
+      "verdict": "REJECTED",
+      "binary_sha256": "c1dd2be77b8452744a4a87e06c1eb00274cd22667ff0d023a1143a6b6785d315",
+      "reason": "More frequent callback wakeups did not improve the tail and raised profiled native HTP work. The source experiment was reverted."
+    }
+  },
+  "correctness": {
+    "compiled_default_256_phone_only_status": "PASS",
+    "compiled_default_256_corun_status": "PASS",
+    "treatment_relative_l2": 0.00431994134,
+    "relative_l2_limit": 0.005,
+    "argmax_exact": true,
+    "non_finite": 0
+  },
+  "verification": {
+    "android_hexagon_library_build": "PASS",
+    "android_test_backend_ops_build": "PASS",
+    "test_backend_ops_binary_sha256": "5d2054e9656071e5cfc829b0cf3f3668ce717757d6fe209cf7a0c8cc5fa2c1ed",
+    "broad_device_test_ok_before_abort": 535,
+    "broad_device_test_terminal_status": "KNOWN_NONCONTIGUOUS_NORM_DSPQUEUE_0X2E",
+    "broad_device_test_interpretation": "The run reached the pre-existing noncontiguous NORM crash documented before this change. It is not a full-suite pass."
+  },
+  "claims": [
+    "The 1024-slot default adds avoidable overhead for this real HTP route.",
+    "Using the existing 256-request limit as the default preserves correctness and materially reduces the phone-only median.",
+    "The corrected default removes the matched co-run p90 phone wait and changes the aggregate split p90 from slower than CUDA-only to approximately parity."
+  ],
+  "not_claimed": [
+    "No energy improvement was measured in this acquisition.",
+    "No full-model, BurstGPT, multi-phone, Gemma, or RTX 4060 Ti result is claimed.",
+    "The 0.11 percent aggregate p90 advantage over CUDA-only is too small to call a robust tail speedup.",
+    "The new default still needs broad Hexagon graph regression before upstream use."
+  ]
+}

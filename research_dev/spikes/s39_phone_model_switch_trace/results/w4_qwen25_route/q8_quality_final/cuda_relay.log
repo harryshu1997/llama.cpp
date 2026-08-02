@@ -1,0 +1,2 @@
+[direct-relay] listening on 0.0.0.0:41112 head=127.0.0.1:41110 tail=127.0.0.1:41111
+DIRECTCERT {"schema":"ls-stage-direct-relay-v1","status":"DIRECT_RELAY_OK","run_rc":0,"head_endpoint":"127.0.0.1:41110","tail_endpoint":"127.0.0.1:41111","layer_start":0,"cut_layer":30,"layer_end":48,"n_layer":48,"n_embd":5120,"file_type":7,"model_sha256":"23ca481b8226b2492ba8f3eb7af41e0f99d8605c16fb6dec7bc5cf6716b673cf","batches":44,"rows":1920,"activation_payload_bytes":39321600,"host_activation_payload_bytes":0}

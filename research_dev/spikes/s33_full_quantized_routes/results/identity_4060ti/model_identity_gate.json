@@ -1,0 +1,1 @@
+{"device":"RTX 4060 Ti","file_type":7,"model_sha256":"7b56cbd0e0d96d5c8d7df9c21b39d67264e58cbabf7a96d4681eff8b3d492848","schema":"s34-desktop-shared-q8-identity-v1","verdict":"PASS","workers":{"cuda-mid":{"layer_range":[8,16],"terminal":false},"cuda-prefix":{"layer_range":[0,8],"terminal":false},"cuda-tail":{"layer_range":[16,48],"terminal":true}}}

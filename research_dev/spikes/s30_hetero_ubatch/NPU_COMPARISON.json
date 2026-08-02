@@ -1,0 +1,375 @@
+{
+  "schema": "hetero-npu-comparison-v1",
+  "recorded_date": "2026-07-21",
+  "source": {
+    "base_commit": "99449bafade0b2c15de4410feda832035c2f2d83",
+    "hetero_ubatch_sha256": "3e2c39ebe9ef36955808fa92f6d8ccef1824bbafb85ed0547733a857ac31fbfb",
+    "layersplit_cmake_sha256": "e7ddd899a3bb087e40eae8fd78a01b0b7955bb6d78d466dea0780e924a316312",
+    "android_binary_sha256": "685b21896daf9c1b4fea5c3ec2e42558a0f00f5199340d3b036796a7d7a5ac71",
+    "android_binary_bytes": 2721192,
+    "build_container": "snapdragon-toolchain-hostgcc:v0.3"
+  },
+  "device": {
+    "serial": "3C15AU002CL00000",
+    "model": "CPH2749",
+    "soc": "SM8850",
+    "build_fingerprint": "OnePlus/CPH2749/OP611FL1:16/BP2A.250605.015/B.R4T3.250fe8f-2b9793-2d9dba:user/release-keys"
+  },
+  "model": {
+    "name": "Qwen2.5-0.5B-Instruct-Q8_0",
+    "path": "/data/local/tmp/hyzheng/elastic/qwen2.5-0.5b-instruct-q8_0.gguf",
+    "bytes": 675710816,
+    "sha256": "ca59ca7f13d0e15a8cfa77bd17e65d24f6844b554a7b6c12e07a5f89ff76844e"
+  },
+  "configuration": {
+    "prompt_len": 500,
+    "decode_ctx": 32,
+    "decode_steps_limit": 64,
+    "ubatch": 64,
+    "n_gpu_layers": 99,
+    "kv_unified": true,
+    "warmup_enabled": true,
+    "placement_audit_in_timing_runs": false,
+    "GGML_HEXAGON_MBUF": 3072,
+    "all_npu": {
+      "device": "HTP0",
+      "model_instances": 1,
+      "context_instances": 1,
+      "logical_rows": 501,
+      "logical_order": "[A_decode, B_prefill_0, ..., B_prefill_499]",
+      "physical_ubatches": 8,
+      "host_submissions": 1,
+      "completion_endpoint": "llama_decode return with A and B logits; B KV remains on HTP"
+    },
+    "heterogeneous": {
+      "gpu_device": "GPUOpenCL",
+      "npu_device": "HTP0",
+      "model_instances": 2,
+      "context_instances": 2,
+      "gpu_first_ubatch_rows": 64,
+      "gpu_first_ubatch_decode_rows": 1,
+      "gpu_first_ubatch_prefill_rows": 63,
+      "npu_remainder_rows": 437,
+      "npu_physical_ubatches": 7,
+      "npu_host_submissions": 2,
+      "completion_endpoints": {
+        "a_ready": "A logits available on host after GPU U0",
+        "b_ready_htp": "B logits and complete KV available on HTP",
+        "b_ready_gpu": "B KV exported from HTP and restored on GPU"
+      }
+    }
+  },
+  "methodology": {
+    "pair_count": 5,
+    "fresh_process_per_variant": true,
+    "alternating_process_order": true,
+    "order_by_run": [
+      "npu_then_hetero",
+      "hetero_then_npu",
+      "npu_then_hetero",
+      "hetero_then_npu",
+      "npu_then_hetero"
+    ],
+    "warmup": "Each process warms the exact shape and transfers used by its measured path.",
+    "ratio_method": "Compute each ratio within a process-order pair, then report the median of the five ratios.",
+    "temperature_source": "Android battery temperature, tenths of a degree C, sampled before each process.",
+    "timing_excludes": [
+      "model load",
+      "context construction",
+      "warmup",
+      "placement callback instrumentation"
+    ]
+  },
+  "paired_runs": [
+    {
+      "run": 1,
+      "order": "npu_then_hetero",
+      "battery_temperature_c": {"all_npu": 28.7, "heterogeneous": 28.7},
+      "status": {"all_npu": "ok", "heterogeneous": "ok"},
+      "all_npu_ms": 390.072083,
+      "heterogeneous": {
+        "a_ready_ms": 81.27692699432373,
+        "b_ready_htp_ms": 435.49567699432373,
+        "b_ready_gpu_ms": 539.703125,
+        "gpu_control_ms": 609.060729,
+        "gpu_decode_steps": 7,
+        "npu_submission_ms": [272.370104, 73.386354],
+        "gpu_to_npu_ms": 3.311666,
+        "npu_to_gpu_ms": 99.776927,
+        "gpu_boundary_ms": 4.345521092414856,
+        "npu_continuation_ms": 47.654166,
+        "gpu_continuation_ms": 49.266198
+      },
+      "paired_comparison": {
+        "a_speedup_vs_all_npu": 4.7992966445107115,
+        "a_saved_ms": 308.79515600567623,
+        "b_htp_ratio_vs_all_npu": 1.1164492307292952,
+        "b_htp_delta_ms": 45.42359399432377,
+        "b_gpu_ratio_vs_all_npu": 1.3835984386506328,
+        "b_gpu_delta_ms": 149.63104200000004
+      },
+      "tokens": {"decode": 71703, "prefill": 198, "continuation": 220},
+      "heterogeneous_argmax_checks": [true, true, true]
+    },
+    {
+      "run": 2,
+      "order": "hetero_then_npu",
+      "battery_temperature_c": {"all_npu": 28.8, "heterogeneous": 28.7},
+      "status": {"all_npu": "ok", "heterogeneous": "ok"},
+      "all_npu_ms": 331.069219,
+      "heterogeneous": {
+        "a_ready_ms": 73.93255198001862,
+        "b_ready_htp_ms": 379.477499961853,
+        "b_ready_gpu_ms": 418.01192700862885,
+        "gpu_control_ms": 585.66875,
+        "gpu_decode_steps": 10,
+        "npu_submission_ms": [250.470677, 50.905573],
+        "gpu_to_npu_ms": 1.607188,
+        "npu_to_gpu_ms": 36.267552,
+        "gpu_boundary_ms": 2.231250047683716,
+        "npu_continuation_ms": 21.165937,
+        "gpu_continuation_ms": 27.32276
+      },
+      "paired_comparison": {
+        "a_speedup_vs_all_npu": 4.477989872302479,
+        "a_saved_ms": 257.13666701998136,
+        "b_htp_ratio_vs_all_npu": 1.1462180057332756,
+        "b_htp_delta_ms": 48.40828096185305,
+        "b_gpu_ratio_vs_all_npu": 1.2626118739496253,
+        "b_gpu_delta_ms": 86.94270800862887
+      },
+      "tokens": {"decode": 71703, "prefill": 198, "continuation": 220},
+      "heterogeneous_argmax_checks": [true, true, true]
+    },
+    {
+      "run": 3,
+      "order": "npu_then_hetero",
+      "battery_temperature_c": {"all_npu": 28.8, "heterogeneous": 28.8},
+      "status": {"all_npu": "ok", "heterogeneous": "ok"},
+      "all_npu_ms": 330.596094,
+      "heterogeneous": {
+        "a_ready_ms": 80.36369800567627,
+        "b_ready_htp_ms": 430.2413020133972,
+        "b_ready_gpu_ms": 536.8569790124893,
+        "gpu_control_ms": 608.129584,
+        "gpu_decode_steps": 6,
+        "npu_submission_ms": [273.728854, 67.714011],
+        "gpu_to_npu_ms": 3.25323,
+        "npu_to_gpu_ms": 102.13927,
+        "gpu_boundary_ms": 4.393229007720947,
+        "npu_continuation_ms": 43.569375,
+        "gpu_continuation_ms": 50.504375
+      },
+      "paired_comparison": {
+        "a_speedup_vs_all_npu": 4.113749145499119,
+        "a_saved_ms": 250.23239599432372,
+        "b_htp_ratio_vs_all_npu": 1.3014107239070927,
+        "b_htp_delta_ms": 99.64520801339722,
+        "b_gpu_ratio_vs_all_npu": 1.6239059951279682,
+        "b_gpu_delta_ms": 206.26088501248933
+      },
+      "tokens": {"decode": 71703, "prefill": 198, "continuation": 220},
+      "heterogeneous_argmax_checks": [true, true, true]
+    },
+    {
+      "run": 4,
+      "order": "hetero_then_npu",
+      "battery_temperature_c": {"all_npu": 28.9, "heterogeneous": 28.9},
+      "status": {"all_npu": "ok", "heterogeneous": "ok"},
+      "all_npu_ms": 394.001041,
+      "heterogeneous": {
+        "a_ready_ms": 74.01578092575073,
+        "b_ready_htp_ms": 377.0172389745712,
+        "b_ready_gpu_ms": 416.51156198978424,
+        "gpu_control_ms": 586.05026,
+        "gpu_decode_steps": 10,
+        "npu_submission_ms": [249.952396, 48.320625],
+        "gpu_to_npu_ms": 1.920781,
+        "npu_to_gpu_ms": 37.282812,
+        "gpu_boundary_ms": 2.1739059686660767,
+        "npu_continuation_ms": 37.974271,
+        "gpu_continuation_ms": 61.935885
+      },
+      "paired_comparison": {
+        "a_speedup_vs_all_npu": 5.323203188185556,
+        "a_saved_ms": 319.98526007424925,
+        "b_htp_ratio_vs_all_npu": 0.9568940173804547,
+        "b_htp_delta_ms": -16.98380202542876,
+        "b_gpu_ratio_vs_all_npu": 1.057133151051203,
+        "b_gpu_delta_ms": 22.510520989784254
+      },
+      "tokens": {"decode": 71703, "prefill": 198, "continuation": 220},
+      "heterogeneous_argmax_checks": [true, true, true]
+    },
+    {
+      "run": 5,
+      "order": "npu_then_hetero",
+      "battery_temperature_c": {"all_npu": 29.1, "heterogeneous": 29.1},
+      "status": {"all_npu": "ok", "heterogeneous": "ok"},
+      "all_npu_ms": 391.106562,
+      "heterogeneous": {
+        "a_ready_ms": 80.47817695140839,
+        "b_ready_htp_ms": 436.67869794368744,
+        "b_ready_gpu_ms": 541.6506769657135,
+        "gpu_control_ms": 610.150573,
+        "gpu_decode_steps": 5,
+        "npu_submission_ms": [274.104479, 73.465365],
+        "gpu_to_npu_ms": 3.232501,
+        "npu_to_gpu_ms": 100.49474,
+        "gpu_boundary_ms": 4.390519976615906,
+        "npu_continuation_ms": 43.631302,
+        "gpu_continuation_ms": 50.078125
+      },
+      "paired_comparison": {
+        "a_speedup_vs_all_npu": 4.859784065885895,
+        "a_saved_ms": 310.6283850485916,
+        "b_htp_ratio_vs_all_npu": 1.116521021050236,
+        "b_htp_delta_ms": 45.57213594368744,
+        "b_gpu_ratio_vs_all_npu": 1.3849184073922889,
+        "b_gpu_delta_ms": 150.5441149657135
+      },
+      "tokens": {"decode": 71703, "prefill": 198, "continuation": 220},
+      "heterogeneous_argmax_checks": [true, true, true]
+    }
+  ],
+  "summary": {
+    "all_npu_ms": {
+      "median": 390.072083,
+      "min": 330.596094,
+      "max": 394.001041,
+      "mean": 367.3689998,
+      "coefficient_of_variation": 0.0812805844647003
+    },
+    "heterogeneous_a_ready_ms": {
+      "median": 80.36369800567627,
+      "min": 73.93255198001862,
+      "max": 81.27692699432373,
+      "mean": 78.01342697143555,
+      "coefficient_of_variation": 0.042468622741251294
+    },
+    "a_speedup_vs_all_npu": {
+      "median": 4.7992966445107115,
+      "min": 4.113749145499119,
+      "max": 5.323203188185556
+    },
+    "a_saved_ms": {
+      "median": 308.79515600567623,
+      "min": 250.23239599432372,
+      "max": 319.98526007424925
+    },
+    "heterogeneous_b_ready_htp_ms": {
+      "median": 430.2413020133972,
+      "min": 377.0172389745712,
+      "max": 436.67869794368744
+    },
+    "b_htp_ratio_vs_all_npu": {
+      "median": 1.116521021050236,
+      "min": 0.9568940173804547,
+      "max": 1.3014107239070927,
+      "heterogeneous_slower_run_count": 4,
+      "heterogeneous_faster_run_count": 1
+    },
+    "b_htp_delta_ms": {
+      "median": 45.57213594368744,
+      "min": -16.98380202542876,
+      "max": 99.64520801339722
+    },
+    "heterogeneous_b_ready_gpu_ms": {
+      "median": 536.8569790124893,
+      "min": 416.51156198978424,
+      "max": 541.6506769657135
+    },
+    "b_gpu_ratio_vs_all_npu_local_endpoint": {
+      "median": 1.3835984386506328,
+      "min": 1.057133151051203,
+      "max": 1.6239059951279682
+    },
+    "b_gpu_delta_ms_vs_all_npu_local_endpoint": {
+      "median": 149.63104200000004,
+      "min": 22.510520989784254,
+      "max": 206.26088501248933
+    },
+    "gpu_only_control_ms": {
+      "median": 608.129584,
+      "min": 585.66875,
+      "max": 610.150573
+    },
+    "a_speedup_vs_gpu_only_control": {
+      "median": 7.58156553879694,
+      "min": 7.493648585440932,
+      "max": 7.921662844240595
+    },
+    "b_gpu_speedup_vs_gpu_only_control": {
+      "median": 1.132759017343151,
+      "min": 1.1264650797041698,
+      "max": 1.4070443980001064
+    },
+    "gpu_decode_steps_overlapped": {"median": 7, "min": 5, "max": 10},
+    "gpu_to_npu_ms": {"median": 3.232501, "min": 1.607188, "max": 3.311666},
+    "npu_to_gpu_ms": {"median": 99.776927, "min": 36.267552, "max": 102.13927},
+    "gpu_boundary_ms": {
+      "median": 4.345521092414856,
+      "min": 2.1739059686660767,
+      "max": 4.393229007720947
+    },
+    "continuation_validation": {
+      "npu_ms": {"median": 43.569375, "min": 21.165937, "max": 47.654166},
+      "gpu_ms": {"median": 50.078125, "min": 27.32276, "max": 61.935885},
+      "npu_over_gpu_ratio": {
+        "median": 0.8626851634140608,
+        "min": 0.6131222795960695,
+        "max": 0.9672791474592782
+      },
+      "order_randomized": false,
+      "interpretation": "No demonstrated next-token benefit from moving B to GPU; NPU validation always ran first, so this is not a definitive backend comparison."
+    },
+    "correctness": {
+      "all_status_ok": true,
+      "all_npu_decode_token": 71703,
+      "heterogeneous_decode_token": 71703,
+      "all_npu_prefill_token": 198,
+      "heterogeneous_prefill_token": 198,
+      "heterogeneous_argmax_checks_passed": 15,
+      "heterogeneous_argmax_checks_total": 15
+    }
+  },
+  "placement_audit": {
+    "separate_from_timing_runs": true,
+    "all_npu": {
+      "source_binary_sha256": "685b21896daf9c1b4fea5c3ec2e42558a0f00f5199340d3b036796a7d7a5ac71",
+      "status": "ok",
+      "battery_temperature_c": 29.4,
+      "evidence": "scheduled_graph_node_buffers",
+      "valid": true,
+      "expected_buffer": "HTP0",
+      "target_fraction": 0.9962546816479401,
+      "compute_nodes": 9078,
+      "target_nodes": 9044,
+      "cpu_nodes": 34,
+      "instrumented_ms_excluded": 370.115521
+    },
+    "heterogeneous_prior_audit": {
+      "source": "MEASUREMENTS.json",
+      "timing_not_reused": true,
+      "gpu_target_fraction": 0.99812734082397,
+      "npu_target_fraction": 0.9962546816479401
+    },
+    "limitation": "Scheduled tensor buffers verify llama.cpp graph placement, not physical utilization, hardware counters, or FLOP share."
+  },
+  "tiny_model_smoke": {
+    "model": "Stories-15M-Q4_0",
+    "configuration": {"prompt_len": 32, "decode_ctx": 8, "ubatch": 8, "decode_steps_limit": 8},
+    "all_npu_ms": 24.69224,
+    "heterogeneous_a_ready_ms": 20.243801951408386,
+    "heterogeneous_b_ready_htp_ms": 53.56291699409485,
+    "heterogeneous_b_ready_gpu_ms": 65.92609393596649,
+    "tokens_match": true,
+    "heterogeneous_argmax_checks": [true, true, true]
+  },
+  "conclusion": {
+    "latency_critical_active_decode": "Use GPU-first heterogeneous scheduling: A became serviceable 4.80x sooner at the paired median, saving 308.80 ms.",
+    "prefill_completion_if_b_stays_on_htp": "Use the original all-NPU path: it completed B earlier in four of five pairs and was 11.65 percent faster at the median paired ratio.",
+    "b_migration_to_gpu": "The 6.15 MB return handoff added a median 149.63 ms relative to the NPU-local all-NPU endpoint and did not demonstrate a continuation-latency benefit.",
+    "scheduler_policy": "Route by request priority, service-level objective, and KV owner; this is a quality-of-service tradeoff, not a universal speedup."
+  }
+}

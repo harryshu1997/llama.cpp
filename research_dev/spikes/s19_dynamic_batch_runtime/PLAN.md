@@ -1,14 +1,19 @@
-# S19 distributed continuous-batching runtime
+# S19 heterogeneous-cut batch-morphing runtime
 
 Status: CP0 server audit complete; CP1 implementation not started.
 
 ## Goal
 
-Replace fixed B32 cohorts with arrival-aware, SLO-bounded continuous batching
-across persistent OP12/OP15 prefixes, one CUDA cut-normalization bridge, and one
-CUDA tail. Borrow the proven slot/batch lifecycle from `llama-server`, while
-retaining only the route, priority, deadline, and measured-batch decisions
-needed by the focused Q-PIM Funnel system.
+Replace fixed end-to-end B32 cohorts with arrival-aware, SLO-bounded batch
+morphing across persistent OP12/OP15 prefixes, one CUDA cut-normalization
+bridge, and one CUDA tail. Borrow the proven slot/batch lifecycle from
+`llama-server`, while retaining only the route, priority, deadline, and
+measured-batch decisions needed by the focused Q-PIM Funnel system.
+
+Continuous batching inside one executor is reused substrate. The research gate
+is stateful cut lifting plus cross-stage reformation: independently released
+phone batches are advanced to one layer cut and repacked into changing tail
+batches without a fleet-wide barrier or loss of per-layer sequence state.
 
 This gate is physical-runtime work. A simulator result cannot pass it.
 
@@ -25,6 +30,10 @@ This gate is physical-runtime work. A simulator result cannot pass it.
 6. Downstream credits are reserved before a phone batch launches.
 7. Unknown, stale, duplicated, or out-of-order rows fail closed.
 8. The selected A6000 is the only server executor; the second GPU remains idle.
+9. A phone batch and its successor tail batch need not have the same membership
+   or size; the manifest proves every row's exact transformation.
+10. The paper-critical data path contains no external desktop GPU or additional
+    network activation relay.
 
 ## CP0 - reuse audit
 
@@ -77,6 +86,8 @@ distributed_batch_manifest
 - [ ] Preserve exact terminal ownership and conservation accounting.
 - [ ] Expose batch membership, queue delay, TTFT, TBT, completion, selected
       measured candidate, and release reason in JSONL.
+- [ ] Emit a row-lineage record that binds each phone/bridge input row to one
+      tail-batch row and rejects missing, duplicate, or cross-epoch lineage.
 
 `llama-server`'s task/LoRA/sampler classes are not copied. Greedy sampling is
 kept for the first correctness gate; sampler generalization follows only after
@@ -90,6 +101,10 @@ the distributed lifecycle passes.
 - [ ] Compare every generated token with a same-request monolithic CUDA oracle.
 - [ ] Prove canceling one request leaves all other token streams unchanged.
 - [ ] Prove the active batch membership changes between token steps.
+- [ ] Prove at least one tail batch contains rows released from two different
+      upstream routes or release epochs.
+- [ ] Prove at least one upstream batch is split across two tail releases, or
+      two unequal upstream batches are merged into one tail release.
 - [ ] Run fail-closed protocol negatives and ASan/UBSan host tests.
 
 ## CP4 - one-phone physical gate
@@ -127,7 +142,12 @@ OP15 [0,8) --------------------------+
 - [ ] Admit and retire requests continuously on both phones. Combine returned
       phone and fallback-head layer-8 rows into the next CUDA-tail batch subject
       to its measured knee, memory, and earliest SLO.
+- [ ] Permit different measured batch candidates and release cadences on OP12,
+      OP15, and the tail. Do not pad or delay one phone to preserve an
+      end-to-end cohort.
 - [ ] Prove no phone waits for the other when a deadline requires release.
+- [ ] Persist and independently validate row lineage across OP12-prefix,
+      bridge, OP15-prefix, fallback-head, and shared-tail batches.
 - [ ] Compare peak HBM with S18's 45,674 MiB treatment and 26,555 MiB control.
 - [ ] Stop before energy if one-tail execution loses SLO-valid goodput or does
       not remove duplicated tail residency.
@@ -140,18 +160,24 @@ merge-cut selection, and per-row variable-start graphs are out of scope.
 
 - [ ] Drive observed BurstGPT arrivals plus the frozen synthetic priority/SLO
       sidecar while high-priority BGE runs at its measured server knee.
-- [ ] Run four equal-work controls:
+- [ ] Run five equal-work configurations:
       `C0` optimized server-only continuous batching;
       `C1` S18 fixed B32 independent phone tails;
-      `C2` both phones at common cut 6 with one shared tail; and
-      `Q` heterogeneous cuts plus normalization and continuous shared tail.
+      `C2` both phones at common cut 6 with one shared tail and fixed cohorts;
+      `Q-fixed` heterogeneous cuts plus normalization, one shared tail, and
+      fixed end-to-end cohorts; and
+      `Q` the same topology with cross-stage batch morphing.
 - [ ] Sweep a small predeclared set of generation/embedding load ratios rather
-      than one BGE-dominated point. Keep arrivals fixed across all four routes.
+      than one BGE-dominated point. Keep arrivals fixed across all five
+      configurations.
 - [ ] Require exact equal work, request conservation, SLO validity, and lower
       peak HBM before acquiring selected-GPU board energy.
-- [ ] Attribute effects separately: `Q-C1` tests one-copy tail plus continuous
-      coalescing; `Q-C2` tests heterogeneous-cut normalization; `Q-C0` tests the
-      complete system.
+- [ ] Attribute effects separately: `C2-C1` tests shared-tail consolidation;
+      `Q-fixed-C2` tests heterogeneous-cut normalization; `Q-Q-fixed` tests
+      batch morphing; and `Q-C0` tests the complete system.
+- [ ] Report stage-local batch-size and cadence traces. A larger average batch
+      alone is not evidence for the mechanism; the row-lineage trace must show
+      real split/merge reformation.
 - [ ] Report phone, USB, host-wall, and total-system energy as UNKNOWN.
 
 ## Stop rules

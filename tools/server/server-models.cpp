@@ -2,6 +2,7 @@
 #include "http.h"
 #include "server-models.h"
 #include "server-context.h"
+#include "server-warm-tier-runtime.h"
 #include "server-stream.h"
 
 #include "build-info.h"
@@ -9,6 +10,7 @@
 #include "download.h"
 
 #include <cpp-httplib/httplib.h> // TODO: remove this once we use HTTP client from download.h
+#include <array>
 #include <optional>
 #include <sheredom/subprocess.h>
 
@@ -22,8 +24,10 @@
 #include <cstdlib>
 #include <atomic>
 #include <chrono>
+#include <cctype>
 #include <queue>
 #include <filesystem>
+#include <limits>
 #include <random>
 #include <sstream>
 #include <cstring>
@@ -53,6 +57,31 @@ extern char **environ;
 // address for child process, this is needed because router may run on 0.0.0.0
 // ref: https://github.com/ggml-org/llama.cpp/issues/17862
 #define CHILD_ADDR "127.0.0.1"
+
+std::vector<std::string> server_models_sanitize_child_environment(
+        const std::vector<std::string> & environment) {
+    static const std::array<std::string, 2> excluded = {
+        "LLAMA_SERVER_WARM_TIER_CONFIG",
+        "LLAMA_SERVER_WARM_TIER_INTERNAL_TOKEN_FILE",
+    };
+    std::vector<std::string> result;
+    result.reserve(environment.size());
+    for (const std::string & item : environment) {
+        bool keep = true;
+        for (const std::string & name : excluded) {
+            if (item.size() > name.size()
+                    && item.compare(0, name.size(), name) == 0
+                    && item[name.size()] == '=') {
+                keep = false;
+                break;
+            }
+        }
+        if (keep) {
+            result.push_back(item);
+        }
+    }
+    return result;
+}
 
 struct server_subproc {
     std::optional<subprocess_s> sproc; // empty while in DOWNLOADING state
@@ -463,6 +492,8 @@ void server_models::load_models() {
                 /* exit_code     */ 0,
                 /* stop_timeout  */ DEFAULT_STOP_TIMEOUT,
                 /* multimodal    */ mtmd_caps{false, false},
+                /* process_id    */ 0,
+                /* instance_id   */ {},
                 // /* need_download */ false,
             };
             add_model(std::move(meta));
@@ -630,6 +661,8 @@ void server_models::load_models() {
                     /* exit_code     */ 0,
                     /* stop_timeout  */ DEFAULT_STOP_TIMEOUT,
                     /* multimodal    */ mtmd_caps{false, false},
+                    /* process_id    */ 0,
+                    /* instance_id   */ {},
                     // /* need_download */ false,
                 };
                 add_model(std::move(meta));
@@ -889,7 +922,8 @@ void server_models::load(const std::string & name, const load_options & opts) {
         inst.meta.update_args(ctx_preset, bin_path); // render args
 
         std::vector<std::string> child_args = inst.meta.args; // copy
-        std::vector<std::string> child_env  = base_env; // copy
+        std::vector<std::string> child_env =
+            server_models_sanitize_child_environment(base_env);
         child_env.push_back("LLAMA_SERVER_ROUTER_PORT=" + std::to_string(base_params.port));
 
         if (opts.mode == SERVER_CHILD_MODE_DOWNLOAD) {
@@ -915,6 +949,19 @@ void server_models::load(const std::string & name, const load_options & opts) {
         if (result != 0) {
             throw std::runtime_error("failed to spawn server instance");
         }
+#if defined(_WIN32)
+        inst.meta.process_id = static_cast<int64_t>(
+            GetProcessId(static_cast<HANDLE>(inst.subproc->get().hProcess)));
+#else
+        inst.meta.process_id = static_cast<int64_t>(inst.subproc->get().child);
+#endif
+        if (inst.meta.process_id <= 0) {
+            throw std::runtime_error("failed to identify server instance");
+        }
+        inst.meta.instance_id =
+            std::to_string(inst.meta.process_id) + ":"
+            + std::to_string(inst.meta.port) + ":"
+            + std::to_string(inst.meta.last_used);
     }
 
     // start a thread to manage the child process
@@ -1508,6 +1555,40 @@ void server_child::notify_to_router(const std::string & state, const json & payl
 // server_models_routes
 //
 
+server_models_routes::server_models_routes(
+        const common_params & params,
+        int argc,
+        char ** argv,
+        const std::string & warm_tier_internal_token)
+        : params(params),
+          models(params, argc, argv),
+          warm_tier(server_warm_tier_create_runtime_from_env()),
+          warm_tier_internal_token(warm_tier_internal_token) {
+    const char * warm_tier_config =
+        std::getenv("LLAMA_SERVER_WARM_TIER_CONFIG");
+    if (warm_tier_config != nullptr
+            && warm_tier_config[0] != '\0'
+            && (warm_tier == nullptr
+                || warm_tier_internal_token.empty())) {
+        throw std::runtime_error("warm-tier runtime configuration was rejected");
+    }
+    const std::string & cfg = this->params.ui_config_json;
+    if (!cfg.empty()) {
+        try {
+            json json_settings = json::parse(cfg);
+            ui_settings = json_settings;
+        } catch (const std::exception & e) {
+            LOG_ERR("%s: failed to parse UI config: %s\n", __func__, e.what());
+            throw;
+        }
+    }
+    init_routes();
+}
+
+bool server_models_routes::warm_tier_enabled() const {
+    return warm_tier != nullptr && warm_tier->enabled();
+}
+
 // RAII wrapper similar to server_response_reader, but doesn't use server_queue
 static std::atomic<int> sse_client_id_counter = 0;
 struct server_models_sse_client {
@@ -1586,6 +1667,125 @@ static bool is_autoload(const common_params & params, const server_http_req & re
     }
 }
 
+static bool warm_tier_exact_keys(
+        const json & value,
+        std::initializer_list<const char *> expected) {
+    if (!value.is_object() || value.size() != expected.size()) {
+        return false;
+    }
+    for (const char * key : expected) {
+        if (!value.contains(key)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool warm_tier_internal_request(
+        const server_http_req & req,
+        const std::string & expected_token) {
+    if (expected_token.empty()) {
+        return false;
+    }
+    static const std::string expected =
+        "x-llama-warm-tier-internal";
+    for (const auto & item : req.headers) {
+        if (item.first.size() != expected.size()
+                || item.second.size() != expected_token.size()) {
+            continue;
+        }
+        bool matches = true;
+        for (size_t i = 0; i < expected.size(); ++i) {
+            matches &= static_cast<char>(std::tolower(
+                static_cast<unsigned char>(item.first[i])))
+                    == expected[i];
+        }
+        unsigned char token_difference = 0;
+        for (size_t i = 0; i < expected_token.size(); ++i) {
+            token_difference |= static_cast<unsigned char>(
+                item.second[i] ^ expected_token[i]);
+        }
+        if (matches && token_difference == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool warm_tier_ascii_identifier(
+        const json & value,
+        const char * key,
+        std::string & result,
+        bool allow_empty = false) {
+    const auto found = value.find(key);
+    if (found == value.end() || !found->is_string()) {
+        return false;
+    }
+    result = found->get<std::string>();
+    if ((!allow_empty && result.empty()) || result.size() > 256) {
+        return false;
+    }
+    for (unsigned char character : result) {
+        if (character < 0x21 || character > 0x7e) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool warm_tier_uint64(
+        const json & value,
+        const char * key,
+        uint64_t minimum,
+        uint64_t maximum,
+        uint64_t & result) {
+    const auto found = value.find(key);
+    if (found == value.end()
+            || !(found->is_number_integer() || found->is_number_unsigned())
+            || found->is_boolean()) {
+        return false;
+    }
+    if (!found->is_number_unsigned() && found->get<int64_t>() < 0) {
+        return false;
+    }
+    try {
+        result = found->get<uint64_t>();
+    } catch (const json::exception &) {
+        return false;
+    }
+    return result >= minimum && result <= maximum;
+}
+
+static bool warm_tier_token_array(
+        const json & value,
+        const char * key,
+        std::vector<llama_token> & result) {
+    const auto found = value.find(key);
+    if (found == value.end() || !found->is_array()
+            || found->empty() || found->size() > 1024 * 1024) {
+        return false;
+    }
+    result.clear();
+    result.reserve(found->size());
+    for (const json & item : *found) {
+        if (!(item.is_number_integer() || item.is_number_unsigned())
+                || item.is_boolean()) {
+            return false;
+        }
+        int64_t token = 0;
+        try {
+            token = item.get<int64_t>();
+        } catch (const json::exception &) {
+            return false;
+        }
+        if (token < 0 || token > std::numeric_limits<llama_token>::max()) {
+            return false;
+        }
+        result.push_back(static_cast<llama_token>(token));
+    }
+    return true;
+}
+
 // percent encode one query or path component, covers reserved chars without pulling in
 // httplib::detail. used by the stream routes to forward conversation_id to children safely
 static std::string encode_qs(const std::string & in) {
@@ -1654,6 +1854,15 @@ void server_models_routes::init_routes() {
     };
 
     this->proxy_get = [this](const server_http_req & req) {
+        if (warm_tier_enabled()
+                && !warm_tier_internal_request(
+                    req, warm_tier_internal_token)) {
+            auto res = std::make_unique<server_http_res>();
+            res_err(res, format_error_response(
+                "ordinary model routes are disabled while warm-tier is active",
+                ERROR_TYPE_NOT_SUPPORTED));
+            return res;
+        }
         std::string method = "GET";
         std::string name = req.get_param("model");
         bool autoload = is_autoload(params, req);
@@ -1665,6 +1874,15 @@ void server_models_routes::init_routes() {
     };
 
     this->proxy_post = [this](const server_http_req & req) {
+        if (warm_tier_enabled()
+                && !warm_tier_internal_request(
+                    req, warm_tier_internal_token)) {
+            auto res = std::make_unique<server_http_res>();
+            res_err(res, format_error_response(
+                "ordinary model routes are disabled while warm-tier is active",
+                ERROR_TYPE_NOT_SUPPORTED));
+            return res;
+        }
         std::string method = "POST";
         json body = json::parse(req.body);
         std::string name = json_value(body, "model", std::string());
@@ -1682,8 +1900,439 @@ void server_models_routes::init_routes() {
         return models.proxy_request(req, method, name, true); // update last usage for POST request only
     };
 
+    this->post_warm_tier_activate = [this](const server_http_req & req) {
+        auto res = std::make_unique<server_http_res>();
+        if (!warm_tier_enabled()) {
+            res_err(res, format_error_response(
+                "warm-tier runtime is disabled", ERROR_TYPE_NOT_SUPPORTED));
+            return res;
+        }
+        nlohmann::json strict_body;
+        std::string parse_error;
+        if (!server_warm_tier_parse_json_strict(req.body, strict_body, parse_error)) {
+            res_err(res, format_error_response(
+                "warm-tier activation JSON is invalid: " + parse_error,
+                ERROR_TYPE_INVALID_REQUEST));
+            return res;
+        }
+        const json body = strict_body;
+        std::string schema;
+        if (!warm_tier_exact_keys(body, {"schema"})
+                || !warm_tier_ascii_identifier(body, "schema", schema)
+                || schema != "llama-server-warm-tier-activate-v1") {
+            res_err(res, format_error_response(
+                "warm-tier activation fields do not match the v1 schema",
+                ERROR_TYPE_INVALID_REQUEST));
+            return res;
+        }
+        if (!warm_tier->activate()) {
+            res_err(res, format_error_response(
+                "warm-tier activation failed: " + warm_tier->last_error(),
+                ERROR_TYPE_UNAVAILABLE));
+            return res;
+        }
+        res_ok(res, {
+            {"controller_epoch", warm_tier->controller_epoch()},
+            {"schema",           "llama-server-warm-tier-activate-result-v1"},
+            {"state",            server_warm_tier_activation_state_name(
+                                     warm_tier->activation_state())},
+        });
+        return res;
+    };
+
+    this->get_warm_tier_activate = [this](const server_http_req &) {
+        auto res = std::make_unique<server_http_res>();
+        if (!warm_tier_enabled()) {
+            res_err(res, format_error_response(
+                "warm-tier runtime is disabled", ERROR_TYPE_NOT_SUPPORTED));
+            return res;
+        }
+        res_ok(res, {
+            {"controller_epoch", warm_tier->controller_epoch()},
+            {"schema",           "llama-server-warm-tier-activate-status-v1"},
+            {"state",            server_warm_tier_activation_state_name(
+                                     warm_tier->activation_state())},
+        });
+        return res;
+    };
+
+    this->post_warm_tier_request = [this](const server_http_req & req) {
+        auto res = std::make_unique<server_http_res>();
+        if (!warm_tier_enabled()) {
+            res_err(res, format_error_response(
+                "warm-tier runtime is disabled", ERROR_TYPE_NOT_SUPPORTED));
+            return res;
+        }
+
+        nlohmann::json strict_body;
+        std::string parse_error;
+        if (!server_warm_tier_parse_json_strict(req.body, strict_body, parse_error)) {
+            res_err(res, format_error_response(
+                "warm-tier request JSON is invalid: " + parse_error,
+                ERROR_TYPE_INVALID_REQUEST));
+            return res;
+        }
+        const json body = strict_body;
+        if (!warm_tier_exact_keys(
+                body,
+                {
+                    "arrival_order",
+                    "max_output_tokens",
+                    "model",
+                    "prompt_tokens",
+                    "request_id",
+                    "schema",
+                })) {
+            res_err(res, format_error_response(
+                "warm-tier request fields do not match the v1 schema",
+                ERROR_TYPE_INVALID_REQUEST));
+            return res;
+        }
+        std::string schema;
+        std::string request_id;
+        std::string model_id;
+        std::vector<llama_token> prompt_tokens;
+        uint64_t arrival_order = 0;
+        uint64_t max_output_tokens = 0;
+        if (!warm_tier_ascii_identifier(body, "schema", schema)
+                || schema != "llama-server-warm-tier-request-v1"
+                || !warm_tier_ascii_identifier(body, "request_id", request_id)
+                || !warm_tier_ascii_identifier(body, "model", model_id)
+                || !warm_tier_token_array(body, "prompt_tokens", prompt_tokens)
+                || !warm_tier_uint64(
+                    body, "arrival_order", 0, 73, arrival_order)
+                || !warm_tier_uint64(
+                    body, "max_output_tokens", 8, 8, max_output_tokens)) {
+            res_err(res, format_error_response(
+                "warm-tier request contains invalid values",
+                ERROR_TYPE_INVALID_REQUEST));
+            return res;
+        }
+
+        const auto meta = models.get_meta(model_id);
+        if (!meta.has_value()) {
+            res_err(res, format_error_response(
+                "warm-tier model is not registered", ERROR_TYPE_NOT_FOUND));
+            return res;
+        }
+        model_id = meta->name;
+        if (!warm_tier->enqueue_scheduled_request(
+                    request_id,
+                    model_id,
+                    std::move(prompt_tokens),
+                    arrival_order,
+                    static_cast<int32_t>(max_output_tokens))) {
+            res_err(res, format_error_response(
+                "warm-tier request admission failed: " + warm_tier->last_error(),
+                ERROR_TYPE_UNAVAILABLE));
+            return res;
+        }
+
+        server_warm_tier_request_snapshot request;
+        if (!warm_tier->get_request(request_id, request)) {
+            res_err(res, format_error_response(
+                "warm-tier admitted request is unavailable", ERROR_TYPE_SERVER));
+            return res;
+        }
+        res_ok(res, {
+            {"arrival_order",    arrival_order},
+            {"controller_epoch", warm_tier->controller_epoch()},
+            {"request_id",       request.request_id},
+            {"schema",           "llama-server-warm-tier-admission-v1"},
+            {"state",            server_warm_tier_request_state_name(request.state)},
+        });
+        return res;
+    };
+
+    this->get_warm_tier_request = [this](const server_http_req & req) {
+        auto res = std::make_unique<server_http_res>();
+        if (!warm_tier_enabled()) {
+            res_err(res, format_error_response(
+                "warm-tier runtime is disabled", ERROR_TYPE_NOT_SUPPORTED));
+            return res;
+        }
+        const std::string request_id = req.get_param("request_id");
+        json id = {{"request_id", request_id}};
+        std::string validated_id;
+        if (!warm_tier_ascii_identifier(id, "request_id", validated_id)) {
+            res_err(res, format_error_response(
+                "warm-tier request id is invalid", ERROR_TYPE_INVALID_REQUEST));
+            return res;
+        }
+        server_warm_tier_request_snapshot request;
+        if (!warm_tier->get_request(validated_id, request)) {
+            res_err(res, format_error_response(
+                "warm-tier request is not found", ERROR_TYPE_NOT_FOUND));
+            return res;
+        }
+        res_ok(res, {
+            {"committed_output_tokens", request.committed_output_tokens},
+            {"controller_epoch",        warm_tier->controller_epoch()},
+            {"model",                   request.model_id},
+            {"owner_id",                request.owner_id.empty()
+                                            ? json(nullptr) : json(request.owner_id)},
+            {"ownership_epoch",         request.ownership_epoch},
+            {"position",                request.position},
+            {"publication_index",       request.publication_index},
+            {"request_id",              request.request_id},
+            {"schema",                  "llama-server-warm-tier-request-status-v1"},
+            {"state",                   server_warm_tier_request_state_name(request.state)},
+        });
+        return res;
+    };
+
+    this->post_warm_tier_finalize = [this](const server_http_req & req) {
+        auto res = std::make_unique<server_http_res>();
+        if (!warm_tier_enabled()) {
+            res_err(res, format_error_response(
+                "warm-tier runtime is disabled", ERROR_TYPE_NOT_SUPPORTED));
+            return res;
+        }
+        nlohmann::json strict_body;
+        std::string parse_error;
+        if (!server_warm_tier_parse_json_strict(req.body, strict_body, parse_error)) {
+            res_err(res, format_error_response(
+                "warm-tier finalize JSON is invalid: " + parse_error,
+                ERROR_TYPE_INVALID_REQUEST));
+            return res;
+        }
+        const json body = strict_body;
+        if (!warm_tier_exact_keys(body, {"reason", "schema"})) {
+            res_err(res, format_error_response(
+                "warm-tier finalize fields do not match the v1 schema",
+                ERROR_TYPE_INVALID_REQUEST));
+            return res;
+        }
+        std::string schema;
+        std::string reason;
+        if (!warm_tier_ascii_identifier(body, "schema", schema)
+                || schema != "llama-server-warm-tier-finalize-v1"
+                || !warm_tier_ascii_identifier(body, "reason", reason)
+                || (reason != "HORIZON_REACHED"
+                    && reason != "TRACE_COMPLETE")) {
+            res_err(res, format_error_response(
+                "warm-tier finalize contains invalid values",
+                ERROR_TYPE_INVALID_REQUEST));
+            return res;
+        }
+        if (!warm_tier->finalize_queued(reason)) {
+            res_err(res, format_error_response(
+                "warm-tier finalize failed: " + warm_tier->last_error(),
+                ERROR_TYPE_UNAVAILABLE));
+            return res;
+        }
+        res_ok(res, {
+            {"controller_epoch", warm_tier->controller_epoch()},
+            {"reason",           reason},
+            {"schema",           "llama-server-warm-tier-finalize-result-v1"},
+            {"state",            server_warm_tier_finalization_state_name(
+                                     warm_tier->finalization_state())},
+        });
+        return res;
+    };
+
+    this->get_warm_tier_finalize = [this](const server_http_req &) {
+        auto res = std::make_unique<server_http_res>();
+        if (!warm_tier_enabled()) {
+            res_err(res, format_error_response(
+                "warm-tier runtime is disabled", ERROR_TYPE_NOT_SUPPORTED));
+            return res;
+        }
+        res_ok(res, {
+            {"controller_epoch", warm_tier->controller_epoch()},
+            {"schema",           "llama-server-warm-tier-finalize-status-v1"},
+            {"state",            server_warm_tier_finalization_state_name(
+                                     warm_tier->finalization_state())},
+        });
+        return res;
+    };
+
+    this->post_warm_tier_completion = [this](const server_http_req & req) {
+        auto res = std::make_unique<server_http_res>();
+        if (!warm_tier_enabled()) {
+            res_err(res, format_error_response(
+                "warm-tier runtime is disabled", ERROR_TYPE_NOT_SUPPORTED));
+            return res;
+        }
+
+        nlohmann::json strict_body;
+        std::string parse_error;
+        if (!server_warm_tier_parse_json_strict(req.body, strict_body, parse_error)) {
+            res_err(res, format_error_response(
+                "warm-tier completion JSON is invalid: " + parse_error,
+                ERROR_TYPE_INVALID_REQUEST));
+            return res;
+        }
+        const json body = strict_body;
+        if (!warm_tier_exact_keys(
+                body,
+                {
+                    "arrival_order",
+                    "max_output_tokens",
+                    "model",
+                    "prompt_tokens",
+                    "request_id",
+                    "schema",
+                })) {
+            res_err(res, format_error_response(
+                "warm-tier completion fields do not match the v1 schema",
+                ERROR_TYPE_INVALID_REQUEST));
+            return res;
+        }
+        std::string schema;
+        std::string request_id;
+        std::string model_id;
+        std::vector<llama_token> prompt_tokens;
+        uint64_t arrival_order = 0;
+        uint64_t max_output_tokens = 0;
+        if (!warm_tier_ascii_identifier(body, "schema", schema)
+                || schema != "llama-server-warm-tier-completion-v1"
+                || !warm_tier_ascii_identifier(body, "request_id", request_id)
+                || !warm_tier_ascii_identifier(body, "model", model_id)
+                || !warm_tier_token_array(body, "prompt_tokens", prompt_tokens)
+                || !warm_tier_uint64(
+                    body, "arrival_order", 0, 73, arrival_order)
+                || !warm_tier_uint64(
+                    body, "max_output_tokens", 8, 8, max_output_tokens)) {
+            res_err(res, format_error_response(
+                "warm-tier completion contains invalid values",
+                ERROR_TYPE_INVALID_REQUEST));
+            return res;
+        }
+
+        const auto meta = models.get_meta(model_id);
+        if (!meta.has_value()) {
+            res_err(res, format_error_response(
+                "warm-tier model is not registered", ERROR_TYPE_NOT_FOUND));
+            return res;
+        }
+        model_id = meta->name;
+        if (!warm_tier->enqueue_scheduled_request(
+                    request_id,
+                    model_id,
+                    std::move(prompt_tokens),
+                    arrival_order,
+                    static_cast<int32_t>(max_output_tokens))) {
+            res_err(res, format_error_response(
+                "warm-tier request admission failed", ERROR_TYPE_UNAVAILABLE));
+            return res;
+        }
+
+        const auto deadline = std::chrono::steady_clock::now()
+                            + std::chrono::seconds(params.timeout_write);
+        server_warm_tier_request_snapshot request;
+        while (std::chrono::steady_clock::now() < deadline && !req.should_stop()) {
+            if (!warm_tier->get_request(request_id, request)) {
+                res_err(res, format_error_response(
+                    "warm-tier request state is unavailable", ERROR_TYPE_SERVER));
+                return res;
+            }
+            if (request.state == SERVER_WARM_TIER_REQUEST_COMPLETED) {
+                res_ok(res, {
+                    {"model",                   request.model_id},
+                    {"owner_id",                request.owner_id},
+                    {"ownership_epoch",         request.ownership_epoch},
+                    {"position",                request.position},
+                    {"request_id",              request.request_id},
+                    {"schema",                  "llama-server-warm-tier-completion-result-v1"},
+                    {"tokens",                  request.committed_output_tokens},
+                });
+                return res;
+            }
+            if (request.state == SERVER_WARM_TIER_REQUEST_STRANDED) {
+                res_err(res, format_error_response(
+                    "warm-tier request was stranded", ERROR_TYPE_UNAVAILABLE));
+                return res;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        if (warm_tier->get_request(request_id, request)
+                && request.state == SERVER_WARM_TIER_REQUEST_QUEUED) {
+            warm_tier->strand_request(
+                request_id,
+                req.should_stop() ? "E_CLIENT_STOP" : "E_QUEUE_TIMEOUT");
+        }
+        res_err(res, format_error_response(
+            "warm-tier request timed out", ERROR_TYPE_UNAVAILABLE));
+        return res;
+    };
+
+    this->post_warm_tier_switch = [this](const server_http_req & req) {
+        auto res = std::make_unique<server_http_res>();
+        if (!warm_tier_enabled()) {
+            res_err(res, format_error_response(
+                "warm-tier runtime is disabled", ERROR_TYPE_NOT_SUPPORTED));
+            return res;
+        }
+
+        nlohmann::json strict_body;
+        std::string parse_error;
+        if (!server_warm_tier_parse_json_strict(req.body, strict_body, parse_error)) {
+            res_err(res, format_error_response(
+                "warm-tier switch JSON is invalid: " + parse_error,
+                ERROR_TYPE_INVALID_REQUEST));
+            return res;
+        }
+        const json body = strict_body;
+        if (!warm_tier_exact_keys(
+                body,
+                {
+                    "intent_id",
+                    "schema",
+                    "sequence",
+                    "source_model",
+                    "target_model",
+                })) {
+            res_err(res, format_error_response(
+                "warm-tier switch fields do not match the v1 schema",
+                ERROR_TYPE_INVALID_REQUEST));
+            return res;
+        }
+        server_warm_tier_switch_intent intent;
+        std::string schema;
+        uint64_t sequence = 0;
+        if (!warm_tier_ascii_identifier(body, "schema", schema)
+                || schema != "llama-server-warm-tier-switch-v1"
+                || !warm_tier_ascii_identifier(body, "intent_id", intent.intent_id)
+                || !warm_tier_ascii_identifier(
+                    body, "source_model", intent.source_model_id)
+                || !warm_tier_ascii_identifier(
+                    body, "target_model", intent.target_model_id)
+                || !warm_tier_uint64(
+                    body, "sequence", 0, UINT64_MAX, sequence)) {
+            res_err(res, format_error_response(
+                "warm-tier switch contains invalid values",
+                ERROR_TYPE_INVALID_REQUEST));
+            return res;
+        }
+        intent.sequence = sequence;
+        if (!warm_tier->submit_model_switch(
+                    intent.sequence,
+                    intent.intent_id,
+                    intent.source_model_id,
+                    intent.target_model_id)) {
+            res_err(res, format_error_response(
+                "warm-tier switch was rejected", ERROR_TYPE_UNAVAILABLE));
+            return res;
+        }
+        res_ok(res, {
+            {"controller_epoch", warm_tier->controller_epoch()},
+            {"intent_id",        intent.intent_id},
+            {"schema",           "llama-server-warm-tier-switch-result-v1"},
+        });
+        return res;
+    };
+
     this->post_router_models_load = [this](const server_http_req & req) {
         auto res = std::make_unique<server_http_res>();
+        if (warm_tier_enabled()
+                && !warm_tier_internal_request(
+                    req, warm_tier_internal_token)) {
+            res_err(res, format_error_response(
+                "model management is disabled while warm-tier is active",
+                ERROR_TYPE_NOT_SUPPORTED));
+            return res;
+        }
         json body = json::parse(req.body);
         std::string name = json_value(body, "model", std::string());
         auto meta = models.get_meta(name);
@@ -1702,6 +2351,16 @@ void server_models_routes::init_routes() {
 
     this->get_router_models = [this](const server_http_req & req) {
         bool reload = !req.get_param("reload", "").empty();
+        if (reload
+                && warm_tier_enabled()
+                && !warm_tier_internal_request(
+                    req, warm_tier_internal_token)) {
+            auto res = std::make_unique<server_http_res>();
+            res_err(res, format_error_response(
+                "model reload is disabled while warm-tier is active",
+                ERROR_TYPE_NOT_SUPPORTED));
+            return res;
+        }
         if (reload) {
             models.load_models();
         }
@@ -1763,6 +2422,15 @@ void server_models_routes::init_routes() {
                         model_info[it.key()] = it.value();
                     }
                 }
+                if (warm_tier_internal_request(
+                        req, warm_tier_internal_token)) {
+                    model_info["warm_tier_runtime"] = {
+                        {"instance_id", meta.instance_id},
+                        {"port",        meta.port},
+                        {"process_id",  meta.process_id},
+                        {"schema",      "llama-server-warm-tier-runtime-identity-v1"},
+                    };
+                }
             }
             models_json.push_back(model_info);
         }
@@ -1775,6 +2443,14 @@ void server_models_routes::init_routes() {
 
     this->post_router_models_unload = [this](const server_http_req & req) {
         auto res = std::make_unique<server_http_res>();
+        if (warm_tier_enabled()
+                && !warm_tier_internal_request(
+                    req, warm_tier_internal_token)) {
+            res_err(res, format_error_response(
+                "model management is disabled while warm-tier is active",
+                ERROR_TYPE_NOT_SUPPORTED));
+            return res;
+        }
         json body = json::parse(req.body);
         std::string name = json_value(body, "model", std::string());
         auto model = models.get_meta(name);
@@ -1811,6 +2487,14 @@ void server_models_routes::init_routes() {
 
     this->post_router_models = [this](const server_http_req & req) {
         auto res = std::make_unique<server_http_res>();
+        if (warm_tier_enabled()
+                && !warm_tier_internal_request(
+                    req, warm_tier_internal_token)) {
+            res_err(res, format_error_response(
+                "model management is disabled while warm-tier is active",
+                ERROR_TYPE_NOT_SUPPORTED));
+            return res;
+        }
 
         json body = json::parse(req.body);
         std::string name = json_value(body, "model", std::string());
@@ -1859,6 +2543,14 @@ void server_models_routes::init_routes() {
 
     this->del_router_models = [this](const server_http_req & req) {
         auto res = std::make_unique<server_http_res>();
+        if (warm_tier_enabled()
+                && !warm_tier_internal_request(
+                    req, warm_tier_internal_token)) {
+            res_err(res, format_error_response(
+                "model management is disabled while warm-tier is active",
+                ERROR_TYPE_NOT_SUPPORTED));
+            return res;
+        }
 
         std::string name = req.get_param("model");
         if (name.empty()) {
@@ -1875,6 +2567,14 @@ void server_models_routes::init_routes() {
         // GET /v1/stream/<conv_id>?from=N. resolve the owning child from the conv_id -> model
         // map, 404 when nothing maps
         auto res = std::make_unique<server_http_res>();
+        if (warm_tier_enabled()
+                && !warm_tier_internal_request(
+                    req, warm_tier_internal_token)) {
+            res_err(res, format_error_response(
+                "ordinary stream routes are disabled while warm-tier is active",
+                ERROR_TYPE_NOT_SUPPORTED));
+            return res;
+        }
         std::string conv_id = req.get_param("conv_id");
         if (conv_id.empty()) {
             res_err(res, format_error_response("Missing conversation id in path", ERROR_TYPE_INVALID_REQUEST));
@@ -1913,6 +2613,14 @@ void server_models_routes::init_routes() {
         // them instead of fanning out to every ready child. a child only answers for the ids
         // it owns, never lists anything else
         auto res = std::make_unique<server_http_res>();
+        if (warm_tier_enabled()
+                && !warm_tier_internal_request(
+                    req, warm_tier_internal_token)) {
+            res_err(res, format_error_response(
+                "ordinary stream routes are disabled while warm-tier is active",
+                ERROR_TYPE_NOT_SUPPORTED));
+            return res;
+        }
         std::vector<std::string> requested;
         try {
             json body = json::parse(req.body);
@@ -1971,6 +2679,14 @@ void server_models_routes::init_routes() {
         // DELETE /v1/stream/<conv_id>. resolve the owning child via the map and forward only to
         // it, evict_and_cancel is idempotent on the child
         auto res = std::make_unique<server_http_res>();
+        if (warm_tier_enabled()
+                && !warm_tier_internal_request(
+                    req, warm_tier_internal_token)) {
+            res_err(res, format_error_response(
+                "ordinary stream routes are disabled while warm-tier is active",
+                ERROR_TYPE_NOT_SUPPORTED));
+            return res;
+        }
         std::string conv_id = req.get_param("conv_id");
         if (conv_id.empty()) {
             res_err(res, format_error_response("Missing conversation id in path", ERROR_TYPE_INVALID_REQUEST));

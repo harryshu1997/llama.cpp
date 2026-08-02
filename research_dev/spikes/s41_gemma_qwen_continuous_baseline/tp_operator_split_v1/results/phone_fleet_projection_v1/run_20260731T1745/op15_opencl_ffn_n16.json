@@ -1,0 +1,42 @@
+{
+  "geometry": {
+    "batch": 1,
+    "counts": [
+      960
+    ],
+    "k": 3840,
+    "n_ff": 15360,
+    "n_kv": null,
+    "offsets": [
+      0
+    ]
+  },
+  "iterations": 50,
+  "label": "op15_opencl_ffn_n16",
+  "legs": [
+    {
+      "index": 0,
+      "latency": {
+        "max_ms": 9.088034,
+        "median_ms": 4.5163585,
+        "min_ms": 3.484063,
+        "p90_ms": 4.988356,
+        "p99_ms": 8.565128
+      }
+    }
+  ],
+  "operator": "ffn",
+  "output_fast_hash": "3b39a00a",
+  "pair_makespan": {
+    "max_ms": 9.088034,
+    "median_ms": 4.5163585,
+    "min_ms": 3.484063,
+    "p90_ms": 4.988356,
+    "p99_ms": 8.565128
+  },
+  "schema": "s41-phone-pair-client-v1",
+  "transports": [
+    "aoa"
+  ],
+  "warmup": 10
+}

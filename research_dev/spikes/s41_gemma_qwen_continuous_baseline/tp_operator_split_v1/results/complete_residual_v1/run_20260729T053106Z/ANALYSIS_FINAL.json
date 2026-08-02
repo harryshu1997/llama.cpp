@@ -1,0 +1,74 @@
+{
+  "schema": "s41-complete-ffn-residual-analysis-v1",
+  "hardware": {
+    "gpu": "NVIDIA RTX A6000 GPU 0",
+    "gpu_graphics_clock_mhz": 240,
+    "gpu_memory_clock_mhz": 5001,
+    "phone": "OP15 3C15AU002CL00000",
+    "phone_backend": "HTP0 v81",
+    "transport": "direct AOA USB"
+  },
+  "method": {
+    "batch": 1,
+    "weight_type": "q8_0",
+    "input_type": "f16",
+    "output_type": "f16",
+    "phone_operation": "gate_up_silu_mul_down",
+    "phone_result": "K-wide residual",
+    "merge": "host_sum",
+    "repetitions": 3,
+    "iterations_per_repetition": 300
+  },
+  "qwen3_14b": {
+    "phone_columns": 1792,
+    "phone_column_fraction": 0.1029411765,
+    "cuda_full_median_ms": 1.080500,
+    "cuda_full_p90_ms": 1.082154,
+    "phone_total_median_ms": 0.711600,
+    "phone_total_p90_ms": 0.754172,
+    "split_total_median_ms": 0.999154,
+    "split_total_p90_ms": 1.003231,
+    "latency_change_percent": -7.541,
+    "hidden_fraction": 0.990000,
+    "final_relative_l2": 0.00466521699,
+    "exact_argmax": true,
+    "all_repetition_median_wins": true,
+    "all_repetition_p90_wins": true,
+    "raw_host_logs": [
+      "HOST_FINAL_QWEN_REP1.log",
+      "HOST_FINAL_QWEN_REP2.log",
+      "HOST_FINAL_QWEN_REP3.log"
+    ]
+  },
+  "gemma4_12b": {
+    "phone_columns": 1792,
+    "phone_column_fraction": 0.1166666667,
+    "cuda_full_median_ms": 0.769121,
+    "cuda_full_p90_ms": 0.770183,
+    "phone_total_median_ms": 0.615505,
+    "phone_total_p90_ms": 0.664870,
+    "split_total_median_ms": 0.695068,
+    "split_total_p90_ms": 0.704646,
+    "latency_change_percent": -9.640,
+    "hidden_fraction": 0.936667,
+    "final_relative_l2": 0.00499246883,
+    "exact_argmax": true,
+    "all_repetition_median_wins": true,
+    "all_repetition_p90_wins": true,
+    "raw_host_logs": [
+      "HOST_FINAL_GEMMA_REP1.log",
+      "HOST_FINAL_GEMMA_REP2.log",
+      "HOST_FINAL_GEMMA_REP3.log"
+    ]
+  },
+  "excluded_diagnostics": {
+    "pattern": "*PREWARM*",
+    "reason": "An attempted zero-input HTP prewarm captured stale input and produced invalid output. It was reverted and none of those logs contribute to this analysis."
+  },
+  "claim_limits": [
+    "Synthetic complete FFN layer only.",
+    "The A6000 clock setting is a kernel-specific latency proxy, not a physical RTX 4060 Ti treatment.",
+    "No energy, full-model, BurstGPT, or multi-phone result is claimed.",
+    "The Gemma numerical result is only 0.0000075 below the frozen relative-L2 limit."
+  ]
+}

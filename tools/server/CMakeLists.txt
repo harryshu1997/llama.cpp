@@ -41,6 +41,12 @@ add_library(${TARGET}
     server-http.h
     server-models.cpp
     server-models.h
+    server-warm-tier.cpp
+    server-warm-tier.h
+    server-warm-tier-executors.cpp
+    server-warm-tier-executors.h
+    server-warm-tier-runtime.cpp
+    server-warm-tier-runtime.h
 )
 set_target_properties(${TARGET} PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
@@ -61,3 +67,11 @@ install(TARGETS ${TARGET} RUNTIME)
 
 target_link_libraries(${TARGET} PRIVATE llama-server-impl)
 target_compile_features(${TARGET} PRIVATE cxx_std_17)
+
+if(BUILD_TESTING)
+    add_executable(test-warm-tier-executors
+        tests/test-warm-tier-executors.cpp
+    )
+    target_link_libraries(test-warm-tier-executors PRIVATE llama-server-impl)
+    add_test(NAME test-warm-tier-executors COMMAND test-warm-tier-executors)
+endif()

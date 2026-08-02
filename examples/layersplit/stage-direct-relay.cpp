@@ -5,6 +5,10 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+extern "C" {
+#include "sha256/sha256.h"
+}
+
 #include <cerrno>
 #include <cstdint>
 #include <cstdio>
@@ -14,6 +18,7 @@
 #include <algorithm>
 #include <array>
 #include <limits>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -184,7 +189,7 @@ bool parse_endpoint(const char * text, Endpoint & endpoint) {
     return parse_port(value.c_str() + separator + 1, endpoint.port);
 }
 
-int connect_to(const Endpoint & endpoint) {
+int connect_to(const Endpoint & endpoint, int source_port = 0) {
     addrinfo hints = {};
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
@@ -200,6 +205,22 @@ int connect_to(const Endpoint & endpoint) {
         fd = socket(address->ai_family, address->ai_socktype, address->ai_protocol);
         if (fd < 0) {
             continue;
+        }
+        if (source_port > 0) {
+            int one = 1;
+            setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+            sockaddr_in source = {};
+            source.sin_family = AF_INET;
+            source.sin_addr.s_addr = htonl(INADDR_ANY);
+            source.sin_port = htons(static_cast<uint16_t>(source_port));
+            if (bind(
+                    fd,
+                    reinterpret_cast<sockaddr *>(&source),
+                    sizeof(source)) < 0) {
+                close(fd);
+                fd = -1;
+                continue;
+            }
         }
         if (connect(fd, address->ai_addr, address->ai_addrlen) == 0) {
             set_nodelay(fd);
@@ -450,6 +471,58 @@ std::string digest_hex(const Identity & identity) {
     return result;
 }
 
+std::string digest_hex(const unsigned char * digest, size_t size) {
+    static const char digits[] = "0123456789abcdef";
+    std::string result(size * 2, '0');
+    for (size_t i = 0; i < size; ++i) {
+        result[2 * i] = digits[digest[i] >> 4];
+        result[2 * i + 1] = digits[digest[i] & 0x0f];
+    }
+    return result;
+}
+
+template <typename T>
+void append_json_array(std::ostringstream & output, const std::vector<T> & values) {
+    output << '[';
+    for (size_t index = 0; index < values.size(); ++index) {
+        if (index != 0) {
+            output << ',';
+        }
+        output << values[index];
+    }
+    output << ']';
+}
+
+bool emit_frame_certificate(const BatchFrame & activation, int64_t call_index) {
+    const size_t bytes = activation.hidden.size() * sizeof(float);
+    std::array<unsigned char, SHA256_DIGEST_SIZE> digest = {};
+    sha256_hash(
+        digest.data(),
+        reinterpret_cast<const unsigned char *>(activation.hidden.data()),
+        bytes);
+    std::ostringstream output;
+    output
+        << "DIRECTFRAME {\"activation_payload_bytes\":" << bytes
+        << ",\"call_index\":" << call_index
+        << ",\"hidden_width\":" << activation.hidden_width
+        << ",\"payload_sha256\":\""
+        << digest_hex(digest.data(), digest.size())
+        << "\",\"positions\":";
+    append_json_array(output, activation.positions);
+    output << ",\"request_ids\":";
+    append_json_array(output, activation.request_ids);
+    output << ",\"route_epochs\":";
+    append_json_array(output, activation.route_epochs);
+    output
+        << ",\"rows\":" << activation.n_rows
+        << ",\"schema\":\"ls-stage-direct-frame-v1\",\"seq_ids\":";
+    append_json_array(output, activation.seq_ids);
+    output << "}\n";
+    const std::string line = output.str();
+    return fwrite(line.data(), 1, line.size(), stderr) == line.size() &&
+        fflush(stderr) == 0;
+}
+
 bool validate_chain(
         const Hello & head,
         const Hello & tail,
@@ -511,7 +584,8 @@ int run_relay(
         const Hello & head,
         const Hello & tail,
         const Identity & identity,
-        Counters & counters) {
+        Counters & counters,
+        bool emit_frames) {
     const int32_t max_streams = std::min(head.max_streams, tail.max_streams);
     while (true) {
         int32_t command = 0;
@@ -661,6 +735,11 @@ int run_relay(
             return 3;
         }
         activation.tokens = input.tokens;
+        if (emit_frames &&
+            !emit_frame_certificate(activation, counters.batches)) {
+            fprintf(stderr, "error: cannot emit direct frame evidence\n");
+            return 3;
+        }
         if (!send_batch_request(tail_fd, activation)) {
             return 3;
         }
@@ -683,7 +762,8 @@ int run_relay(
 void usage(const char * program) {
     fprintf(
         stderr,
-        "usage: %s --listen PORT --head HOST:PORT --tail HOST:PORT\n",
+        "usage: %s --listen PORT --head HOST:PORT --tail HOST:PORT "
+        "[--tail-source-port PORT] [--emit-direct-frames]\n",
         program);
 }
 
@@ -693,6 +773,8 @@ int main(int argc, char ** argv) {
     int listen_port = 0;
     Endpoint head_endpoint;
     Endpoint tail_endpoint;
+    int tail_source_port = 0;
+    bool emit_frames = false;
     for (int index = 1; index < argc; ++index) {
         if (strcmp(argv[index], "--listen") == 0 && index + 1 < argc) {
             if (!parse_port(argv[++index], listen_port)) {
@@ -709,12 +791,22 @@ int main(int argc, char ** argv) {
                 fprintf(stderr, "error: invalid --tail\n");
                 return 1;
             }
+        } else if (
+                strcmp(argv[index], "--tail-source-port") == 0 &&
+                index + 1 < argc) {
+            if (!parse_port(argv[++index], tail_source_port)) {
+                fprintf(stderr, "error: invalid --tail-source-port\n");
+                return 1;
+            }
+        } else if (strcmp(argv[index], "--emit-direct-frames") == 0) {
+            emit_frames = true;
         } else {
             usage(argv[0]);
             return 1;
         }
     }
-    if (listen_port == 0 || head_endpoint.port == 0 || tail_endpoint.port == 0) {
+    if (listen_port == 0 || head_endpoint.port == 0 ||
+        tail_endpoint.port == 0) {
         usage(argv[0]);
         return 1;
     }
@@ -725,7 +817,7 @@ int main(int argc, char ** argv) {
                 head_endpoint.host.c_str(), head_endpoint.port);
         return 2;
     }
-    const int tail_fd = connect_to(tail_endpoint);
+    const int tail_fd = connect_to(tail_endpoint, tail_source_port);
     if (tail_fd < 0) {
         fprintf(stderr, "error: cannot connect tail %s:%d\n",
                 tail_endpoint.host.c_str(), tail_endpoint.port);
@@ -775,7 +867,14 @@ int main(int argc, char ** argv) {
     set_nodelay(client);
     Counters counters;
     const int rc = run_relay(
-        client, head_fd, tail_fd, head, tail, head_identity, counters);
+        client,
+        head_fd,
+        tail_fd,
+        head,
+        tail,
+        head_identity,
+        counters,
+        emit_frames);
     emit_certificate(
         head, head_identity, head_endpoint, tail_endpoint, counters, rc);
     close(client);

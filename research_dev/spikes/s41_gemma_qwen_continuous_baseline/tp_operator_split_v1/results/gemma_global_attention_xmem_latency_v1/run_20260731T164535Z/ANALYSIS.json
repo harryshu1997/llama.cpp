@@ -1,0 +1,79 @@
+{
+  "schema": "s41-gemma-global-attention-xmem-latency-v1",
+  "verdict": "LATENCY_FIT_PASS_CORRECTNESS_INVALID_P90_FAIL",
+  "scope": "projected_q_resident_f16_kv_attention_core_only",
+  "topology": {
+    "server_gpu": "RTX A6000 GPU-45b611d6-7c5d-9e48-f260-4fbe5f8ef69f",
+    "server_graphics_mhz": 990,
+    "server_memory_mhz": 5001,
+    "phone": "OP15 CPH2749",
+    "phone_gpu": "Adreno 840",
+    "phone_max_gpu_hz": 500000000,
+    "phone_thermal_pwrlevel": 9,
+    "transport": "direct_AOA_USB"
+  },
+  "shape": {
+    "total_kv_tokens": 1048576,
+    "phone_kv_tokens": 8192,
+    "cuda_kv_tokens": 1040384,
+    "query_heads": 16,
+    "kv_heads": 1,
+    "head_dimension": 512
+  },
+  "configuration": {
+    "GGML_OPENCL_ADRENO_XMEM_GEMM": 1,
+    "GGML_OPENCL_XMEM_PREPACK_CACHE": 1,
+    "GGML_OPENCL_XMEM_IMAGE_CACHE": 1,
+    "opencl_profiling": false,
+    "host_mode": "latency_steady_corun"
+  },
+  "release_repetitions": [
+    {
+      "control_median_ms": 9.281163,
+      "control_p90_ms": 9.289970,
+      "cuda_prefix_median_ms": 9.180550,
+      "phone_median_ms": 8.244780,
+      "split_median_ms": 9.202221,
+      "split_p90_ms": 10.810555,
+      "latency_change_percent": -0.851
+    },
+    {
+      "control_median_ms": 9.282255,
+      "control_p90_ms": 9.294418,
+      "cuda_prefix_median_ms": 9.180840,
+      "phone_median_ms": 8.152362,
+      "split_median_ms": 9.205899,
+      "split_p90_ms": 10.691406,
+      "latency_change_percent": -0.823
+    },
+    {
+      "control_median_ms": 9.283878,
+      "control_p90_ms": 9.293427,
+      "cuda_prefix_median_ms": 9.180469,
+      "phone_median_ms": 8.318682,
+      "split_median_ms": 9.203865,
+      "split_p90_ms": 10.860010,
+      "latency_change_percent": -0.862
+    }
+  ],
+  "median_of_repetition_metrics": {
+    "control_median_ms": 9.282255,
+    "cuda_prefix_median_ms": 9.180550,
+    "phone_median_ms": 8.244780,
+    "split_median_ms": 9.203865,
+    "latency_change_percent": -0.844515,
+    "control_p90_ms": 9.293427,
+    "split_p90_ms": 10.810555,
+    "p90_change_percent": 16.324742
+  },
+  "correctness": {
+    "status": "INVALID_LATENCY_ONLY",
+    "phone_relative_l2": 0.353681791,
+    "final_relative_l2": 0.00515149041,
+    "non_finite": 0
+  },
+  "physical_4060_treatment": "NOT_RUN",
+  "full_layer": "NOT_RUN",
+  "full_model": "NOT_RUN",
+  "energy": "NOT_RUN"
+}

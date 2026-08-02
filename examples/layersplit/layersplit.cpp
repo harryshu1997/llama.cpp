@@ -178,6 +178,31 @@ static void emit_placement_cert(const char * role, const std::string & mode,
     fprintf(stderr, "PLACEMENTCERT %s\n", cert.dump(-1, ' ', true).c_str());
 }
 
+static void emit_memory_cert(const llama_context * ctx, const char * role) {
+    llama_memory_breakdown_data device;
+    llama_memory_breakdown_data host;
+    for (const auto & entry : llama_get_memory_breakdown(ctx)) {
+        llama_memory_breakdown_data & total =
+            ggml_backend_buft_is_host(entry.first) ? host : device;
+        total.model   += entry.second.model;
+        total.context += entry.second.context;
+        total.compute += entry.second.compute;
+    }
+
+    nlohmann::ordered_json cert = {
+        {"schema", "layersplit-memory-breakdown-v1"},
+        {"role", role},
+        {"pid", (int) getpid()},
+        {"model_buffer_bytes", device.model},
+        {"kv_buffer_bytes", device.context},
+        {"compute_buffer_bytes", device.compute},
+        {"host_model_buffer_bytes", host.model},
+        {"host_context_buffer_bytes", host.context},
+        {"host_compute_buffer_bytes", host.compute},
+    };
+    fprintf(stderr, "MEMORYCERT %s\n", cert.dump(-1, ' ', true).c_str());
+}
+
 // [S15 persistence] Read one trimmed line from a /proc file (device boot id, etc).
 static std::string read_proc_line(const char * path) {
     FILE * f = fopen(path, "r");
@@ -261,7 +286,7 @@ static void emit_session_cert(int session_id, const char * session_end,
 
 static void print_usage(int, char ** argv) {
     fprintf(stderr,
-        "\nusage: %s -m <model> --mode <mono|head|mid|tail|tailnet|headnet|stagenet|tailv3> [opts]\n"
+        "\nusage: %s -m <model> --mode <mono|head|mid|tail|tailnet|headnet|stagenet|tailv3|monov3> [opts]\n"
         "  mono    : full model on the prompt, print last-token top-1 + top-5\n"
         "  head    : run layers [0,LLAMA_LAYER_END), dump N cut activations + token ids to --act-file\n"
         "  mid     : env LLAMA_LAYER_START=k2 LLAMA_LAYER_END=k3 ; inject --act-file, run [k2,k3) head-less, relay to --act-out\n"
@@ -271,6 +296,7 @@ static void print_usage(int, char ** argv) {
         "  tailbench: -b STREAMS -n STEPS ; BATCHED tail decode, STREAMS seqs/forward (env LLAMA_LAYER_START=k)\n"
         "  stagenet  : --port P ; PERSISTENT head-less stage server (env LLAMA_LAYER_START/END), KV-resident\n"
         "  tailv3    : --port P ; V3 terminal stage (env LLAMA_LAYER_START), returns greedy token ids\n"
+        "  monov3    : --port P --devices D ; V3 full-model oracle, returns greedy token ids\n"
         "  monodriver: -p PROMPT -n NGEN ; resident full-model control using the pipedriver decode loop\n"
         "  pipedriver: --host H --port A [--port2 B] -p PROMPT -n NGEN ; host tail drives one or two\n"
         "              --parallel-heads requires --port2 and B=2; two equal head cuts feed one batched tail\n"
@@ -4819,6 +4845,7 @@ int main(int argc, char ** argv) {
     const bool is_headnet  = (mode == "headnet");
     const bool is_stagenet   = (mode == "stagenet");
     const bool is_tailv3     = (mode == "tailv3");
+    const bool is_monov3     = (mode == "monov3");
     const bool is_pipedriver = (mode == "pipedriver");
     const bool is_tailbench = (mode == "tailbench");
     const bool is_tailstream = (mode == "tailstream");
@@ -4829,7 +4856,7 @@ int main(int argc, char ** argv) {
     if (is_kvserver && port <= 0) { fprintf(stderr, "error: --port required for kvserver\n"); return 1; }
     if (is_kvclient && (host.empty() || port <= 0)) { fprintf(stderr, "error: --host --port required for kvclient\n"); return 1; }
     if (!is_mono && !is_monogen && !is_monodriver && !is_kvsave && !is_kvload && !is_kvserver && !is_kvclient && !is_head && !is_tail && !is_mid && !is_tailnet && !is_headnet && !is_tailbench
-        && !is_tailstream && !is_headstream && !is_stagenet && !is_tailv3 &&
+        && !is_tailstream && !is_headstream && !is_stagenet && !is_tailv3 && !is_monov3 &&
         !is_pipedriver && !is_dualengine) {
         fprintf(stderr, "error: unsupported --mode '%s'\n", mode.c_str());
         return 1;
@@ -4840,6 +4867,10 @@ int main(int argc, char ** argv) {
     }
     if (is_stagenet && port <= 0) { fprintf(stderr, "error: --port required for stagenet\n"); return 1; }
     if (is_tailv3 && port <= 0) { fprintf(stderr, "error: --port required for tailv3\n"); return 1; }
+    if (is_monov3 && (port <= 0 || dev_csv.empty())) {
+        fprintf(stderr, "error: --port and --devices are required for monov3\n");
+        return 1;
+    }
     if (is_pipedriver &&
         (host.empty() || port <= 0 || (prompt.empty() && !prompt_after_load && !persistent_jsonl))) {
         fprintf(stderr, "error: --host --port (stage A) and a prompt source are required for pipedriver\n"); return 1;
@@ -4877,7 +4908,7 @@ int main(int argc, char ** argv) {
         fprintf(stderr, "error: driver counts require -n > 0, --driver-requests > 0, --driver-warmup >= 0\n");
         return 1;
     }
-    if ((is_monodriver || is_pipedriver || is_stagenet || is_tailv3) &&
+    if ((is_monodriver || is_pipedriver || is_stagenet || is_tailv3 || is_monov3) &&
         (driver_batch <= 0 || driver_batch > 64 ||
          driver_context <= 0 || driver_max_prefill <= 0 || driver_max_prefill > 512)) {
         fprintf(stderr, "error: driver bounds require batch 1..64, context > 0, max-prefill 1..512\n");
@@ -4888,7 +4919,7 @@ int main(int argc, char ** argv) {
         fprintf(stderr, "error: --driver-requests must be divisible by --driver-batch\n");
         return 1;
     }
-    if ((is_monodriver || is_pipedriver || is_stagenet || is_tailv3) &&
+    if ((is_monodriver || is_pipedriver || is_stagenet || is_tailv3 || is_monov3) &&
         (int64_t) driver_context < (int64_t) driver_max_prefill + n_gen) {
         fprintf(stderr, "error: --driver-context must cover max-prefill + generated tokens\n");
         return 1;
@@ -4989,6 +5020,11 @@ int main(int argc, char ** argv) {
         llama_model_free(model);
         return 1;
     }
+    if (is_monov3 && (layer_start != 0 || effective_layer_end != n_layer)) {
+        fprintf(stderr, "error: monov3 requires the full model layer range\n");
+        llama_model_free(model);
+        return 1;
+    }
     if (is_monodriver && (layer_start != 0 || effective_layer_end != n_layer)) {
         fprintf(stderr, "error: monodriver requires the full model layer range\n");
         llama_model_free(model);
@@ -5031,10 +5067,10 @@ int main(int argc, char ** argv) {
 
     llama_context_params ctx_params = llama_context_default_params();
     // net modes advance KV one position per token (prompt + n_gen); size generously.
-    ctx_params.n_ctx   = (is_tailnet || is_headnet || is_tailstream || is_headstream || is_stagenet || is_tailv3 || is_pipedriver || is_monodriver) ? 4096 :
+    ctx_params.n_ctx   = (is_tailnet || is_headnet || is_tailstream || is_headstream || is_stagenet || is_tailv3 || is_monov3 || is_pipedriver || is_monodriver) ? 4096 :
                          (is_kvsave || is_kvload || is_kvserver || is_kvclient) ? (uint32_t)(prompt_len + n_gen + 64) : 64;
     ctx_params.n_batch = 8;
-    if (is_stagenet || is_tailv3 || is_pipedriver || is_monodriver) {
+    if (is_stagenet || is_tailv3 || is_monov3 || is_pipedriver || is_monodriver) {
         const uint64_t n_ctx_total = (uint64_t) driver_context * driver_batch;
         const uint64_t n_batch_total = (uint64_t) driver_max_prefill * driver_batch;
         if (n_ctx_total > UINT32_MAX || n_batch_total > UINT32_MAX) {
@@ -5085,7 +5121,7 @@ int main(int argc, char ** argv) {
     // (phone stage / host tail / mono control) when the harness asks for a cert.
     const bool placement_cert =
         (is_head || is_tail || is_headnet || is_tailnet ||
-         is_stagenet || is_tailv3 || is_pipedriver || is_monodriver) &&
+         is_stagenet || is_tailv3 || is_monov3 || is_pipedriver || is_monodriver) &&
         getenv("LAYERSPLIT_PLACEMENT_CERT") != nullptr;
     if (placement_cert) {
         ctx_params.cb_eval           = placement_eval_cb;
@@ -5097,6 +5133,9 @@ int main(int argc, char ** argv) {
         fprintf(stderr, "error: failed to create context\n");
         llama_model_free(model);
         return 1;
+    }
+    if (is_monov3 && getenv("LAYERSPLIT_MEMORY_CERT") != nullptr) {
+        emit_memory_cert(ctx, "monov3");
     }
 
     if (prompt_after_load && !driver_read_prompt_after_load(prompt)) {
@@ -5129,10 +5168,10 @@ int main(int argc, char ** argv) {
         rc = run_headstream(ctx, n_embd, host, port, sched_file);
     } else if (is_tailbench) {
         rc = run_tailbench(ctx, n_embd, n_streams, n_gen, gap_ms);
-    } else if (is_stagenet || is_tailv3) {
+    } else if (is_stagenet || is_tailv3 || is_monov3) {
         rc = run_stagenet(
             ctx, n_embd, n_vocab, port, driver_batch,
-            layer_start, effective_layer_end, n_layer, is_tailv3,
+            layer_start, effective_layer_end, n_layer, is_tailv3 || is_monov3,
             dev_csv.empty() ? (is_tailv3 ? "CPU" : "HTP0") : dev_csv.c_str());
     } else if (is_pipedriver && persistent_jsonl) {
         rc = run_persistent_pipebatchdriver(
@@ -5168,9 +5207,10 @@ int main(int argc, char ** argv) {
                           : is_tail || is_tailnet ? "phone_tail"
                           : is_stagenet ? "phone_stage"
                           : is_tailv3 ? "host_tail_v3"
+                          : is_monov3 ? "monov3"
                           : is_monodriver ? "monodriver" : "host_tail";
         const int cert_layer_end =
-            (is_head || is_headnet || is_stagenet || is_tailv3) ?
+            (is_head || is_headnet || is_stagenet || is_tailv3 || is_monov3) ?
             effective_layer_end : (int) n_layer;
         emit_placement_cert(
             role, mode, layer_start, cert_layer_end, (int) n_layer, rc);

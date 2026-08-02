@@ -1,0 +1,532 @@
+#!/usr/bin/env python3
+"""Run the measured priority policy through one shared physical CUDA tail."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import queue
+import sys
+import threading
+import time
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any
+
+
+HERE = Path(__file__).resolve().parent
+S22 = HERE.parent / "s22_slo_overlap_pipeline"
+S24 = HERE.parent / "s24_overlap_handoff_poc"
+S26 = HERE.parent / "s26_priority_scheduler"
+for dependency in (S26, S24, S22):
+    if str(dependency) not in sys.path:
+        sys.path.insert(0, str(dependency))
+
+from async_pipeline import parse_endpoint
+from physical_adapter import (
+    WORKER_NAMES,
+    PhysicalRuntimeError,
+    canonical_bytes,
+    load_trace,
+    outcome_record,
+    physical_capacities,
+    sha256_file,
+    summarize_run,
+)
+from priority_policy import (
+    DispatchGroup,
+    PriorityAdmissionController,
+    PriorityPolicyError,
+    PriorityWork,
+    RejectDecision,
+    WaitDecision,
+)
+from priority_profiles import PriorityProfileError, load_bundle
+from priority_runtime import validate_conservation
+from route_runtime import RouteRequest
+from shared_physical_adapter import build_topology, validate_shared_pair
+
+
+SCHEMA = "s28-priority-shared-tail-v1"
+EXPECTED_TRACE_HASH = (
+    "sha256:9079e3f939068d17fcd356ed05173910f23dead75e879e439d4ff85ea65f832c"
+)
+
+
+@dataclass(frozen=True)
+class ScheduledWork:
+    source: dict[str, Any]
+    arrival_us: int
+
+    @property
+    def request_id(self) -> int:
+        return int(self.source["request_id"])
+
+
+def prepare_trace(trace: dict[str, Any]) -> list[ScheduledWork]:
+    if trace.get("trace_hash") != EXPECTED_TRACE_HASH:
+        raise PhysicalRuntimeError("S28 requires the frozen dense 60 trace")
+    result = []
+    seen = set()
+    for source in trace["requests"]:
+        request_id = source["request_id"]
+        if request_id in seen:
+            raise PhysicalRuntimeError("trace request id is duplicated")
+        if source["input_tokens"] != 1 or source["output_steps"] != 4:
+            raise PhysicalRuntimeError("trace contains an unmeasured request shape")
+        seen.add(request_id)
+        result.append(ScheduledWork(source, source["arrival_us"]))
+    result.sort(key=lambda row: (row.arrival_us, row.request_id))
+    if len(result) != 60:
+        raise PhysicalRuntimeError("S28 dense trace must contain 60 requests")
+    return result
+
+
+def to_policy_work(row: ScheduledWork) -> PriorityWork:
+    source = row.source
+    return PriorityWork(
+        request_id=row.request_id,
+        arrival_us=row.arrival_us,
+        deadline_us=row.arrival_us + source["slo_us"],
+        priority=source["priority"],
+        input_tokens=source["input_tokens"],
+        output_steps=source["output_steps"],
+    )
+
+
+def validate_priority_events(
+    events: dict[str, list[dict[str, Any]]],
+) -> None:
+    if "cuda-tail" not in events or not events["cuda-tail"]:
+        raise PhysicalRuntimeError("shared CUDA tail emitted no batch evidence")
+    for worker, worker_events in events.items():
+        for event in worker_events:
+            priorities = event.get("priorities")
+            if (
+                type(priorities) is not list
+                or not priorities
+                or any(type(value) is not int or value < 0 for value in priorities)
+            ):
+                raise PhysicalRuntimeError(
+                    f"{worker} emitted invalid priority evidence"
+                )
+            if 0 in priorities and any(value != 0 for value in priorities):
+                raise PhysicalRuntimeError(
+                    f"{worker} mixed urgent and background work"
+                )
+            if event.get("status") != "OK":
+                raise PhysicalRuntimeError(f"{worker} emitted a failed batch")
+
+
+def run_priority_workload(
+    topology: Any,
+    trace: dict[str, Any],
+    controller: PriorityAdmissionController,
+    args: argparse.Namespace,
+    allowed_batches: dict[str, frozenset[int]] | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    rows = prepare_trace(trace)
+    source_by_id = {row.request_id: row for row in rows}
+    origin_ns = time.monotonic_ns()
+    next_arrival = 0
+    completion_queue: queue.Queue[dict[str, Any]] = queue.Queue()
+    active: dict[int, threading.Thread] = {}
+    completed: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    decisions: list[dict[str, Any]] = []
+    fatal: BaseException | None = None
+    wait_decision = WaitDecision(None, "READY_QUEUE_EMPTY")
+
+    def elapsed_us() -> int:
+        return max(0, (time.monotonic_ns() - origin_ns) // 1000)
+
+    def execute_group(
+        group_rows: list[ScheduledWork],
+        decision: DispatchGroup,
+        admitted_ns: int,
+    ) -> None:
+        requests = tuple(
+            RouteRequest(
+                request_id=row.request_id,
+                route_epoch=route_epoch,
+                route_id=decision.route_id,
+                prompt_tokens=tuple(
+                    [row.source["synthetic_token"]]
+                    * row.source["input_tokens"]
+                ),
+                output_steps=row.source["output_steps"],
+                slo_us=row.source["slo_us"],
+                priority=row.source["priority"],
+                batch_wait_us=decision.batch_wait_us,
+                prefill_chunk=args.prefill_chunk,
+            )
+            for row, route_epoch in zip(group_rows, decision.route_epochs)
+        )
+        request_ids = tuple(row.request_id for row in group_rows)
+        try:
+            outcomes = topology.runner.run_group(
+                requests,
+                args.request_timeout,
+                scheduled_arrival_ns=tuple(
+                    origin_ns + row.arrival_us * 1000 for row in group_rows
+                ),
+                capture_boundaries=False,
+            )
+            completion_queue.put({
+                "kind": "completed",
+                "request_ids": request_ids,
+                "route_epochs": tuple(decision.route_epochs),
+                "records": [
+                    outcome_record(
+                        outcome, row.source, origin_ns, admitted_ns,
+                    )
+                    for row, outcome in zip(group_rows, outcomes)
+                ],
+            })
+        except BaseException as exc:
+            completion_queue.put({
+                "kind": "fatal",
+                "request_ids": request_ids,
+                "route_epochs": tuple(decision.route_epochs),
+                "clean": all(
+                    request_id not in topology.runner.pinned()
+                    for request_id in request_ids
+                ),
+                "error": exc,
+            })
+
+    def consume(item: dict[str, Any]) -> None:
+        nonlocal fatal
+        request_ids = item["request_ids"]
+        route_epochs = item["route_epochs"]
+        for request_id in request_ids:
+            active.pop(request_id, None)
+        if item["kind"] == "fatal":
+            if item["clean"]:
+                try:
+                    controller.complete_group(request_ids, route_epochs)
+                except BaseException as exc:
+                    fatal = PhysicalRuntimeError(
+                        "request and reservation cleanup both failed"
+                    )
+                    fatal.__cause__ = exc
+                    return
+            fatal = item["error"]
+            return
+        try:
+            controller.complete_group(request_ids, route_epochs)
+        except BaseException as exc:
+            fatal = exc
+            return
+        completed.extend(item["records"])
+
+    while len(completed) + len(rejected) < len(rows):
+        now_us = elapsed_us()
+        while next_arrival < len(rows) and rows[next_arrival].arrival_us <= now_us:
+            controller.enqueue(to_policy_work(rows[next_arrival]), now_us)
+            next_arrival += 1
+
+        while True:
+            try:
+                consume(completion_queue.get_nowait())
+            except queue.Empty:
+                break
+        if fatal is not None:
+            break
+
+        admitted_any = False
+        while True:
+            now_us = elapsed_us()
+            decision = controller.decide(now_us)
+            if isinstance(decision, RejectDecision):
+                source = source_by_id[decision.request_id].source
+                rejected.append({
+                    "request_id": decision.request_id,
+                    "arrival_us": source["arrival_us"],
+                    "rejected_us": now_us,
+                    "priority": source["priority"],
+                    "reason": decision.reason,
+                })
+                admitted_any = True
+                continue
+            if isinstance(decision, WaitDecision):
+                wait_decision = decision
+                break
+            if not isinstance(decision, DispatchGroup):
+                raise PhysicalRuntimeError("priority policy returned an unknown decision")
+
+            admitted_ns = time.monotonic_ns()
+            group_rows = [
+                source_by_id[request_id]
+                for request_id in decision.request_ids
+            ]
+            decisions.append({
+                "route_id": decision.route_id,
+                "request_ids": list(decision.request_ids),
+                "route_epochs": list(decision.route_epochs),
+                "priorities": [row.source["priority"] for row in group_rows],
+                "batch_size": decision.batch_size,
+                "admitted_us": (admitted_ns - origin_ns) // 1000,
+                "predicted_start_us": decision.predicted_start_us,
+                "predicted_finish_us": decision.predicted_finish_us,
+                "batch_wait_us": decision.batch_wait_us,
+                "predicted_cuda_relief_us": decision.predicted_cuda_relief_us,
+                "reason": decision.reason,
+            })
+            thread = threading.Thread(
+                target=execute_group,
+                args=(group_rows, decision, admitted_ns),
+                name="s28-group-" + "-".join(
+                    str(row.request_id) for row in group_rows
+                ),
+            )
+            for row in group_rows:
+                active[row.request_id] = thread
+            thread.start()
+            admitted_any = True
+
+        if len(completed) + len(rejected) == len(rows):
+            break
+        if not admitted_any:
+            wait_s = 0.01
+            now_us = elapsed_us()
+            if next_arrival < len(rows):
+                wait_s = min(
+                    wait_s,
+                    max(0.0, (rows[next_arrival].arrival_us - now_us) / 1e6),
+                )
+            if wait_decision.next_wake_us is not None:
+                wait_s = min(
+                    wait_s,
+                    max(0.0, (wait_decision.next_wake_us - now_us) / 1e6),
+                )
+            if wait_s <= 0:
+                wait_s = 0.001
+            try:
+                consume(completion_queue.get(timeout=wait_s))
+            except queue.Empty:
+                pass
+            if fatal is not None:
+                break
+
+    for thread in set(active.values()):
+        thread.join(timeout=args.request_timeout)
+    if any(thread.is_alive() for thread in active.values()):
+        raise TimeoutError("request thread did not terminate")
+    while True:
+        try:
+            consume(completion_queue.get_nowait())
+        except queue.Empty:
+            break
+    if fatal is not None:
+        raise PhysicalRuntimeError("physical request failed") from fatal
+
+    completed.sort(key=lambda row: row["request_id"])
+    rejected.sort(key=lambda row: row["request_id"])
+    validate_conservation(
+        rows, decisions, completed, rejected, allowed_batches,
+    )
+    if controller.pending() or controller.active():
+        raise PhysicalRuntimeError("priority controller retained request ownership")
+    resources = controller.resource_state()
+    if any(
+        resources[name].get(resource, 0)
+        for name in ("active", "low_priority_active")
+        for resource in resources[name]
+    ):
+        raise PhysicalRuntimeError("priority controller retained resource credits")
+    if topology.runner.pinned():
+        raise PhysicalRuntimeError("route runner retained a request pin")
+    if any(pool.leased() for pool in topology.slots.values()):
+        raise PhysicalRuntimeError("software sequence leases remain live")
+
+    runtime = {
+        "origin_monotonic_ns": origin_ns,
+        "duration_ns": time.monotonic_ns() - origin_ns,
+        "selected_request_count": len(rows),
+        "completed_count": len(completed),
+        "rejected_count": len(rejected),
+        "decisions": decisions,
+        "requests": completed,
+        "rejected": rejected,
+        "energy": None,
+    }
+    state = {
+        "runner_pins": topology.runner.pinned(),
+        "software_leases": {
+            name: pool.leased() for name, pool in topology.slots.items()
+        },
+        "priority_resources": resources,
+        "priority_pending": [asdict(work) for work in controller.pending()],
+        "priority_active": {
+            str(request_id): asdict(reservation)
+            for request_id, reservation in controller.active().items()
+        },
+    }
+    return runtime, state
+
+
+def parser() -> argparse.ArgumentParser:
+    result = argparse.ArgumentParser()
+    result.add_argument("--cuda-prefix", type=parse_endpoint, required=True)
+    result.add_argument("--cuda-mid", type=parse_endpoint, required=True)
+    result.add_argument("--op12", type=parse_endpoint, required=True)
+    result.add_argument("--op15", type=parse_endpoint, required=True)
+    result.add_argument("--cuda-tail", type=parse_endpoint, required=True)
+    result.add_argument("--trace", type=Path, required=True)
+    result.add_argument("--profiles", type=Path, default=S26 / "profiles.json")
+    result.add_argument("--output", type=Path, required=True)
+    result.add_argument(
+        "--control-mode", choices=("all-cuda", "priority"), default="priority",
+    )
+    result.add_argument("--session-end", choices=("detach", "stop"), default="detach")
+    result.add_argument("--allow-numeric-uncertified", action="store_true")
+    result.add_argument("--prefill-chunk", type=int)
+    result.add_argument("--queue-depth", type=int, default=1024)
+    result.add_argument("--timeout", type=float, default=600.0)
+    result.add_argument("--request-timeout", type=float, default=3600.0)
+    return result
+
+
+def validate_args(
+    args: argparse.Namespace, arg_parser: argparse.ArgumentParser,
+) -> None:
+    if args.control_mode == "priority" and not args.allow_numeric_uncertified:
+        arg_parser.error("phone routes require --allow-numeric-uncertified")
+    if args.output.exists():
+        arg_parser.error(f"output already exists: {args.output}")
+    if args.queue_depth <= 0 or args.timeout <= 0 or args.request_timeout <= 0:
+        arg_parser.error("runtime bounds must be positive")
+    if args.prefill_chunk is not None and args.prefill_chunk <= 0:
+        arg_parser.error("prefill chunk must be positive")
+
+
+def main() -> int:
+    arg_parser = parser()
+    args = arg_parser.parse_args()
+    validate_args(args, arg_parser)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    topology = None
+    try:
+        trace = load_trace(args.trace)
+        routes, capacities, reserve, profile_bundle = load_bundle(args.profiles)
+        controller = PriorityAdmissionController(
+            routes,
+            capacities,
+            reserve,
+            offload_enabled=args.control_mode == "priority",
+        )
+        topology = build_topology(args)
+        validate_shared_pair(topology.routes)
+        if physical_capacities(topology) != capacities:
+            raise PhysicalRuntimeError("profile and physical capacities differ")
+        runtime, software_state = run_priority_workload(
+            topology, trace, controller, args,
+        )
+        topology.stop_batchers(args.timeout)
+        batch_events = {
+            name: list(batcher.events)
+            for name, batcher in topology.batchers.items()
+        }
+        validate_priority_events(batch_events)
+        final_workers = topology.end_sessions(args.session_end)
+        report = {
+            "schema": SCHEMA,
+            "status": "RUN_COMPLETE",
+            "numeric_scope": (
+                "Q8_CUDA_ONLY"
+                if args.control_mode == "all-cuda"
+                else "MECHANICS_ONLY_F16_PHONE_Q8_SERVER_NUMERICALLY_UNCERTIFIED"
+            ),
+            "trace": {
+                "path": str(args.trace),
+                "sha256": "sha256:" + sha256_file(args.trace),
+                "trace_hash": trace["trace_hash"],
+                "scope": trace["scope"],
+            },
+            "profile": {
+                "path": str(args.profiles),
+                "sha256": "sha256:" + sha256_file(args.profiles),
+                "schema": profile_bundle["schema"],
+                "sources": profile_bundle["sources"],
+            },
+            "configuration": {
+                "control_mode": args.control_mode,
+                "session_end": args.session_end,
+                "prefill_chunk": args.prefill_chunk,
+                "queue_depth": args.queue_depth,
+                "shared_tail": True,
+                "urgent_background_batch_isolation": True,
+                "knees": {
+                    "cuda-prefix": 4,
+                    "cuda-mid": 4,
+                    "op12-prefix": 4,
+                    "op15-mid": 4,
+                    "cuda-tail": 8,
+                },
+                "gather_us": 5000,
+                "endpoints": {
+                    "cuda-prefix": list(args.cuda_prefix),
+                    "cuda-mid": list(args.cuda_mid),
+                    "op12-prefix": list(args.op12),
+                    "op15-mid": list(args.op15),
+                    "cuda-tail": list(args.cuda_tail),
+                },
+            },
+            "workers": {
+                name: asdict(hello) for name, hello in topology.hellos.items()
+            },
+            "runtime": runtime,
+            "batch_events": batch_events,
+            "summary": summarize_run(runtime, batch_events),
+            "final_workers": final_workers,
+            "final_software_state": software_state,
+            "energy_exclusions": {
+                "gpu_board_energy": "NOT_MEASURED_IN_S28_CP1",
+                "phone_energy": "UNKNOWN",
+                "network_energy": "UNKNOWN",
+                "total_system_energy": "UNKNOWN",
+            },
+        }
+        args.output.write_bytes(canonical_bytes(report))
+        print(json.dumps({
+            "status": report["status"],
+            "completed": report["summary"]["completed_requests"],
+            "slo_misses": report["summary"]["slo_misses"],
+            "output": str(args.output),
+        }, sort_keys=True, separators=(",", ":")))
+        return 0
+    except BaseException as exc:
+        failure_report = {
+            "schema": SCHEMA,
+            "status": "RUN_FAILED",
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+        }
+        try:
+            args.output.write_bytes(canonical_bytes(failure_report))
+        except OSError:
+            pass
+        print(json.dumps(failure_report, sort_keys=True, separators=(",", ":")))
+        return 2
+    finally:
+        if topology is not None:
+            if not topology.batchers_stopped:
+                try:
+                    topology.stop_batchers(args.timeout)
+                except BaseException:
+                    pass
+            if not topology.ended:
+                try:
+                    if all(
+                        topology.clients[name].status().active_sequences == 0
+                        for name in WORKER_NAMES
+                    ):
+                        topology.end_sessions("detach")
+                except BaseException:
+                    pass
+            topology.close()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

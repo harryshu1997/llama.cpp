@@ -1,0 +1,139 @@
+{
+  "schema": "s41.activation_boundary.analysis.v2",
+  "date": "2026-07-28",
+  "verdict": "QWEN_M1_MEDIAN_SPEEDUP; PHONE_P90_HIDDEN_WITH_HVX4; SPLIT_P90_NOT_IMPROVED; ENERGY_UNMEASURED",
+  "scope": {
+    "shape": "qwen3_14b",
+    "phone_columns": 1792,
+    "weight_type": "q8_0",
+    "request_type": "scaled_i8",
+    "phone_return_type": "f16",
+    "cuda_late_input_type": "f32",
+    "mode": "steady_corun",
+    "iterations_per_repeated_run": 500,
+    "fresh_runs_per_variant": 3
+  },
+  "implementation": {
+    "existing_property": "The one-phone activation was already one contiguous slice consumed by one suffix-down graph.",
+    "change": "Enqueue the contiguous f32 activation upload asynchronously on the same CUDA stream as the suffix-down graph instead of synchronously uploading and synchronizing first.",
+    "default_late_path": "f32_async",
+    "diagnostic_late_paths": [
+      "f32_sync",
+      "f32_async",
+      "f16_sync",
+      "f16_async"
+    ],
+    "selected_phone_runtime": "GGML_HEXAGON_NHVX=4"
+  },
+  "boundary_ab": {
+    "f32_sync": {
+      "median_of_process_medians": {
+        "cuda_full_ms": 0.669408,
+        "split_total_ms": 0.670801,
+        "late_cuda_ms": 0.071898,
+        "upload_submit_ms": 0.008988,
+        "latency_change_percent": 0.181
+      },
+      "classification": "control"
+    },
+    "f32_async": {
+      "median_of_process_medians": {
+        "cuda_full_ms": 0.669468,
+        "split_total_ms": 0.665542,
+        "late_cuda_ms": 0.066558,
+        "upload_submit_ms": 0.004007,
+        "latency_change_percent": -0.592
+      },
+      "classification": "selected"
+    },
+    "effect": {
+      "late_cuda_reduction_ms": 0.005340,
+      "split_total_reduction_ms": 0.005259,
+      "note": "The asynchronous path removes an otherwise serial CUDA stream synchronization. The graph remains ordered after the upload on the same stream."
+    },
+    "f16_paths": {
+      "correctness": "pass",
+      "late_cuda_ms": "0.155-0.160",
+      "latency_change_percent": "12.8-13.4",
+      "classification": "rejected_slow_q8_by_f16_cuda_kernel"
+    }
+  },
+  "continuous_cadence": {
+    "continuous": {
+      "phone_total_median_ms": 0.586700,
+      "usb_out_median_ms": 0.047000
+    },
+    "gap_1_5_ms": {
+      "phone_total_median_ms": 0.773439,
+      "usb_out_median_ms": 0.238088
+    },
+    "continuous_reduction_percent": 24.1,
+    "diagnosis": "The gap penalty is primarily Android accessory-service wakeup on USB OUT, not slower HTP arithmetic."
+  },
+  "phone_compute_profile": {
+    "worker_compute_without_profiler_us": {
+      "default_threads_median": 375,
+      "four_threads_median": 371
+    },
+    "native_htp_ops_us": {
+      "q8_gate_up_mul_mat": "271-275",
+      "silu": 3,
+      "multiply": 2
+    },
+    "kernel": "hvx-tiled",
+    "matmul_fraction_of_native_op_time_percent": 98,
+    "trace_diagnosis": "Per-tile weight DMA intervals are approximately three to four times the HVX compute intervals. The M=1 q8 matmul is weight-bandwidth-bound.",
+    "controls": {
+      "hmx_min1": "correct but slower; native matmul about 411-412 us",
+      "hvx_flat": "failed correctness with zero phone activation",
+      "completion_poll": "no latency benefit",
+      "op_fusion_toggle": "no material benefit because gate and up are already stacked into one physical matmul"
+    }
+  },
+  "selected_combined_result": {
+    "median_of_process_medians": {
+      "cuda_full_ms": 0.669499,
+      "cuda_prefix_ms": 0.597530,
+      "phone_total_ms": 0.548005,
+      "phone_p90_ms": 0.592691,
+      "exposed_wait_p90_ms": 0.0,
+      "late_cuda_ms": 0.065145,
+      "split_total_ms": 0.663387,
+      "latency_change_percent": -0.864,
+      "hidden_fraction": 0.908
+    },
+    "p90": {
+      "cuda_full_ms": 0.671002,
+      "split_total_ms": 0.673346,
+      "classification": "no_repeated_p90_speedup"
+    },
+    "correctness": {
+      "final_relative_l2": 0.00431994134,
+      "limit": 0.005,
+      "argmax": "exact",
+      "non_finite": 0
+    }
+  },
+  "final_binary_confirmation": {
+    "cuda_full_median_ms": 0.669479,
+    "split_total_median_ms": 0.665440,
+    "latency_change_percent": -0.603,
+    "phone_p90_ms": 0.592341,
+    "exposed_wait_p90_ms": 0.0,
+    "late_path_default": "f32_async"
+  },
+  "limits": [
+    "This is one synthetic M=1 FFN layer, not a full-model token.",
+    "The treatment runs on a clock-reduced RTX A6000 transport host, not the physical RTX 4060 Ti.",
+    "Only one phone is present, so multi-phone concatenation and USB contention are not measured.",
+    "The split p90 remains above the CUDA-only p90 across the repeated aggregate.",
+    "No server, phone, link, or total-system energy acquisition was run."
+  ],
+  "next_phone_optimization": "Batch independent activation rows so the q8 weights are reused across M and HMX becomes naturally eligible. Further M=1 compute-clock tuning is unlikely to help a weight-DMA-bound kernel.",
+  "sha256": {
+    "measured_host_binary": "ca67f321030b64dcbc7c821733d2b77998487f339bbcec01519f26ddf73d54e3",
+    "final_host_binary": "7493e2df9b2dca0b91e373a0df6cc0159448321fcd97727f321049390392479f",
+    "final_host_source": "34041189693753d55a4662c41540785126eec743a15b209e30033f5089ced8d3",
+    "phone_binary": "05ec1ad07c7670a91c31e6d7f43f9ceba6c37debc65a4e033d3bf5c8b8e3ffd4"
+  }
+}

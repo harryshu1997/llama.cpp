@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="704" viewBox="0 0 1240 704">
+<style>text{font-family:Arial,sans-serif;fill:#20242a}.title{font-size:22px;font-weight:700}.subtitle{font-size:13px}.axis{font-size:12px}.small{font-size:11px}.mode{font-size:11px;font-weight:600}</style>
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text class="title" x="620" y="30" text-anchor="middle">Phone route activity and stage: t2-phone-trace-prototype</text>
+<text class="subtitle" x="620" y="52" text-anchor="middle">OP15 [0,30) + OP12 [30,40) OpenCL | 17 Qwen3 14B Q4_K_M requests | 8 concurrent slots | 8 output tokens each</text>
+<rect x="92" y="68" width="26" height="12" fill="#9aa3ad"/>
+<text class="axis" x="126" y="79">queued (waiting for a slot)</text>
+<rect x="432" y="68" width="26" height="12" fill="#009e73"/>
+<text class="axis" x="466" y="79">prefill (dispatch to first token)</text>
+<rect x="772" y="68" width="26" height="12" fill="#7b2cbf"/>
+<text class="axis" x="806" y="79">decode (first token to completion)</text>
+<line x1="92.0" y1="104" x2="92.0" y2="626" stroke="#d9dde3"/>
+<text class="axis" x="92.0" y="648" text-anchor="middle">0.0</text>
+<line x1="271.3" y1="104" x2="271.3" y2="626" stroke="#d9dde3"/>
+<text class="axis" x="271.3" y="648" text-anchor="middle">20.7</text>
+<line x1="450.7" y1="104" x2="450.7" y2="626" stroke="#d9dde3"/>
+<text class="axis" x="450.7" y="648" text-anchor="middle">41.5</text>
+<line x1="630.0" y1="104" x2="630.0" y2="626" stroke="#d9dde3"/>
+<text class="axis" x="630.0" y="648" text-anchor="middle">62.2</text>
+<line x1="809.3" y1="104" x2="809.3" y2="626" stroke="#d9dde3"/>
+<text class="axis" x="809.3" y="648" text-anchor="middle">82.9</text>
+<line x1="988.7" y1="104" x2="988.7" y2="626" stroke="#d9dde3"/>
+<text class="axis" x="988.7" y="648" text-anchor="middle">103.6</text>
+<line x1="1168.0" y1="104" x2="1168.0" y2="626" stroke="#d9dde3"/>
+<text class="axis" x="1168.0" y="648" text-anchor="middle">124.4</text>
+<text class="axis" x="630" y="672" text-anchor="middle">time since paid start (s)</text>
+<rect x="108.9" y="104" width="1.0" height="14" fill="#9aa3ad" rx="2"><title>request 0 queued 0.0 s</title></rect>
+<rect x="108.9" y="104" width="169.9" height="14" fill="#009e73" rx="2"><title>request 0 prefill 19.6 s</title></rect>
+<rect x="278.8" y="104" width="331.9" height="14" fill="#7b2cbf" rx="2"><title>request 0 decode 38.4 s</title></rect>
+<text class="small" x="84" y="115" text-anchor="end" style="fill:#5b6672">0</text>
+<rect x="118.0" y="124" width="1.0" height="14" fill="#9aa3ad" rx="2"><title>request 1 queued 0.0 s</title></rect>
+<rect x="118.0" y="124" width="134.9" height="14" fill="#009e73" rx="2"><title>request 1 prefill 15.6 s</title></rect>
+<rect x="252.9" y="124" width="328.3" height="14" fill="#7b2cbf" rx="2"><title>request 1 decode 38.0 s</title></rect>
+<text class="small" x="84" y="135" text-anchor="end" style="fill:#5b6672">1</text>
+<rect x="123.1" y="144" width="1.0" height="14" fill="#9aa3ad" rx="2"><title>request 2 queued 0.0 s</title></rect>
+<rect x="123.2" y="144" width="74.6" height="14" fill="#009e73" rx="2"><title>request 2 prefill 8.6 s</title></rect>
+<rect x="197.8" y="144" width="372.7" height="14" fill="#7b2cbf" rx="2"><title>request 2 decode 43.1 s</title></rect>
+<text class="small" x="84" y="155" text-anchor="end" style="fill:#5b6672">2</text>
+<rect x="129.2" y="164" width="1.0" height="14" fill="#9aa3ad" rx="2"><title>request 3 queued 0.0 s</title></rect>
+<rect x="129.2" y="164" width="222.7" height="14" fill="#009e73" rx="2"><title>request 3 prefill 25.7 s</title></rect>
+<rect x="351.9" y="164" width="350.1" height="14" fill="#7b2cbf" rx="2"><title>request 3 decode 40.5 s</title></rect>
+<text class="small" x="84" y="175" text-anchor="end" style="fill:#5b6672">3</text>
+<rect x="196.2" y="184" width="1.0" height="14" fill="#9aa3ad" rx="2"><title>request 32 queued 0.0 s</title></rect>
+<rect x="196.3" y="184" width="229.2" height="14" fill="#009e73" rx="2"><title>request 32 prefill 26.5 s</title></rect>
+<rect x="425.5" y="184" width="329.4" height="14" fill="#7b2cbf" rx="2"><title>request 32 decode 38.1 s</title></rect>
+<text class="small" x="84" y="195" text-anchor="end" style="fill:#5b6672">32</text>
+<rect x="226.1" y="204" width="1.0" height="14" fill="#9aa3ad" rx="2"><title>request 39 queued 0.0 s</title></rect>
+<rect x="226.1" y="204" width="229.4" height="14" fill="#009e73" rx="2"><title>request 39 prefill 26.5 s</title></rect>
+<rect x="455.5" y="204" width="326.7" height="14" fill="#7b2cbf" rx="2"><title>request 39 decode 37.8 s</title></rect>
+<text class="small" x="84" y="215" text-anchor="end" style="fill:#5b6672">39</text>
+<rect x="246.9" y="224" width="1.0" height="14" fill="#9aa3ad" rx="2"><title>request 42 queued 0.0 s</title></rect>
+<rect x="246.9" y="224" width="154.0" height="14" fill="#009e73" rx="2"><title>request 42 prefill 17.8 s</title></rect>
+<rect x="400.8" y="224" width="354.3" height="14" fill="#7b2cbf" rx="2"><title>request 42 decode 41.0 s</title></rect>
+<text class="small" x="84" y="235" text-anchor="end" style="fill:#5b6672">42</text>
+<rect x="247.3" y="244" width="1.0" height="14" fill="#9aa3ad" rx="2"><title>request 43 queued 0.0 s</title></rect>
+<rect x="247.3" y="244" width="289.8" height="14" fill="#009e73" rx="2"><title>request 43 prefill 33.5 s</title></rect>
+<rect x="537.1" y="244" width="410.9" height="14" fill="#7b2cbf" rx="2"><title>request 43 decode 47.5 s</title></rect>
+<text class="small" x="84" y="255" text-anchor="end" style="fill:#5b6672">43</text>
+<rect x="281.0" y="264" width="289.4" height="14" fill="#9aa3ad" rx="2"><title>request 46 queued 33.5 s</title></rect>
+<rect x="570.5" y="264" width="157.6" height="14" fill="#009e73" rx="2"><title>request 46 prefill 18.2 s</title></rect>
+<rect x="728.1" y="264" width="330.8" height="14" fill="#7b2cbf" rx="2"><title>request 46 decode 38.2 s</title></rect>
+<text class="small" x="84" y="275" text-anchor="end" style="fill:#5b6672">46</text>
+<rect x="304.4" y="284" width="276.8" height="14" fill="#9aa3ad" rx="2"><title>request 50 queued 32.0 s</title></rect>
+<rect x="581.2" y="284" width="172.8" height="14" fill="#009e73" rx="2"><title>request 50 prefill 20.0 s</title></rect>
+<rect x="754.0" y="284" width="305.0" height="14" fill="#7b2cbf" rx="2"><title>request 50 decode 35.3 s</title></rect>
+<text class="small" x="84" y="295" text-anchor="end" style="fill:#5b6672">50</text>
+<rect x="307.4" y="304" width="303.3" height="14" fill="#9aa3ad" rx="2"><title>request 51 queued 35.1 s</title></rect>
+<rect x="610.7" y="304" width="171.6" height="14" fill="#009e73" rx="2"><title>request 51 prefill 19.8 s</title></rect>
+<rect x="782.3" y="304" width="287.9" height="14" fill="#7b2cbf" rx="2"><title>request 51 decode 33.3 s</title></rect>
+<text class="small" x="84" y="315" text-anchor="end" style="fill:#5b6672">51</text>
+<rect x="447.1" y="324" width="254.9" height="14" fill="#9aa3ad" rx="2"><title>request 62 queued 29.5 s</title></rect>
+<rect x="702.0" y="324" width="212.5" height="14" fill="#009e73" rx="2"><title>request 62 prefill 24.6 s</title></rect>
+<rect x="914.5" y="324" width="209.0" height="14" fill="#7b2cbf" rx="2"><title>request 62 decode 24.2 s</title></rect>
+<text class="small" x="84" y="335" text-anchor="end" style="fill:#5b6672">62</text>
+<rect x="485.6" y="344" width="269.3" height="14" fill="#9aa3ad" rx="2"><title>request 64 queued 31.1 s</title></rect>
+<rect x="755.0" y="344" width="159.5" height="14" fill="#009e73" rx="2"><title>request 64 prefill 18.4 s</title></rect>
+<rect x="914.5" y="344" width="208.8" height="14" fill="#7b2cbf" rx="2"><title>request 64 decode 24.1 s</title></rect>
+<text class="small" x="84" y="355" text-anchor="end" style="fill:#5b6672">64</text>
+<rect x="486.1" y="364" width="269.1" height="14" fill="#9aa3ad" rx="2"><title>request 65 queued 31.1 s</title></rect>
+<rect x="755.2" y="364" width="182.1" height="14" fill="#009e73" rx="2"><title>request 65 prefill 21.0 s</title></rect>
+<rect x="937.2" y="364" width="200.2" height="14" fill="#7b2cbf" rx="2"><title>request 65 decode 23.1 s</title></rect>
+<text class="small" x="84" y="375" text-anchor="end" style="fill:#5b6672">65</text>
+<rect x="511.1" y="384" width="271.1" height="14" fill="#9aa3ad" rx="2"><title>request 66 queued 31.3 s</title></rect>
+<rect x="782.3" y="384" width="107.1" height="14" fill="#009e73" rx="2"><title>request 66 prefill 12.4 s</title></rect>
+<rect x="889.4" y="384" width="230.6" height="14" fill="#7b2cbf" rx="2"><title>request 66 decode 26.7 s</title></rect>
+<text class="small" x="84" y="395" text-anchor="end" style="fill:#5b6672">66</text>
+<rect x="574.7" y="404" width="373.2" height="14" fill="#9aa3ad" rx="2"><title>request 72 queued 43.1 s</title></rect>
+<rect x="948.0" y="404" width="99.4" height="14" fill="#009e73" rx="2"><title>request 72 prefill 11.5 s</title></rect>
+<rect x="1047.4" y="404" width="115.5" height="14" fill="#7b2cbf" rx="2"><title>request 72 decode 13.4 s</title></rect>
+<text class="small" x="84" y="415" text-anchor="end" style="fill:#5b6672">72</text>
+<rect x="591.2" y="424" width="467.7" height="14" fill="#9aa3ad" rx="2"><title>request 73 queued 54.1 s</title></rect>
+<rect x="1058.9" y="424" width="29.2" height="14" fill="#009e73" rx="2"><title>request 73 prefill 3.4 s</title></rect>
+<rect x="1088.1" y="424" width="79.9" height="14" fill="#7b2cbf" rx="2"><title>request 73 decode 9.2 s</title></rect>
+<text class="small" x="84" y="435" text-anchor="end" style="fill:#5b6672">73</text>
+<text class="axis" x="26" y="274" transform="rotate(-90 26 274)" text-anchor="middle">request index (by arrival)</text>
+<text class="axis" x="92" y="506">phone slots occupied (dispatch to completion)</text>
+<line x1="92" y1="626.0" x2="1168" y2="626.0" stroke="#d9dde3"/>
+<text class="axis" x="84" y="630.0" text-anchor="end">0</text>
+<line x1="92" y1="599.0" x2="1168" y2="599.0" stroke="#d9dde3"/>
+<text class="axis" x="84" y="603.0" text-anchor="end">2</text>
+<line x1="92" y1="572.0" x2="1168" y2="572.0" stroke="#d9dde3"/>
+<text class="axis" x="84" y="576.0" text-anchor="end">4</text>
+<line x1="92" y1="545.0" x2="1168" y2="545.0" stroke="#d9dde3"/>
+<text class="axis" x="84" y="549.0" text-anchor="end">6</text>
+<line x1="92" y1="518.0" x2="1168" y2="518.0" stroke="#d9dde3"/>
+<text class="axis" x="84" y="522.0" text-anchor="end">8</text>
+<polygon points="92.0,626.0 108.9,626.0 108.9,612.5 118.0,612.5 118.0,599.0 123.2,599.0 123.2,585.5 129.2,585.5 129.2,572.0 196.3,572.0 196.3,558.5 226.1,558.5 226.1,545.0 246.9,545.0 246.9,531.5 247.3,531.5 247.3,518.0 570.5,518.0 570.5,531.5 570.5,531.5 570.5,518.0 581.2,518.0 581.2,531.5 581.2,531.5 581.2,518.0 610.7,518.0 610.7,531.5 610.7,531.5 610.7,518.0 702.0,518.0 702.0,531.5 702.0,531.5 702.0,518.0 755.0,518.0 755.0,531.5 755.0,531.5 755.0,518.0 755.2,518.0 755.2,531.5 755.2,531.5 755.2,518.0 782.3,518.0 782.3,531.5 782.3,531.5 782.3,518.0 948.0,518.0 948.0,531.5 948.0,531.5 948.0,518.0 1058.9,518.0 1058.9,531.5 1058.9,531.5 1058.9,518.0 1059.0,518.0 1059.0,531.5 1070.2,531.5 1070.2,545.0 1120.0,545.0 1120.0,558.5 1123.3,558.5 1123.3,572.0 1123.5,572.0 1123.5,585.5 1137.4,585.5 1137.4,599.0 1162.9,599.0 1162.9,612.5 1168.0,612.5 1168.0,626.0 1168.0,626.0 1168.0,626.0" fill="#7b2cbf" fill-opacity="0.18"/>
+<polyline points="92.0,626.0 108.9,626.0 108.9,612.5 118.0,612.5 118.0,599.0 123.2,599.0 123.2,585.5 129.2,585.5 129.2,572.0 196.3,572.0 196.3,558.5 226.1,558.5 226.1,545.0 246.9,545.0 246.9,531.5 247.3,531.5 247.3,518.0 570.5,518.0 570.5,531.5 570.5,531.5 570.5,518.0 581.2,518.0 581.2,531.5 581.2,531.5 581.2,518.0 610.7,518.0 610.7,531.5 610.7,531.5 610.7,518.0 702.0,518.0 702.0,531.5 702.0,531.5 702.0,518.0 755.0,518.0 755.0,531.5 755.0,531.5 755.0,518.0 755.2,518.0 755.2,531.5 755.2,531.5 755.2,518.0 782.3,518.0 782.3,531.5 782.3,531.5 782.3,518.0 948.0,518.0 948.0,531.5 948.0,531.5 948.0,518.0 1058.9,518.0 1058.9,531.5 1058.9,531.5 1058.9,518.0 1059.0,518.0 1059.0,531.5 1070.2,531.5 1070.2,545.0 1120.0,545.0 1120.0,558.5 1123.3,558.5 1123.3,572.0 1123.5,572.0 1123.5,585.5 1137.4,585.5 1137.4,599.0 1162.9,599.0 1162.9,612.5 1168.0,612.5 1168.0,626.0 1168.0,626.0" fill="none" stroke="#7b2cbf" stroke-width="2"/>
+<line x1="92" y1="518.0" x2="1168" y2="518.0" stroke="#b91c1c" stroke-dasharray="5,4"/>
+<text class="small" x="1164" y="512.0" text-anchor="end" style="fill:#b91c1c">all 8 slots busy</text>
+</svg>

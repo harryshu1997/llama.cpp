@@ -1,0 +1,3 @@
+240d56efa49fd04d71df213bc79ad31a41b17ab87f4a0ea612407c711cd5b953  ggml/src/ggml-hexagon/ggml-hexagon.cpp
+0bad8c43166a0847fe43ab1c299da97d68f40163aa4e21358c499a8d87f5c241  build-s11-e0-cp15-android/bin/libggml-hexagon.so
+7493e2df9b2dca0b91e373a0df6cc0159448321fcd97727f321049390392479f  /tmp/s41-causal-v2-host-final
