@@ -36,6 +36,7 @@
 *.pth
 *.safetensors
 *.tflite
+*.android
 
 # Profiler captures / local databases
 
@@ -191,18 +192,26 @@ flake.lock
 /research_dev/*.html
 /research_dev/energy/
 /research_dev/spikes/**/artifacts/
+/research_dev/spikes/**/bin/
 /research_dev/spikes/**/logs*/
 /research_dev/spikes/**/scratchpad/
 /research_dev/spikes/**/raw/
 /research_dev/spikes/**/results/**/artifacts/
+/research_dev/spikes/**/results/**/BUILD/
 /research_dev/spikes/**/results/**/executed-sources/
+/research_dev/spikes/**/results/**/FAILURE_*/
+/research_dev/spikes/**/results/**/SMOKE/
+/research_dev/spikes/**/results/**/source/
 /research_dev/spikes/**/results/**/*.cmdline
 /research_dev/spikes/**/results/**/*.command.txt
 /research_dev/spikes/**/results/**/*.csv
 /research_dev/spikes/**/results/**/*.html
+/research_dev/spikes/**/results/**/*.json
 /research_dev/spikes/**/results/**/*.jsonl
 /research_dev/spikes/**/results/**/*.pid
 /research_dev/spikes/**/results/**/*.png
+/research_dev/spikes/**/results/**/*.txt
+/research_dev/spikes/**/results/**/*.tsv
 /research_dev/spikes/**/results/**/*.strings
 /research_dev/spikes/**/results/**/*.svg
 /research_dev/spikes/**/results/**/runtime.json
@@ -215,6 +224,14 @@ flake.lock
 /research_dev/*_preview.png
 /research_dev/*.drawio
 /research_dev/slides/
+
+# FunctionFS DMA-BUF spike build products and raw captures
+
+/research_dev/spikes/s41_gemma_qwen_continuous_baseline/tp_operator_split_v1/ffs_dmabuf_transport_v1/ffs_dmabuf_host
+/research_dev/spikes/s41_gemma_qwen_continuous_baseline/tp_operator_split_v1/ffs_dmabuf_transport_v1/ffs_dmabuf_htp_host
+/research_dev/spikes/s41_gemma_qwen_continuous_baseline/tp_operator_split_v1/ffs_dmabuf_transport_v1/ffn_dmabuf_bridge
+/research_dev/spikes/s41_gemma_qwen_continuous_baseline/tp_operator_split_v1/ffs_dmabuf_transport_v1/ffn_dmabuf_bridge.current
+/research_dev/spikes/s41_gemma_qwen_continuous_baseline/tp_operator_split_v1/results/ffs_dmabuf_transport_v1/**/*.r[0-9].json
 
 # S39 logs are small, load-bearing evidence for the checked-in reducers.
 !/research_dev/spikes/s39_phone_model_switch_trace/results/**/*.log
