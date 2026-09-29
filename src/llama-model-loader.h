@@ -102,6 +102,49 @@ struct llama_model_loader {
     size_t size_done = 0;
     size_t size_data = 0;
     std::vector<std::pair<size_t, size_t>> mmaps_used;
+    bool fenced_tensor_loaded = false;
+
+    // Remote-resident dense FFN weights (S42): layers whose gate/up/down weights are owned by
+    // a verified edge session. The desktop keeps only tensor metadata for them: no backend
+    // buffer, no load, no prefetch, and the mapped GGUF ranges are released page-exactly.
+    struct remote_resident_weight {
+        std::string name;
+        uint16_t idx = 0;      // source file index
+        size_t offs = 0;       // tensor data offset in that file
+        size_t nbytes = 0;
+        int layer = -1;
+        llm_tensor kind = LLM_TENSOR_FFN_UP;
+    };
+
+    uint64_t remote_resident_ffn_layer_mask = 0;      // LLAMA_FFN_REMOTE_RESIDENT_LAYER_MASK
+    size_t size_remote_resident = 0;                  // omitted tensor bytes
+    size_t size_remote_resident_unmapped = 0;         // page-aligned bytes released from the mappings
+    std::vector<remote_resident_weight> remote_resident_weights;
+    ggml_context_ptr ctx_remote_resident;             // metadata-only context, never allocated
+
+    bool is_remote_resident_weight(const LLM_TN_IMPL & tn) const;
+    // Every masked layer must contribute exactly one gate, up and down weight; anything else fails closed.
+    void validate_remote_resident_coverage(uint32_t n_layer, enum llm_arch arch) const;
+    // Release the mapped file ranges of the omitted tensors (call after init_mappings).
+    void unmap_remote_resident_weights();
+    size_t mapped_bytes() const;
+
+    // Dense FFN weights that stay locally mapped (S42 dormant host share): file range and
+    // geometry recorded at creation so the model can release or populate a column share of
+    // them later without touching tensor metadata. Only recorded for memory-mapped loads.
+    struct dense_ffn_weight {
+        std::string name;
+        uint16_t idx = 0;        // source file index
+        size_t offs = 0;         // tensor data offset in that file
+        size_t nbytes = 0;
+        int layer = -1;
+        llm_tensor kind = LLM_TENSOR_FFN_UP;
+        int64_t ne0 = 0;         // contiguous dimension
+        int64_t ne1 = 0;         // rows
+        size_t nb1 = 0;          // row stride in bytes
+        ggml_type type = GGML_TYPE_F16;
+    };
+    std::vector<dense_ffn_weight> dense_ffn_weights;
 
     // define a comparator for the buft -> ctx map to ensure that the order is well-defined:
     struct ggml_backend_buft_comparator {

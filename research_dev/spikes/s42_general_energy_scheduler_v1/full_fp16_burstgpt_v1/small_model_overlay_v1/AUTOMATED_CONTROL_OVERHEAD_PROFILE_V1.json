@@ -1,0 +1,1 @@
+{"mean_us":5486519,"measured":true,"sample_count":21,"schema":"s42-automated-control-overhead-profile-v1","sources":[{"path":"/home/zhihao/s42-automated-campaign-results-20260814/treatment-r2-current/combined/RESULT.json","sha256":"2472ce66e2ae65f9fe4b9e1c8d8ad74e3f2993e9169222d6be5814fedc814d38"}],"upper_kind":"maximum_observed_controller_wall_time","upper_us":13915159}

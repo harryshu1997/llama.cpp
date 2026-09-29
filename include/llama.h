@@ -333,6 +333,11 @@ extern "C" {
 
     // NOTE: changing the default values of parameters marked as [EXPERIMENTAL] may cause crashes or incorrect results in certain configurations
     //       https://github.com/ggml-org/llama.cpp/pull/7544
+    struct llama_kv_device_cells {
+        int32_t  layer;
+        uint32_t cells;
+    };
+
     struct llama_context_params {
         uint32_t n_ctx;             // text context, 0 = from model
         uint32_t n_batch;           // logical maximum batch size that can be submitted to llama_decode
@@ -364,6 +369,15 @@ extern "C" {
 
         enum ggml_type type_k; // data type for K cache [EXPERIMENTAL]
         enum ggml_type type_v; // data type for V cache [EXPERIMENTAL]
+
+        // CPU KV and attention overrides, copied during context creation. Other layers retain
+        // their default placement. Entries must be valid, zero-based layer indices.
+        const int32_t * kv_cpu_layers;
+        size_t          n_kv_cpu_layers;
+
+        // Device-prefix KV placement; overflow stays on the CPU. Copied during context creation.
+        const struct llama_kv_device_cells * kv_device_cells;
+        size_t                              n_kv_device_cells;
 
         // Abort callback
         // if it returns true, execution of llama_decode() will be aborted
@@ -612,6 +626,32 @@ extern "C" {
     // Get the default chat template. Returns nullptr if not available
     // If name is NULL, returns the default chat template
     LLAMA_API const char * llama_model_chat_template(const struct llama_model * model, const char * name);
+
+    // Remote-resident dense FFN weights (S42 phase concurrency): layers whose gate/up/down weights are
+    // owned by a verified edge session and therefore never allocated or loaded locally. Configured at
+    // load time through LLAMA_FFN_REMOTE_RESIDENT_LAYER_MASK; contexts for such models require an eval
+    // callback that executes the remote layers.
+    LLAMA_API uint64_t llama_model_remote_resident_ffn_layer_mask(const struct llama_model * model);
+    LLAMA_API uint64_t llama_model_remote_resident_ffn_bytes(const struct llama_model * model);
+    LLAMA_API uint64_t llama_model_remote_resident_ffn_unmapped_bytes(const struct llama_model * model);
+
+    // Dormant host share (S42 decode-only relocation): release the resident pages of the FFN column
+    // suffix [host_columns, n_ff) of every masked layer's gate/up/down weight while a phone session
+    // executes those columns during decode, and populate them again before local execution (the
+    // next prefill) needs them. The file mappings stay intact; only page residency changes.
+    // Returns the bytes advised; 0 when the model is not memory-mapped or the request is invalid.
+    // Configure only while no share is dormant; false for unsupported backing/platforms.
+    // Defaults: drop_cache=true, populate=true. With populate=false, restore returns bytes
+    // made available for local execution; their pages are faulted in on access.
+    LLAMA_API bool     llama_model_ffn_host_share_configure(struct llama_model * model, bool drop_cache, bool populate);
+    LLAMA_API size_t   llama_model_ffn_host_share_release(struct llama_model * model, uint64_t layer_mask, int64_t host_columns);
+    LLAMA_API size_t   llama_model_ffn_host_share_restore(struct llama_model * model);
+    // test hook: touch the pages of the first n_cells KV cells of every layer (K and V, stream 0) without
+    // computing anything; returns the bytes written (0 for memory types without a plain KV cache)
+    LLAMA_API size_t   llama_kv_touch_cells(struct llama_context * ctx, uint32_t n_cells);
+    LLAMA_API size_t   llama_model_ffn_host_share_released_bytes(const struct llama_model * model);
+    LLAMA_API uint64_t llama_model_ffn_host_share_layer_mask(const struct llama_model * model);
+    LLAMA_API size_t   llama_model_ffn_host_share_range_count(const struct llama_model * model);
 
     // Returns the total number of parameters in the model
     LLAMA_API uint64_t llama_model_n_params(const struct llama_model * model);

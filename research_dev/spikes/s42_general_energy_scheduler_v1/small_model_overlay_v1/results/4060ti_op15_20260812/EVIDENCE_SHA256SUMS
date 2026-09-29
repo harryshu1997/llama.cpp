@@ -1,0 +1,7 @@
+fd9b984b59f5f98629581d979923a15e9be66fa5ba578d5ac5323245c359905a  server-baseline-r1-20260812-01/RESULT.json
+fccbe4f11520f7bbfd08c3b6372f000fcdb54c303a14d088ad0c29de45191e96  server-baseline-r1-20260812-01.capture/PHONE_ENERGY.json
+eeb3da3c9380408565fc9ffbe988ab2082865f1a8b62ede049c332eb7aa39794  server-baseline-r1-20260812-01.capture/phone-samples.tsv
+616179f8ebbae87063c4b1935d255e706cc367a4559814e7e629b80706b93d3a  runtime-scheduler-r1-20260812-01/RESULT.json
+8a0e5b01a97a70bf2a69ddef980ca2759654a1e1042ae6ce1c2aadfcbb3f3e73  runtime-scheduler-r1-20260812-01.capture/PHONE_ENERGY.json
+fd11ca46cc761390106c4510ea35120337181dd0f910afa3f30c229df51a201d  runtime-scheduler-r1-20260812-01.capture/phone-samples.tsv
+5eb292b4099cfb7f297fc331ebe9564e7ae253d0b8a29fb0bca1c7b32ceb6b8a  COMPARISON_R1.json

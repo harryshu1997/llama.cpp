@@ -352,7 +352,7 @@ class RuntimeCostTests(unittest.TestCase):
             "research-scheduler-runtime-cost-v3",
         )
 
-    def test_multi_resource_memory_demands_are_all_accounted(self) -> None:
+    def test_unreserved_multi_resource_memory_fails_closed(self) -> None:
         scheduler = UnifiedScheduler((profile(),), "enforce")
         phone = RuntimeExecutorBinding(
             executor_id="executor-phone-multi-memory",
@@ -394,7 +394,10 @@ class RuntimeCostTests(unittest.TestCase):
             if row.route_id == "phone-adreno"
         )
 
-        self.assertTrue(estimate.admitted)
+        self.assertFalse(estimate.admitted)
+        self.assertEqual(
+            estimate.reason, "MEMORY_RESERVATION_UNAVAILABLE"
+        )
         self.assertEqual(estimate.additional_bytes, 300_000_000)
         self.assertEqual(
             dict(estimate.additional_bytes_by_resource),

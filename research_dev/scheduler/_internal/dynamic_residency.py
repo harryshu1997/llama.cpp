@@ -1073,22 +1073,49 @@ def _fallback_invalid_reason(
     return None
 
 
-def select_dynamic_residency_transition(
+@dataclass(frozen=True)
+class _DynamicTransitionWindow:
+    transition_start_us: int
+    ready_upper_us: int
+    recovery_upper_us: int
+    total_latency_upper_us: int
+
+
+@dataclass(frozen=True)
+class _FeasibleDynamicTransition:
+    candidate: DynamicResidencyCandidate
+    window: _DynamicTransitionWindow
+    saving_lower: int
+    saving_ppm: int
+    occupied_after: Mapping[str, int]
+    actions: tuple[ResidencyTransitionAction, ...]
+    target_epoch_key: str
+
+    @property
+    def rank(self) -> tuple[int, int, str]:
+        return (
+            -self.saving_lower,
+            self.window.ready_upper_us,
+            self.candidate.candidate_id,
+        )
+
+
+def _validate_dynamic_selection(
     snapshot: DynamicResidencySnapshot,
     candidates: Sequence[DynamicResidencyCandidate],
-    *,
     now_us: int,
     transition_resource_ready_us: int | Mapping[str, int | None],
-    minimum_energy_saving_ppm: int = 50_000,
-    latency_limit_ppm: int = 1_000_000,
-    require_measured: bool = True,
-) -> DynamicResidencyDecision:
+    minimum_energy_saving_ppm: int,
+    latency_limit_ppm: int,
+) -> tuple[
+    tuple[DynamicResidencyCandidate, ...],
+    Mapping[str, int | None] | None,
+]:
     if not isinstance(snapshot, DynamicResidencySnapshot):
         raise DynamicResidencyError("dynamic residency snapshot is invalid")
     _integer("dynamic residency now_us", now_us)
     _integer(
-        "dynamic minimum_energy_saving_ppm",
-        minimum_energy_saving_ppm,
+        "dynamic minimum_energy_saving_ppm", minimum_energy_saving_ppm
     )
     _integer("dynamic latency_limit_ppm", latency_limit_ppm, 1_000_000)
     if minimum_energy_saving_ppm >= 1_000_000:
@@ -1097,8 +1124,7 @@ def select_dynamic_residency_transition(
         )
     if now_us < snapshot.captured_at_us or now_us >= snapshot.valid_until_us:
         raise DynamicResidencyError("dynamic residency snapshot is expired")
-
-    ready_by_candidate: Mapping[str, int | None] | None = None
+    ready_by_candidate = None
     if isinstance(transition_resource_ready_us, Mapping):
         ready_by_candidate = transition_resource_ready_us
         for candidate_id, ready_us in ready_by_candidate.items():
@@ -1110,419 +1136,418 @@ def select_dynamic_residency_transition(
             "dynamic transition resource_ready_us",
             transition_resource_ready_us,
         )
-
-    candidate_rows = tuple(candidates)
-    if any(
-        not isinstance(candidate, DynamicResidencyCandidate)
-        for candidate in candidate_rows
-    ):
+    rows = tuple(candidates)
+    if any(not isinstance(row, DynamicResidencyCandidate) for row in rows):
         raise DynamicResidencyError("dynamic residency candidate is invalid")
-    candidate_ids = [candidate.candidate_id for candidate in candidate_rows]
+    candidate_ids = [row.candidate_id for row in rows]
     if len(candidate_ids) != len(set(candidate_ids)):
         raise DynamicResidencyError("duplicate dynamic residency candidate id")
     boundary_scope = {
-        (candidate.energy_boundary_id, candidate.accounting_scope)
-        for candidate in candidate_rows
+        (row.energy_boundary_id, row.accounting_scope) for row in rows
     }
     if len(boundary_scope) > 1:
         raise DynamicResidencyError(
             "dynamic candidates use different energy boundaries or scopes"
         )
+    return rows, ready_by_candidate
 
-    rejected: list[tuple[str, str]] = []
-    feasible: list[
-        tuple[
-            int,
-            int,
-            str,
-            DynamicResidencyCandidate,
-            int,
-            int,
-            int,
-            int,
-            int,
-            Mapping[str, int],
-            tuple[ResidencyTransitionAction, ...],
-            str,
-        ]
-    ] = []
-    for candidate in candidate_rows:
-        if (
-            candidate.source_snapshot_id != snapshot.snapshot_id
-            or candidate.source_snapshot_sha256
-                != canonical_sha256(snapshot.to_json())
-            or candidate.source_generation != snapshot.generation
-            or candidate.source_epoch_key != snapshot.epoch_key
-        ):
-            rejected.append((candidate.candidate_id, "SOURCE_EPOCH_MISMATCH"))
-            continue
-        current_target = snapshot.placements.get(candidate.target.placement_id)
-        if current_target is not None:
-            reason = (
-                "ALREADY_RESIDENT"
-                if current_target.spec == candidate.target
-                else "PLACEMENT_IDENTITY_MISMATCH"
-            )
-            rejected.append((candidate.candidate_id, reason))
-            continue
-        if any(
-            placement.placement_id not in candidate.evict_placement_ids
-            and
-            placement.spec.slice_id == candidate.target.slice_id
-            and placement.spec.resource_id == candidate.target.resource_id
-            for placement in snapshot.placements.values()
-        ):
-            rejected.append(
-                (candidate.candidate_id, "SLICE_ALREADY_ON_RESOURCE")
-            )
-            continue
-        if candidate.expected_reuse_count < candidate.minimum_reuse_count:
-            rejected.append((candidate.candidate_id, "REUSE_NOT_AMORTIZED"))
-            continue
+
+def _dynamic_candidate_initial_rejection(
+    snapshot: DynamicResidencySnapshot,
+    candidate: DynamicResidencyCandidate,
+    require_measured: bool,
+) -> str | None:
+    if (
+        candidate.source_snapshot_id != snapshot.snapshot_id
+        or candidate.source_snapshot_sha256 != canonical_sha256(
+            snapshot.to_json()
+        )
+        or candidate.source_generation != snapshot.generation
+        or candidate.source_epoch_key != snapshot.epoch_key
+    ):
+        return "SOURCE_EPOCH_MISMATCH"
+    current_target = snapshot.placements.get(candidate.target.placement_id)
+    if current_target is not None:
+        return (
+            "ALREADY_RESIDENT"
+            if current_target.spec == candidate.target
+            else "PLACEMENT_IDENTITY_MISMATCH"
+        )
+    if any(
+        placement.placement_id not in candidate.evict_placement_ids
+        and placement.spec.slice_id == candidate.target.slice_id
+        and placement.spec.resource_id == candidate.target.resource_id
+        for placement in snapshot.placements.values()
+    ):
+        return "SLICE_ALREADY_ON_RESOURCE"
+    if candidate.expected_reuse_count < candidate.minimum_reuse_count:
+        return "REUSE_NOT_AMORTIZED"
+    metrics = (
+        candidate.baseline_latency_us,
+        candidate.resident_latency_us,
+        candidate.load_latency_us,
+        candidate.eviction_latency_us,
+        candidate.baseline_energy_uj,
+        candidate.resident_energy_uj,
+        candidate.load_energy_uj,
+        candidate.eviction_energy_uj,
+    )
+    if candidate.fallback_contract is not None:
+        fallback = candidate.fallback_contract
         metrics = (
-            candidate.baseline_latency_us,
-            candidate.resident_latency_us,
-            candidate.load_latency_us,
-            candidate.eviction_latency_us,
-            candidate.baseline_energy_uj,
-            candidate.resident_energy_uj,
-            candidate.load_energy_uj,
-            candidate.eviction_energy_uj,
+            *metrics,
+            fallback.service_latency_us,
+            fallback.service_energy_uj,
+            fallback.restore_latency_us,
+            fallback.restore_energy_uj,
         )
-        if candidate.fallback_contract is not None:
-            metrics = (
-                *metrics,
-                candidate.fallback_contract.service_latency_us,
-                candidate.fallback_contract.service_energy_uj,
-                candidate.fallback_contract.restore_latency_us,
-                candidate.fallback_contract.restore_energy_uj,
-            )
-        if require_measured and not all(
-            metric.measured and metric.sample_count > 0 for metric in metrics
-        ):
-            rejected.append((candidate.candidate_id, "MEASUREMENT_REQUIRED"))
-            continue
-        if candidate.baseline_energy_uj.lower is None:
-            rejected.append(
-                (candidate.candidate_id, "BASELINE_ENERGY_LCB_MISSING")
-            )
-            continue
-        evictions: list[DynamicWeightPlacement] = []
-        eviction_invalid = None
-        for placement_id in candidate.evict_placement_ids:
-            placement = snapshot.placements.get(placement_id)
-            if placement is None:
-                eviction_invalid = "EVICTION_UNKNOWN"
-                break
-            if placement.active_leases:
-                eviction_invalid = "EVICTION_LEASED"
-                break
-            if now_us < placement.minimum_resident_until_us:
-                eviction_invalid = "EVICTION_HYSTERESIS"
-                break
-            evictions.append(placement)
-        if eviction_invalid is not None:
-            rejected.append((candidate.candidate_id, eviction_invalid))
-            continue
-        fallback_invalid = _fallback_invalid_reason(
-            snapshot, candidate, evictions
-        )
-        if fallback_invalid is not None:
-            rejected.append((candidate.candidate_id, fallback_invalid))
-            continue
-        target_memory = snapshot.memory.get(candidate.target.resource_id)
-        if target_memory is None:
-            rejected.append((candidate.candidate_id, "MEMORY_RESOURCE_MISSING"))
-            continue
-        if not set(candidate.transition_workspace_bytes) <= set(
-            snapshot.memory
-        ):
-            rejected.append((
-                candidate.candidate_id,
-                "TRANSITION_MEMORY_RESOURCE_MISSING",
-            ))
-            continue
+    if require_measured and not all(
+        metric.measured and metric.sample_count > 0 for metric in metrics
+    ):
+        return "MEASUREMENT_REQUIRED"
+    if candidate.baseline_energy_uj.lower is None:
+        return "BASELINE_ENERGY_LCB_MISSING"
+    return None
 
-        occupied_after = {
-            resource_id: row.occupied_bytes
-            for resource_id, row in snapshot.memory.items()
-        }
-        for placement in evictions:
-            resource_id = placement.spec.resource_id
-            occupied_after[resource_id] -= placement.spec.resident_bytes
-        occupied_after[candidate.target.resource_id] += (
-            candidate.target.resident_bytes
-        )
-        final_memory_invalid = any(
-            occupied_after[resource_id] + capacity.reserve_bytes
+
+def _dynamic_candidate_evictions(
+    snapshot: DynamicResidencySnapshot,
+    candidate: DynamicResidencyCandidate,
+    now_us: int,
+) -> tuple[tuple[DynamicWeightPlacement, ...], str | None]:
+    evictions = []
+    for placement_id in candidate.evict_placement_ids:
+        placement = snapshot.placements.get(placement_id)
+        if placement is None:
+            return (), "EVICTION_UNKNOWN"
+        if placement.active_leases:
+            return (), "EVICTION_LEASED"
+        if now_us < placement.minimum_resident_until_us:
+            return (), "EVICTION_HYSTERESIS"
+        evictions.append(placement)
+    return tuple(evictions), None
+
+
+def _dynamic_candidate_memory(
+    snapshot: DynamicResidencySnapshot,
+    candidate: DynamicResidencyCandidate,
+    evictions: Sequence[DynamicWeightPlacement],
+) -> tuple[Mapping[str, int] | None, str | None]:
+    if candidate.target.resource_id not in snapshot.memory:
+        return None, "MEMORY_RESOURCE_MISSING"
+    if not set(candidate.transition_workspace_bytes) <= set(snapshot.memory):
+        return None, "TRANSITION_MEMORY_RESOURCE_MISSING"
+    occupied_after = {
+        resource_id: row.occupied_bytes
+        for resource_id, row in snapshot.memory.items()
+    }
+    for placement in evictions:
+        occupied_after[placement.spec.resource_id] -= placement.spec.resident_bytes
+    occupied_after[candidate.target.resource_id] += candidate.target.resident_bytes
+    if any(
+        occupied_after[resource_id] + capacity.reserve_bytes
+        > capacity.capacity_bytes
+        for resource_id, capacity in snapshot.memory.items()
+    ):
+        return None, "MEMORY_CAPACITY"
+    peak_occupied = {
+        resource_id: row.occupied_bytes
+        for resource_id, row in snapshot.memory.items()
+    }
+    peak_occupied[candidate.target.resource_id] += candidate.target.resident_bytes
+    if (
+        candidate.transition_mode == "ATOMIC_STAGE_BEFORE_EVICT"
+        and any(
+            peak_occupied[resource_id] + capacity.reserve_bytes
             > capacity.capacity_bytes
             for resource_id, capacity in snapshot.memory.items()
         )
-        if final_memory_invalid:
-            rejected.append((candidate.candidate_id, "MEMORY_CAPACITY"))
-            continue
-        peak_occupied = {
-            resource_id: row.occupied_bytes
-            for resource_id, row in snapshot.memory.items()
-        }
-        peak_occupied[candidate.target.resource_id] += (
-            candidate.target.resident_bytes
-        )
-        if (
-            candidate.transition_mode == "ATOMIC_STAGE_BEFORE_EVICT"
-            and any(
-                peak_occupied[resource_id] + capacity.reserve_bytes
-                > capacity.capacity_bytes
-                for resource_id, capacity in snapshot.memory.items()
-            )
-        ):
-            rejected.append((candidate.candidate_id, "ATOMIC_STAGING_MEMORY"))
-            continue
-        workspace_peak = dict(
-            peak_occupied
-            if candidate.transition_mode == "ATOMIC_STAGE_BEFORE_EVICT"
-            else occupied_after
-        )
-        for resource_id, workspace_bytes in (
-            candidate.transition_workspace_bytes.items()
-        ):
-            workspace_peak[resource_id] += workspace_bytes
-        if any(
-            workspace_peak[resource_id] + capacity.reserve_bytes
-            > capacity.capacity_bytes
-            for resource_id, capacity in snapshot.memory.items()
-        ):
-            rejected.append((
-                candidate.candidate_id,
-                "TRANSITION_WORKSPACE_MEMORY",
-            ))
-            continue
+    ):
+        return None, "ATOMIC_STAGING_MEMORY"
+    workspace_peak = dict(
+        peak_occupied
+        if candidate.transition_mode == "ATOMIC_STAGE_BEFORE_EVICT"
+        else occupied_after
+    )
+    for resource_id, workspace_bytes in (
+        candidate.transition_workspace_bytes.items()
+    ):
+        workspace_peak[resource_id] += workspace_bytes
+    if any(
+        workspace_peak[resource_id] + capacity.reserve_bytes
+        > capacity.capacity_bytes
+        for resource_id, capacity in snapshot.memory.items()
+    ):
+        return None, "TRANSITION_WORKSPACE_MEMORY"
+    return MappingProxyType(dict(sorted(occupied_after.items()))), None
 
+
+def _dynamic_candidate_window(
+    snapshot: DynamicResidencySnapshot,
+    candidate: DynamicResidencyCandidate,
+    now_us: int,
+    ready_us: int | None,
+    latency_limit_ppm: int,
+) -> tuple[_DynamicTransitionWindow | None, str | None]:
+    if ready_us is None:
+        return None, "RESOURCE_NOT_READY"
+    fallback = candidate.fallback_contract
+    transition_start_us = max(
+        now_us,
+        ready_us,
+        now_us if fallback is None else fallback.ready_at_us,
+    )
+    ready_upper_us = transition_start_us + candidate.transition_latency_upper_us
+    recovery_upper_us = (
+        transition_start_us + candidate.protected_transition_latency_upper_us
+    )
+    if recovery_upper_us >= snapshot.valid_until_us:
+        return None, "SNAPSHOT_EXPIRES_BEFORE_READY"
+    if fallback is not None and fallback.valid_until_us <= recovery_upper_us:
+        return None, "FALLBACK_EXPIRES_BEFORE_RECOVERY"
+    if ready_upper_us > candidate.latest_ready_us:
+        return None, "READY_DEADLINE"
+    total_latency_upper_us = (
+        ready_upper_us - now_us + candidate.resident_latency_us.upper
+        + (0 if fallback is None else fallback.service_latency_us.upper)
+    )
+    if (
+        total_latency_upper_us * 1_000_000
+        > candidate.baseline_latency_us.upper * latency_limit_ppm
+    ):
+        return None, "LATENCY_REGRESSION"
+    return _DynamicTransitionWindow(
+        transition_start_us=transition_start_us,
+        ready_upper_us=ready_upper_us,
+        recovery_upper_us=recovery_upper_us,
+        total_latency_upper_us=total_latency_upper_us,
+    ), None
+
+
+def _dynamic_candidate_saving(
+    candidate: DynamicResidencyCandidate,
+    minimum_energy_saving_ppm: int,
+) -> tuple[int | None, int | None, str | None]:
+    fallback = candidate.fallback_contract
+    transition_energy_upper = (
+        candidate.load_energy_uj.upper
+        + candidate.eviction_energy_uj.upper
+        + (
+            0
+            if fallback is None
+            else fallback.service_energy_uj.upper
+                + fallback.restore_energy_uj.upper
+        )
+    )
+    total_energy_upper = candidate.resident_energy_uj.upper + transition_energy_upper
+    saving_lower = candidate.baseline_energy_uj.lower - total_energy_upper
+    if saving_lower <= 0:
+        return None, None, "ENERGY_REGRESSION"
+    saving_ppm = saving_lower * 1_000_000 // candidate.baseline_energy_uj.lower
+    if saving_ppm < minimum_energy_saving_ppm:
+        return None, None, "ENERGY_MARGIN"
+    return saving_lower, saving_ppm, None
+
+
+def _dynamic_transition_plan(
+    snapshot: DynamicResidencySnapshot,
+    candidate: DynamicResidencyCandidate,
+    evictions: Sequence[DynamicWeightPlacement],
+    ready_upper_us: int,
+) -> tuple[tuple[ResidencyTransitionAction, ...], str]:
+    target_generation = snapshot.generation + 1
+    eviction_actions = tuple(
+        action
+        for placement in evictions
+        for action in (
+            ResidencyTransitionAction(
+                "DRAIN", placement.placement_id,
+                placement.spec.resource_id, target_generation,
+            ),
+            ResidencyTransitionAction(
+                "EVICT", placement.placement_id,
+                placement.spec.resource_id, target_generation,
+            ),
+        )
+    )
+    target_actions = tuple(
+        ResidencyTransitionAction(
+            kind,
+            candidate.target.placement_id,
+            candidate.target.resource_id,
+            target_generation,
+        )
+        for kind in ("PREFETCH", "VERIFY", "PUBLISH")
+    )
+    fallback = candidate.fallback_contract
+    if fallback is None:
+        actions = (*target_actions[:2], *eviction_actions, target_actions[2])
+    else:
+        fallback_placements = [
+            snapshot.placements[placement_id]
+            for placement_id in fallback.placement_ids
+        ]
+        actions = (
+            *tuple(
+                ResidencyTransitionAction(
+                    "FALLBACK_ACQUIRE", placement.placement_id,
+                    placement.spec.resource_id, target_generation,
+                )
+                for placement in fallback_placements
+            ),
+            *eviction_actions,
+            *target_actions,
+            *tuple(
+                ResidencyTransitionAction(
+                    "FALLBACK_RELEASE", placement.placement_id,
+                    placement.spec.resource_id, target_generation,
+                )
+                for placement in reversed(fallback_placements)
+            ),
+        )
+    planned = {
+        placement_id: placement
+        for placement_id, placement in snapshot.placements.items()
+        if placement_id not in candidate.evict_placement_ids
+    }
+    planned[candidate.target.placement_id] = DynamicWeightPlacement(
+        spec=candidate.target,
+        generation=target_generation,
+        resident_since_us=ready_upper_us,
+        minimum_resident_until_us=(
+            ready_upper_us + candidate.minimum_residency_us
+        ),
+    )
+    return actions, _epoch_key(snapshot.epoch_key, target_generation, planned)
+
+
+def _evaluate_dynamic_candidate(
+    snapshot: DynamicResidencySnapshot,
+    candidate: DynamicResidencyCandidate,
+    now_us: int,
+    ready_us: int | None,
+    minimum_energy_saving_ppm: int,
+    latency_limit_ppm: int,
+    require_measured: bool,
+) -> tuple[_FeasibleDynamicTransition | None, str | None]:
+    reason = _dynamic_candidate_initial_rejection(
+        snapshot, candidate, require_measured
+    )
+    if reason is not None:
+        return None, reason
+    evictions, reason = _dynamic_candidate_evictions(
+        snapshot, candidate, now_us
+    )
+    if reason is None:
+        reason = _fallback_invalid_reason(snapshot, candidate, evictions)
+    if reason is not None:
+        return None, reason
+    occupied_after, reason = _dynamic_candidate_memory(
+        snapshot, candidate, evictions
+    )
+    if reason is not None:
+        return None, reason
+    window, reason = _dynamic_candidate_window(
+        snapshot, candidate, now_us, ready_us, latency_limit_ppm
+    )
+    if reason is not None:
+        return None, reason
+    saving, saving_ppm, reason = _dynamic_candidate_saving(
+        candidate, minimum_energy_saving_ppm
+    )
+    if reason is not None:
+        return None, reason
+    assert occupied_after is not None
+    assert window is not None
+    assert saving is not None and saving_ppm is not None
+    actions, target_epoch_key = _dynamic_transition_plan(
+        snapshot, candidate, evictions, window.ready_upper_us
+    )
+    return _FeasibleDynamicTransition(
+        candidate=candidate,
+        window=window,
+        saving_lower=saving,
+        saving_ppm=saving_ppm,
+        occupied_after=occupied_after,
+        actions=actions,
+        target_epoch_key=target_epoch_key,
+    ), None
+
+
+def select_dynamic_residency_transition(
+    snapshot: DynamicResidencySnapshot,
+    candidates: Sequence[DynamicResidencyCandidate],
+    *,
+    now_us: int,
+    transition_resource_ready_us: int | Mapping[str, int | None],
+    minimum_energy_saving_ppm: int = 50_000,
+    latency_limit_ppm: int = 1_000_000,
+    require_measured: bool = True,
+) -> DynamicResidencyDecision:
+    candidate_rows, ready_by_candidate = _validate_dynamic_selection(
+        snapshot,
+        candidates,
+        now_us,
+        transition_resource_ready_us,
+        minimum_energy_saving_ppm,
+        latency_limit_ppm,
+    )
+    rejected: list[tuple[str, str]] = []
+    feasible: list[_FeasibleDynamicTransition] = []
+    for candidate in candidate_rows:
         ready_us = (
             ready_by_candidate.get(candidate.candidate_id)
             if ready_by_candidate is not None
             else transition_resource_ready_us
         )
-        if ready_us is None:
-            rejected.append((candidate.candidate_id, "RESOURCE_NOT_READY"))
-            continue
-        fallback = candidate.fallback_contract
-        transition_start_us = max(
+        transition, reason = _evaluate_dynamic_candidate(
+            snapshot,
+            candidate,
             now_us,
             ready_us,
-            now_us if fallback is None else fallback.ready_at_us,
+            minimum_energy_saving_ppm,
+            latency_limit_ppm,
+            require_measured,
         )
-        ready_upper_us = (
-            transition_start_us + candidate.transition_latency_upper_us
-        )
-        recovery_upper_us = (
-            transition_start_us
-            + candidate.protected_transition_latency_upper_us
-        )
-        if recovery_upper_us >= snapshot.valid_until_us:
-            rejected.append(
-                (candidate.candidate_id, "SNAPSHOT_EXPIRES_BEFORE_READY")
-            )
-            continue
-        if (
-            fallback is not None
-            and fallback.valid_until_us <= recovery_upper_us
-        ):
-            rejected.append(
-                (candidate.candidate_id, "FALLBACK_EXPIRES_BEFORE_RECOVERY")
-            )
-            continue
-        if ready_upper_us > candidate.latest_ready_us:
-            rejected.append((candidate.candidate_id, "READY_DEADLINE"))
-            continue
-        total_latency_upper_us = (
-            ready_upper_us - now_us + candidate.resident_latency_us.upper
-            + (
-                0
-                if fallback is None
-                else fallback.service_latency_us.upper
-            )
-        )
-        if (
-            total_latency_upper_us * 1_000_000
-            > candidate.baseline_latency_us.upper * latency_limit_ppm
-        ):
-            rejected.append((candidate.candidate_id, "LATENCY_REGRESSION"))
-            continue
-        transition_energy_upper = (
-            candidate.load_energy_uj.upper
-            + candidate.eviction_energy_uj.upper
-            + (
-                0
-                if fallback is None
-                else fallback.service_energy_uj.upper
-                    + fallback.restore_energy_uj.upper
-            )
-        )
-        total_energy_upper = (
-            candidate.resident_energy_uj.upper + transition_energy_upper
-        )
-        saving_lower = candidate.baseline_energy_uj.lower - total_energy_upper
-        if saving_lower <= 0:
-            rejected.append((candidate.candidate_id, "ENERGY_REGRESSION"))
-            continue
-        saving_ppm = (
-            saving_lower * 1_000_000 // candidate.baseline_energy_uj.lower
-        )
-        if saving_ppm < minimum_energy_saving_ppm:
-            rejected.append((candidate.candidate_id, "ENERGY_MARGIN"))
-            continue
-
-        target_generation = snapshot.generation + 1
-        eviction_actions = tuple(
-            action
-            for placement in evictions
-            for action in (
-                ResidencyTransitionAction(
-                    "DRAIN",
-                    placement.placement_id,
-                    placement.spec.resource_id,
-                    target_generation,
-                ),
-                ResidencyTransitionAction(
-                    "EVICT",
-                    placement.placement_id,
-                    placement.spec.resource_id,
-                    target_generation,
-                ),
-            )
-        )
-        target_actions = (
-            ResidencyTransitionAction(
-                "PREFETCH",
-                candidate.target.placement_id,
-                candidate.target.resource_id,
-                target_generation,
-            ),
-            ResidencyTransitionAction(
-                "VERIFY",
-                candidate.target.placement_id,
-                candidate.target.resource_id,
-                target_generation,
-            ),
-            ResidencyTransitionAction(
-                "PUBLISH",
-                candidate.target.placement_id,
-                candidate.target.resource_id,
-                target_generation,
-            ),
-        )
-        if fallback is None:
-            actions = (
-                *target_actions[:2],
-                *eviction_actions,
-                target_actions[2],
-            )
+        if transition is None:
+            assert reason is not None
+            rejected.append((candidate.candidate_id, reason))
         else:
-            fallback_placements = [
-                snapshot.placements[placement_id]
-                for placement_id in fallback.placement_ids
-            ]
-            actions = (
-                *tuple(
-                    ResidencyTransitionAction(
-                        "FALLBACK_ACQUIRE",
-                        placement.placement_id,
-                        placement.spec.resource_id,
-                        target_generation,
-                    )
-                    for placement in fallback_placements
-                ),
-                *eviction_actions,
-                *target_actions,
-                *tuple(
-                    ResidencyTransitionAction(
-                        "FALLBACK_RELEASE",
-                        placement.placement_id,
-                        placement.spec.resource_id,
-                        target_generation,
-                    )
-                    for placement in reversed(fallback_placements)
-                ),
-            )
-        planned = {
-            placement_id: placement
-            for placement_id, placement in snapshot.placements.items()
-            if placement_id not in candidate.evict_placement_ids
-        }
-        planned[candidate.target.placement_id] = DynamicWeightPlacement(
-            spec=candidate.target,
-            generation=target_generation,
-            resident_since_us=ready_upper_us,
-            minimum_resident_until_us=(
-                ready_upper_us + candidate.minimum_residency_us
-            ),
-        )
-        target_epoch_key = _epoch_key(
-            snapshot.epoch_key, target_generation, planned
-        )
-        feasible.append((
-            -saving_lower,
-            ready_upper_us,
-            candidate.candidate_id,
-            candidate,
-            transition_start_us,
-            total_latency_upper_us,
-            recovery_upper_us,
-            saving_lower,
-            saving_ppm,
-            MappingProxyType(dict(sorted(occupied_after.items()))),
-            actions,
-            target_epoch_key,
-        ))
-
+            feasible.append(transition)
     if not feasible:
         return _no_change(snapshot, rejected)
-    (
-        _,
-        ready_upper_us,
-        _,
-        selected,
-        transition_start_us,
-        total_latency_upper_us,
-        recovery_upper_us,
-        saving_lower,
-        saving_ppm,
-        occupied_after,
-        actions,
-        target_epoch_key,
-    ) = min(feasible)
+    selected = min(feasible, key=lambda row: row.rank)
+    candidate = selected.candidate
+    window = selected.window
     target_generation = snapshot.generation + 1
     return DynamicResidencyDecision(
-        candidate_id=selected.candidate_id,
+        candidate_id=candidate.candidate_id,
         reason=(
             "ENERGY_POSITIVE_RESIDENCY_TRANSITION"
-            if selected.fallback_contract is None
+            if candidate.fallback_contract is None
             else "ENERGY_POSITIVE_FALLBACK_BACKED_RESIDENCY_TRANSITION"
         ),
-        transition_id=(
-            f"residency:{snapshot.generation}:{selected.candidate_id}"
-        ),
+        transition_id=f"residency:{snapshot.generation}:{candidate.candidate_id}",
         source_snapshot_id=snapshot.snapshot_id,
         source_snapshot_sha256=canonical_sha256(snapshot.to_json()),
         source_generation=snapshot.generation,
         source_epoch_key=snapshot.epoch_key,
         target_generation=target_generation,
-        target_epoch_key=target_epoch_key,
-        target=selected.target,
-        transition_mode=selected.transition_mode,
-        fallback_contract=selected.fallback_contract,
-        target_minimum_residency_us=selected.minimum_residency_us,
-        evict_placement_ids=selected.evict_placement_ids,
-        actions=actions,
-        transition_start_us=transition_start_us,
-        ready_upper_us=ready_upper_us,
-        recovery_upper_us=recovery_upper_us,
-        total_latency_upper_us=total_latency_upper_us,
-        energy_saving_lower_uj=saving_lower,
-        energy_saving_ppm=saving_ppm,
-        occupied_bytes_after=occupied_after,
-        transition_workspace_bytes=selected.transition_workspace_bytes,
+        target_epoch_key=selected.target_epoch_key,
+        target=candidate.target,
+        transition_mode=candidate.transition_mode,
+        fallback_contract=candidate.fallback_contract,
+        target_minimum_residency_us=candidate.minimum_residency_us,
+        evict_placement_ids=candidate.evict_placement_ids,
+        actions=selected.actions,
+        transition_start_us=window.transition_start_us,
+        ready_upper_us=window.ready_upper_us,
+        recovery_upper_us=window.recovery_upper_us,
+        total_latency_upper_us=window.total_latency_upper_us,
+        energy_saving_lower_uj=selected.saving_lower,
+        energy_saving_ppm=selected.saving_ppm,
+        occupied_bytes_after=selected.occupied_after,
+        transition_workspace_bytes=candidate.transition_workspace_bytes,
         rejected=tuple(rejected),
     )
 

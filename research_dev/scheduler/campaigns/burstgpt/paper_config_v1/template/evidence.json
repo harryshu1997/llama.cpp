@@ -1,0 +1,36 @@
+{
+ "adaptive_observation_source_catalog_path": "/home/zhihao/s42-sparse-locality24-adaptive-20260902-v8-mixed-residency/inputs/OBSERVATION_SOURCE_CATALOG.json",
+ "adaptive_observation_store_path": "/home/zhihao/s42-sparse-locality24-adaptive-20260902-v8-mixed-residency/inputs/ADAPTIVE_DECODE_OBSERVATIONS.json",
+ "assisted_calibration_arm": "op15",
+ "calibration_directory": "/mnt/storage/s42-trace-v2-20260921-prep/source/research_dev/scheduler/campaigns/burstgpt/data/calibration",
+ "calibration_runs": {
+  "control": [
+   "control-r1b",
+   "control-r2"
+  ],
+  "op15": [
+   "op15-r1",
+   "op15-r2"
+  ]
+ },
+ "desktop_calibration_arm": "control",
+ "kernel_profile_path": "/mnt/storage/s42-trace-v2-20260921-prep/source/research_dev/scheduler/profiles/MEASURED_4060TI_OP15_KERNEL_PROFILE_V1.json",
+ "observation_source_catalog_path": "/home/zhihao/s42-sparse-locality24-adaptive-20260902-v8-mixed-residency/inputs/OBSERVATION_SOURCE_CATALOG.json",
+ "observation_store_path": "/home/zhihao/s42-sparse-locality24-adaptive-20260902-v8-mixed-residency/inputs/AUTOMATED_OBSERVATIONS.json",
+ "overlay_catalog_path": "/home/zhihao/s42-physical-validation-20260816/adaptive-decode-inputs-r67-v1/OVERLAY_RUNTIME_CATALOG.json",
+ "phone_power": {
+  "active_power_mw": 4500,
+  "allow_assumed_for_scheduling": true,
+  "evidence_kind": "ASSUMED_4P5W",
+  "idle_power_mw": 875,
+  "minimum_battery_ppm": 50000
+ },
+ "phone_session_discovery_path": "/home/zhihao/s42-route-evidence-physical-gate-20260829-v1/inputs/PHONE_SESSION_DISCOVERY.json",
+ "prematerialized_catalog_path": null,
+ "prematerialized_source_manifest_path": null,
+ "schema": "research-scheduler-evidence-v1",
+ "transport_qualification_directories": [
+  "/home/zhihao/s43-transport-receipts-61440-20260924/receipts-all"
+ ],
+ "transport_qualification_identity_path": "/mnt/storage/s43-two-phone-eval-20260925/template-eval2/TRANSPORT_QUALIFICATION_IDENTITY.json"
+}

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping
 
 from .operator_split import (
     OperatorSplitInvocation,

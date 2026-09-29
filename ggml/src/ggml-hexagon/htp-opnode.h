@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include "htp-ops.h"
 #include "htp/matmul-ops.h"
+#include "htp/ffn-fused-ops.h"
 
 struct htp_opnode {
     ggml_tensor * node = nullptr;
@@ -334,6 +335,12 @@ struct htp_opformat {
         }
     }
     void format_kernel_params(char * str, size_t max_size, const htp_opnode & node) {
+        if (node.opcode == HTP_OP_FFN_FUSED) {
+            const auto * p = (const struct htp_ffn_fused_params *) node.kernel_params;
+            snprintf(str, max_size, "hmx-ffn-glu vtcm %u mc %u nc %u threads %u",
+                     p->vtcm_size, p->m_chunk, p->n_chunk, p->n_threads);
+            return;
+        }
         if (node.opcode == HTP_OP_MUL_MAT || node.opcode == HTP_OP_MUL_MAT_ID ||
             node.opcode == HTP_OP_MUL_MAT_QKV || node.opcode == HTP_OP_MUL_MAT_FFN) {
             const auto * kparams = (const struct htp_mm_kernel_params *) node.kernel_params;

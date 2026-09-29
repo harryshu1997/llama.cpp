@@ -1,0 +1,22 @@
+{
+  "activation_type": "f16",
+  "gate_count": 2,
+  "hidden": 3840,
+  "host_backend": "cpu_isolated",
+  "inter_request_gap_ms": 0.0,
+  "intermediate": 15360,
+  "kind": "ffn",
+  "m": 1,
+  "minimum_speedup_percent": 5.0,
+  "name": "Gemma-4-12B dense FFN working shape",
+  "phone_backends": [
+    "op15_htp",
+    "op15_gpu_opencl",
+    "op15_gpu_persistent"
+  ],
+  "quantization": "q8_0",
+  "schema": "s41-offload-workload-v1",
+  "search_points": 128,
+  "split_alignment": 32,
+  "transport": "auto"
+}

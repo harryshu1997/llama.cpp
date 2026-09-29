@@ -1,4 +1,5 @@
 #include "models.h"
+#include "../llama-ffn-split-policy.h"
 
 #include <cstdlib>
 
@@ -114,6 +115,8 @@ llama_model_qwen3::graph::graph(const llama_model & model, const llm_graph_param
 
     const bool is_tail = le == (int) n_layer;
 
+    const dense_ffn_split_policy ffn_split_policy = resolve_dense_ffn_split_policy();
+
     if (ls > 0) {
         auto inp = std::make_unique<llm_graph_input_embd_h>(n_embd);
         inpL = ggml_new_tensor_2d(ctx0, GGML_TYPE_F32, n_embd, n_tokens);
@@ -188,12 +191,7 @@ llama_model_qwen3::graph::graph(const llama_model & model, const llm_graph_param
                 LLM_NORM_RMS, il);
         cb(cur, "ffn_norm", il);
 
-        cur = build_ffn(cur,
-                model.layers[il].ffn_up,   NULL, model.layers[il].ffn_up_s,
-                model.layers[il].ffn_gate, NULL, model.layers[il].ffn_gate_s,
-                model.layers[il].ffn_down, NULL, model.layers[il].ffn_down_s,
-                NULL,
-                LLM_FFN_SILU, LLM_FFN_PAR, il);
+        cur = build_dense_ffn_split(cur, model.layers[il], LLM_FFN_SILU, ffn_split_policy, il);
         cb(cur, "ffn_out", il);
 
         cur = ggml_add(ctx0, cur, ffn_inp);

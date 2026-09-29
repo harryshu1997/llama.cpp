@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping, NamedTuple, Sequence
 
 from .runtime_gates import RouteRuntimeContract
 from .types import (
@@ -85,20 +85,26 @@ class CertifiedCohortProfile:
     compiled_file_sha256: str | None
 
 
-def load_certified_cohort(
-    *,
-    compiled_path: Path,
-    epoch_path: Path,
-    runtime_contracts_path: Path,
-    workload_id: str,
-    unit_id: str,
-    member_request_ids: Sequence[str],
-    quality_requirement: QualityClass,
-    boundary_id: str,
-) -> CertifiedCohortProfile:
-    compiled = _read_object(compiled_path)
-    epoch = _read_object(epoch_path)
-    contracts_file = _read_object(runtime_contracts_path)
+class _EpochBindings(NamedTuple):
+    workload: dict[str, Any]
+    models: dict[str, Any]
+    trace_sha256: str
+    members: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class _CompiledRoute:
+    route_id: str
+    runtime_contract: RouteRuntimeContract
+    dispatch_contract: Mapping[str, object]
+    route: RouteAlternative
+
+
+def _verify_bundle_headers(
+    compiled: Mapping[str, Any],
+    epoch: Mapping[str, Any],
+    contracts_file: Mapping[str, Any],
+) -> str:
     if compiled.get("schema") != "s42-epoch-route-bundle-v1":
         raise CertifiedCohortError("compiled route schema mismatch")
     if epoch.get("schema") != "s42-runtime-epoch-v1":
@@ -110,7 +116,14 @@ def load_certified_cohort(
     epoch_key = _sha(compiled.get("epoch_key"))
     if _sha(contracts_file.get("epoch_key")) != epoch_key:
         raise CertifiedCohortError("runtime contract epoch differs")
+    return epoch_key
 
+
+def _epoch_bindings(
+    epoch: Mapping[str, Any],
+    member_request_ids: Sequence[str],
+    quality_requirement: QualityClass,
+) -> _EpochBindings:
     bindings = epoch.get("bindings")
     if type(bindings) is not dict:
         raise CertifiedCohortError("runtime epoch bindings are missing")
@@ -126,11 +139,14 @@ def load_certified_cohort(
         raise CertifiedCohortError("cohort request ids are not unique")
     if not isinstance(quality_requirement, QualityClass):
         raise CertifiedCohortError("quality requirement is invalid")
+    return _EpochBindings(workload, models, trace_sha256, members)
 
+
+def _cold_model(models: Mapping[str, Any]) -> ModelIdentity:
     cold = models.get("cold")
     if type(cold) is not dict:
         raise CertifiedCohortError("cold model binding is missing")
-    model = ModelIdentity(
+    return ModelIdentity(
         model_id="cold:" + cold.get("file_sha256"),
         model_hash=_sha(cold.get("file_sha256")),
         architecture=cold.get("architecture"),
@@ -138,17 +154,23 @@ def load_certified_cohort(
         weight_bytes=cold.get("file_bytes"),
     )
 
-    raw_routes = compiled.get("compiled_routes")
-    raw_contracts = contracts_file.get("routes")
-    if type(raw_routes) is not list or type(raw_contracts) is not dict:
-        raise CertifiedCohortError("compiled routes or contracts are missing")
-    if not raw_routes:
-        raise CertifiedCohortError("compiled routes are empty")
+
+def _cohort_unit(
+    *,
+    raw_routes: list[Any],
+    workload: Mapping[str, Any],
+    workload_id: str,
+    unit_id: str,
+    members: tuple[str, ...],
+    model: ModelIdentity,
+    quality_requirement: QualityClass,
+    epoch_key: str,
+) -> SchedulingUnit:
     maximum_duration_us = max(
         round(route["metrics"]["duration_s"]["max_observed_bound"] * 1_000_000)
         for route in raw_routes
     )
-    unit = SchedulingUnit(
+    return SchedulingUnit(
         unit_id=unit_id,
         kind=UnitKind.COHORT,
         member_request_ids=members,
@@ -172,6 +194,198 @@ def load_certified_cohort(
         },
         epoch_id=epoch_key,
     )
+
+
+def _join_wait_ppm(compiled: Mapping[str, Any]) -> int:
+    comparison = compiled.get("cohort_comparison")
+    if type(comparison) is not dict:
+        raise CertifiedCohortError("cohort comparison is missing")
+    return round(
+        comparison.get("mean_exposed_join_wait_fraction") * 1_000_000
+    )
+
+
+def _route_metric_estimates(
+    raw: Mapping[str, Any],
+) -> tuple[MetricEstimate, MetricEstimate, Any]:
+    metrics = raw.get("metrics")
+    if type(metrics) is not dict:
+        raise CertifiedCohortError("route metrics are missing")
+    duration = metrics.get("duration_s")
+    fleet = metrics.get("fleet_j")
+    repetitions = metrics.get("repetitions")
+    if type(duration) is not dict or type(fleet) is not dict:
+        raise CertifiedCohortError("route metric bounds are missing")
+    latency = MetricEstimate(
+        mean=round(duration.get("mean") * 1_000_000),
+        upper=round(duration.get("max_observed_bound") * 1_000_000),
+        lower=round(duration.get("min") * 1_000_000),
+        sample_count=repetitions,
+        measured=True,
+    )
+    energy = MetricEstimate(
+        mean=round(fleet.get("mean") * 1_000_000),
+        upper=round(fleet.get("max_observed_bound") * 1_000_000),
+        lower=round(fleet.get("min") * 1_000_000),
+        sample_count=repetitions,
+        measured=True,
+    )
+    return latency, energy, repetitions
+
+
+def _route_resources(
+    route_id: str,
+    runtime_contract: RouteRuntimeContract,
+    latency: MetricEstimate,
+) -> tuple[
+    tuple[ResourceRequirement, ...],
+    tuple[PhaseLease, ...],
+    tuple[ResidencyRequirement, ...],
+]:
+    resources: list[ResourceRequirement] = []
+    leases: list[PhaseLease] = []
+    residency: list[ResidencyRequirement] = []
+    for resource_id, requirement in sorted(runtime_contract.resources.items()):
+        kind, role = _resource_kind(resource_id)
+        resources.append(ResourceRequirement(
+            resource_id=resource_id,
+            kind=kind,
+            role=role,
+            slots=1,
+        ))
+        leases.append(PhaseLease(
+            lease_id=f"{route_id}:{resource_id}",
+            resource_id=resource_id,
+            slots=1,
+            start_offset_us=0,
+            duration=latency,
+        ))
+        residency.extend(
+            ResidencyRequirement(resource_id, item, "runtime")
+            for item in requirement.required_residency_ids
+        )
+    return tuple(resources), tuple(leases), tuple(residency)
+
+
+def _route_quality_class(raw: Mapping[str, Any]) -> QualityClass:
+    quality_raw = raw.get("quality")
+    if type(quality_raw) is not dict:
+        raise CertifiedCohortError("route quality is missing")
+    quality_name = quality_raw.get("class")
+    quality = {
+        "exact": QualityClass.EXACT,
+        "approximate": QualityClass.SEMANTIC,
+    }.get(quality_name)
+    if quality is None:
+        raise CertifiedCohortError("route quality class is unsupported")
+    return quality
+
+
+def _compile_route(
+    raw: object,
+    *,
+    raw_contracts: Mapping[str, Any],
+    compiled: Mapping[str, Any],
+    epoch_key: str,
+    workload_id: str,
+    applicability: ApplicabilityContract,
+    accounting: AccountingContract,
+    wait_ppm: int,
+) -> _CompiledRoute:
+    if type(raw) is not dict:
+        raise CertifiedCohortError("compiled route must be an object")
+    route_id = raw.get("route_id")
+    contract_raw = raw_contracts.get(route_id)
+    if type(contract_raw) is not dict:
+        raise CertifiedCohortError(f"runtime contract is missing: {route_id}")
+    runtime_contract = RouteRuntimeContract.from_json(contract_raw)
+    if runtime_contract.epoch_key != epoch_key:
+        raise CertifiedCohortError("route runtime epoch differs")
+
+    dispatch = raw.get("dispatch_contract")
+    if type(dispatch) is not dict:
+        raise CertifiedCohortError("dispatch contract is missing")
+    latency, energy, repetitions = _route_metric_estimates(raw)
+    resources, leases, residency = _route_resources(
+        route_id, runtime_contract, latency
+    )
+    quality = _route_quality_class(raw)
+    granularity = PlacementGranularity(raw.get("scope"))
+    route_overlap = (
+        OverlapEstimate("not_applicable", None, None, repetitions)
+        if granularity == PlacementGranularity.TASK
+        else OverlapEstimate("measured", wait_ppm, wait_ppm, repetitions)
+    )
+    evidence = compiled.get("physical_evidence")
+    if type(evidence) is not dict:
+        raise CertifiedCohortError("physical evidence is missing")
+    route = RouteAlternative(
+        route_id=route_id,
+        workload_id=workload_id,
+        baseline=raw.get("role") == "control",
+        placement_granularity=granularity,
+        maturity=RouteMaturity.STABLE,
+        applicability=applicability,
+        latency_us=latency,
+        energy=(EnergyComponent(energy, accounting),),
+        overlap=route_overlap,
+        quality=QualityContract(
+            quality_class=quality,
+            validation_id=_sha(evidence.get("aggregate_record_sha256")),
+        ),
+        resources=resources,
+        phase_leases=leases,
+        memory=(),
+        residency=residency,
+        placement_verified=True,
+        evidence_ids=(
+            _sha(evidence.get("aggregate_file_sha256")),
+            _sha(evidence.get("aggregate_record_sha256")),
+        ),
+        source_profile_id=compiled.get("certificate_set_id"),
+    )
+    return _CompiledRoute(
+        route_id=route_id,
+        runtime_contract=runtime_contract,
+        dispatch_contract=MappingProxyType(dict(dispatch)),
+        route=route,
+    )
+
+
+def load_certified_cohort(
+    *,
+    compiled_path: Path,
+    epoch_path: Path,
+    runtime_contracts_path: Path,
+    workload_id: str,
+    unit_id: str,
+    member_request_ids: Sequence[str],
+    quality_requirement: QualityClass,
+    boundary_id: str,
+) -> CertifiedCohortProfile:
+    compiled = _read_object(compiled_path)
+    epoch = _read_object(epoch_path)
+    contracts_file = _read_object(runtime_contracts_path)
+    epoch_key = _verify_bundle_headers(compiled, epoch, contracts_file)
+    bindings = _epoch_bindings(epoch, member_request_ids, quality_requirement)
+    model = _cold_model(bindings.models)
+
+    raw_routes = compiled.get("compiled_routes")
+    raw_contracts = contracts_file.get("routes")
+    if type(raw_routes) is not list or type(raw_contracts) is not dict:
+        raise CertifiedCohortError("compiled routes or contracts are missing")
+    if not raw_routes:
+        raise CertifiedCohortError("compiled routes are empty")
+    unit = _cohort_unit(
+        raw_routes=raw_routes,
+        workload=bindings.workload,
+        workload_id=workload_id,
+        unit_id=unit_id,
+        members=bindings.members,
+        model=model,
+        quality_requirement=quality_requirement,
+        epoch_key=epoch_key,
+    )
     applicability = ApplicabilityContract.exact_for(unit)
     accounting = AccountingContract(
         scope=AccountingScope.COHORT,
@@ -179,121 +393,25 @@ def load_certified_cohort(
         boundary_id=boundary_id,
         work_set_hash=unit.work_set_hash,
     )
-    comparison = compiled.get("cohort_comparison")
-    if type(comparison) is not dict:
-        raise CertifiedCohortError("cohort comparison is missing")
-    wait_ppm = round(
-        comparison.get("mean_exposed_join_wait_fraction") * 1_000_000
-    )
+    wait_ppm = _join_wait_ppm(compiled)
 
     runtime_contracts: dict[str, RouteRuntimeContract] = {}
     dispatch_contracts: dict[str, Mapping[str, object]] = {}
     routes: list[RouteAlternative] = []
     for raw in raw_routes:
-        if type(raw) is not dict:
-            raise CertifiedCohortError("compiled route must be an object")
-        route_id = raw.get("route_id")
-        contract_raw = raw_contracts.get(route_id)
-        if type(contract_raw) is not dict:
-            raise CertifiedCohortError(f"runtime contract is missing: {route_id}")
-        runtime_contract = RouteRuntimeContract.from_json(contract_raw)
-        if runtime_contract.epoch_key != epoch_key:
-            raise CertifiedCohortError("route runtime epoch differs")
-        runtime_contracts[route_id] = runtime_contract
-
-        dispatch = raw.get("dispatch_contract")
-        if type(dispatch) is not dict:
-            raise CertifiedCohortError("dispatch contract is missing")
-        dispatch_contracts[route_id] = MappingProxyType(dict(dispatch))
-        metrics = raw.get("metrics")
-        if type(metrics) is not dict:
-            raise CertifiedCohortError("route metrics are missing")
-        duration = metrics.get("duration_s")
-        fleet = metrics.get("fleet_j")
-        repetitions = metrics.get("repetitions")
-        if type(duration) is not dict or type(fleet) is not dict:
-            raise CertifiedCohortError("route metric bounds are missing")
-        latency = MetricEstimate(
-            mean=round(duration.get("mean") * 1_000_000),
-            upper=round(duration.get("max_observed_bound") * 1_000_000),
-            lower=round(duration.get("min") * 1_000_000),
-            sample_count=repetitions,
-            measured=True,
-        )
-        energy = MetricEstimate(
-            mean=round(fleet.get("mean") * 1_000_000),
-            upper=round(fleet.get("max_observed_bound") * 1_000_000),
-            lower=round(fleet.get("min") * 1_000_000),
-            sample_count=repetitions,
-            measured=True,
-        )
-        resources: list[ResourceRequirement] = []
-        leases: list[PhaseLease] = []
-        residency: list[ResidencyRequirement] = []
-        for resource_id, requirement in sorted(runtime_contract.resources.items()):
-            kind, role = _resource_kind(resource_id)
-            resources.append(ResourceRequirement(
-                resource_id=resource_id,
-                kind=kind,
-                role=role,
-                slots=1,
-            ))
-            leases.append(PhaseLease(
-                lease_id=f"{route_id}:{resource_id}",
-                resource_id=resource_id,
-                slots=1,
-                start_offset_us=0,
-                duration=latency,
-            ))
-            residency.extend(
-                ResidencyRequirement(resource_id, item, "runtime")
-                for item in requirement.required_residency_ids
-            )
-
-        quality_raw = raw.get("quality")
-        if type(quality_raw) is not dict:
-            raise CertifiedCohortError("route quality is missing")
-        quality_name = quality_raw.get("class")
-        quality = {
-            "exact": QualityClass.EXACT,
-            "approximate": QualityClass.SEMANTIC,
-        }.get(quality_name)
-        if quality is None:
-            raise CertifiedCohortError("route quality class is unsupported")
-        granularity = PlacementGranularity(raw.get("scope"))
-        route_overlap = (
-            OverlapEstimate("not_applicable", None, None, repetitions)
-            if granularity == PlacementGranularity.TASK
-            else OverlapEstimate("measured", wait_ppm, wait_ppm, repetitions)
-        )
-        evidence = compiled.get("physical_evidence")
-        if type(evidence) is not dict:
-            raise CertifiedCohortError("physical evidence is missing")
-        routes.append(RouteAlternative(
-            route_id=route_id,
+        compiled_route = _compile_route(
+            raw,
+            raw_contracts=raw_contracts,
+            compiled=compiled,
+            epoch_key=epoch_key,
             workload_id=workload_id,
-            baseline=raw.get("role") == "control",
-            placement_granularity=granularity,
-            maturity=RouteMaturity.STABLE,
             applicability=applicability,
-            latency_us=latency,
-            energy=(EnergyComponent(energy, accounting),),
-            overlap=route_overlap,
-            quality=QualityContract(
-                quality_class=quality,
-                validation_id=_sha(evidence.get("aggregate_record_sha256")),
-            ),
-            resources=tuple(resources),
-            phase_leases=tuple(leases),
-            memory=(),
-            residency=tuple(residency),
-            placement_verified=True,
-            evidence_ids=(
-                _sha(evidence.get("aggregate_file_sha256")),
-                _sha(evidence.get("aggregate_record_sha256")),
-            ),
-            source_profile_id=compiled.get("certificate_set_id"),
-        ))
+            accounting=accounting,
+            wait_ppm=wait_ppm,
+        )
+        runtime_contracts[compiled_route.route_id] = compiled_route.runtime_contract
+        dispatch_contracts[compiled_route.route_id] = compiled_route.dispatch_contract
+        routes.append(compiled_route.route)
 
     candidates = CandidateSet(
         profile_id=compiled.get("certificate_set_id"),
@@ -305,6 +423,6 @@ def load_certified_cohort(
         runtime_contracts=MappingProxyType(runtime_contracts),
         dispatch_contracts=MappingProxyType(dispatch_contracts),
         epoch_key=epoch_key,
-        trace_sha256=trace_sha256,
+        trace_sha256=bindings.trace_sha256,
         compiled_file_sha256=None,
     )

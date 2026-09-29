@@ -1,0 +1,141 @@
+{
+  "admission": "RETAIN_CONTROL_PHONE_ROUTE",
+  "control_mean": {
+    "cpu_package_j": 6410.431980964786,
+    "duration_s": 99.599673345,
+    "fleet_j": 9196.091230034832,
+    "gemma_decode_s": 37.341781999999995,
+    "gemma_prefill_s": 54.239836,
+    "gemma_wall_s": 91.58232100000001,
+    "gpu_board_j": 2587.131522335494,
+    "phone_j": 198.52772673455235,
+    "qwen_s": 37.122840334,
+    "server_j": 8997.56350330028
+  },
+  "energy_claim_eligible": false,
+  "gates": {
+    "each_pair_duration_lower": false,
+    "each_pair_fleet_energy_lower": true,
+    "gemma_approximate_quality_at_least_90pct": true,
+    "gemma_decode_mean_lower": false,
+    "gemma_within_arm_output_stable": true,
+    "mean_fleet_saving_at_least_5pct": false,
+    "phone_mechanics_pass": true,
+    "qwen_exact_output_stable": true,
+    "work_shape_equal": true
+  },
+  "minimum_fleet_saving_pct": 5.0,
+  "pair_duration_savings_pct": [
+    16.232155793252044,
+    -5.544316569007446
+  ],
+  "pair_fleet_savings_pct": [
+    4.544559345533894,
+    1.8630228151189199
+  ],
+  "quality": {
+    "gemma": {
+      "common_prefix_tokens": 36,
+      "exact": false,
+      "positional_agreement_pct": 90.2439024390244,
+      "positional_matches": 37,
+      "tokens": 41
+    },
+    "qwen_exact": true
+  },
+  "record_sha256": "6f7feed23f55bddf977f5f5b5411ae0902aab37e83a518ebef7501eea5654b93",
+  "run_order": [
+    "treatment_r1",
+    "control_r1",
+    "control_r2",
+    "treatment_r2"
+  ],
+  "runs": {
+    "control_r1": {
+      "artifact_sha256": "51b536efe09483201f714478cfa0839b7511fbfc123a7ab41a9a2cfd6b588467",
+      "metrics": {
+        "cpu_package_j": 6357.22470258088,
+        "duration_s": 104.11377352,
+        "fleet_j": 9210.80199401872,
+        "gemma_decode_s": 38.309202,
+        "gemma_prefill_s": 56.413739,
+        "gemma_wall_s": 94.723851,
+        "gpu_board_j": 2646.423740080408,
+        "phone_j": 207.15355135743317,
+        "qwen_s": 38.798820116,
+        "server_j": 9003.648442661288
+      }
+    },
+    "control_r2": {
+      "artifact_sha256": "d8fe311f333705eef0290e9b7d69e05abc7a9709589747fcb8e02c5d38f0da87",
+      "metrics": {
+        "cpu_package_j": 6463.639259348692,
+        "duration_s": 95.08557317,
+        "fleet_j": 9181.380466050943,
+        "gemma_decode_s": 36.374362,
+        "gemma_prefill_s": 52.065933,
+        "gemma_wall_s": 88.440791,
+        "gpu_board_j": 2527.83930459058,
+        "phone_j": 189.9019021116715,
+        "qwen_s": 35.446860552,
+        "server_j": 8991.478563939272
+      }
+    },
+    "treatment_r1": {
+      "artifact_sha256": "8cc84d9338a68c4ec518976fd76c5eb8665dde0e239d2d4deda9639994f7543c",
+      "metrics": {
+        "cpu_package_j": 6215.983734077973,
+        "duration_s": 87.2138636,
+        "fleet_j": 8792.21163120092,
+        "gemma_decode_s": 38.473724,
+        "gemma_prefill_s": 42.387251,
+        "gemma_wall_s": 80.862571,
+        "gpu_board_j": 2379.3557093640993,
+        "phone_j": 196.87218775884685,
+        "qwen_s": 43.510718101,
+        "server_j": 8595.339443442073
+      }
+    },
+    "treatment_r2": {
+      "artifact_sha256": "a6ba0eef60eb9dd70924816b8de766e3ff5978a379137daf401084b09098e73d",
+      "metrics": {
+        "cpu_package_j": 6063.607173524926,
+        "duration_s": 100.357418358,
+        "fleet_j": 9010.329253225542,
+        "gemma_decode_s": 39.534283,
+        "gemma_prefill_s": 51.663664,
+        "gemma_wall_s": 91.199911,
+        "gpu_board_j": 2729.03499923212,
+        "phone_j": 217.6870804684973,
+        "qwen_s": 44.006777711,
+        "server_j": 8792.642172757045
+      }
+    }
+  },
+  "savings_pct": {
+    "cpu_package_j_pct": 4.221814192350348,
+    "duration_s_pct": 5.837401038315626,
+    "fleet_j_pct": 3.205935874784538,
+    "gemma_decode_s_pct": -4.4513716565535155,
+    "gemma_prefill_s_pct": 13.300885533650941,
+    "gemma_wall_s_pct": 6.061300848664897,
+    "gpu_board_j_pct": 1.2730766778973779,
+    "phone_j_pct": -4.408405577938113,
+    "qwen_s_pct": -17.875538380942025,
+    "server_j_pct": 3.3739433468779723
+  },
+  "schema": "s42-fp16-burstgpt-phone-arbiter-abba-v1",
+  "status": "PASS",
+  "treatment_mean": {
+    "cpu_package_j": 6139.795453801449,
+    "duration_s": 93.785640979,
+    "fleet_j": 8901.27044221323,
+    "gemma_decode_s": 39.004003499999996,
+    "gemma_prefill_s": 47.0254575,
+    "gemma_wall_s": 86.031241,
+    "gpu_board_j": 2554.1953542981096,
+    "phone_j": 207.27963411367207,
+    "qwen_s": 43.758747905999996,
+    "server_j": 8693.99080809956
+  }
+}

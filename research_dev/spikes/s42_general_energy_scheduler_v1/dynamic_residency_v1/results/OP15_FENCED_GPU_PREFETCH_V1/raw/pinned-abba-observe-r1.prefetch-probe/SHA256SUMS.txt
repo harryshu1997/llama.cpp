@@ -1,0 +1,9 @@
+41ff3923e1dce8bde97f5773991a0b36f21230d02d173b2e7adeea23e407e56f  /tmp/s42-dynamic-prefetch-v1/bin/ffn_dmabuf_bridge-prefetch-v1
+462e9bab85a9db3a8deac8351f24eda89cef175364699274d86df16f73470858  /tmp/s42-dynamic-prefetch-v1/bin/cuda_weight_prefetch_probe-v1
+b6578a32723f9e1fdc17d2b2c66579ecfa3c82f0a26b17bc18778fa893394abb  /tmp/s42-dynamic-prefetch-v1/harness/qwen/run_qwen_full_energy_arm.sh
+28882d6e9f472754e997a68b326b5fd2b61032da54a4b795ae663f4f78a318ef  /tmp/s42-dynamic-prefetch-v1/qualified/pinned-abba-observe-r1/RESULT.json
+e59bd0f8019d1bc321044fe3516409981bdb345551889689cd80571fffd4a269  /tmp/s42-dynamic-prefetch-v1/qualified/pinned-abba-observe-r1.phone-capture/PHONE_ENERGY_V3.json
+ab036417ce93b950675db8b74d09193c51d4205897ddd34f30a15f6fcd0c7559  /tmp/s42-dynamic-prefetch-v1/qualified/pinned-abba-observe-r1.phone-capture/server.stderr
+b8c6a12746e4b4031e86fe690791224ed3c2bad9929eb081a8b90b7888fddc86  /tmp/s42-dynamic-prefetch-v1/qualified/pinned-abba-observe-r1.phone-capture/bridge.stderr
+f289fe2d1f351752c7a86f395fe6e5fd0757c4a25c46432049fc5095583ff408  /tmp/s42-dynamic-prefetch-v1/qualified/pinned-abba-observe-r1.prefetch-probe/helper.stdout
+fed7db7ee9902d0c1a1b879bc73bf4a4bedfd619692a539df7548dc6cc5b6bcb  /tmp/s42-dynamic-prefetch-v1/qualified/pinned-abba-observe-r1.prefetch-probe/PREFETCH_RUN_V1.json

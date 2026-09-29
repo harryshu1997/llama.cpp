@@ -1,0 +1,40 @@
+{
+  "adaptive_observation_source_catalog_path": "/home/zhihao/s42-route-evidence-five-prefix-20260829-v6-retained-inactive-shards/UNIFIED_RUNTIME_CATALOG.json",
+  "adaptive_observation_store_path": "/home/zhihao/s42-route-evidence-five-prefix-20260829-v6-retained-inactive-shards/run/ADAPTIVE_DECODE_OBSERVATIONS.json",
+  "assisted_calibration_arm": "op15",
+  "calibration_directory": "../../data/calibration",
+  "calibration_runs": {
+    "control": ["control-r1b", "control-r2"],
+    "op15": ["op15-r1", "op15-r2"]
+  },
+  "desktop_calibration_arm": "control",
+  "environment_overrides": {
+    "S42_ADAPTIVE_OBSERVATION_SOURCE_CATALOG": "/adaptive_observation_source_catalog_path",
+    "S42_ADAPTIVE_OBSERVATION_STORE": "/adaptive_observation_store_path",
+    "S42_OBSERVATION_SOURCE_CATALOG": "/observation_source_catalog_path",
+    "S42_OBSERVATION_STORE": "/observation_store_path",
+    "S42_PHONE_SESSION_DISCOVERY": "/phone_session_discovery_path",
+    "S42_PREMATERIALIZED_CATALOG": "/prematerialized_catalog_path",
+    "S42_PREMATERIALIZED_SOURCE_MANIFEST": "/prematerialized_source_manifest_path",
+    "S42_USB_QUALIFICATION_IDENTITY": "/transport_qualification_identity_path"
+  },
+  "kernel_profile_path": "../../../../profiles/MEASURED_4060TI_OP15_KERNEL_PROFILE_V1.json",
+  "observation_source_catalog_path": "/home/zhihao/s42-route-evidence-five-prefix-20260829-v6-retained-inactive-shards/UNIFIED_RUNTIME_CATALOG.json",
+  "observation_store_path": "/home/zhihao/s42-route-evidence-five-prefix-20260829-v6-retained-inactive-shards/run/AUTOMATED_OBSERVATIONS.json",
+  "overlay_catalog_path": null,
+  "phone_power": {
+    "active_power_mw": 4500,
+    "allow_assumed_for_scheduling": true,
+    "evidence_kind": "ASSUMED_4P5W",
+    "idle_power_mw": 875,
+    "minimum_battery_ppm": 50000
+  },
+  "phone_session_discovery_path": "/home/zhihao/s42-route-evidence-physical-gate-20260829-v1/inputs/PHONE_SESSION_DISCOVERY.json",
+  "prematerialized_catalog_path": "/home/zhihao/s42-sparse-locality24-adaptive-20260829-v4-atomic-follower-detach/UNIFIED_RUNTIME_CATALOG.json",
+  "prematerialized_source_manifest_path": "/home/zhihao/s42-sparse-locality24-adaptive-20260829-v4-atomic-follower-detach/SOURCE_MANIFEST.json",
+  "schema": "research-scheduler-evidence-v1",
+  "transport_qualification_directories": [
+    "/home/zhihao/s42-mixed-residency-priority-transport-20260829-v2/receipts"
+  ],
+  "transport_qualification_identity_path": "/home/zhihao/s42-mixed-residency-priority-transport-20260829-v3-artifact-bound/TRANSPORT_QUALIFICATION_IDENTITY.json"
+}

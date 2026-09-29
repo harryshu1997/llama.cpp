@@ -1,0 +1,65 @@
+ggml_opencl: selected platform: 'QUALCOMM Snapdragon(TM)'
+
+ggml_opencl: device: 'QUALCOMM Adreno(TM) 840 (OpenCL 3.0 Adreno(TM) 840)'
+ggml_opencl: default device: 'QUALCOMM Adreno(TM) 840 (OpenCL 3.0 Adreno(TM) 840)'
+ggml-hex: Loading driver libcdsprpc.so
+ggml-hex: Hexagon backend (experimental) : allocating new registry : ndev 2
+ggml-hex: Hexagon Arch version v81
+ggml-hex: HTP0 allocating new session
+ggml-hex: HTP0 hwinfo: threads 8, hvx 8, hmx 1, vtcm 8 MB
+ggml-hex: HTP0 new session : session-id 0 domain-id 3 uri file:///libggml-htp-v81.so?htp_iface_skel_handle_invoke&_modver=1.0&_dom=nsp1000&_session=0 handle 0xb4000071ea1f6640
+ggml-hex: HTP0 op batching: n-bufs 16 n-tensors 1792 n-ops 256 vmem 3489660928
+ggml-hex: HTP1 allocating new session
+ggml-hex: HTP1 hwinfo: threads 8, hvx 8, hmx 1, vtcm 8 MB
+ggml-hex: HTP1 new session : session-id 1 domain-id 100001 uri file:///libggml-htp-v81.so?htp_iface_skel_handle_invoke&_modver=1.0&_dom=nsp1000&_session=1 handle 0xb40000715f9ff000
+ggml-hex: HTP1 op batching: n-bufs 16 n-tensors 1792 n-ops 256 vmem 3489660928
+[ffn-worker] weight buffers=HTP0 count=1
+[ffn-worker] ready backend=Hexagon layers=6 mask=000000000000003f K=5120 NFF=17408 slice=[0,17408) type=f16 io=f16 activation=swiglu max_tokens=512 quantum=17408 alternate=0 blocks=1 weights=3060.00 MiB hash=c8dfbd19d741a902
+[resident-workers] HTP0 Qwen layers 0-5 WARM
+[ffn-worker] weight buffers=HTP1 count=1
+[ffn-worker] ready backend=Hexagon layers=6 mask=0000000000000fc0 K=5120 NFF=17408 slice=[0,17408) type=f16 io=f16 activation=swiglu max_tokens=512 quantum=17408 alternate=0 blocks=1 weights=3060.00 MiB hash=53c4b4acb071c452
+RESIDENTWORKERS {"status":"WARM","sessions":["HTP0","HTP1"],"qwen_layers":"0-11","resident_mib_approx":6120}
+[ffn-worker] client connected
+[ffn-worker] client connected
+[ffn-worker] requests=32 compute_p50_us=9936
+[ffn-worker] requests=32 compute_p50_us=9880
+[ffn-worker] requests=64 compute_p50_us=9890
+[ffn-worker] requests=64 compute_p50_us=9854
+[ffn-worker] requests=96 compute_p50_us=9871
+[ffn-worker] requests=96 compute_p50_us=9868
+[ffn-worker] requests=128 compute_p50_us=9859
+[ffn-worker] requests=128 compute_p50_us=9875
+[ffn-worker] requests=160 compute_p50_us=9851
+[ffn-worker] requests=160 compute_p50_us=9873
+[ffn-worker] requests=192 compute_p50_us=9851
+[ffn-worker] requests=192 compute_p50_us=9872
+[ffn-worker] requests=224 compute_p50_us=9845
+[ffn-worker] requests=224 compute_p50_us=9880
+[ffn-worker] requests=256 compute_p50_us=9836
+[ffn-worker] requests=256 compute_p50_us=9876
+[ffn-worker] requests=288 compute_p50_us=9836
+[ffn-worker] requests=288 compute_p50_us=9880
+[ffn-worker] requests=320 compute_p50_us=9835
+[ffn-worker] requests=320 compute_p50_us=9878
+[ffn-worker] requests=352 compute_p50_us=9839
+[ffn-worker] requests=352 compute_p50_us=9881
+[ffn-worker] requests=384 compute_p50_us=9836
+[ffn-worker] requests=384 compute_p50_us=9883
+[ffn-worker] requests=416 compute_p50_us=9835
+[ffn-worker] requests=416 compute_p50_us=9882
+[ffn-worker] requests=448 compute_p50_us=9836
+[ffn-worker] requests=448 compute_p50_us=9880
+[ffn-worker] requests=480 compute_p50_us=9835
+[ffn-worker] requests=480 compute_p50_us=9882
+[ffn-worker] requests=512 compute_p50_us=9835
+[ffn-worker] requests=512 compute_p50_us=9882
+[ffn-worker] requests=544 compute_p50_us=9837
+[ffn-worker] requests=544 compute_p50_us=9880
+[ffn-worker] requests=576 compute_p50_us=9836
+[ffn-worker] requests=576 compute_p50_us=9881
+[ffn-worker] requests=608 compute_p50_us=9836
+[ffn-worker] requests=608 compute_p50_us=9882
+[ffn-worker] requests=640 compute_p50_us=9837
+[ffn-worker] requests=640 compute_p50_us=9880
+[ffn-worker] client disconnected
+[ffn-worker] client disconnected

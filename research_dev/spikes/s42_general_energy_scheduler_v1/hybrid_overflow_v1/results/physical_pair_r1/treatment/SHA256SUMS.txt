@@ -1,0 +1,4 @@
+401bbd601d713948394d3adfb6b0fab299fcf6d0a9e73c526951c822853e7bb4  /home/zhihao/s41-dynamic-ffn-v1/server-traces/unified-gpu-overflow-op15-r1d-20260808.phone-capture/EXECUTION_PLAN.json
+20087b1402efc3b51f5fd9ccf8154ada346e36c00ef5767a3dfe7cef6ac828b0  /home/zhihao/s41-dynamic-ffn-v1/server-traces/unified-gpu-overflow-op15-r1d-20260808/RESULT.json
+e04bf4b6ad0d8a8343b5e66c5bc38a4625b28da33503ad07f5b37b6099adbd36  /home/zhihao/s41-dynamic-ffn-v1/server-traces/unified-gpu-overflow-op15-r1d-20260808.phone-capture/PHONE_ENERGY_V3.json
+9d66bf8f52403ba2a8cc0bcae18ff9f1b6f09b6f0311e87a8d6b69994d8d8df1  /home/zhihao/s41-dynamic-ffn-v1/server-traces/unified-gpu-overflow-op15-r1d-20260808.phone-capture/phone-samples.tsv

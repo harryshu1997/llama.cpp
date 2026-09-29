@@ -1,5 +1,8 @@
 #include "llama-context.h"
 
+#include "llama-kv-cache.h"
+#include "llama-kv-cache-iswa.h"
+
 #include "ggml.h"
 #include "llama-arch.h"
 #include "llama-graph.h"
@@ -12,6 +15,7 @@
 #include "llama-ext.h"
 #include "llama.h"
 
+#include <algorithm>
 #include <cinttypes>
 #include <cmath>
 #include <cstring>
@@ -68,6 +72,32 @@ llama_context::llama_context(
     cparams.embeddings_nextn        = false;
     cparams.embeddings_nextn_masked = false;
     cparams.offload_kqv             = params.offload_kqv;
+    cparams.kv_cpu_layers.resize(hparams.n_layer_all, false);
+    if (params.n_kv_cpu_layers != 0) {
+        if (params.kv_cpu_layers == nullptr || params.n_kv_cpu_layers > hparams.n_layer_all) {
+            throw std::runtime_error("invalid CPU KV layer list");
+        }
+        if (llm_arch_is_recurrent(model.arch) || llm_arch_is_hybrid(model.arch) || hparams.is_mla() ||
+                params.ctx_other != nullptr || model.split_mode() == LLAMA_SPLIT_MODE_TENSOR) {
+            throw std::runtime_error("per-layer CPU KV placement currently requires a dense, non-shared attention context");
+        }
+        for (size_t i = 0; i < params.n_kv_cpu_layers; ++i) {
+            const int32_t il = params.kv_cpu_layers[i];
+            if (il < 0 || uint32_t(il) >= hparams.n_layer_all || !hparams.has_kv(il)) {
+                throw std::runtime_error("CPU KV layer index is invalid or has no KV cache");
+            }
+            cparams.kv_cpu_layers[il] = true;
+        }
+        // Shared-KV consumers must agree with their source layer's placement.
+        if (model.arch == LLM_ARCH_GEMMA3N || model.arch == LLM_ARCH_GEMMA4) {
+            for (uint32_t il = hparams.n_layer_kv_from_start; il < hparams.n_layer_all; ++il) {
+                const int32_t source = hparams.n_layer_kv_from_start - (hparams.is_swa(il) ? 2 : 1);
+                if (source < 0 || cparams.kv_cpu_layers[il] != cparams.kv_cpu_layers[source]) {
+                    throw std::runtime_error("CPU KV placement differs between a shared-KV layer and its source");
+                }
+            }
+        }
+    }
     cparams.no_perf                 = params.no_perf;
     cparams.warmup                  = false;
 
@@ -87,6 +117,17 @@ llama_context::llama_context(
 
     cparams.cb_eval           = params.cb_eval;
     cparams.cb_eval_user_data = params.cb_eval_user_data;
+
+    if (model.remote_resident_ffn_layer_mask() != 0) {
+        // The omitted FFN layers can only be executed by an eval-callback owner (the FFN split
+        // client); a context without one would silently produce zeros for those layers.
+        if (params.cb_eval == nullptr) {
+            throw std::runtime_error("model omits remote-resident FFN weights but the context has no FFN eval callback owner");
+        }
+        ffn_remote_resident_owned = true;
+        LLAMA_LOG_INFO("%s: remote-resident FFN layers 0x%016" PRIx64 " are owned by the eval callback\n",
+                __func__, model.remote_resident_ffn_layer_mask());
+    }
 
     cparams.ctx_other = nullptr;
 
@@ -239,6 +280,32 @@ llama_context::llama_context(
         if (cparams.n_ctx != cparams.n_ctx_seq * cparams.n_seq_max) {
             cparams.n_ctx =  cparams.n_ctx_seq * cparams.n_seq_max;
             LLAMA_LOG_WARN("%s: n_ctx is not divisible by n_seq_max - rounding down to %u\n", __func__, cparams.n_ctx);
+        }
+    }
+
+    cparams.kv_device_cells.assign(hparams.n_layer_all, -1);
+    if (params.n_kv_device_cells != 0) {
+        if (params.kv_device_cells == nullptr || params.n_kv_device_cells > hparams.n_layer_all ||
+            llm_arch_is_recurrent(model.arch) || llm_arch_is_hybrid(model.arch) || hparams.is_mla() ||
+            hparams.is_swa_any() || params.ctx_other != nullptr || model.split_mode() == LLAMA_SPLIT_MODE_TENSOR) {
+            throw std::runtime_error("split KV requires a dense, non-shared, non-SWA attention context");
+        }
+        for (size_t i = 0; i < params.n_kv_device_cells; ++i) {
+            const auto entry = params.kv_device_cells[i];
+            if (entry.layer < 0 || uint32_t(entry.layer) >= hparams.n_layer_all || !hparams.has_kv(entry.layer) ||
+                entry.cells % 256 != 0 || entry.cells > cparams.n_ctx_seq || cparams.kv_device_cells[entry.layer] != -1 ||
+                (cparams.kv_cpu_layers[entry.layer] && entry.cells != 0)) {
+                throw std::runtime_error("invalid or conflicting KV device-prefix placement");
+            }
+            cparams.kv_device_cells[entry.layer] = entry.cells;
+            if (entry.cells == 0) {
+                cparams.kv_cpu_layers[entry.layer] = true;
+            } else if (entry.cells < cparams.n_ctx_seq) {
+                if (!cparams.flash_attn || !cparams.offload_kqv || params.type_k != GGML_TYPE_F16 ||
+                    params.type_v != GGML_TYPE_F16) {
+                    throw std::runtime_error("split KV requires flash attention, KV offload and F16 K/V");
+                }
+            }
         }
     }
 
@@ -494,18 +561,26 @@ void llama_context::sched_reserve() {
             // TODO: instead of the tensor names, use a map to keep track of which (FA) tensors belong to which layer
             GGML_ASSERT(strncmp(n->name, LLAMA_TENSOR_NAME_FATTN "-", prefix_len) == 0);
             const int il = std::stoi(n->name + prefix_len);
-            ggml_backend_dev_t device_kv = model.dev_layer(il);
+            ggml_backend_dev_t device_kv = !cparams.offload_kqv || cparams.kv_cpu_layers[il]
+                ? ggml_backend_get_device(backend_cpu) : model.dev_layer(il);
+            if (strstr(n->name, "-host-decode")) {
+                device_kv = ggml_backend_get_device(backend_cpu);
+            }
             if (device_fa != device_kv) {
                 LLAMA_LOG_WARN("%s: layer %d is assigned to device %s but the Flash Attention tensor "
                         "is assigned to device %s (usually due to missing support)\n",
                         __func__, il, ggml_backend_dev_name(device_kv), ggml_backend_dev_name(device_fa));
-                // FIXME: fa_device_mismatch logic is wrong for --no-kv-offload, but this is broken anyways
                 fa_device_mismatch = true;
                 break;
             }
         }
 
         if (fa_device_mismatch) {
+            if (std::any_of(cparams.kv_device_cells.begin(), cparams.kv_device_cells.end(), [&](int64_t count) {
+                    return count > 0 && count < cparams.n_ctx_seq;
+                })) {
+                throw std::runtime_error("split KV flash attention is not supported on the requested backend");
+            }
             cparams.flash_attn = false;
             LLAMA_LOG_WARN("%s: Flash Attention was auto, set to disabled\n", __func__);
         } else {
@@ -1178,6 +1253,20 @@ bool llama_context::set_layersplit_range(int32_t start, int32_t end) {
     return true;
 }
 
+void llama_context::set_ffn_split_policy(
+        bool runtime, uint64_t layer_mask, uint32_t columns, bool row_diagnostic) {
+    ffn_split_runtime    = runtime;
+    ffn_split_layer_mask = runtime ? layer_mask : 0;
+    ffn_split_columns    = runtime ? columns : 0;
+    ffn_row_diagnostic   = runtime && columns != 0 && row_diagnostic;
+}
+
+void llama_context::set_ffn_split_ubatch_callback(
+        llama_ffn_split_ubatch_callback callback, void * user_data) {
+    ffn_split_ubatch_callback = callback;
+    ffn_split_ubatch_user_data = user_data;
+}
+
 void llama_context::set_causal_attn(bool value) {
     LLAMA_LOG_DEBUG("%s: value = %d\n", __func__, value);
 
@@ -1377,6 +1466,18 @@ llm_graph_result * llama_context::process_ubatch(const llama_ubatch & ubatch, ll
         res->set_inputs(&ubatch);
 
         //LLAMA_LOG_INFO("graph set inputs time: %.3f ms\n", (ggml_time_us() - t_start_us)/1000.0);
+    }
+
+    if (ffn_split_ubatch_callback) {
+        const llama_batch view = {
+            static_cast<int32_t>(ubatch.n_tokens), ubatch.token, ubatch.embd,
+            ubatch.pos, ubatch.n_seq_id, ubatch.seq_id, ubatch.output,
+        };
+        if (!ffn_split_ubatch_callback(view, ffn_split_ubatch_user_data)) {
+            LLAMA_LOG_ERROR("%s: FFN microbatch context rejected\n", __func__);
+            ret = GGML_STATUS_ABORTED;
+            return nullptr;
+        }
     }
 
     const auto status = graph_compute(res->get_gf(), ubatch.n_tokens > 1);
@@ -2435,6 +2536,12 @@ llm_graph_params llama_context::graph_params(
         /*.cross       =*/ &cross,
         /*.samplers    =*/ sampling.samplers,
         /*.n_outputs   =*/ n_outputs,
+        /*.ffn_split_runtime    =*/ ffn_split_runtime,
+        /*.ffn_split_layer_mask =*/ ffn_split_layer_mask,
+        /*.ffn_split_columns    =*/ ffn_split_columns,
+        /*.ffn_row_diagnostic   =*/ ffn_row_diagnostic,
+        /*.ffn_remote_resident_layer_mask =*/ model.remote_resident_ffn_layer_mask(),
+        /*.ffn_remote_resident_owned      =*/ ffn_remote_resident_owned,
         /*.cb          =*/ graph_get_cb(),
         /*.res         =*/ res,
     };
@@ -3493,6 +3600,10 @@ llama_context_params llama_context_default_params() {
         /*.cb_eval_user_data           =*/ nullptr,
         /*.type_k                      =*/ GGML_TYPE_F16,
         /*.type_v                      =*/ GGML_TYPE_F16,
+        /*.kv_cpu_layers               =*/ nullptr,
+        /*.n_kv_cpu_layers             =*/ 0,
+        /*.kv_device_cells             =*/ nullptr,
+        /*.n_kv_device_cells           =*/ 0,
         /*.abort_callback              =*/ nullptr,
         /*.abort_callback_data         =*/ nullptr,
         /*.embeddings                  =*/ false,
@@ -3731,6 +3842,34 @@ void llama_set_nextn_layer_offset(llama_context * ctx, int32_t offset) {
 
 bool llama_set_layersplit_range(llama_context * ctx, int32_t start, int32_t end) {
     return ctx != nullptr && ctx->set_layersplit_range(start, end);
+}
+
+void llama_set_ffn_split_policy(
+        llama_context * ctx, bool runtime, uint64_t layer_mask, uint32_t columns, bool row_diagnostic) {
+    if (ctx != nullptr) {
+        ctx->set_ffn_split_policy(runtime, layer_mask, columns, row_diagnostic);
+    }
+}
+
+void llama_set_ffn_split_ubatch_callback(
+        llama_context * ctx, llama_ffn_split_ubatch_callback callback, void * user_data) {
+    if (ctx != nullptr) {
+        ctx->set_ffn_split_ubatch_callback(callback, user_data);
+    }
+}
+
+size_t llama_kv_touch_cells(struct llama_context * ctx, uint32_t n_cells) {
+    llama_memory_t mem = llama_get_memory(ctx);
+    if (auto * kv = dynamic_cast<llama_kv_cache *>(mem)) {
+        return kv->touch_cells(n_cells);
+    }
+    if (auto * iswa = dynamic_cast<llama_kv_cache_iswa *>(mem)) {
+        size_t total = 0;
+        if (iswa->get_base()) total += iswa->get_base()->touch_cells(n_cells);
+        if (iswa->get_swa())  total += iswa->get_swa()->touch_cells(n_cells);
+        return total;
+    }
+    return 0;
 }
 
 llama_memory_t llama_get_memory(const struct llama_context * ctx) {

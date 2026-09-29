@@ -1,0 +1,208 @@
+{
+  "bindings": {
+    "artifacts": {
+      "campaign_aggregate": {
+        "sha256": "d4e4586125b27eecea0c2e02af903f6ef52922a2a29457eaff715d4312094da0"
+      },
+      "desktop_bridge": {
+        "sha256": "1c5bfb27cd263238cf2e364ee5bdb538d7cd78fc82e55dd5a6228d143f1809d7"
+      },
+      "phone_worker": {
+        "sha256": "a7b233bf466a184205c42d90e7fb189065165b2c555bc111f5c71d0ea47f9f00"
+      },
+      "route_source_script": {
+        "sha256": "c5970e720cd01db0673462f1bfb45bf04da80f8922aa0f37b38f58d339068826"
+      },
+      "ubatch_graph_binary": {
+        "sha256": "cb80c12d915acdadb11e63bc5875a868f1eb6ec973f7e5477b88a2100a0dc2e4"
+      }
+    },
+    "concurrency": {
+      "cold_parallel_slots": 8,
+      "cold_ubatch_size": 512,
+      "hot_model_active": true,
+      "hot_parallel_slots": 4,
+      "request_count": 74
+    },
+    "hardware": {
+      "desktop_cpu": "12th Gen Intel(R) Core(TM) i9-12900K",
+      "desktop_gpu_name": "NVIDIA GeForce RTX 4060 Ti",
+      "desktop_gpu_uuid": "GPU-3d43c513-5a75-7fd0-a503-da920e0ffa08",
+      "phone_model": "OnePlus 15",
+      "phone_serial": "3C15AU002CL00000"
+    },
+    "models": {
+      "cold": {
+        "architecture": "gemma4",
+        "file_bytes": 6975878176,
+        "file_sha256": "494518c2262a26e2a607af0e40bca11c4de5a0b108e7c21308906dbbfb1c6f8c",
+        "n_embd": 3840,
+        "n_layer": 48,
+        "n_vocab": 262144,
+        "quantization": "Q4_0",
+        "tensor_bytes": 6960054464
+      },
+      "hot": {
+        "architecture": "qwen3",
+        "file_bytes": 9001752960,
+        "file_sha256": "500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0",
+        "n_embd": 5120,
+        "n_layer": 40,
+        "n_vocab": 151936,
+        "quantization": "Q4_K_M",
+        "tensor_bytes": 8995793920
+      }
+    },
+    "policy": {
+      "column_quantum": 2048,
+      "id": "i3-hidden-wait",
+      "io": "f16",
+      "max_columns": 11136,
+      "table": "1:9664,3:8192,8:4096,128:8192,512:11136",
+      "weight_layout": "view_safe_dense_ffn"
+    },
+    "residency": {
+      "cold_desktop": "cpu_mapped",
+      "cold_phone": "htp_layers_0_47_max_11136",
+      "hot_desktop": "cuda_41_of_41",
+      "phone_weights_persistent": true
+    },
+    "runtimes": {
+      "cold": {
+        "batch_size": 4096,
+        "context": 32768,
+        "manifest": [
+          {
+            "name": "libggml-base.so.0.15.3",
+            "sha256": "fa78bcd5457b67bb1c987ac64dfae1b1dd65af746838a729ddf1530409c97d6b",
+            "size_bytes": 930832
+          },
+          {
+            "name": "libggml-cpu.so.0.15.3",
+            "sha256": "de1a134d2119ed24547de884bc8b07352686081ebc6cc2aa2607522ad458b8e8",
+            "size_bytes": 1151736
+          },
+          {
+            "name": "libggml.so.0.15.3",
+            "sha256": "e3f60a859a13e7ebbb04e41543372b879aa6d2180e244dc87b93a3e6c4f92f4d",
+            "size_bytes": 59648
+          },
+          {
+            "name": "libllama-common.so.0.0.0",
+            "sha256": "41175c7edf5694f84576507990a9af1ac732b3cb2d3e6bc2d15656636f19b9c0",
+            "size_bytes": 6071736
+          },
+          {
+            "name": "libllama-server-impl.so",
+            "sha256": "2954345b36c4fc69cca2379ec6a01b175d9b9827c2ed3f335e0ee1f553c6226a",
+            "size_bytes": 8199112
+          },
+          {
+            "name": "libllama.so.0.0.0",
+            "sha256": "580b81eba9c87efd0ca1aa0bc89fc10e08a1c38eb320c5cbe1c87a012b4a5946",
+            "size_bytes": 4123088
+          },
+          {
+            "name": "libmtmd.so.0.0.0",
+            "sha256": "99a211fdf92eb1f740a981745b0b9138416f58b6d9acba0501a9345a81abc878",
+            "size_bytes": 1460912
+          },
+          {
+            "name": "llama-server",
+            "sha256": "f849de665e948586fb4bff87d1540614e53060e66a02ff1892d277c92c456df5",
+            "size_bytes": 17896
+          }
+        ],
+        "parallel": 8,
+        "repack": "default",
+        "thread_selection": "llama_server_default",
+        "threads": -1,
+        "ubatch_size": 512
+      },
+      "hot": {
+        "context": 24576,
+        "manifest": [
+          {
+            "name": "libggml-base.so.0.15.3",
+            "sha256": "aba0cb48199ba5d918221f6fa0cee13fec74f13189b67aa8afffe8bc6e4920ba",
+            "size_bytes": 930832
+          },
+          {
+            "name": "libggml-cpu.so.0.15.3",
+            "sha256": "08fbf4f55bd37af7fc0eeb7d4947eb1f49ae1b5ba1b1e7e591c0cbab4f3657d0",
+            "size_bytes": 1155832
+          },
+          {
+            "name": "libggml-cuda.so.0.15.3",
+            "sha256": "f239d3e1ad76893b0c1fe47105ec1c9ff638a507283e55e8c4c3ccc086ceb528",
+            "size_bytes": 168813320
+          },
+          {
+            "name": "libggml.so.0.15.3",
+            "sha256": "879447caeae3a8c028c796c1bf9787fa61f86e7902144e601041154ae69429fb",
+            "size_bytes": 59440
+          },
+          {
+            "name": "libllama-common.so.0.0.9875",
+            "sha256": "43e52457d8c0f6b292e132ee19704e2a67534ba3ad77655003dde8b8c72a513b",
+            "size_bytes": 6071736
+          },
+          {
+            "name": "libllama-server-impl.so",
+            "sha256": "95bfe00b674b025f251fa2f87409b12dc3d3ccbecee4e17ded1ee1d8df0df0c5",
+            "size_bytes": 7810304
+          },
+          {
+            "name": "libllama.so.0.0.9875",
+            "sha256": "c39d348d373ad65665035687de39fd3a434b57306eb5dc53694de8aaf47c7b45",
+            "size_bytes": 4118264
+          },
+          {
+            "name": "libmtmd.so.0.0.9875",
+            "sha256": "90dff989186051011569a9b49e6ae6faf0dbf116a858a76556369fc926c12b8a",
+            "size_bytes": 1460912
+          },
+          {
+            "name": "llama-server",
+            "sha256": "f890165ce1f89d3084bc108d05b42e5ca4e1a0f25aa40fe7786d39ab87562d6a",
+            "size_bytes": 17904
+          },
+          {
+            "name": "libcublas.so.13.4.0.1",
+            "sha256": "5589b43e2aae4790ccb2abd22733eae0b6d4fe9503dcc4dbfe219fd857ddac41",
+            "size_bytes": 54198912
+          },
+          {
+            "name": "libcublasLt.so.13.4.0.1",
+            "sha256": "ac76bbb85d74313bba0d71029c71389616205f4018c8ff31d57c38f6e61100bd",
+            "size_bytes": 508260928
+          },
+          {
+            "name": "libcudart.so.13.2.75",
+            "sha256": "c7eaa64c99c20484b7401352aff99a8c5ab947abaab3a9bbb70142312da1fe18",
+            "size_bytes": 773920
+          }
+        ],
+        "parallel": 4
+      }
+    },
+    "transport": {
+      "allocator": "devmem",
+      "desktop_endpoint": "libusb-bulk",
+      "io_type": "f16",
+      "phone_endpoint": "functionfs-dmabuf",
+      "protocol": "s41-ffn-split-flex-v2",
+      "reset_recovery": "qualified"
+    },
+    "workload": {
+      "cold_requests": 17,
+      "hot_requests": 57,
+      "input_tokens": 33843,
+      "output_tokens": 11605,
+      "requests": 74,
+      "sha256": "b20a9ba66ee3558d835a0e19ed3cfa4c31a4a9e8b4f9c085b29a14f80250a0ff"
+    }
+  },
+  "epoch_label": "rtx4060ti-op15-i3-certified-cohort-v1",
+  "schema": "s42-runtime-epoch-v1"
+}

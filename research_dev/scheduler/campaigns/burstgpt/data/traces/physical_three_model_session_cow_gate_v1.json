@@ -1,0 +1,22 @@
+{
+  "arrivals": [
+    {"combined_request_index": 34, "replay_arrival_us": 1000000},
+    {"combined_request_index": 35, "replay_arrival_us": 21000000},
+    {"combined_request_index": 38, "replay_arrival_us": 41000000},
+    {"combined_request_index": 39, "replay_arrival_us": 61000000},
+    {"combined_request_index": 40, "replay_arrival_us": 81000000},
+    {"combined_request_index": 36, "replay_arrival_us": 241000000},
+    {"combined_request_index": 44, "replay_arrival_us": 271000000},
+    {"combined_request_index": 41, "replay_arrival_us": 431000000},
+    {"combined_request_index": 42, "replay_arrival_us": 451000000},
+    {"combined_request_index": 43, "replay_arrival_us": 471000000},
+    {"combined_request_index": 45, "replay_arrival_us": 511000000},
+    {"combined_request_index": 46, "replay_arrival_us": 531000000},
+    {"combined_request_index": 50, "replay_arrival_us": 551000000},
+    {"combined_request_index": 37, "replay_arrival_us": 701000000},
+    {"combined_request_index": 47, "replay_arrival_us": 721000000},
+    {"combined_request_index": 56, "replay_arrival_us": 741000000}
+  ],
+  "schema": "research-scheduler-burstgpt-replay-v1",
+  "trace_name": "physical_three_model_session_cow_gate_v1"
+}

@@ -6,8 +6,9 @@
 // same quantized master weights, and every treatment is checked against a
 // monolithic host reference before timing is reported.
 //
-// usage: causal_layer_host <n_kv> <iters> <phone_cols> [weight_type] [mode] [shape]
-// mode: all (default), monolithic, two_phase, or split
+// usage: causal_layer_host <n_kv> <iters> <phone_cols> [weight_type] [mode] [shape] [batch]
+// weight_type: q4_0, q8_0, or q4_k_m (Qwen3-14B CUDA/CPU only)
+// mode: all (default), monolithic, two_phase, split, or ffn
 // shape: qwen3_14b (default) or gemma4_12b
 
 #include "causal_ffn_protocol.h"
@@ -350,7 +351,7 @@ int main(int argc, char ** argv) {
     if (argc < 4) {
         fprintf(stderr,
                 "usage: %s <n_kv> <iters> <phone_cols> [weight_type] "
-                "[mode] [shape]\n",
+                "[mode] [shape] [batch]\n",
                 argv[0]);
         return 2;
     }
@@ -360,6 +361,7 @@ int main(int argc, char ** argv) {
     const int64_t phone_columns = atoll(argv[3]);
     const std::string mode = argc > 5 ? argv[5] : "all";
     const std::string shape = argc > 6 ? argv[6] : "qwen3_14b";
+    const int64_t batch = argc > 7 ? atoll(argv[7]) : 1;
     int64_t k = 5120;
     int64_t n_heads = 40;
     int64_t n_kv_heads = 8;
@@ -385,22 +387,43 @@ int main(int argc, char ** argv) {
         return 2;
     }
 
+    const std::string weight_name = argc > 4 ? argv[4] : "q4_0";
+    const bool qwen_mixed = weight_name == "q4_k_m";
     ggml_type weight_type = GGML_TYPE_Q4_0;
-    if (argc > 4 && !parse_type(argv[4], weight_type)) {
-        fprintf(stderr, "[causal-host] unknown weight type '%s'\n", argv[4]);
+    if (!qwen_mixed && !parse_type(weight_name.c_str(), weight_type)) {
+        fprintf(stderr,
+                "[causal-host] unknown weight type '%s'\n",
+                weight_name.c_str());
         return 2;
     }
-    if (weight_type != GGML_TYPE_Q4_0 && weight_type != GGML_TYPE_Q8_0) {
-        fprintf(stderr, "[causal-host] only q4_0 and q8_0 are supported\n");
+    if (!qwen_mixed &&
+        weight_type != GGML_TYPE_Q4_0 && weight_type != GGML_TYPE_Q8_0) {
+        fprintf(stderr,
+                "[causal-host] only q4_0, q8_0, and q4_k_m are supported\n");
         return 2;
     }
+    if (qwen_mixed && (shape != "qwen3_14b" || phone_columns != 0)) {
+        fprintf(stderr,
+                "[causal-host] q4_k_m requires qwen3_14b and phone_columns=0\n");
+        return 2;
+    }
+    const ggml_type q_type = qwen_mixed ? GGML_TYPE_Q4_K : weight_type;
+    const ggml_type k_type = qwen_mixed ? GGML_TYPE_Q4_K : weight_type;
+    const ggml_type v_type = qwen_mixed ? GGML_TYPE_Q6_K : weight_type;
+    const ggml_type o_type = qwen_mixed ? GGML_TYPE_Q4_K : weight_type;
+    const ggml_type gate_type = qwen_mixed ? GGML_TYPE_Q4_K : weight_type;
+    const ggml_type up_type = qwen_mixed ? GGML_TYPE_Q4_K : weight_type;
+    const ggml_type down_type = qwen_mixed ? GGML_TYPE_Q6_K : weight_type;
+    const char * weight_label = qwen_mixed
+            ? "q4_k_m" : ggml_type_name(weight_type);
     if (mode != "all" && mode != "monolithic" && mode != "two_phase" &&
-        mode != "split") {
+        mode != "split" && mode != "ffn") {
         fprintf(stderr, "[causal-host] unknown mode '%s'\n", mode.c_str());
         return 2;
     }
-    const int64_t block = ggml_blck_size(weight_type);
+    const int64_t block = ggml_blck_size(q_type);
     if (n_kv <= 0 || iterations <= 0 || phone_columns < 0 || gpu_columns <= 0 ||
+        batch <= 0 || batch > 512 || (mode != "ffn" && batch != 1) ||
         k % block != 0 || n_ff % block != 0 ||
         phone_columns % block != 0 || gpu_columns % block != 0 ||
         (mode == "split" && phone_columns == 0)) {
@@ -478,10 +501,10 @@ int main(int argc, char ** argv) {
     ggml_tensor * input = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, k, 1);
     ggml_tensor * attention_norm = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, k);
     ggml_tensor * ffn_norm = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, k);
-    ggml_tensor * wq = ggml_new_tensor_2d(ctx, weight_type, k, n_q);
-    ggml_tensor * wk = ggml_new_tensor_2d(ctx, weight_type, k, n_kv_projection);
-    ggml_tensor * wv = ggml_new_tensor_2d(ctx, weight_type, k, n_kv_projection);
-    ggml_tensor * wo = ggml_new_tensor_2d(ctx, weight_type, n_q, k);
+    ggml_tensor * wq = ggml_new_tensor_2d(ctx, q_type, k, n_q);
+    ggml_tensor * wk = ggml_new_tensor_2d(ctx, k_type, k, n_kv_projection);
+    ggml_tensor * wv = ggml_new_tensor_2d(ctx, v_type, k, n_kv_projection);
+    ggml_tensor * wo = ggml_new_tensor_2d(ctx, o_type, n_q, k);
     ggml_tensor * key_cache = ggml_new_tensor_3d(
             ctx, GGML_TYPE_F16, head_dimension, n_kv, n_kv_heads);
     ggml_tensor * value_cache = ggml_new_tensor_3d(
@@ -512,19 +535,24 @@ int main(int argc, char ** argv) {
                     0.0f));
     ggml_tensor * ffn_input =
             ggml_mul(ctx, ggml_rms_norm(ctx, residual, 1e-6f), ffn_norm);
+    ggml_tensor * ffn_bench_input = mode == "ffn"
+            ? ggml_new_tensor_2d(ctx, GGML_TYPE_F32, k, batch) : nullptr;
+    ggml_tensor * ffn_source = ffn_bench_input != nullptr
+            ? ffn_bench_input : ffn_input;
 
     ggml_tensor * full_gate =
-            ggml_new_tensor_2d(ctx, weight_type, k, n_ff);
+            ggml_new_tensor_2d(ctx, gate_type, k, n_ff);
     ggml_tensor * full_up =
-            ggml_new_tensor_2d(ctx, weight_type, k, n_ff);
+            ggml_new_tensor_2d(ctx, up_type, k, n_ff);
     ggml_tensor * full_down =
-            ggml_new_tensor_2d(ctx, weight_type, n_ff, k);
-    ggml_tensor * full_gate_output = ggml_mul_mat(ctx, full_gate, ffn_input);
-    ggml_tensor * full_up_output = ggml_mul_mat(ctx, full_up, ffn_input);
+            ggml_new_tensor_2d(ctx, down_type, n_ff, k);
+    ggml_tensor * full_gate_output = ggml_mul_mat(ctx, full_gate, ffn_source);
+    ggml_tensor * full_up_output = ggml_mul_mat(ctx, full_up, ffn_source);
     ggml_tensor * full_silu = ggml_silu(ctx, full_gate_output);
     ggml_tensor * full_activation = ggml_mul(ctx, full_silu, full_up_output);
     ggml_tensor * full_down_output = ggml_mul_mat(ctx, full_down, full_activation);
-    ggml_tensor * full_output = ggml_add(ctx, residual, full_down_output);
+    ggml_tensor * full_output = mode == "ffn"
+            ? full_down_output : ggml_add(ctx, residual, full_down_output);
 
     ggml_tensor * gpu_gate = nullptr;
     ggml_tensor * gpu_up = nullptr;
@@ -546,9 +574,9 @@ int main(int argc, char ** argv) {
     ggml_tensor * returned_phone_residual = nullptr;
     ggml_tensor * combined_split_output = nullptr;
     if (phone_columns > 0) {
-        gpu_gate = ggml_new_tensor_2d(ctx, weight_type, k, gpu_columns);
-        gpu_up = ggml_new_tensor_2d(ctx, weight_type, k, gpu_columns);
-        gpu_down = ggml_new_tensor_2d(ctx, weight_type, gpu_columns, k);
+        gpu_gate = ggml_new_tensor_2d(ctx, gate_type, k, gpu_columns);
+        gpu_up = ggml_new_tensor_2d(ctx, up_type, k, gpu_columns);
+        gpu_down = ggml_new_tensor_2d(ctx, down_type, gpu_columns, k);
         gpu_gate_output = ggml_mul_mat(ctx, gpu_gate, ffn_input);
         gpu_up_output = ggml_mul_mat(ctx, gpu_up, ffn_input);
         gpu_silu = ggml_silu(ctx, gpu_gate_output);
@@ -556,9 +584,9 @@ int main(int argc, char ** argv) {
         gpu_down_output = ggml_mul_mat(ctx, gpu_down, gpu_activation);
         gpu_output = ggml_add(ctx, residual, gpu_down_output);
 
-        oracle_gate = ggml_new_tensor_2d(ctx, weight_type, k, phone_columns);
-        oracle_up = ggml_new_tensor_2d(ctx, weight_type, k, phone_columns);
-        oracle_down = ggml_new_tensor_2d(ctx, weight_type, phone_columns, k);
+        oracle_gate = ggml_new_tensor_2d(ctx, gate_type, k, phone_columns);
+        oracle_up = ggml_new_tensor_2d(ctx, up_type, k, phone_columns);
+        oracle_down = ggml_new_tensor_2d(ctx, down_type, phone_columns, k);
         oracle_gate_output = ggml_mul_mat(ctx, oracle_gate, ffn_input);
         oracle_up_output = ggml_mul_mat(ctx, oracle_up, ffn_input);
         oracle_silu = ggml_silu(ctx, oracle_gate_output);
@@ -578,25 +606,25 @@ int main(int argc, char ** argv) {
 
     fprintf(stderr, "[causal-host] initializing deterministic weights\n");
     uint64_t phone_weight_hash = S41_HASH64_OFFSET;
-    if (!initialize_weight(wq, weight_type, S41_WEIGHT_Q, 0, 0) ||
-        !initialize_weight(wk, weight_type, S41_WEIGHT_K, 0, 0) ||
-        !initialize_weight(wv, weight_type, S41_WEIGHT_V, 0, 0) ||
-        !initialize_weight(wo, weight_type, S41_WEIGHT_O, 0, 0) ||
-        !initialize_weight(full_gate, weight_type, S41_WEIGHT_GATE, 0, 0) ||
-        !initialize_weight(full_up, weight_type, S41_WEIGHT_UP, 0, 0) ||
-        !initialize_weight(full_down, weight_type, S41_WEIGHT_DOWN, 0, 0) ||
+    if (!initialize_weight(wq, q_type, S41_WEIGHT_Q, 0, 0) ||
+        !initialize_weight(wk, k_type, S41_WEIGHT_K, 0, 0) ||
+        !initialize_weight(wv, v_type, S41_WEIGHT_V, 0, 0) ||
+        !initialize_weight(wo, o_type, S41_WEIGHT_O, 0, 0) ||
+        !initialize_weight(full_gate, gate_type, S41_WEIGHT_GATE, 0, 0) ||
+        !initialize_weight(full_up, up_type, S41_WEIGHT_UP, 0, 0) ||
+        !initialize_weight(full_down, down_type, S41_WEIGHT_DOWN, 0, 0) ||
         (phone_columns > 0 &&
-         (!initialize_weight(gpu_gate, weight_type, S41_WEIGHT_GATE, 0, 0) ||
-          !initialize_weight(gpu_up, weight_type, S41_WEIGHT_UP, 0, 0) ||
-          !initialize_weight(gpu_down, weight_type, S41_WEIGHT_DOWN, 0, 0) ||
+         (!initialize_weight(gpu_gate, gate_type, S41_WEIGHT_GATE, 0, 0) ||
+          !initialize_weight(gpu_up, up_type, S41_WEIGHT_UP, 0, 0) ||
+          !initialize_weight(gpu_down, down_type, S41_WEIGHT_DOWN, 0, 0) ||
           !initialize_weight(
-                  oracle_gate, weight_type, S41_WEIGHT_GATE,
+                  oracle_gate, gate_type, S41_WEIGHT_GATE,
                   (uint32_t) gpu_columns, 0, &phone_weight_hash) ||
           !initialize_weight(
-                  oracle_up, weight_type, S41_WEIGHT_UP,
+                  oracle_up, up_type, S41_WEIGHT_UP,
                   (uint32_t) gpu_columns, 0, &phone_weight_hash) ||
           !initialize_weight(
-                  oracle_down, weight_type, S41_WEIGHT_DOWN,
+                  oracle_down, down_type, S41_WEIGHT_DOWN,
                   0, (uint32_t) gpu_columns, &phone_weight_hash)))) {
         return 1;
     }
@@ -618,6 +646,15 @@ int main(int argc, char ** argv) {
     ggml_backend_tensor_set(key_cache, key_data.data(), 0, key_data.size() * sizeof(uint16_t));
     ggml_backend_tensor_set(
             value_cache, value_data.data(), 0, value_data.size() * sizeof(uint16_t));
+    if (ffn_bench_input != nullptr) {
+        std::vector<float> ffn_bench_data((size_t) k * (size_t) batch);
+        for (size_t i = 0; i < ffn_bench_data.size(); ++i) {
+            ffn_bench_data[i] = s41_activation_value((uint32_t) i + 101);
+        }
+        ggml_backend_tensor_set(
+                ffn_bench_input, ffn_bench_data.data(), 0,
+                ffn_bench_data.size() * sizeof(float));
+    }
     auto set_input_sample = [&](uint32_t sample) {
         const uint32_t shift = 17 * (sample + 1);
         for (uint32_t i = 0; i < (uint32_t) k; ++i) {
@@ -655,9 +692,15 @@ int main(int argc, char ** argv) {
     ggml_cgraph * phase_a_graph = ggml_new_graph_custom(ctx, 128, false);
     ggml_build_forward_expand(phase_a_graph, ffn_input);
     ggml_cgraph * full_phase_b_graph = ggml_new_graph_custom(ctx, 16, false);
-    add_nodes(full_phase_b_graph, {
-            full_gate_output, full_up_output, full_silu,
-            full_activation, full_down_output, full_output});
+    if (mode == "ffn") {
+        add_nodes(full_phase_b_graph, {
+                full_gate_output, full_up_output, full_silu,
+                full_activation, full_down_output});
+    } else {
+        add_nodes(full_phase_b_graph, {
+                full_gate_output, full_up_output, full_silu,
+                full_activation, full_down_output, full_output});
+    }
     ggml_cgraph * split_phase_b_graph = nullptr;
     ggml_cgraph * oracle_phone_graph = nullptr;
     ggml_cgraph * recursive_split_graph = nullptr;
@@ -692,9 +735,9 @@ int main(int argc, char ** argv) {
     }
 
     fprintf(stderr,
-            "[causal-host] shape=%s n_kv=%lld type=%s phone_columns=%lld "
-            "phone_io=%s nodes(monolithic=%d phase_a=%d)\n",
-            shape.c_str(), (long long) n_kv, ggml_type_name(weight_type),
+            "[causal-host] shape=%s batch=%lld n_kv=%lld type=%s "
+            "phone_columns=%lld phone_io=%s nodes(monolithic=%d phase_a=%d)\n",
+            shape.c_str(), (long long) batch, (long long) n_kv, weight_label,
             (long long) phone_columns, phone_f16_io ? "f16" : "f32",
             ggml_graph_n_nodes(monolithic_graph),
             ggml_graph_n_nodes(phase_a_graph));
@@ -906,6 +949,39 @@ int main(int argc, char ** argv) {
         ggml_backend_free(backend);
         ggml_quantize_free();
     };
+
+    if (mode == "ffn") {
+        std::vector<double> times;
+        times.reserve((size_t) iterations);
+        for (int i = 0; i < 10; ++i) {
+            if (!compute(full_phase_b_graph)) {
+                cleanup();
+                return 3;
+            }
+        }
+        printf("ENERGY_WINDOW_START unix_ns=%lld mode=%s n=%d\n",
+                (long long) unix_time_ns(), mode.c_str(), iterations);
+        fflush(stdout);
+        for (int i = 0; i < iterations; ++i) {
+            const auto started = steady_clock::now();
+            if (!compute(full_phase_b_graph)) {
+                cleanup();
+                return 3;
+            }
+            times.push_back(elapsed_ms(started));
+        }
+        printf("ENERGY_WINDOW_END unix_ns=%lld mode=%s n=%d\n",
+                (long long) unix_time_ns(), mode.c_str(), iterations);
+        printf("RESULT host_backend=%s cache=%s cache_flush_mib=%zu "
+               "control=ffn_%s shape=%s batch=%lld n=%d "
+               "median_ms=%.6f p90_ms=%.6f\n",
+                host_is_cpu ? "CPU" : "GPU",
+                cache_flush.empty() ? "warm" : "cold", cache_flush_mib,
+                host_tag, shape.c_str(), (long long) batch, iterations,
+                percentile(times, 0.5), percentile(times, 0.9));
+        cleanup();
+        return 0;
+    }
 
     if (mode == "monolithic" || mode == "two_phase") {
         std::vector<double> times;

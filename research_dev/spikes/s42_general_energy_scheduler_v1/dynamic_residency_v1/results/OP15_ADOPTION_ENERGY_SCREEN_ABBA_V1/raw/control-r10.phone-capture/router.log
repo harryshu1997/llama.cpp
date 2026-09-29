@@ -1,0 +1,4 @@
+[resident-router] ready targets=2 generation=0
+RESIDENTARM {"status":"WARM","target_count":2,"layer_mask":"0000000000000fff","n_embd":5120,"columns":17408,"weight_hash":"e0d94b7e495654ad"}
+[resident-router] session complete sessions=1 requests=1344
+RESIDENTROUTER {"status":"ok","sessions":1,"requests":1344}

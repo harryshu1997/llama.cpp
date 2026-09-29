@@ -1,0 +1,85 @@
+{
+  "admission": "mechanics",
+  "bubble": {
+    "guard_us": 30000,
+    "protected_ready_lower_us": 450000,
+    "runtime_verified": true
+  },
+  "candidate": {
+    "accounting_scope": "qwen-shape-cohort-plus-gemma-prefix-stage",
+    "avoided_energy_uj": {
+      "lower": 9000000,
+      "mean": 10000000,
+      "measured": false,
+      "sample_count": 0,
+      "upper": 11000000
+    },
+    "backfill_energy_uj": {
+      "lower": 500000,
+      "mean": 1000000,
+      "measured": false,
+      "sample_count": 0,
+      "upper": 2000000
+    },
+    "decode_service_latency_us": {
+      "lower": 1000,
+      "mean": 20000,
+      "measured": false,
+      "sample_count": 0,
+      "upper": 50000
+    },
+    "energy_boundary_id": "cpu-package+gpu-board+whole-phone",
+    "minimum_energy_saving_ppm": 50000,
+    "prefill_chunk_rows": 8,
+    "prefill_service_latency_us": {
+      "lower": 205549,
+      "mean": 205549,
+      "measured": true,
+      "sample_count": 1,
+      "upper": 350000
+    },
+    "restore_latency_us": {
+      "lower": 500,
+      "mean": 1000,
+      "measured": false,
+      "sample_count": 0,
+      "upper": 2000
+    },
+    "workspace_bytes": 1
+  },
+  "evidence_ids": [
+    "r15-gemma-m8-service-205549us-v1",
+    "r32-qwen-macro-window-min-493869us-v1",
+    "gemma-prefix-stage-exact-gguf-v1",
+    "op15-three-sessions-one-htp-compute-lease-v1",
+    "protected-done-phone-tail-fence-v1"
+  ],
+  "fenced_resource_ids": [
+    "op15-htp"
+  ],
+  "memory": {
+    "free_bytes": 1,
+    "gpu_uuid": "GPU-runtime-placeholder",
+    "reserve_bytes": 536870912,
+    "total_bytes": 1
+  },
+  "model": {
+    "file_type": 1,
+    "layer_end": 1,
+    "layer_start": 0,
+    "n_embd": 3840,
+    "n_layer": 48,
+    "resident_bytes": 1,
+    "sha256": "ed76f2183d2d1d65091986033023e6c78d27f6276c1b0c5826cc92acf73538cf",
+    "stage_weight_sha256": "runtime-placeholder"
+  },
+  "producer_resource_ids": [
+    "cpu"
+  ],
+  "protected_resource_ids": [
+    "op15-htp"
+  ],
+  "profile_id": "fp16-burstgpt-gemma-prefix-m8-staged-mechanics-v1",
+  "schema": "s42-fp16-burstgpt-gpu-stage-wavefront-profile-v1",
+  "valid_for_us": 7200000000
+}

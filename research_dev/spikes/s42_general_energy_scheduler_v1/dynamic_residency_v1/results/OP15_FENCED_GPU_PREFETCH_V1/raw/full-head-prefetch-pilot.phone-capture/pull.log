@@ -1,0 +1,5 @@
+/data/local/tmp/s41-opoffload-dmabuf-v1/dynamic-prefetch-full-head-pilot-op15-r22/samples.tsv: 1 file pulled, 0 skipped. 0.4 MB/s (18299 bytes in 0.041s)
+/data/local/tmp/s41-opoffload-dmabuf-v1/dynamic-prefetch-full-head-pilot-op15-r22/session.log: 1 file pulled, 0 skipped. 0.4 MB/s (132 bytes in 0.000s)
+/data/local/tmp/s41-opoffload-dmabuf-v1/dynamic-prefetch-full-head-pilot-op15-r22/resident-workers.log: 1 file pulled, 0 skipped. 11.7 MB/s (3720 bytes in 0.000s)
+/data/local/tmp/s41-opoffload-dmabuf-v1/dynamic-prefetch-full-head-pilot-op15-r22/router.log: 1 file pulled, 0 skipped. 1.0 MB/s (309 bytes in 0.000s)
+/data/local/tmp/s41-opoffload-dmabuf-v1/dynamic-prefetch-full-head-pilot-op15-r22/session-launch.log: 1 file pulled, 0 skipped.

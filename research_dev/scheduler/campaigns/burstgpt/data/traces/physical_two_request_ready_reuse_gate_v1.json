@@ -1,0 +1,14 @@
+{
+  "arrivals": [
+    {
+      "combined_request_index": 43,
+      "replay_arrival_us": 1000000
+    },
+    {
+      "combined_request_index": 67,
+      "replay_arrival_us": 351000000
+    }
+  ],
+  "schema": "research-scheduler-burstgpt-replay-v1",
+  "trace_name": "physical_two_request_ready_reuse_gate_v1"
+}

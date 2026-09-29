@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from types import MappingProxyType
-from typing import Mapping, Sequence
+from typing import Mapping, NamedTuple, Sequence
 
 from .dynamic_residency import DynamicResidencySnapshot
 from .types import MetricEstimate, canonical_sha256
@@ -613,16 +613,32 @@ def _idle(
     )
 
 
-def select_gpu_backfill(
+class _FeasibleBackfill(NamedTuple):
+    negative_saving_lower: int
+    restore_finish_upper_us: int
+    candidate_id: str
+    candidate: GpuBackfillCandidate
+    start_us: int
+    work_finish_upper_us: int
+    slack: int
+    saving_ppm: int
+
+
+class _FeasibleWavefront(NamedTuple):
+    score: tuple[int, int, int, str]
+    chunk: GpuReadyChunk
+    decision: GpuBackfillDecision
+    bubble_usable_us: int
+    work_coverage_ppm: int
+    envelope_coverage_ppm: int
+
+
+def _validate_backfill_inputs(
     snapshot: DynamicResidencySnapshot,
     bubble: GpuBubbleWindow,
-    candidates: Sequence[GpuBackfillCandidate],
-    *,
     now_us: int,
-    resource_ready_us: int | Mapping[str, int | None],
-    minimum_energy_saving_ppm: int = 50_000,
-    require_measured: bool = True,
-) -> GpuBackfillDecision:
+    minimum_energy_saving_ppm: int,
+) -> None:
     if not isinstance(snapshot, DynamicResidencySnapshot):
         raise GpuBackfillError("GPU backfill residency snapshot is invalid")
     if not isinstance(bubble, GpuBubbleWindow):
@@ -658,17 +674,26 @@ def select_gpu_backfill(
     ):
         raise GpuBackfillError("GPU bubble residency snapshot mismatch")
 
-    ready_by_candidate: Mapping[str, int | None] | None = None
-    if isinstance(resource_ready_us, Mapping):
-        ready_by_candidate = resource_ready_us
-        for candidate_id, ready_us in ready_by_candidate.items():
-            _text("GPU ready candidate_id", candidate_id)
-            if ready_us is not None:
-                _integer("GPU backfill resource_ready_us", ready_us)
-    else:
-        _integer("GPU backfill resource_ready_us", resource_ready_us)
 
-    rows = tuple(candidates)
+def _ready_by_candidate(
+    resource_ready_us: int | Mapping[str, int | None],
+    *,
+    id_name: str,
+    ready_name: str,
+) -> Mapping[str, int | None] | None:
+    if isinstance(resource_ready_us, Mapping):
+        for candidate_id, ready_us in resource_ready_us.items():
+            _text(id_name, candidate_id)
+            if ready_us is not None:
+                _integer(ready_name, ready_us)
+        return resource_ready_us
+    _integer(ready_name, resource_ready_us)
+    return None
+
+
+def _validate_backfill_candidates(
+    rows: tuple[GpuBackfillCandidate, ...],
+) -> None:
     if any(not isinstance(row, GpuBackfillCandidate) for row in rows):
         raise GpuBackfillError("GPU backfill candidate is invalid")
     candidate_ids = [row.candidate_id for row in rows]
@@ -682,141 +707,122 @@ def select_gpu_backfill(
             "GPU fillers use different energy boundaries or scopes"
         )
 
-    if require_measured and not bubble.runtime_verified:
-        return _idle(
-            bubble,
-            [
-                (candidate.candidate_id, "BUBBLE_UNVERIFIED")
-                for candidate in rows
-            ],
-        )
 
-    rejected: list[tuple[str, str]] = []
-    feasible: list[
-        tuple[int, int, str, GpuBackfillCandidate, int, int, int, int]
-    ] = []
-    for candidate in rows:
-        if candidate.gpu_resource_id != bubble.gpu_resource_id:
-            rejected.append((candidate.candidate_id, "GPU_RESOURCE_MISMATCH"))
-            continue
-        placements = []
-        missing = False
-        for placement_id in candidate.required_placement_ids:
-            placement = snapshot.placements.get(placement_id)
-            if placement is None:
-                missing = True
-                break
-            placements.append(placement)
-        if missing:
-            rejected.append((candidate.candidate_id, "RESIDENCY_MISSING"))
-            continue
-        if any(
-            placement.spec.model_id != candidate.model_id
-            for placement in placements
-        ):
-            rejected.append((candidate.candidate_id, "RESIDENCY_MODEL_MISMATCH"))
-            continue
-        if any(
-            placement.spec.resource_id != candidate.workspace_resource_id
-            for placement in placements
-        ):
-            rejected.append(
-                (candidate.candidate_id, "RESIDENCY_RESOURCE_MISMATCH")
-            )
-            continue
-        if any(
-            candidate.gpu_resource_id
-                not in placement.spec.execution_resource_ids
-            for placement in placements
-        ):
-            rejected.append(
-                (candidate.candidate_id, "RESIDENCY_EXECUTION_MISMATCH")
-            )
-            continue
-        workspace = snapshot.memory.get(candidate.workspace_resource_id)
-        if workspace is None:
-            rejected.append((candidate.candidate_id, "WORKSPACE_RESOURCE_MISSING"))
-            continue
-        if candidate.workspace_bytes > workspace.available_bytes:
-            rejected.append((candidate.candidate_id, "WORKSPACE_MEMORY"))
-            continue
-        candidate_ready_us = (
-            ready_by_candidate.get(candidate.candidate_id)
-            if ready_by_candidate is not None
-            else resource_ready_us
-        )
-        if candidate_ready_us is None:
-            rejected.append((candidate.candidate_id, "RESOURCE_NOT_READY"))
-            continue
-        metrics = (
-            candidate.service_latency_us,
-            candidate.restore_latency_us,
-            candidate.avoided_energy_uj,
-            candidate.backfill_energy_uj,
-        )
-        if require_measured and not all(
-            row.measured and row.sample_count > 0 for row in metrics
-        ):
-            rejected.append((candidate.candidate_id, "MEASUREMENT_REQUIRED"))
-            continue
-        if candidate.avoided_energy_uj.lower is None:
-            rejected.append(
-                (candidate.candidate_id, "AVOIDED_ENERGY_LCB_MISSING")
-            )
-            continue
-        start_us = max(now_us, candidate_ready_us)
-        work_finish_upper_us = start_us + candidate.service_latency_us.upper
-        restore_finish_upper_us = (
-            work_finish_upper_us + candidate.restore_latency_us.upper
-        )
-        if work_finish_upper_us > candidate.deadline_us:
-            rejected.append((candidate.candidate_id, "FILLER_DEADLINE"))
-            continue
-        safe_end_us = min(
-            snapshot.valid_until_us,
-            bubble.valid_until_us,
-            bubble.protected_ready_lower_us,
-        )
-        if restore_finish_upper_us + bubble.guard_us > safe_end_us:
-            rejected.append((candidate.candidate_id, "BUBBLE_TOO_SHORT"))
-            continue
-        saving_lower = (
-            candidate.avoided_energy_uj.lower
-            - candidate.backfill_energy_uj.upper
-        )
-        if saving_lower <= 0:
-            rejected.append((candidate.candidate_id, "ENERGY_REGRESSION"))
-            continue
-        saving_ppm = (
-            saving_lower * 1_000_000 // candidate.avoided_energy_uj.lower
-        )
-        if saving_ppm < minimum_energy_saving_ppm:
-            rejected.append((candidate.candidate_id, "ENERGY_MARGIN"))
-            continue
-        slack = safe_end_us - restore_finish_upper_us - bubble.guard_us
-        feasible.append((
-            -saving_lower,
-            restore_finish_upper_us,
-            candidate.candidate_id,
-            candidate,
-            start_us,
-            work_finish_upper_us,
-            slack,
-            saving_ppm,
-        ))
+def _residency_rejection(
+    candidate: GpuBackfillCandidate,
+    snapshot: DynamicResidencySnapshot,
+    bubble: GpuBubbleWindow,
+) -> str | None:
+    if candidate.gpu_resource_id != bubble.gpu_resource_id:
+        return "GPU_RESOURCE_MISMATCH"
+    placements = []
+    for placement_id in candidate.required_placement_ids:
+        placement = snapshot.placements.get(placement_id)
+        if placement is None:
+            return "RESIDENCY_MISSING"
+        placements.append(placement)
+    if any(
+        placement.spec.model_id != candidate.model_id
+        for placement in placements
+    ):
+        return "RESIDENCY_MODEL_MISMATCH"
+    if any(
+        placement.spec.resource_id != candidate.workspace_resource_id
+        for placement in placements
+    ):
+        return "RESIDENCY_RESOURCE_MISMATCH"
+    if any(
+        candidate.gpu_resource_id
+            not in placement.spec.execution_resource_ids
+        for placement in placements
+    ):
+        return "RESIDENCY_EXECUTION_MISMATCH"
+    workspace = snapshot.memory.get(candidate.workspace_resource_id)
+    if workspace is None:
+        return "WORKSPACE_RESOURCE_MISSING"
+    if candidate.workspace_bytes > workspace.available_bytes:
+        return "WORKSPACE_MEMORY"
+    return None
 
-    if not feasible:
-        return _idle(bubble, rejected)
-    (
-        _,
+
+def _evaluate_backfill_candidate(
+    candidate: GpuBackfillCandidate,
+    snapshot: DynamicResidencySnapshot,
+    bubble: GpuBubbleWindow,
+    *,
+    now_us: int,
+    resource_ready_us: int | Mapping[str, int | None],
+    ready_by_candidate: Mapping[str, int | None] | None,
+    minimum_energy_saving_ppm: int,
+    require_measured: bool,
+) -> str | _FeasibleBackfill:
+    rejection = _residency_rejection(candidate, snapshot, bubble)
+    if rejection is not None:
+        return rejection
+    candidate_ready_us = (
+        ready_by_candidate.get(candidate.candidate_id)
+        if ready_by_candidate is not None
+        else resource_ready_us
+    )
+    if candidate_ready_us is None:
+        return "RESOURCE_NOT_READY"
+    metrics = (
+        candidate.service_latency_us,
+        candidate.restore_latency_us,
+        candidate.avoided_energy_uj,
+        candidate.backfill_energy_uj,
+    )
+    if require_measured and not all(
+        row.measured and row.sample_count > 0 for row in metrics
+    ):
+        return "MEASUREMENT_REQUIRED"
+    if candidate.avoided_energy_uj.lower is None:
+        return "AVOIDED_ENERGY_LCB_MISSING"
+    start_us = max(now_us, candidate_ready_us)
+    work_finish_upper_us = start_us + candidate.service_latency_us.upper
+    restore_finish_upper_us = (
+        work_finish_upper_us + candidate.restore_latency_us.upper
+    )
+    if work_finish_upper_us > candidate.deadline_us:
+        return "FILLER_DEADLINE"
+    safe_end_us = min(
+        snapshot.valid_until_us,
+        bubble.valid_until_us,
+        bubble.protected_ready_lower_us,
+    )
+    if restore_finish_upper_us + bubble.guard_us > safe_end_us:
+        return "BUBBLE_TOO_SHORT"
+    saving_lower = (
+        candidate.avoided_energy_uj.lower
+        - candidate.backfill_energy_uj.upper
+    )
+    if saving_lower <= 0:
+        return "ENERGY_REGRESSION"
+    saving_ppm = (
+        saving_lower * 1_000_000 // candidate.avoided_energy_uj.lower
+    )
+    if saving_ppm < minimum_energy_saving_ppm:
+        return "ENERGY_MARGIN"
+    slack = safe_end_us - restore_finish_upper_us - bubble.guard_us
+    return _FeasibleBackfill(
+        -saving_lower,
         restore_finish_upper_us,
-        _,
-        selected,
+        candidate.candidate_id,
+        candidate,
         start_us,
         work_finish_upper_us,
         slack,
         saving_ppm,
-    ) = min(feasible)
+    )
+
+
+def _selected_backfill(
+    snapshot: DynamicResidencySnapshot,
+    bubble: GpuBubbleWindow,
+    row: _FeasibleBackfill,
+    rejected: list[tuple[str, str]],
+) -> GpuBackfillDecision:
+    selected = row.candidate
     saving_lower = (
         selected.avoided_energy_uj.lower
         - selected.backfill_energy_uj.upper
@@ -831,28 +837,77 @@ def select_gpu_backfill(
         source_epoch_key=snapshot.epoch_key,
         protected_owner_id=bubble.protected_owner_id,
         protected_ready_lower_us=bubble.protected_ready_lower_us,
-        start_us=start_us,
-        work_finish_upper_us=work_finish_upper_us,
-        restore_finish_upper_us=restore_finish_upper_us,
-        slack_after_guard_us=slack,
+        start_us=row.start_us,
+        work_finish_upper_us=row.work_finish_upper_us,
+        restore_finish_upper_us=row.restore_finish_upper_us,
+        slack_after_guard_us=row.slack,
         energy_saving_lower_uj=saving_lower,
-        energy_saving_ppm=saving_ppm,
+        energy_saving_ppm=row.saving_ppm,
         required_placement_ids=selected.required_placement_ids,
         rejected=tuple(rejected),
     )
 
 
-def select_gpu_wavefront_backfill(
+def select_gpu_backfill(
     snapshot: DynamicResidencySnapshot,
     bubble: GpuBubbleWindow,
-    wavefront: GpuWavefrontSnapshot,
+    candidates: Sequence[GpuBackfillCandidate],
     *,
     now_us: int,
     resource_ready_us: int | Mapping[str, int | None],
     minimum_energy_saving_ppm: int = 50_000,
     require_measured: bool = True,
-    objective: str = "coverage_then_energy",
-) -> GpuWavefrontDecision:
+) -> GpuBackfillDecision:
+    _validate_backfill_inputs(
+        snapshot, bubble, now_us, minimum_energy_saving_ppm
+    )
+    ready_by_candidate = _ready_by_candidate(
+        resource_ready_us,
+        id_name="GPU ready candidate_id",
+        ready_name="GPU backfill resource_ready_us",
+    )
+    rows = tuple(candidates)
+    _validate_backfill_candidates(rows)
+
+    if require_measured and not bubble.runtime_verified:
+        return _idle(
+            bubble,
+            [
+                (candidate.candidate_id, "BUBBLE_UNVERIFIED")
+                for candidate in rows
+            ],
+        )
+
+    rejected: list[tuple[str, str]] = []
+    feasible: list[_FeasibleBackfill] = []
+    for candidate in rows:
+        outcome = _evaluate_backfill_candidate(
+            candidate,
+            snapshot,
+            bubble,
+            now_us=now_us,
+            resource_ready_us=resource_ready_us,
+            ready_by_candidate=ready_by_candidate,
+            minimum_energy_saving_ppm=minimum_energy_saving_ppm,
+            require_measured=require_measured,
+        )
+        if isinstance(outcome, str):
+            rejected.append((candidate.candidate_id, outcome))
+            continue
+        feasible.append(outcome)
+
+    if not feasible:
+        return _idle(bubble, rejected)
+    return _selected_backfill(snapshot, bubble, min(feasible), rejected)
+
+
+def _validate_wavefront_inputs(
+    snapshot: DynamicResidencySnapshot,
+    bubble: GpuBubbleWindow,
+    wavefront: GpuWavefrontSnapshot,
+    now_us: int,
+    objective: str,
+) -> None:
     if not isinstance(snapshot, DynamicResidencySnapshot):
         raise GpuBackfillError("GPU wavefront residency snapshot is invalid")
     if not isinstance(bubble, GpuBubbleWindow):
@@ -881,177 +936,171 @@ def select_gpu_wavefront_backfill(
     ):
         raise GpuBackfillError("GPU wavefront residency snapshot mismatch")
 
-    ready_by_candidate: Mapping[str, int | None] | None = None
-    if isinstance(resource_ready_us, Mapping):
-        ready_by_candidate = resource_ready_us
-        for candidate_id, ready_us in ready_by_candidate.items():
-            _text("GPU wavefront ready candidate_id", candidate_id)
-            if ready_us is not None:
-                _integer("GPU wavefront resource_ready_us", ready_us)
-    else:
-        _integer("GPU wavefront resource_ready_us", resource_ready_us)
 
-    rejected: list[tuple[str, str]] = []
-    feasible: list[
-        tuple[
-            tuple[int, int, int, str],
-            GpuReadyChunk,
-            GpuBackfillDecision,
-            int,
-            int,
-            int,
-        ]
-    ] = []
-    safe_end_us = min(
-        snapshot.valid_until_us,
-        bubble.valid_until_us,
-        bubble.protected_ready_lower_us,
+def _chunk_admission_rejection(
+    chunk: GpuReadyChunk,
+    wavefront: GpuWavefrontSnapshot,
+    bubble: GpuBubbleWindow,
+    *,
+    now_us: int,
+    completed_receipts: set[str],
+    require_measured: bool,
+) -> str | None:
+    candidate = chunk.candidate
+    if candidate.model_id != chunk.model_id:
+        return "CHUNK_MODEL_MISMATCH"
+    if candidate.model_id == bubble.protected_model_id:
+        return "PROTECTED_MODEL_CHUNK"
+    expected_index = wavefront.next_sequence_by_pipeline[
+        chunk.pipeline_id
+    ]
+    if chunk.sequence_index != expected_index:
+        return "PIPELINE_NOT_HEAD"
+    predecessor = chunk.predecessor_output_receipt_id
+    if predecessor is not None and predecessor not in completed_receipts:
+        return "PREDECESSOR_NOT_COMPLETE"
+    if now_us < chunk.ready_at_us:
+        return "INPUT_NOT_READY"
+    if now_us >= chunk.valid_until_us:
+        return "INPUT_EXPIRED"
+    if require_measured and not chunk.runtime_verified:
+        return "READY_CHUNK_UNVERIFIED"
+    return None
+
+
+def _wavefront_score(
+    objective: str,
+    chunk: GpuReadyChunk,
+    decision: GpuBackfillDecision,
+    work_coverage_ppm: int,
+) -> tuple[int, int, int, str]:
+    candidate = chunk.candidate
+    if objective == "coverage_then_energy":
+        return (
+            -work_coverage_ppm,
+            -decision.energy_saving_lower_uj,
+            candidate.deadline_us,
+            chunk.chunk_id,
+        )
+    return (
+        -decision.energy_saving_lower_uj,
+        -work_coverage_ppm,
+        candidate.deadline_us,
+        chunk.chunk_id,
     )
-    completed_receipts = set(wavefront.completed_output_receipt_ids)
-    for chunk in wavefront.ready_chunks:
-        candidate = chunk.candidate
-        if candidate.model_id != chunk.model_id:
-            rejected.append((chunk.chunk_id, "CHUNK_MODEL_MISMATCH"))
-            continue
-        if candidate.model_id == bubble.protected_model_id:
-            rejected.append((chunk.chunk_id, "PROTECTED_MODEL_CHUNK"))
-            continue
-        expected_index = wavefront.next_sequence_by_pipeline[
-            chunk.pipeline_id
-        ]
-        if chunk.sequence_index != expected_index:
-            rejected.append((chunk.chunk_id, "PIPELINE_NOT_HEAD"))
-            continue
-        predecessor = chunk.predecessor_output_receipt_id
-        if predecessor is not None and predecessor not in completed_receipts:
-            rejected.append((chunk.chunk_id, "PREDECESSOR_NOT_COMPLETE"))
-            continue
-        if now_us < chunk.ready_at_us:
-            rejected.append((chunk.chunk_id, "INPUT_NOT_READY"))
-            continue
-        if now_us >= chunk.valid_until_us:
-            rejected.append((chunk.chunk_id, "INPUT_EXPIRED"))
-            continue
-        if require_measured and not chunk.runtime_verified:
-            rejected.append((chunk.chunk_id, "READY_CHUNK_UNVERIFIED"))
-            continue
 
-        candidate_ready_us: int | Mapping[str, int | None]
-        if ready_by_candidate is None:
-            candidate_ready_us = resource_ready_us
-        else:
-            candidate_ready_us = {
-                candidate.candidate_id: ready_by_candidate.get(
-                    candidate.candidate_id
-                )
-            }
-        decision = select_gpu_backfill(
-            snapshot,
-            bubble,
-            (candidate,),
-            now_us=now_us,
-            resource_ready_us=candidate_ready_us,
-            minimum_energy_saving_ppm=minimum_energy_saving_ppm,
-            require_measured=require_measured,
-        )
-        if decision.candidate_id is None:
-            reason = (
-                decision.rejected[0][1]
-                if decision.rejected
-                else "BACKFILL_REJECTED"
-            )
-            rejected.append((chunk.chunk_id, reason))
-            continue
-        if (
-            decision.work_finish_upper_us is None
-            or decision.start_us is None
-            or decision.restore_finish_upper_us is None
-            or decision.energy_saving_lower_uj is None
-        ):
-            raise GpuBackfillError(
-                "selected GPU wavefront decision is incomplete"
-            )
-        if decision.work_finish_upper_us > chunk.valid_until_us:
-            rejected.append((chunk.chunk_id, "READY_CHUNK_EXPIRES"))
-            continue
-        bubble_usable_us = (
-            safe_end_us - decision.start_us - bubble.guard_us
-        )
-        if bubble_usable_us <= 0:
-            rejected.append((chunk.chunk_id, "BUBBLE_TOO_SHORT"))
-            continue
-        work_coverage_ppm = min(
-            1_000_000,
-            candidate.service_latency_us.upper
-            * 1_000_000
-            // bubble_usable_us,
-        )
-        envelope_coverage_ppm = min(
-            1_000_000,
-            (decision.restore_finish_upper_us - decision.start_us)
-            * 1_000_000
-            // bubble_usable_us,
-        )
-        if objective == "coverage_then_energy":
-            score = (
-                -work_coverage_ppm,
-                -decision.energy_saving_lower_uj,
-                candidate.deadline_us,
-                chunk.chunk_id,
-            )
-        else:
-            score = (
-                -decision.energy_saving_lower_uj,
-                -work_coverage_ppm,
-                candidate.deadline_us,
-                chunk.chunk_id,
-            )
-        feasible.append((
-            score,
-            chunk,
-            decision,
-            bubble_usable_us,
-            work_coverage_ppm,
-            envelope_coverage_ppm,
-        ))
 
-    wavefront_sha256 = canonical_sha256(wavefront.to_json())
-    if not feasible:
-        return GpuWavefrontDecision(
-            backfill=_idle(bubble, rejected),
-            wavefront_id=wavefront.wavefront_id,
-            wavefront_sha256=wavefront_sha256,
-            objective=objective,
-            ready_queue_depth=0,
-            chunk_id=None,
-            pipeline_id=None,
-            sequence_index=None,
-            ready_receipt_id=None,
-            input_buffer_id=None,
-            input_buffer_sha256=None,
-            layer_start=None,
-            layer_end=None,
-            token_count=None,
-            bubble_usable_us=None,
-            gpu_work_coverage_ppm=None,
-            envelope_coverage_ppm=None,
+def _evaluate_wavefront_chunk(
+    chunk: GpuReadyChunk,
+    snapshot: DynamicResidencySnapshot,
+    bubble: GpuBubbleWindow,
+    *,
+    now_us: int,
+    candidate_ready_us: int | Mapping[str, int | None],
+    safe_end_us: int,
+    minimum_energy_saving_ppm: int,
+    require_measured: bool,
+    objective: str,
+) -> str | _FeasibleWavefront:
+    candidate = chunk.candidate
+    decision = select_gpu_backfill(
+        snapshot,
+        bubble,
+        (candidate,),
+        now_us=now_us,
+        resource_ready_us=candidate_ready_us,
+        minimum_energy_saving_ppm=minimum_energy_saving_ppm,
+        require_measured=require_measured,
+    )
+    if decision.candidate_id is None:
+        return (
+            decision.rejected[0][1]
+            if decision.rejected
+            else "BACKFILL_REJECTED"
         )
-
-    (
-        _,
-        selected,
-        selected_decision,
+    if (
+        decision.work_finish_upper_us is None
+        or decision.start_us is None
+        or decision.restore_finish_upper_us is None
+        or decision.energy_saving_lower_uj is None
+    ):
+        raise GpuBackfillError(
+            "selected GPU wavefront decision is incomplete"
+        )
+    if decision.work_finish_upper_us > chunk.valid_until_us:
+        return "READY_CHUNK_EXPIRES"
+    bubble_usable_us = (
+        safe_end_us - decision.start_us - bubble.guard_us
+    )
+    if bubble_usable_us <= 0:
+        return "BUBBLE_TOO_SHORT"
+    work_coverage_ppm = min(
+        1_000_000,
+        candidate.service_latency_us.upper
+        * 1_000_000
+        // bubble_usable_us,
+    )
+    envelope_coverage_ppm = min(
+        1_000_000,
+        (decision.restore_finish_upper_us - decision.start_us)
+        * 1_000_000
+        // bubble_usable_us,
+    )
+    score = _wavefront_score(objective, chunk, decision, work_coverage_ppm)
+    return _FeasibleWavefront(
+        score,
+        chunk,
+        decision,
         bubble_usable_us,
         work_coverage_ppm,
         envelope_coverage_ppm,
-    ) = min(feasible, key=lambda row: row[0])
+    )
+
+
+def _idle_wavefront(
+    bubble: GpuBubbleWindow,
+    wavefront: GpuWavefrontSnapshot,
+    wavefront_sha256: str,
+    objective: str,
+    rejected: list[tuple[str, str]],
+) -> GpuWavefrontDecision:
+    return GpuWavefrontDecision(
+        backfill=_idle(bubble, rejected),
+        wavefront_id=wavefront.wavefront_id,
+        wavefront_sha256=wavefront_sha256,
+        objective=objective,
+        ready_queue_depth=0,
+        chunk_id=None,
+        pipeline_id=None,
+        sequence_index=None,
+        ready_receipt_id=None,
+        input_buffer_id=None,
+        input_buffer_sha256=None,
+        layer_start=None,
+        layer_end=None,
+        token_count=None,
+        bubble_usable_us=None,
+        gpu_work_coverage_ppm=None,
+        envelope_coverage_ppm=None,
+    )
+
+
+def _selected_wavefront(
+    feasible: list[_FeasibleWavefront],
+    wavefront: GpuWavefrontSnapshot,
+    wavefront_sha256: str,
+    objective: str,
+    rejected: list[tuple[str, str]],
+) -> GpuWavefrontDecision:
+    row = min(feasible, key=lambda row: row[0])
+    selected = row.chunk
     rejected.extend(
         (chunk.chunk_id, "LOWER_WAVEFRONT_PRIORITY")
         for _, chunk, _, _, _, _ in feasible
         if chunk.chunk_id != selected.chunk_id
     )
     selected_decision = replace(
-        selected_decision,
+        row.decision,
         rejected=tuple(rejected),
     )
     return GpuWavefrontDecision(
@@ -1069,7 +1118,82 @@ def select_gpu_wavefront_backfill(
         layer_start=selected.layer_start,
         layer_end=selected.layer_end,
         token_count=selected.token_count,
-        bubble_usable_us=bubble_usable_us,
-        gpu_work_coverage_ppm=work_coverage_ppm,
-        envelope_coverage_ppm=envelope_coverage_ppm,
+        bubble_usable_us=row.bubble_usable_us,
+        gpu_work_coverage_ppm=row.work_coverage_ppm,
+        envelope_coverage_ppm=row.envelope_coverage_ppm,
+    )
+
+
+def select_gpu_wavefront_backfill(
+    snapshot: DynamicResidencySnapshot,
+    bubble: GpuBubbleWindow,
+    wavefront: GpuWavefrontSnapshot,
+    *,
+    now_us: int,
+    resource_ready_us: int | Mapping[str, int | None],
+    minimum_energy_saving_ppm: int = 50_000,
+    require_measured: bool = True,
+    objective: str = "coverage_then_energy",
+) -> GpuWavefrontDecision:
+    _validate_wavefront_inputs(snapshot, bubble, wavefront, now_us, objective)
+    ready_by_candidate = _ready_by_candidate(
+        resource_ready_us,
+        id_name="GPU wavefront ready candidate_id",
+        ready_name="GPU wavefront resource_ready_us",
+    )
+
+    rejected: list[tuple[str, str]] = []
+    feasible: list[_FeasibleWavefront] = []
+    safe_end_us = min(
+        snapshot.valid_until_us,
+        bubble.valid_until_us,
+        bubble.protected_ready_lower_us,
+    )
+    completed_receipts = set(wavefront.completed_output_receipt_ids)
+    for chunk in wavefront.ready_chunks:
+        candidate = chunk.candidate
+        rejection = _chunk_admission_rejection(
+            chunk,
+            wavefront,
+            bubble,
+            now_us=now_us,
+            completed_receipts=completed_receipts,
+            require_measured=require_measured,
+        )
+        if rejection is not None:
+            rejected.append((chunk.chunk_id, rejection))
+            continue
+
+        candidate_ready_us: int | Mapping[str, int | None]
+        if ready_by_candidate is None:
+            candidate_ready_us = resource_ready_us
+        else:
+            candidate_ready_us = {
+                candidate.candidate_id: ready_by_candidate.get(
+                    candidate.candidate_id
+                )
+            }
+        outcome = _evaluate_wavefront_chunk(
+            chunk,
+            snapshot,
+            bubble,
+            now_us=now_us,
+            candidate_ready_us=candidate_ready_us,
+            safe_end_us=safe_end_us,
+            minimum_energy_saving_ppm=minimum_energy_saving_ppm,
+            require_measured=require_measured,
+            objective=objective,
+        )
+        if isinstance(outcome, str):
+            rejected.append((chunk.chunk_id, outcome))
+            continue
+        feasible.append(outcome)
+
+    wavefront_sha256 = canonical_sha256(wavefront.to_json())
+    if not feasible:
+        return _idle_wavefront(
+            bubble, wavefront, wavefront_sha256, objective, rejected
+        )
+    return _selected_wavefront(
+        feasible, wavefront, wavefront_sha256, objective, rejected
     )

@@ -50,6 +50,27 @@ struct llama_mmap {
 
     void unmap_fragment(size_t first, size_t last);
 
+    // Advise the kernel to populate the still-mapped pages covering [first, last).
+    // Used when the mapping was created without a whole-file prefetch so that only the
+    // retained tensor ranges are read ahead. No-op where unsupported.
+    void prefetch_fragment(size_t first, size_t last);
+
+    // Bytes of the file that are still mapped (after unmap_fragment calls).
+    size_t mapped_bytes() const;
+
+    // Page residency control for still-mapped byte ranges (S42 dormant host share).
+    // release_fragments removes this process's page-table entries for the [first, last)
+    // ranges (MADV_DONTNEED; ranges are aligned inward, so a page that also holds retained
+    // bytes is never touched). drop_cache also advises away the now-unmapped clean pages
+    // inside the cover ranges; otherwise they remain reclaimable in the file cache.
+    // A later access faults the pages back in from the file. populate_fragments reads the
+    // mapped pages synchronously and throws on population failure. Release returns bytes
+    // advised; populate returns bytes synchronously populated, not a long-lived reservation.
+    size_t release_fragments(const std::vector<std::pair<size_t, size_t>> & ranges,
+                             const std::vector<std::pair<size_t, size_t>> & cache_drop_ranges,
+                             bool drop_cache = true);
+    size_t populate_fragments(const std::vector<std::pair<size_t, size_t>> & ranges);
+
     static const bool SUPPORTED;
 
 private:

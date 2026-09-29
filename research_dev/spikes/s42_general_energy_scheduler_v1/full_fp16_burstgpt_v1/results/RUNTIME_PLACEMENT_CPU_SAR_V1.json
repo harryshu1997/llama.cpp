@@ -1,0 +1,74 @@
+{
+  "captured_at": "2026-08-11T23:20:08-04:00",
+  "cpu_count": 24,
+  "host": "zhihao-Z690-C-ac",
+  "intervals": [
+    {
+      "busy_pct": 9.17,
+      "end": "2026-08-11T21:50:03-04:00",
+      "idle_pct": 90.83,
+      "iowait_pct": 0.88,
+      "start": "2026-08-11T21:40:02-04:00",
+      "system_pct": 0.66,
+      "user_pct": 7.64
+    },
+    {
+      "busy_pct": 10.58,
+      "end": "2026-08-11T22:00:09-04:00",
+      "idle_pct": 89.42,
+      "iowait_pct": 0.05,
+      "start": "2026-08-11T21:50:03-04:00",
+      "system_pct": 0.52,
+      "user_pct": 10.01
+    },
+    {
+      "busy_pct": 21.11,
+      "end": "2026-08-11T22:10:07-04:00",
+      "idle_pct": 78.89,
+      "iowait_pct": 0.07,
+      "start": "2026-08-11T22:00:09-04:00",
+      "system_pct": 0.64,
+      "user_pct": 20.41
+    },
+    {
+      "busy_pct": 17.01,
+      "end": "2026-08-11T22:20:03-04:00",
+      "idle_pct": 82.99,
+      "iowait_pct": 0.24,
+      "start": "2026-08-11T22:10:07-04:00",
+      "system_pct": 0.65,
+      "user_pct": 16.12
+    },
+    {
+      "busy_pct": 17.54,
+      "end": "2026-08-11T22:30:03-04:00",
+      "idle_pct": 82.46,
+      "iowait_pct": 0.06,
+      "start": "2026-08-11T22:20:03-04:00",
+      "system_pct": 0.56,
+      "user_pct": 16.91
+    }
+  ],
+  "notes": [
+    "Each row is the system-wide average over its declared sar interval.",
+    "The first and last intervals extend outside the paid trace.",
+    "The hierarchical runner did not sample proc/stat during this run."
+  ],
+  "sar_command_output_sha256": "f8cd5a4faf78710b1f72c08e66acee20e87dd41ab26a18306d5b551b8a91812f",
+  "schema": "s42-runtime-placement-cpu-sar-v1",
+  "source": {
+    "binary_file": "/var/log/sysstat/sa11",
+    "binary_file_bytes": 825700,
+    "binary_file_mtime": "2026-08-11T23:20:01.409940741-04:00",
+    "binary_file_sha256": "bdc001c5beec743eea2bb139fbadc73749ea38a0a70dfb0531930c44387acf23",
+    "command": "sar -u -f /var/log/sysstat/sa11 -s 21:30:00 -e 22:40:00"
+  },
+  "trace_clock_mapping": {
+    "anchor_monotonic_ns": 1509439925055790,
+    "anchor_wall_ns": 1786504873900487539,
+    "paid_end_local": "2026-08-11T22:27:22.395000-04:00",
+    "paid_end_monotonic_ns": 1506208419568541,
+    "paid_start_local": "2026-08-11T21:42:55.777368-04:00",
+    "paid_start_monotonic_ns": 1503541801936263
+  }
+}

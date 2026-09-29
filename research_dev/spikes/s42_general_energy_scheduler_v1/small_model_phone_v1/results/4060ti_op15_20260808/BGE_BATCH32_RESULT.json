@@ -1,0 +1,75 @@
+{
+  "boundary": {
+    "components": [
+      "desktop-cpu-package",
+      "desktop-gpu-board",
+      "whole-phone-usb-plus-battery"
+    ],
+    "id": "accounted-cpu-package-gpu-board-whole-phone-resident-bge-batch32-v1",
+    "model_load_included": false,
+    "warmup_included": false
+  },
+  "cuda_tail": {
+    "active_duration_s_mean": 0.14090495266666667,
+    "dynamic_energy_j_mean": 313.0149974091876,
+    "dynamic_energy_j_upper_error_ppm": 7706,
+    "sample_count": 3,
+    "tail_duration_s_mean": 21.895652896666668
+  },
+  "geometry": {
+    "batch_size": 32,
+    "parallel_slots": 32,
+    "paid_duration_s": 15.0,
+    "prompt_sha256": "6caa8169e1b731cc87d78086fe0c15b50466cbebc8e62e3f70ac09007276e875",
+    "repetitions_per_route": 3,
+    "tokens_per_embedding": 34
+  },
+  "identity": {
+    "cuda_runtime_sha256": "96c42e418cec19054186b9429c321603cc190bf26a18104e19408117a2a817b0",
+    "cuda_server_sha256": "d8433ed903da695fe8e884fd55f43442cf2417caec4363495da671b23dbda040",
+    "desktop_gpu": "rtx4060ti-gpu-3d43c513",
+    "model_sha256": "f046db1dc724cf4f6f0a0c5917e922823b73eb1d27b8f9a9c2797f7866974804",
+    "phone": "op15-adreno840-3c15au002cl00000",
+    "phone_server_sha256": "3fad5e2f2730d1e240f176010994c49dc4a6ea59fb970708df8d2a85bb0abe1c"
+  },
+  "idle_power_w": {
+    "desktop_cpu_package": 4.241970787252601,
+    "desktop_gpu_board": 8.40175471367481,
+    "fleet": 13.429081790171972,
+    "whole_phone": 0.7853562892445611
+  },
+  "raw_evidence": {
+    "manifest_sha256": "a1297a9b0a537541cbe102f020ac73fbce9f0006c449dcc960a007a721288f51",
+    "relative_root": "models/s42-small-models-v1/results-v4",
+    "tail_result_sha256": "bdb1473224dcbc43ed5b90cc1d69a952436693d6f10737f638aeba53b3aba1c4"
+  },
+  "routes": {
+    "desktop-cuda": {
+      "energy_uj_per_batch32": 2120121,
+      "energy_lower_error_ppm": 5462,
+      "energy_upper_error_ppm": 3221,
+      "latency_us_per_batch32": 20242,
+      "latency_upper_us_per_batch32": 20304,
+      "throughput_embeddings_s_mean": 1580.9048770529807,
+      "throughput_relative_stddev": 0.0028356634883453975
+    },
+    "phone-adreno": {
+      "energy_uj_per_batch32": 4750125,
+      "energy_lower_error_ppm": 2354,
+      "energy_upper_error_ppm": 3556,
+      "latency_us_per_batch32": 274863,
+      "latency_upper_us_per_batch32": 275011,
+      "throughput_embeddings_s_mean": 116.42160843587396,
+      "throughput_relative_stddev": 0.0006087362008408396
+    }
+  },
+  "scheduler_thresholds": {
+    "conservative_energy_margin_ppm": 50000,
+    "max_phone_batch32_groups_cuda_epoch_open": 106,
+    "max_phone_embeddings_cuda_epoch_open": 3392,
+    "mean_crossover_batch32_groups": 119.01692514023324,
+    "mean_crossover_embeddings": 3808.5416044874637
+  },
+  "schema": "s42-bge-batch32-resident-route-result-v1",
+  "status": "PASS"
+}

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Mapping, Sequence
+from typing import Mapping, NamedTuple, Sequence
 
 from .phone_residency import (
     PhoneArmGroup,
@@ -542,19 +542,22 @@ def _idle(
     )
 
 
-def select_phone_arbiter_work(
+class _FeasibleWork(NamedTuple):
+    score: tuple[int, int, int, str]
+    work: PhoneReadyWork
+    offload: PhoneOffloadDecision
+    start_us: int
+    phone_finish_upper_us: int
+    safe_end_us: int
+
+
+def _validate_arbiter_identity(
     plan: PhoneResidencyPlan,
     snapshot: PhoneResidencySnapshot,
     window: PhoneArbiterWindow,
     queue: PhoneArbiterQueue,
-    *,
     now_us: int,
-    resource_ready_us: int | Mapping[str, int | None],
-    minimum_energy_saving_ppm: int = 50_000,
-    latency_limit_ppm: int = 1_000_000,
-    maximum_join_wait_ppm: int = 50_000,
-    require_measured: bool = True,
-) -> PhoneArbiterDecision:
+) -> None:
     _integer("phone arbiter now_us", now_us)
     try:
         snapshot.validate_against(plan)
@@ -589,178 +592,179 @@ def select_phone_arbiter_work(
         and queue.captured_at_us <= now_us < queue.valid_until_us
     ):
         raise PhoneArbiterError("phone arbiter snapshot is stale")
+
+
+def _ready_by_work(
+    resource_ready_us: int | Mapping[str, int | None],
+) -> Mapping[str, int | None] | None:
     if isinstance(resource_ready_us, Mapping):
-        ready_by_work = resource_ready_us
-        for work_id, ready_us in ready_by_work.items():
+        for work_id, ready_us in resource_ready_us.items():
             _text("phone arbiter ready work id", work_id)
             if ready_us is not None:
                 _integer("phone arbiter resource ready time", ready_us)
-    else:
-        _integer("phone arbiter resource ready time", resource_ready_us)
-        ready_by_work = None
+        return resource_ready_us
+    _integer("phone arbiter resource ready time", resource_ready_us)
+    return None
 
-    admission_failure = window.admission_failure(require_measured)
-    if admission_failure is not None:
-        return _idle(
-            queue,
-            window,
-            "NO_ADMISSIBLE_PHONE_WORK",
-            [(row.work_id, admission_failure) for row in queue.ready_work],
-        )
 
-    rejected: list[tuple[str, str]] = []
-    feasible: list[
-        tuple[
-            tuple[int, int, int, str],
-            PhoneReadyWork,
-            PhoneOffloadDecision,
-            int,
-            int,
-            int,
-        ]
-    ] = []
-    completed = set(queue.completed_output_receipt_ids)
-    for work in queue.ready_work:
-        if work.sequence_index != queue.next_sequence_by_pipeline[
-            work.pipeline_id
-        ]:
-            rejected.append((work.work_id, "OUT_OF_ORDER"))
-            continue
-        predecessor = work.predecessor_output_receipt_id
-        if predecessor is not None and predecessor not in completed:
-            rejected.append((work.work_id, "PREDECESSOR_NOT_COMPLETED"))
-            continue
-        if now_us < work.ready_at_us:
-            rejected.append((work.work_id, "INPUT_NOT_READY"))
-            continue
-        if now_us >= min(work.valid_until_us, work.deadline_us):
-            rejected.append((work.work_id, "INPUT_EXPIRED"))
-            continue
-        if require_measured and not work.runtime_verified:
-            rejected.append((work.work_id, "READY_WORK_UNVERIFIED"))
-            continue
-        if (
-            window.protected_completion_receipt_id is not None
-            and work.priority_class == "protected"
-        ):
-            rejected.append((work.work_id, "PROTECTED_OWNER_COMPLETED"))
-            continue
-        if (
-            work.priority_class == "filler"
-            and work.model_id == window.protected_model_id
-        ):
-            rejected.append((work.work_id, "PROTECTED_MODEL_NOT_FILLER"))
-            continue
-        try:
-            resident_models = {
-                plan.slice_location(slice_id)[1].model_id
-                for slice_id in work.candidate.slice_ids
-            }
-        except PhoneResidencyError:
-            rejected.append((work.work_id, "RESIDENCY_UNKNOWN"))
-            continue
-        if resident_models != {work.model_id}:
-            rejected.append((work.work_id, "RESIDENT_MODEL_MISMATCH"))
-            continue
+def _work_admission_rejection(
+    work: PhoneReadyWork,
+    plan: PhoneResidencyPlan,
+    queue: PhoneArbiterQueue,
+    window: PhoneArbiterWindow,
+    *,
+    now_us: int,
+    completed: set[str],
+    require_measured: bool,
+) -> str | None:
+    if work.sequence_index != queue.next_sequence_by_pipeline[
+        work.pipeline_id
+    ]:
+        return "OUT_OF_ORDER"
+    predecessor = work.predecessor_output_receipt_id
+    if predecessor is not None and predecessor not in completed:
+        return "PREDECESSOR_NOT_COMPLETED"
+    if now_us < work.ready_at_us:
+        return "INPUT_NOT_READY"
+    if now_us >= min(work.valid_until_us, work.deadline_us):
+        return "INPUT_EXPIRED"
+    if require_measured and not work.runtime_verified:
+        return "READY_WORK_UNVERIFIED"
+    if (
+        window.protected_completion_receipt_id is not None
+        and work.priority_class == "protected"
+    ):
+        return "PROTECTED_OWNER_COMPLETED"
+    if (
+        work.priority_class == "filler"
+        and work.model_id == window.protected_model_id
+    ):
+        return "PROTECTED_MODEL_NOT_FILLER"
+    try:
+        resident_models = {
+            plan.slice_location(slice_id)[1].model_id
+            for slice_id in work.candidate.slice_ids
+        }
+    except PhoneResidencyError:
+        return "RESIDENCY_UNKNOWN"
+    if resident_models != {work.model_id}:
+        return "RESIDENT_MODEL_MISMATCH"
+    return None
+
+
+def _work_safe_end_us(
+    work: PhoneReadyWork,
+    queue: PhoneArbiterQueue,
+    window: PhoneArbiterWindow,
+) -> int:
+    safe_end_us = min(
+        work.deadline_us,
+        work.valid_until_us,
+        queue.valid_until_us,
+        window.valid_until_us,
+    )
+    if (
+        work.priority_class == "filler"
+        and window.protected_completion_receipt_id is None
+    ):
+        if window.protected_ready_lower_us is None:
+            raise PhoneArbiterError(
+                "active phone arbiter window has no protected lower bound"
+            )
         safe_end_us = min(
-            work.deadline_us,
-            work.valid_until_us,
-            queue.valid_until_us,
-            window.valid_until_us,
-        )
-        if (
-            work.priority_class == "filler"
-            and window.protected_completion_receipt_id is None
-        ):
-            if window.protected_ready_lower_us is None:
-                raise PhoneArbiterError(
-                    "active phone arbiter window has no protected lower bound"
-                )
-            safe_end_us = min(
-                safe_end_us,
-                window.protected_ready_lower_us - window.guard_us,
-            )
-        if safe_end_us <= now_us:
-            rejected.append((work.work_id, "PROTECTED_WORK_GUARD"))
-            continue
-        ready_us = (
-            ready_by_work.get(work.work_id)
-            if ready_by_work is not None
-            else resource_ready_us
-        )
-        try:
-            offload = select_energy_positive_offload(
-                plan,
-                snapshot,
-                (work.candidate,),
-                request_id=work.request_id,
-                route_id=work.route_id,
-                physical_m=work.physical_m,
-                now_us=now_us,
-                phone_resource_ready_us={work.work_id: ready_us},
-                deadline_us=safe_end_us,
-                minimum_energy_saving_ppm=minimum_energy_saving_ppm,
-                latency_limit_ppm=latency_limit_ppm,
-                maximum_join_wait_ppm=maximum_join_wait_ppm,
-                require_measured=require_measured,
-            )
-        except PhoneResidencyError as exc:
-            raise PhoneArbiterError(str(exc)) from exc
-        if offload.candidate_id is None or offload.arm_signal is None:
-            reason = (
-                offload.rejected[0][1]
-                if offload.rejected
-                else "PHONE_ROUTE_REJECTED"
-            )
-            if (
-                reason == "DEADLINE"
-                and work.priority_class == "filler"
-                and window.protected_completion_receipt_id is None
-            ):
-                reason = "PROTECTED_WORK_GUARD"
-            rejected.append((work.work_id, reason))
-            continue
-        start_us = _arm_start(offload.arm_signal)
-        phone_finish_upper_us = (
-            start_us + work.candidate.phone_path_us.upper
-        )
-        if phone_finish_upper_us > safe_end_us:
-            rejected.append((work.work_id, "PROTECTED_WORK_GUARD"))
-            continue
-        energy_saving_ppm = offload.energy_saving_ppm
-        if energy_saving_ppm is None:
-            raise PhoneArbiterError("selected phone energy decision is incomplete")
-        priority_rank = 0 if work.priority_class == "protected" else 1
-        score = (
-            priority_rank,
-            work.deadline_us,
-            -energy_saving_ppm,
-            work.work_id,
-        )
-        feasible.append((
-            score,
-            work,
-            offload,
-            start_us,
-            phone_finish_upper_us,
             safe_end_us,
-        ))
-
-    if not feasible:
-        return _idle(
-            queue,
-            window,
-            "NO_ADMISSIBLE_PHONE_WORK",
-            rejected,
+            window.protected_ready_lower_us - window.guard_us,
         )
-    (
-        _,
-        selected,
+    return safe_end_us
+
+
+def _offload_rejection_reason(
+    offload: PhoneOffloadDecision,
+    work: PhoneReadyWork,
+    window: PhoneArbiterWindow,
+) -> str:
+    reason = (
+        offload.rejected[0][1]
+        if offload.rejected
+        else "PHONE_ROUTE_REJECTED"
+    )
+    if (
+        reason == "DEADLINE"
+        and work.priority_class == "filler"
+        and window.protected_completion_receipt_id is None
+    ):
+        reason = "PROTECTED_WORK_GUARD"
+    return reason
+
+
+def _evaluate_ready_work(
+    work: PhoneReadyWork,
+    plan: PhoneResidencyPlan,
+    snapshot: PhoneResidencySnapshot,
+    window: PhoneArbiterWindow,
+    *,
+    now_us: int,
+    ready_us: int | None,
+    safe_end_us: int,
+    minimum_energy_saving_ppm: int,
+    latency_limit_ppm: int,
+    maximum_join_wait_ppm: int,
+    require_measured: bool,
+) -> str | _FeasibleWork:
+    try:
+        offload = select_energy_positive_offload(
+            plan,
+            snapshot,
+            (work.candidate,),
+            request_id=work.request_id,
+            route_id=work.route_id,
+            physical_m=work.physical_m,
+            now_us=now_us,
+            phone_resource_ready_us={work.work_id: ready_us},
+            deadline_us=safe_end_us,
+            minimum_energy_saving_ppm=minimum_energy_saving_ppm,
+            latency_limit_ppm=latency_limit_ppm,
+            maximum_join_wait_ppm=maximum_join_wait_ppm,
+            require_measured=require_measured,
+        )
+    except PhoneResidencyError as exc:
+        raise PhoneArbiterError(str(exc)) from exc
+    if offload.candidate_id is None or offload.arm_signal is None:
+        return _offload_rejection_reason(offload, work, window)
+    start_us = _arm_start(offload.arm_signal)
+    phone_finish_upper_us = (
+        start_us + work.candidate.phone_path_us.upper
+    )
+    if phone_finish_upper_us > safe_end_us:
+        return "PROTECTED_WORK_GUARD"
+    energy_saving_ppm = offload.energy_saving_ppm
+    if energy_saving_ppm is None:
+        raise PhoneArbiterError("selected phone energy decision is incomplete")
+    priority_rank = 0 if work.priority_class == "protected" else 1
+    score = (
+        priority_rank,
+        work.deadline_us,
+        -energy_saving_ppm,
+        work.work_id,
+    )
+    return _FeasibleWork(
+        score,
+        work,
         offload,
         start_us,
         phone_finish_upper_us,
         safe_end_us,
-    ) = min(feasible, key=lambda row: row[0])
+    )
+
+
+def _selected_arbiter_decision(
+    feasible: list[_FeasibleWork],
+    queue: PhoneArbiterQueue,
+    window: PhoneArbiterWindow,
+    rejected: list[tuple[str, str]],
+) -> PhoneArbiterDecision:
+    row = min(feasible, key=lambda row: row[0])
+    selected = row.work
     rejected.extend(
         (work.work_id, "LOWER_PHONE_PRIORITY")
         for _, work, _, _, _, _ in feasible
@@ -790,10 +794,88 @@ def select_phone_arbiter_work(
         protected_completion_receipt_id=(
             window.protected_completion_receipt_id
         ),
-        start_us=start_us,
-        phone_finish_upper_us=phone_finish_upper_us,
-        safe_end_us=safe_end_us,
-        slack_us=safe_end_us - phone_finish_upper_us,
-        offload=offload,
+        start_us=row.start_us,
+        phone_finish_upper_us=row.phone_finish_upper_us,
+        safe_end_us=row.safe_end_us,
+        slack_us=row.safe_end_us - row.phone_finish_upper_us,
+        offload=row.offload,
         rejected=tuple(rejected),
     )
+
+
+def select_phone_arbiter_work(
+    plan: PhoneResidencyPlan,
+    snapshot: PhoneResidencySnapshot,
+    window: PhoneArbiterWindow,
+    queue: PhoneArbiterQueue,
+    *,
+    now_us: int,
+    resource_ready_us: int | Mapping[str, int | None],
+    minimum_energy_saving_ppm: int = 50_000,
+    latency_limit_ppm: int = 1_000_000,
+    maximum_join_wait_ppm: int = 50_000,
+    require_measured: bool = True,
+) -> PhoneArbiterDecision:
+    _validate_arbiter_identity(plan, snapshot, window, queue, now_us)
+    ready_by_work = _ready_by_work(resource_ready_us)
+
+    admission_failure = window.admission_failure(require_measured)
+    if admission_failure is not None:
+        return _idle(
+            queue,
+            window,
+            "NO_ADMISSIBLE_PHONE_WORK",
+            [(row.work_id, admission_failure) for row in queue.ready_work],
+        )
+
+    rejected: list[tuple[str, str]] = []
+    feasible: list[_FeasibleWork] = []
+    completed = set(queue.completed_output_receipt_ids)
+    for work in queue.ready_work:
+        rejection = _work_admission_rejection(
+            work,
+            plan,
+            queue,
+            window,
+            now_us=now_us,
+            completed=completed,
+            require_measured=require_measured,
+        )
+        if rejection is not None:
+            rejected.append((work.work_id, rejection))
+            continue
+        safe_end_us = _work_safe_end_us(work, queue, window)
+        if safe_end_us <= now_us:
+            rejected.append((work.work_id, "PROTECTED_WORK_GUARD"))
+            continue
+        ready_us = (
+            ready_by_work.get(work.work_id)
+            if ready_by_work is not None
+            else resource_ready_us
+        )
+        outcome = _evaluate_ready_work(
+            work,
+            plan,
+            snapshot,
+            window,
+            now_us=now_us,
+            ready_us=ready_us,
+            safe_end_us=safe_end_us,
+            minimum_energy_saving_ppm=minimum_energy_saving_ppm,
+            latency_limit_ppm=latency_limit_ppm,
+            maximum_join_wait_ppm=maximum_join_wait_ppm,
+            require_measured=require_measured,
+        )
+        if isinstance(outcome, str):
+            rejected.append((work.work_id, outcome))
+            continue
+        feasible.append(outcome)
+
+    if not feasible:
+        return _idle(
+            queue,
+            window,
+            "NO_ADMISSIBLE_PHONE_WORK",
+            rejected,
+        )
+    return _selected_arbiter_decision(feasible, queue, window, rejected)

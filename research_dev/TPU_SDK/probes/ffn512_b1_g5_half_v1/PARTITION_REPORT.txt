@@ -1,0 +1,5 @@
+Google_Tensor_G5
+==========================
+Partition Stats:
+Subgraph 0 fully compiled:	6 / 6 ops offloaded to 1 partitions.
+

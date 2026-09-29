@@ -1,0 +1,30 @@
+{
+  "arrivals": [
+    {"combined_request_index": 34, "replay_arrival_us": 1000000},
+    {"combined_request_index": 35, "replay_arrival_us": 21000000},
+    {"combined_request_index": 38, "replay_arrival_us": 41000000},
+    {"combined_request_index": 39, "replay_arrival_us": 61000000},
+    {"combined_request_index": 40, "replay_arrival_us": 81000000},
+    {"combined_request_index": 36, "replay_arrival_us": 241000000},
+    {"combined_request_index": 44, "replay_arrival_us": 271000000},
+    {"combined_request_index": 41, "replay_arrival_us": 431000000},
+    {"combined_request_index": 42, "replay_arrival_us": 451000000},
+    {"combined_request_index": 43, "replay_arrival_us": 471000000},
+    {"combined_request_index": 45, "replay_arrival_us": 491000000},
+    {"combined_request_index": 46, "replay_arrival_us": 511000000},
+    {"combined_request_index": 37, "replay_arrival_us": 681000000},
+    {"combined_request_index": 47, "replay_arrival_us": 701000000},
+    {"combined_request_index": 56, "replay_arrival_us": 721000000},
+    {"combined_request_index": 48, "replay_arrival_us": 851000000},
+    {"combined_request_index": 49, "replay_arrival_us": 876000000},
+    {"combined_request_index": 52, "replay_arrival_us": 901000000},
+    {"combined_request_index": 57, "replay_arrival_us": 926000000},
+    {"combined_request_index": 50, "replay_arrival_us": 1081000000},
+    {"combined_request_index": 51, "replay_arrival_us": 1101000000},
+    {"combined_request_index": 53, "replay_arrival_us": 1121000000},
+    {"combined_request_index": 54, "replay_arrival_us": 1141000000},
+    {"combined_request_index": 55, "replay_arrival_us": 1161000000}
+  ],
+  "schema": "research-scheduler-burstgpt-replay-v1",
+  "trace_name": "burstgpt_sparse_locality24_v1"
+}

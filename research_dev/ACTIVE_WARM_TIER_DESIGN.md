@@ -1,8 +1,26 @@
 # Active Warm-Tier Multi-Model Serving
 
-Status: S40 Qwen/Qwen warm-tier path active; one real no-reboot joint B8
-prototype passes execution with 60/64 diagnostic phone/CUDA token agreement;
-formal V2.4/V2.6 Qwen3-14B A_ONLY remains blocked before model launch.
+Status: S40 Qwen/Qwen warm-tier path active; S42 has a three-pair real fleet-
+energy win and a unified scheduler-owned validation pair for the preserved
+Gemma/Qwen operator-offload branch; formal V2.4/V2.6 Qwen3-14B A_ONLY remains
+blocked before model launch.
+
+Operator-scheduler checkpoint, 2026-08-06: the real RTX 4060 Ti plus OP15 ran
+three alternating 74-request source-length BurstGPT pairs with 11,605 output
+tokens per run. The final I3 FFN route reduces average makespan from 736.468
+to 630.594 seconds (-14.38%), server compute-device energy from 136.144 to
+112.586 kJ (-17.30%), and accounted server-plus-phone energy from 137.217 to
+114.217 kJ (-16.76%). Mean exposed join wait is 2.67%, MMLU64 remains 27 / 64,
+and all work and cleanup checks pass. This supplies physical admission
+evidence for the exact measured workload/profile epoch with bounded
+approximate quality. A fresh 2026-08-08 pair then exercised that cohort through
+hash-bound unified scheduler plans and reduced accounted fleet energy by
+16.00% and makespan by 14.11%, with equal work and all runtime gates passing.
+The remaining integration gap is an atomic pre-dispatch phone-thermal
+snapshot. This does not authorize exact-token or universal per-shape routing,
+or the separate S40 Qwen/Qwen route. See
+`spikes/s42_general_energy_scheduler_v1/RESULTS.md` and
+`spikes/s41_gemma_qwen_continuous_baseline/tp_operator_split_v1/RESULTS_LLAMA_SERVER_I3_ENERGY_V1.md`.
 
 Operator-split checkpoint, 2026-07-29: one Qwen3-14B q8_0 FFN layer now runs
 with distinct M-row inputs across CUDA and OP15 HTP over AOA. Three live

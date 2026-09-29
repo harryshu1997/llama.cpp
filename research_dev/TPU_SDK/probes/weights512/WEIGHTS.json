@@ -1,0 +1,25 @@
+{
+  "source": "/home/zhihao/s42-op11-qwen-shards-20260921-v1/qwen/HTP0.ffn.gguf",
+  "source_sha256": "dd705a75a3047ead41dbc01984afebc23440e2ea575b25af5c5b22252c69f4c3",
+  "layer": 18,
+  "column_start": 16896,
+  "width": 512,
+  "embedding": 5120,
+  "weights_sha256": "05a8d3a0dc88d0b16ead08927fe810e0e7b4d5ac51a2d1b55e54458fb4d06911",
+  "shapes": {
+    "gate": [
+      512,
+      5120
+    ],
+    "up": [
+      512,
+      5120
+    ],
+    "down": [
+      5120,
+      512
+    ]
+  },
+  "dtype": "float16",
+  "extraction_script_sha256": "3a649b81400161cebda0ffef4fa1616fbeff16077602c791911c95cf31b054f9"
+}

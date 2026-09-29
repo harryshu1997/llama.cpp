@@ -206,6 +206,77 @@ def node(
 
 
 class PlacementPlannerTests(unittest.TestCase):
+    def test_repeated_physical_costs_reuse_cache_and_preserve_step_ids(
+        self,
+    ) -> None:
+        planner = HierarchicalPlacementPlanner(
+            PlacementHardwareProfile.from_json(hardware_value())
+        )
+
+        def phone_candidate(operator_id: str) -> OperatorCandidate:
+            return OperatorCandidate(
+                candidate_id="phone-" + operator_id,
+                operator_id=operator_id,
+                input_device="cpu",
+                output_device="cpu",
+                branches=(ExecutionBranch("phone", (
+                    TransferStep(
+                        "upload-" + operator_id, "cpu", "htp", 100
+                    ),
+                    compute("compute-" + operator_id, "htp-mm"),
+                    TransferStep(
+                        "download-" + operator_id, "htp", "cpu", 100
+                    ),
+                )),),
+                quality_class="exact",
+                status="measured",
+                placement_verified=True,
+                evidence_ids=("sha256:phone-" + operator_id,),
+            )
+
+        plan = planner.plan_sequence(
+            "repeated-costs",
+            (
+                node("ffn-a", "layer-0", phone_candidate("ffn-a")),
+                node("ffn-b", "layer-1", phone_candidate("ffn-b")),
+            ),
+            "cpu",
+            "cpu",
+            10_000,
+        )
+
+        self.assertEqual(
+            [
+                [transfer.step_id for transfer in row.internal_transfers]
+                for row in plan.operator_decisions
+            ],
+            [
+                ["upload-ffn-a", "download-ffn-a"],
+                ["upload-ffn-b", "download-ffn-b"],
+            ],
+        )
+        self.assertEqual(len(planner.network._choice_cache), 2)
+        self.assertEqual(len(planner._compute_cost_cache), 1)
+        self.assertEqual(len(planner._candidate_work_cache), 1)
+
+        deferred = HierarchicalPlacementPlanner(
+            PlacementHardwareProfile.from_json(hardware_value())
+        ).plan_sequence(
+            "repeated-costs",
+            (
+                node("ffn-a", "layer-0", phone_candidate("ffn-a")),
+                node("ffn-b", "layer-1", phone_candidate("ffn-b")),
+            ),
+            "cpu",
+            "cpu",
+            10_000,
+            defer_memory_validation=True,
+        )
+        self.assertEqual(
+            placement_plan_to_json(deferred),
+            placement_plan_to_json(plan),
+        )
+
     def test_minimizes_energy_instead_of_latency(self) -> None:
         planner = HierarchicalPlacementPlanner(
             PlacementHardwareProfile.from_json(hardware_value())
@@ -295,6 +366,100 @@ class PlacementPlannerTests(unittest.TestCase):
             sum(plan.energy_by_domain_uj.values()), plan.total_energy_uj
         )
 
+    def test_transfer_fixed_cost_is_paid_per_message_wave(self) -> None:
+        def plan(queue_depth: int):
+            value = hardware_value()
+            for link in value["links"]:  # type: ignore[index]
+                if link["link_id"] in {"cpu-to-htp", "htp-to-cpu"}:
+                    link["queue_depth"] = queue_depth
+                    link["concurrent_streams"] = queue_depth
+            planner = HierarchicalPlacementPlanner(
+                PlacementHardwareProfile.from_json(value)
+            )
+            transfers = OperatorCandidate(
+                candidate_id=f"four-messages-q{queue_depth}",
+                operator_id="ffn",
+                input_device="cpu",
+                output_device="cpu",
+                branches=(ExecutionBranch("phone", (
+                    TransferStep(
+                        "upload", "cpu", "htp", 100, 4, queue_depth
+                    ),
+                    TransferStep(
+                        "download", "htp", "cpu", 100, 4, queue_depth
+                    ),
+                )),),
+                quality_class="exact",
+                status="measured",
+                placement_verified=True,
+                evidence_ids=("sha256:four-message-transfer",),
+            )
+            return planner.plan_sequence(
+                f"four-messages-q{queue_depth}",
+                (node("ffn", "layer-0", transfers),),
+                "cpu",
+                "cpu",
+                10_000,
+            )
+
+        serial = plan(1).operator_decisions[0].internal_transfers
+        concurrent = plan(4).operator_decisions[0].internal_transfers
+
+        self.assertEqual([row.message_waves for row in serial], [4, 4])
+        self.assertEqual(
+            [row.fixed_latency_us for row in serial], [400, 400]
+        )
+        self.assertEqual(
+            [row.dynamic_energy_uj for row in serial], [200, 200]
+        )
+        self.assertEqual(
+            [row.message_waves for row in concurrent], [1, 1]
+        )
+        self.assertEqual(
+            [row.fixed_latency_us for row in concurrent], [100, 100]
+        )
+        self.assertEqual(
+            [row.dynamic_energy_uj for row in concurrent], [200, 200]
+        )
+
+    def test_transfer_capacity_accepts_fewer_concurrent_streams(self) -> None:
+        value = hardware_value()
+        for link in value["links"]:  # type: ignore[index]
+            if link["link_id"] in {"cpu-to-htp", "htp-to-cpu"}:
+                link["queue_depth"] = 4
+                link["concurrent_streams"] = 4
+        planner = HierarchicalPlacementPlanner(
+            PlacementHardwareProfile.from_json(value)
+        )
+        candidate = OperatorCandidate(
+            candidate_id="single-stream-on-q4-link",
+            operator_id="ffn",
+            input_device="cpu",
+            output_device="cpu",
+            branches=(ExecutionBranch("phone", (
+                TransferStep("upload", "cpu", "htp", 100, 4, 1),
+                TransferStep("download", "htp", "cpu", 100, 4, 1),
+            )),),
+            quality_class="exact",
+            status="measured",
+            placement_verified=True,
+            evidence_ids=("sha256:single-stream-q4-capacity",),
+        )
+
+        plan = planner.plan_sequence(
+            "single-stream-on-q4-link",
+            (node("ffn", "layer-0", candidate),),
+            "cpu",
+            "cpu",
+            10_000,
+            require_measured=False,
+        )
+
+        transfers = plan.operator_decisions[0].internal_transfers
+        self.assertEqual([row.concurrent_streams for row in transfers], [1, 1])
+        self.assertEqual([row.message_waves for row in transfers], [4, 4])
+        self.assertFalse(plan.measured)
+
     def test_phone_gpu_and_htp_share_one_memory_pool(self) -> None:
         planner = HierarchicalPlacementPlanner(
             PlacementHardwareProfile.from_json(
@@ -342,6 +507,17 @@ class PlacementPlannerTests(unittest.TestCase):
         with self.assertRaisesRegex(PlacementError, "memory=1"):
             planner.plan_sequence(
                 "distinct-memory", (blocked,), "phone-gpu", "phone-gpu", 1000
+            )
+        with self.assertRaisesRegex(
+            PlacementError, "final placement memory exceeds capacity"
+        ):
+            planner.plan_sequence(
+                "distinct-memory-deferred",
+                (blocked,),
+                "phone-gpu",
+                "phone-gpu",
+                1000,
+                defer_memory_validation=True,
             )
 
     def test_engine_mapping_limit_is_separate_from_shared_pool(self) -> None:
@@ -396,6 +572,43 @@ class PlacementPlannerTests(unittest.TestCase):
             require_measured=False,
         )
         self.assertFalse(plan.measured)
+
+    def test_unmeasured_payload_shape_uses_nearest_envelope_in_shadow(self) -> None:
+        value = hardware_value()
+        for link in value["links"]:  # type: ignore[index]
+            if link["link_id"] in {"cpu-to-htp", "htp-to-cpu"}:
+                link["minimum_payload_bytes"] = 400
+                link["maximum_payload_bytes"] = 400
+        planner = HierarchicalPlacementPlanner(
+            PlacementHardwareProfile.from_json(value)
+        )
+        work = node(
+            "mm",
+            "layer-0",
+            candidate("mm", "htp", "htp", "htp-mm"),
+            transfer_bytes=250,
+        )
+        with self.assertRaisesRegex(PlacementError, "transfer=1"):
+            planner.plan_sequence(
+                "enforce-envelope", (work,), "cpu", "cpu", 10_000
+            )
+        plan = planner.plan_sequence(
+            "shadow-envelope",
+            (work,),
+            "cpu",
+            "cpu",
+            10_000,
+            require_measured=False,
+        )
+        self.assertFalse(plan.measured)
+        self.assertEqual(
+            plan.operator_decisions[0].transition.link_ids,
+            ("cpu-to-htp",),
+        )
+        self.assertEqual(
+            plan.final_transfer.link_ids,
+            ("htp-to-cpu",),
+        )
 
     def test_estimated_idle_boundary_is_planning_only(self) -> None:
         value = hardware_value()

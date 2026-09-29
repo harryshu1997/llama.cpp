@@ -1,0 +1,354 @@
+{
+ "schema": "paper-config-desktop-manifest-v1",
+ "template": "/mnt/storage/s43-two-phone-eval-20260925/template-eval2-s2",
+ "files": [
+  {
+   "path": "/home/zhihao/.cache/llama.cpp/research-scheduler/gguf-manifests.json",
+   "referenced_by": [
+    "models.json.manifest_cache_path"
+   ],
+   "bytes": 815774,
+   "sha256": "8f2e3d7b2223479badbb9bf2452be593cb8f364686be9f53e838ab989ecbea88"
+  },
+  {
+   "path": "/home/zhihao/models/Llama-3.2-1B-Instruct-Q4_0.gguf",
+   "referenced_by": [
+    "models.json.models[2].host_artifact_path"
+   ],
+   "bytes": 770928288,
+   "sha256": "4b90b1d7ae7324676194755a6dfce11cb6e457982c4c01a1db2857be1ed064ad"
+  },
+  {
+   "path": "/home/zhihao/models/Qwen3-14B-Q4KM-dequant-f16.gguf",
+   "referenced_by": [
+    "models.json.models[0].host_artifact_path"
+   ],
+   "bytes": 29543423360,
+   "sha256": null,
+   "note": "larger than 1 GiB: not hashed here (see models.json pins)"
+  },
+  {
+   "path": "/home/zhihao/models/gemma-4-12B-Q40-dequant-f16.gguf",
+   "referenced_by": [
+    "models.json.models[1].host_artifact_path"
+   ],
+   "bytes": 23832065056,
+   "sha256": null,
+   "note": "larger than 1 GiB: not hashed here (see models.json pins)"
+  },
+  {
+   "path": "/home/zhihao/s41-dynamic-ffn-v1/ffn_dmabuf_bridge-unified-v9-repair-r3",
+   "referenced_by": [
+    "rig.json.binaries.bridge"
+   ],
+   "bytes": 59400,
+   "sha256": "cf736dd6d5279c2680191013b7c11c669d82deec4a118db6c6245194061e7d35"
+  },
+  {
+   "path": "/home/zhihao/s41-ffs-dmabuf-fixed-v1/fastboot",
+   "referenced_by": [
+    "rig.json.binaries.fastboot"
+   ],
+   "bytes": 3005160,
+   "sha256": "76dde33fee8b1fd00bcaf2e7f94ddef6407f0beb5bc3a98a3d4127307af23f3a"
+  },
+  {
+   "path": "/home/zhihao/s42-cuda-graphs-disabled-20260906-v2-disabled-cold/run/MEASURED_DESKTOP_BASELINE_PLANS_V1.json",
+   "referenced_by": [
+    "models.json.desktop_baseline_plans_path"
+   ],
+   "bytes": 2552,
+   "sha256": "a63985701c9195179c26eb23ac0908c61dd783ae3189d8d1bf138aa0a55233bb"
+  },
+  {
+   "path": "/home/zhihao/s42-ffn-shards-20260904-v41-gemma24/FFN_SHARDS.json",
+   "referenced_by": [
+    "models.json.models[1].phone_ffn_shard_index_path"
+   ],
+   "bytes": 15767,
+   "sha256": "5d0fc13e8be1875269a6c8ef2eeaaded8c968ecf262703de529bdbc71ba13681"
+  },
+  {
+   "path": "/home/zhihao/s42-mixed-residency-priority-deploy-20260828-v1/build-server-cuda/bin/llama-ffn-split-usb-close",
+   "referenced_by": [
+    "rig.json.binaries.phone_usb_close"
+   ],
+   "bytes": 53160,
+   "sha256": "43713075ce89425ba6ef33489573cd7fceda771f88c65e88175b573007994497"
+  },
+  {
+   "path": "/home/zhihao/s42-offline-session-lifecycle-20260904-v40-shards/qwen/FFN_SHARDS.json",
+   "referenced_by": [
+    "models.json.models[0].phone_ffn_shard_index_path"
+   ],
+   "bytes": 12354,
+   "sha256": "9d1cd53062bc54e254854d7db857c462b5f1764e34e361c19f9cb65e55d02389"
+  },
+  {
+   "path": "/home/zhihao/s42-physical-validation-20260816/adaptive-decode-inputs-r67-v1/OVERLAY_RUNTIME_CATALOG.json",
+   "referenced_by": [
+    "evidence.json.overlay_catalog_path"
+   ],
+   "bytes": 69687,
+   "sha256": "5b45b1bc0e67eba5859a854f426960ec733eb477c6318296a4935fac05185a05"
+  },
+  {
+   "path": "/home/zhihao/s42-route-evidence-physical-gate-20260829-v1/inputs/PHONE_SESSION_DISCOVERY.json",
+   "referenced_by": [
+    "evidence.json.phone_session_discovery_path"
+   ],
+   "bytes": 2475,
+   "sha256": "8374150ee3f56674efdedf1f0670c2576510b28c6aa74eaab48e09fa40af2065"
+  },
+  {
+   "path": "/home/zhihao/s42-sparse-locality24-adaptive-20260902-v8-mixed-residency/inputs/ADAPTIVE_DECODE_OBSERVATIONS.json",
+   "referenced_by": [
+    "evidence.json.adaptive_observation_store_path"
+   ],
+   "bytes": 4051088,
+   "sha256": "241ce6b19642842de0540aeb0458b7af1319aecf35aa7e30fe4c424cee77d561"
+  },
+  {
+   "path": "/home/zhihao/s42-sparse-locality24-adaptive-20260902-v8-mixed-residency/inputs/AUTOMATED_OBSERVATIONS.json",
+   "referenced_by": [
+    "evidence.json.observation_store_path"
+   ],
+   "bytes": 136432,
+   "sha256": "b5cc7b7dfae5365dadefc92db437af63c7ebf953be00b637d4ade9c8b97b6002"
+  },
+  {
+   "path": "/home/zhihao/s42-sparse-locality24-adaptive-20260902-v8-mixed-residency/inputs/OBSERVATION_SOURCE_CATALOG.json",
+   "referenced_by": [
+    "evidence.json.adaptive_observation_source_catalog_path",
+    "evidence.json.observation_source_catalog_path"
+   ],
+   "bytes": 379141,
+   "sha256": "1c87189dbe4c0d695075a91e80b9ba20e2f64550ea1d8fcc8af08d192d9bebcb"
+  },
+  {
+   "path": "/home/zhihao/s43-transport-receipts-61440-20260924/receipts-all",
+   "referenced_by": [
+    "evidence.json.transport_qualification_directories[0]"
+   ],
+   "kind": "directory",
+   "entries": 15
+  },
+  {
+   "path": "/mnt/storage/burstgpt-source/longtail_eval_v2/REQUESTS_OVERLAY.jsonl",
+   "referenced_by": [
+    "campaign.json.trace.overlay_requests_path"
+   ],
+   "bytes": 1068,
+   "sha256": "f4a2ea0df2820e7413f48431c6fdb4771ab57a7a807a0367c59dd7d4439bb832"
+  },
+  {
+   "path": "/mnt/storage/burstgpt-source/longtail_eval_v2/REQUESTS_SEMANTIC_SOURCE.jsonl",
+   "referenced_by": [
+    "campaign.json.trace.large_requests_path"
+   ],
+   "bytes": 35013,
+   "sha256": "37ca70f2cd1e6a6714b865ab52ce16863072b6443c0008bf841788e879fa9229"
+  },
+  {
+   "path": "/mnt/storage/burstgpt-source/longtail_eval_v2/TRACE_MANIFEST.json",
+   "referenced_by": [
+    "campaign.json.trace.trace_manifest_path"
+   ],
+   "bytes": 2797,
+   "sha256": "aec2afe51eb0f616c79a0d6a66f7c28f9d76b40a849fed23145475cdc81cc7be"
+  },
+  {
+   "path": "/mnt/storage/burstgpt-source/longtail_eval_v2/burstgpt_longtail_eval_v2.json",
+   "referenced_by": [
+    "campaign.json.trace.replay_schedule_path"
+   ],
+   "bytes": 939,
+   "sha256": "545012979af7b41fe507187ec38d1510adad163babc40a20113d24235792606d"
+  },
+  {
+   "path": "/mnt/storage/s21_deps/cuda-13.2.1/lib",
+   "referenced_by": [
+    "rig.json.library_directories.cuda"
+   ],
+   "kind": "directory",
+   "entries": 31
+  },
+  {
+   "path": "/mnt/storage/s42-dmabuf-cancel-20260914-v1-gBJdFx/candidate-boot.img",
+   "referenced_by": [
+    "rig.json.binaries.phone_boot_image"
+   ],
+   "bytes": 67108864,
+   "sha256": "f13c7c033ce74f32ea4aa6349cb531704407708f5fb35756a6c361ffb48322a3"
+  },
+  {
+   "path": "/mnt/storage/s42-trace-v2-20260921-prep/PHONE_HASH_CACHE.json",
+   "referenced_by": [
+    "rig.json.phone.remote_hash_cache_path"
+   ],
+   "bytes": 7279,
+   "sha256": "c7e6cd4406310d425e926c71d8d491dc58c5fc17918fc8165113fe641d29782d"
+  },
+  {
+   "path": "/mnt/storage/s42-trace-v2-20260921-prep/cuda-build/bin",
+   "referenced_by": [
+    "rig.json.library_directories.resident"
+   ],
+   "kind": "directory",
+   "entries": 32
+  },
+  {
+   "path": "/mnt/storage/s42-trace-v2-20260921-prep/cuda-build/bin/libggml-base.so",
+   "referenced_by": [
+    "rig.json.transport_host_dependencies.ggml-base"
+   ],
+   "bytes": 962784,
+   "sha256": "8e7d171d7e659ae9160013a01976c3d97307b89d4ea5fc3108e317555543bd03"
+  },
+  {
+   "path": "/mnt/storage/s42-trace-v2-20260921-prep/cuda-build/bin/libggml-cpu.so",
+   "referenced_by": [
+    "rig.json.transport_host_dependencies.ggml-cpu"
+   ],
+   "bytes": 1156128,
+   "sha256": "38c1d6b8156684d0af798d7d64be50150b74d6cce5893158fad41f47e1859b49"
+  },
+  {
+   "path": "/mnt/storage/s42-trace-v2-20260921-prep/cuda-build/bin/libggml-cuda.so",
+   "referenced_by": [
+    "rig.json.transport_host_dependencies.ggml-cuda"
+   ],
+   "bytes": 66693288,
+   "sha256": "8a1519690daee43e8b2aadfde703350ac7a77e3688e9a049db4f6f149f893fe4"
+  },
+  {
+   "path": "/mnt/storage/s42-trace-v2-20260921-prep/cuda-build/bin/libggml.so",
+   "referenced_by": [
+    "rig.json.transport_host_dependencies.ggml"
+   ],
+   "bytes": 59440,
+   "sha256": "936d4ea87f395e61eb3f462d8866ea67c658a8f3aeccca187603b54f2dab47e3"
+  },
+  {
+   "path": "/mnt/storage/s42-trace-v2-20260921-prep/cuda-build/bin/libllama-common.so",
+   "referenced_by": [
+    "rig.json.transport_host_dependencies.llama-common"
+   ],
+   "bytes": 6080824,
+   "sha256": "97945b8e1b9f3edacbb9ef6ed16ff27b19c64418912f3e67b5bf48a5ddf2b960"
+  },
+  {
+   "path": "/mnt/storage/s42-trace-v2-20260921-prep/cuda-build/bin/libllama-server-impl.so",
+   "referenced_by": [
+    "rig.json.transport_host_dependencies.llama-server-impl"
+   ],
+   "bytes": 8116480,
+   "sha256": "ac9dc1ba1afa935806acac9bdf62c948dbd1909b382792d910302b64f79f7216"
+  },
+  {
+   "path": "/mnt/storage/s42-trace-v2-20260921-prep/cuda-build/bin/libllama.so",
+   "referenced_by": [
+    "rig.json.transport_host_dependencies.llama"
+   ],
+   "bytes": 4195104,
+   "sha256": "05193029d653dec5f2261da15a98b7a6d731dcfc998f7b4ebbfd968e71755f40"
+  },
+  {
+   "path": "/mnt/storage/s42-trace-v2-20260921-prep/cuda-build/bin/llama-server",
+   "referenced_by": [
+    "rig.json.binaries.resident_server",
+    "rig.json.binaries.server"
+   ],
+   "bytes": 17904,
+   "sha256": "ca975ce2a2ef4a2171c1f79efd0a48c88e488e7aa62eb32d35b6d1fe60cfaf49"
+  },
+  {
+   "path": "/mnt/storage/s42-trace-v2-20260921-prep/source",
+   "referenced_by": [
+    "rig.json.repo_root"
+   ],
+   "kind": "directory",
+   "entries": 67
+  },
+  {
+   "path": "/mnt/storage/s42-trace-v2-20260921-prep/source/research_dev/scheduler/adapters/close_resident_bridge.py",
+   "referenced_by": [
+    "rig.json.binaries.close_helper"
+   ],
+   "bytes": 2652,
+   "sha256": "6cf0b1caebad540a02420f4b5021a28390738cc3ea291066300005ffc8ddf6c4"
+  },
+  {
+   "path": "/mnt/storage/s42-trace-v2-20260921-prep/source/research_dev/scheduler/campaigns/burstgpt/data/GEMMA_MANIFEST.json",
+   "referenced_by": [
+    "models.json.models[1].checked_manifest_path"
+   ],
+   "bytes": 165506,
+   "sha256": "aef168cf6fa466f1277026f67a89cc8b14099028da9bc9486255513d69290edd"
+  },
+  {
+   "path": "/mnt/storage/s42-trace-v2-20260921-prep/source/research_dev/scheduler/campaigns/burstgpt/data/QWEN_MANIFEST.json",
+   "referenced_by": [
+    "models.json.models[0].checked_manifest_path"
+   ],
+   "bytes": 117521,
+   "sha256": "b039c786264ba0ec2c0cc9c6177916a74e4a7693c3de4da93681ee2473e48cec"
+  },
+  {
+   "path": "/mnt/storage/s42-trace-v2-20260921-prep/source/research_dev/scheduler/campaigns/burstgpt/data/calibration",
+   "referenced_by": [
+    "evidence.json.calibration_directory"
+   ],
+   "kind": "directory",
+   "entries": 8
+  },
+  {
+   "path": "/mnt/storage/s42-trace-v2-20260921-prep/source/research_dev/scheduler/profiles/MEASURED_4060TI_OP15_KERNEL_PROFILE_V1.json",
+   "referenced_by": [
+    "evidence.json.kernel_profile_path"
+   ],
+   "bytes": 88093,
+   "sha256": "fbc2375c9fea20c39c783778d27a0433d88f5c432f19a370684e36559da1092e"
+  },
+  {
+   "path": "/mnt/storage/s43-two-phone-eval-20260925/template-eval2/evidence.json",
+   "referenced_by": [
+    "campaign.json.evidence_manifest_path"
+   ],
+   "bytes": 1912,
+   "sha256": "a010063dd4362e7393da58841342f27beb93cd4ea55fa05f2aa8d0b7e5bdfcc7"
+  },
+  {
+   "path": "/mnt/storage/s43-two-phone-eval-20260925/template-eval2/models.json",
+   "referenced_by": [
+    "campaign.json.models_manifest_path"
+   ],
+   "bytes": 5256,
+   "sha256": "7f753610603f37fa5c948554413173e19f4c6e1f1b0902caa6427ba6e046cc8e"
+  },
+  {
+   "path": "/mnt/storage/s43-two-phone-eval-20260925/template-eval2/rig.json",
+   "referenced_by": [
+    "campaign.json.rig_manifest_path"
+   ],
+   "bytes": 5560,
+   "sha256": "a8c984eb53ae5a177c8ebbc07500a22160b0db5a9c2151c5ee6c8d504d9d17c7"
+  },
+  {
+   "path": "/usr/bin/adb",
+   "referenced_by": [
+    "rig.json.binaries.adb"
+   ],
+   "bytes": 716968,
+   "sha256": "05a1a4435e436230931acd8737fd68f31542d652731d3ca8c464cab7a42be226"
+  },
+  {
+   "path": "/usr/bin/nmcli",
+   "referenced_by": [
+    "rig.json.binaries.nmcli"
+   ],
+   "bytes": 1040288,
+   "sha256": "9b9cf5be914a4b94c386b909fce89e27ce7b4ae7759a94e6d8538bf1fd5e76f8"
+  }
+ ]
+}

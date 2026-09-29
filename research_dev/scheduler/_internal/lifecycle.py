@@ -20,6 +20,31 @@ class UnifiedScheduleError(ValueError):
     pass
 
 
+class RequestShapeUnsupportedError(UnifiedScheduleError):
+    """The request can never be served by this catalog (not contention).
+
+    Raised at submission with an exact terminal reason so the caller can
+    record a rejection and keep serving unrelated requests.
+    """
+
+    status = "REJECTED"
+
+    def __init__(self, reason: str, details: Mapping[str, object]) -> None:
+        self.reason = str(reason)
+        self.details = dict(details)
+        super().__init__(
+            reason + "; " + ", ".join(
+                f"{key}={value}" for key, value in sorted(self.details.items())
+            )
+        )
+
+
+class PhoneTelemetryUnavailable(UnifiedScheduleError):
+    """A residency plan needs a new observation, not a different assignment."""
+
+    status = "DEFERRED"
+
+
 def _text(name: str, value: object) -> str:
     if type(value) is not str or not value:
         raise UnifiedScheduleError(f"{name} must be a non-empty string")

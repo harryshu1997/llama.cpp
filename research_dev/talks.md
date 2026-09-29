@@ -1,3 +1,4741 @@
+## 2026-09-29 05:30 UTC - s2a PASS 94.6 kJ, 13/14 identical: the inheritance fix works; a new re-provision gap appears; config frozen as paper_config_v1
+
+User: "yes, reboot the phones and test them" → Pixel rebooted (stay-awake restored to default 0, doze on), OP15
+RAM-booted into the qualified kernel from a fresh recorder copy (`/mnt/storage/s43-op15-kernel-restore-20260929-v1`,
+image f13c7c03, `CANDIDATE_BOOTED_IDENTITY_VERIFIED`), g2 recreated, rig READY, `launch_arm.sh s2a template-eval2-s2`.
+```
+run   host kJ  vs legacy  identical  p50 / p90 s (arrival→end)  waits s  Gemma:op15  Qwen:op15  Pixel  probe-exhausted  inherited
+s1c    83.9    −63.3 %     11/14      312 / 803                  3,032    45,672      25,488     7,458      526             0
+s1d   103.1    −54.9 %     12/14      186 / 468                  1,557    26,472      23,904     7,110    1,632             0
+s2a    94.6    −58.6 %     13/14      240 / 478                  1,759    47,208      17,244     5,658        0           240
+```
+Fix confirmed: no budget exhaustion; Gemma 006 assisted for the first time (002+006 co-decoded with the phone).
+New gap (code): at 1,052.9 s the phone re-provision Gemma→Qwen was `REPROVISION_DEFERRED_IN_USE` (the pair still held the
+lease), stayed PROPOSED, never re-evaluated until the 1,272 s arrival → Qwen 005/007 decoded host-only (133
+`PHONE_HELPER_UNAVAILABLE`). In s1c the handover happened at 1,046 s because 006 was not assisted. Next fix: re-evaluate a
+deferred proposal when the phone lease is released.
+
+User: "fix one config and commit to our fork" → `scheduler/campaigns/burstgpt/paper_config_v1/` = template-eval2-s2 +
+trace + transport identity + scripts + DESKTOP_MANIFEST (sha256 of 36 referenced files) + README + SHA256SUMS. GPU
+device-power controller excluded from v1 (it is fed the next trace arrival = future knowledge). Commit scope: code,
+tests + fixtures, configs, traces, text docs; not run evidence (28 GB), baselines data, vendor SDK. Clean-tree suite 155/155.
+
+## 2026-09-29 01:45 UTC - Desktop s2 gate prepared; OP15 kernel boot waits for the user's explicit OK
+
+User: "lets continue what's left for the 4060ti + phones". Done:
+```
+step                                              status
+WiFi workers + echo servers on both phones        stopped (none left)
+batch-growth verdict fix -> desktop stage + deploy synced, checksum residual 0 (local main suite 155/155)
+template-eval2-s2 (= s1 + inheritance)            present, diff vs s1 = one flag
+OP15 RAM-boot of the qualified kernel f13c7c03    NOT DONE: auto-mode check refused to treat "continue"
+                                                  as the per-boot authorization -> needs the user's explicit yes
+s2 gate run + comparison with s1c / s1d           waiting on the boot (runner rejects the stock kernel for every arm)
+```
+Pixel still has stay-awake + doze disabled from the WiFi test (harmless for the desktop arms).
+
+## 2026-09-29 01:20 UTC - A6000 server over WiFi 7: phones LOSE to the server CPU; WiFi tuning cuts 18-30 % of the per-call network time but does not change the verdict
+
+S1 server benchmark (FCHLLX01 GPU 0, Qwen3-14B dequant-f16, -ngl 16 → layers 0-23 + head on the CPU; OP15 3 HTP
+workers own layers 0-17, Pixel 18-23; host shared with another user's CPU jobs; `harness/results/20260928-wifi-s1/`):
+```
+arm        c   step ms   GPU J/tok   vs cpu (step / GPU J)   identical vs cpu
+cpu        1   246.3     23.75       -                        -
+cpu        4   267.6      6.94       -                        -
+split-25   1   254.1     26.58       +3 % / +12 %             5/5
+split-25   4   361.0      9.18       +35 % / +32 %            5/8
+phone      1   423.5     41.86       +72 % / +76 %            4/5
+phone      4   707.4     16.85       +164 % / +143 %          7/8
+gpu (ref)  1    42.7     12.0        (model fits one A6000)
+```
+Server CPU fitted 76.2 GB/s ≈ one phone (OP15 7.8 ms, Pixel 6.8 ms per 535 MB FFN layer vs CPU ~7.0 ms). Even at
+zero network the phones' compute (181 ms/token) exceeds the CPU's (168 ms). RAPL root-only → CPU energy unmeasured.
+
+"Speed up the WiFi" (`reports/20260928-wifi-server/WIFI_TUNING.md`): bandwidth is not the limit (10 KB ≈ 0.1 ms
+airtime). OP15 best-effort uplink queue averages 1.2 ms channel access (voice queue 0.17 ms); both phones' CPUs
+sleep between calls. Measured on the real workers (rows 1, network+overhead p50):
+```
+setting                                   OP15 (3 HTP workers)   Pixel      rpc p50 OP15 / Pixel
+default                                   6.7-7.1 ms             4.60 ms    14.5-14.8 / 10.7-10.8 ms
++ phone-side DSCP 46 on replies (OP15)    5.4-5.7                4.60       13.1-13.5 / 10.7
++ CPU idle states above WFI disabled      4.83-4.87              3.75       12.5 / 9.8
+USB reference                             ~0.7-1.5               -          9.6
+```
+Host-side DSCP (downlink) did nothing and made the Pixel's small pings worse. Raising the WiFi-IRQ cores' min
+freq on the Pixel gave only ~0.5 ms. `harness/wifi_tune.sh on|off|status` (desktop, local adb) applies/reverts
+the two phone settings; all reverted now. Projection: phone arm ~382 ms (still +55 %), split-25 ≈ break-even.
+Verdict unchanged: per-layer sync offload needs per-call network ≪ the phone's slice of a layer → bigger layers
+and/or whole-block ownership (fewer exchanges/token). Idle-off phone power unmeasured. Nothing committed.
+
+## 2026-09-27 16:31 UTC - Overlap audit PASS; four research proposals unverified
+
+User requested current-system overlap ideas with a defensible novelty angle. Read-only source/rig-log
+inspection and primary literature review; no runtime implementation or hardware run. Five native source
+files match deploy. In tp2 shutdown-summary subsets, Qwen OP15 RPC/compute/local-branch means are
+10.913/9.175/0.0118 ms (4,608 calls); Pixel 13.488/8.464/0.0136 ms (1,344 calls). Full-width offload
+leaves almost no local FFN work to overlap. These are not whole-server times or complete proof-call counts.
+Client has one pending call, blocks at publication, and ggml eval callbacks synchronize backend segments.
+Two phones own successive layer regions; a token's OP15 and Pixel regions are causally ordered.
+
+Four logged host-weight restores total 0.515575 s / 1848.969 s (0.028% upper bound for these intervals),
+drop_cache=0/populate=1, so restore-only prefetch cannot explain a large gain on this trace. Range byte
+mentions are not disk traffic. Pixel GPU concurrency remains a failed performance experiment.
+
+Proposals, all NOT VERIFIED: jointly choose remote offload and pending weight-transfer schedules;
+stagger independent cohorts with policy-coherent re-batching; stream phone down-projection output into
+next-layer projections with deferred RMSNorm; prepare successor placements before a thermal handoff.
+Novelty is conditional: HeteGen, PowerInfer-2, NEO, Galaxy, FlashNorm, ChunkFlow, Syncopate, FastPP,
+Sereno and Kairox already cover important primitives. Each proposal names its narrower contribution,
+closest work and a decisive baseline/ablation. Existing S14/S22/S24 plans are also prior work here.
+Recommended: offline concurrency-versus-batching screen first; joint compute/memory scheduling as the
+system research question. No additional saving or token-correctness claim. Collector/embedded-reader
+pyflakes and arithmetic checks PASS. Report and hashed evidence:
+scheduler/campaigns/burstgpt/reports/20260927-overlap-research/README.md.
+
+## 2026-09-27 05:04 UTC - Saved-results audit PASS for energy/recovery; strict identity and fresh full-suite checks FAIL
+
+Read-only audit of 12 completed eval_v2 arms; no hardware run, deployment, phone action or thermal-policy
+change. The latest result is still g11 (2026-09-26 09:22 UTC). Raw RESULT and final SSE streams confirm
+14/14 complete and 3,604 tokens in every arm, with matching request parameters. Best host saving remains
+58.687% (94.414 / 228.535 kJ); two-phone ev8 120.644 kJ / 47.210%, tp2 112.186 kJ / 50.911%, g11
+121.439 kJ / 46.862%. These are CPU-package + GPU-board measurements; phone energy is still modeled.
+Strict output identity FAIL: best 13/14, tp2 and g11 12/14. Baseline repeat 12/14 is not an exception.
+
+g11 recovery mechanics PASS: both Qwen requests keep queue order, same server generation 6 is masked and
+live-reconnected 64.730907 s later, no mask-ended/server-exit event. Correction: 47.018522/47.224992 s
+`penalty_us` measures the discarded attempt, not recovery downtime; 71/72 partial tokens are discarded
+and the prompt is re-executed. Energy effects are not isolated across differently timed fault arms.
+
+Thermal snapshot audit: r2 has a 570.296 s false-qualification interval; tp2 has a 514.662 s Qwen interval
+plus a later unclosed false interval with 35.649 s of saved observations. tp2 max saved OP15 temperature
+is 67.8 C, not 66.7 C. Old snapshots contain no raw severity, so exact LIGHT attribution is unverified.
+No provisioning-stall markers remain in tp2. The scheduler's response to phone telemetry is confirmed;
+the claim that it explains the entire remaining energy gap needs the pending intervention. The 90 C
+check is a fallback when qualification is unknown, not an independent ceiling for an accepted verdict.
+
+Source consistency PASS: all 463 non-report scheduler Python files match working checkout/stage/deploy.
+Fresh run_all exit 1: one timing assertion 10.4753444 ms vs 10 ms; same test passes once in isolation.
+150 unittest summaries / 2,240 cases, plus four direct scripts; recovery 12 and thermal-policy 18 pass.
+Pyflakes PASS for audit collector and embedded reader. Current local disk: 278 GiB available, 93% usage.
+Thermal override remains off; G2/G3 and repeated exact-output energy proof remain open. Nothing committed.
+Report: scheduler/campaigns/burstgpt/reports/20260927-results-audit/README.md (hashes, tables, logs).
+
+## 2026-09-25 17:49 UTC - Savings explanation audit PASS: Gemma offload expanded 8 to 24 layers
+
+User asked why the headline increased from about 25% to 58%. Read-only comparison with
+historical v16/v16c, whose measured host saving was 25.827% (24/24 exact outputs).
+Geometry PASS against recorded groups/proofs: old Gemma assisted 8 layers (8-15), now OP15
+serves 24 (0-23); old Qwen mostly 12 layers, now OP15 serves 18 and Pixel can add 6.
+100% column split applies only to the selected layer set; old/new full fractions are not
+identical offloaded work. Current policy-derived layer counts match all physical proofs.
+
+Current legacy/OP15/two-phone average CPU power 71.233/27.663/20.887 W; GPU power
+30.594/29.677/30.622 W. CPU accounts for 90.655% of the 134.121 kJ two-phone host saving.
+Model reloads 9 -> 7 in either phone arm. Different workloads: 24 requests/2274 outputs
+(mean94.75) vs 14/3604 (mean257.43); unassisted Llama output share 14.51% -> 1.28%.
+These support the mechanism but are not isolated per-change energy ablations.
+
+OP15 token coverage verified: Qwen1459/1524 (95.73%), Gemma1275/2034 (62.68%), total2734/3604
+(75.86%). Two-phone coverage Qwen85.17%, Gemma82.94%, total82.82%. Thus the observed9.622%
+two-phone advantage includes changed OP15/Gemma assistance, not only Pixel execution.
+Single runs, strict identity FAIL12/14 and13/14, phone energy unmeasured; no new acceptance.
+Dispatcher-only ev3 still running at17:42UTC (preflight PASS17:19); no new physical run launched.
+Details/source hashes: scheduler/campaigns/burstgpt/reports/20260925-progress-report/SAVINGS_EXPLANATION.md.
+
+## 2026-09-25 17:19 UTC - Report tables updated; OP15-only PASS 104.465 kJ, observed two-phone difference -9.622%
+
+Read-only audit captured 17:14:10 UTC after CHAIN-ev3 completed OP15 at 17:13:24, exit 0.
+OP15-only completion PASS 14/14, zero rejected, all 7 Qwen and 6 Gemma requests assisted,
+56,862 OP15 proof calls. CPU 50.398 + GPU 54.067 = 104.465 kJ over 1821.864 s:
+54.289% host saving vs the matched 228.535 kJ legacy desktop baseline.
+Inputs, source-file hashes and native binaries match the desktop and two-phone arms.
+
+OP15+Pixel uses 94.414 kJ: observed saving 10.051 kJ / 9.622% vs OP15 alone.
+Duration is 11.087 s / 0.609% longer. Single run per configuration; repeats unverified.
+Strict identity FAIL: OP15 vs legacy 12/14 (003 token203, 004 token233, zero-based);
+two phones vs legacy 13/14; OP15 vs two phones 12/14. No quality-equivalence exception.
+Short-trace dev_v2 means still favor OP15: 38.18 vs two-phone 42.00 kJ (+10.0%).
+No universal incremental Pixel saving is established. Phone energy remains unmeasured.
+Dispatcher-only ev3 was in PREFLIGHT at the saved snapshot; no final energy inferred.
+
+Report-table/export validation PASS: updated trace/coverage/latency CSVs, Markdown tables,
+three-arm energy figure and PDF; pyflakes, embedded reader compilation, arithmetic,
+source/input checks and visual checks PASS. No hardware launch, stop or deployment.
+Tables: scheduler/campaigns/burstgpt/reports/20260925-progress-report/RECENT_RESULTS_TABLES.md.
+
+## 2026-09-25 16:55 UTC - eval_v2 coverage and energy timelines PASS; 82.825% tokens assisted, 58.687% host saving
+
+User requested the earlier token-coverage and energy-savings timeline format for the new pair.
+Read-only saved-result collection; no new run, deployment or device action. Coverage reconstruction
+PASS against request-scoped physical proofs: Qwen 1298/1524 (85.171%), Gemma 1687/2034 (82.940%),
+Llama 0/46; overall 2985/3604 (82.825%). Pixel participates in 1196/1524 Qwen tokens (78.478%),
+all alongside OP15, and is not double-counted. Excluded 30 historical observation groups.
+3542 decode timestamps plus one first-token timestamp; 61 tokens lacking individual timestamps
+are placed at completion. These time positions are approximate, final counts verified.
+
+Energy integration PASS: sensor timestamps, RAPL unwrap and trapezoidal GPU power clipped to exact
+paid intervals reproduce each RESULT domain within 1 microjoule. Host 228.535 -> 94.414 kJ,
+saving 134.121 kJ / 58.687%; 2244.348 -> 1832.951 s. Plot holds the completed arm's final total
+flat, with no idle extrapolation; intermediate gap is equal elapsed time, not equal completed work.
+Strict output identity remains FAIL 13/14; phone energy and incremental Pixel benefit unverified.
+
+Exports PASS: two PNG/SVG/PDF figures, combined two-page PDF, token and energy CSVs, source hashes,
+validation JSON. Pyflakes and visual layout checks PASS. Report:
+`scheduler/campaigns/burstgpt/reports/20260925-progress-report/timelines/README.md`.
+
+## 2026-09-25 16:38 UTC - Report audit: eval_v2 two-phone pair completes, 58.687% host saving, strict outputs FAIL 13/14
+
+Read-only verification of the other session's completed `CHAIN-ev2` pair. No run, deployment,
+phone action or cancellation was issued by this reporting session. Both arms have matching
+source-file and native-binary hashes and matched request inputs; all 3,604 output tokens are present.
+
+| longtail_eval_v2 arm | Completion | CPU kJ | GPU kJ | Host kJ | Duration s | Exact outputs |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| Legacy all-desktop | PASS 14/14 | 159.872 | 68.663 | 228.535 | 2244.348 | reference |
+| Dispatcher + OP15 + Pixel | PASS 14/14 | 38.285 | 56.129 | 94.414 | 1832.951 | FAIL 13/14 |
+
+Observed measured host saving 58.687%; duration -18.330%. Coverage PASS: Qwen 7/7 and Gemma 6/6
+assisted, OP15 63,852 / Pixel 7,176 proof calls. Strict identity FAIL: Qwen request 004 first differs
+at zero-based token 137; no logits establish a near-tie exception. Phone energy is unmeasured:
+4.536 kJ OP15 + 2.939 kJ Pixel are assumed-power estimates and excluded from the host saving.
+Single pair, not a repeatability or whole-system energy claim.
+
+The arm exited 0, no FAILURE/CLEANUP_FAILURE, final Pixel stop exit 0, boot unchanged, no worker
+or forward left. At 16:34:07 UTC the outer chain then stopped on `CANCEL requested`, before
+its desktop+dispatcher and OP15-only controls. Incremental Pixel benefit on this trace remains
+unverified. Prior dev_v2 repeat means remain OP15 38.18 vs two phones 42.00 kJ (+10.0%).
+The 31-request longtail_v1 desktop-only dispatcher pair saves 26.716%, strict outputs 14/31.
+
+Report artifacts PASS: three energy/latency figures (PNG/SVG/PDF), a four-page PDF report,
+CSV tables, source-hashed JSON and fresh exact-token audits. Pyflakes PASS on both report scripts
+and the embedded reader; arithmetic and source matching checks PASS. No production code changed.
+Report: scheduler/campaigns/burstgpt/reports/20260925-progress-report/README.md.
+
+## 2026-09-28 02:56 UTC - dp2 (decode_cap 1,200 MHz) PASS but 125.0 kJ / 2,112 s: the cap works, the run took the bad scheduling fork
+
+```
+state (dp2)   seconds   GPU W   CPU W    vs dp1
+DECODE_CAP     1,513    27.3    44.7     decode GPU 32.6 → 27.3 W (−16 %); SM 1,200 MHz P2 confirmed by readbacks
+LOAD_MIN         356    15.1     8.4     9 loads (dp1: 7)
+RESTORED         214    20.4    12.3
+IDLE_MIN          24    20.7     6.6
+```
+Per-token periods unchanged under the cap (Gemma 377-439 ms, Qwen 472-503 vs dp1's 373-437 / 472-518) → the
+SM cap costs no decode latency. GPU total 51.6 kJ (dp1 53.1) despite +310 s. But CPU 73.4 kJ (dp1 44.2) and
+Qwen OP15 calls 11,700 (dp1 22,824): like cj3, this run took the ORDER fork (a same-model arrival missed the
+leader's 2.5 s cohort window → solo decode, an extra reload, less batching, less Qwen assistance). Two of the
+four night runs (cj3, dp2; no continuous_join in dp2) landed on the bad fork: 98 kJ vs 125-130 kJ from the
+same trace — the discrete serialization the join feature must remove. dp2 timeline: 001 first token 352 s
+(load done 52 s BEFORE 003 arrived at 404) → 003 solo 825-974 s; 012 (arrived 1,676) waited until 2,069 s behind
+Gemma 008/009/010; waits total 4,981 s; model_affinity displaced nothing (bypass_counts {}).
+Prefill under the cap (prompt eval ms/token, ≥100-token prompts): Qwen 24.7 (dp1 16.0, cj2 13.1), Gemma 9.7
+(6.8 / 7.7) → 1.3-1.9× slower prefill (compute-bound), ≈ +50 s per run on 5,385 prompt tokens. Refinement for
+the controller: apply DECODE_CAP only after the first token (it already sees `before_prompt`), release it for
+prefill. Decode itself: no measurable slowdown at 1,200 MHz, GPU −16 % in the decode state.
+
+## 2026-09-29 00:30 UTC - Real FFN workers over WiFi 7 from the server: +5-6 ms per call vs USB; server arms running
+
+Both phones back on the desktop USB (control) + WiFi (data); prep script `phone_wifi_prep.sh` (stay awake, doze off,
+low-latency mode, echo :7070). TCP echo via toybox `nc -L … cat` (no TCP_NODELAY, pipe hop — pessimistic):
+```
+phone   p50      p90      p99      p99.9    per token (24 calls) p50 / p99
+OP15    10.1 ms  16.4     69.6     131      258 / 1,305 ms   (concurrent with Pixel: p99 24.3, p99.9 56.7)
+Pixel   10.0     11.4     64.9     224      246 / 1,356      (concurrent: p99 16.0, p99.9 19.8)
+```
+Real workers over WiFi (harness probe, 500 calls, gap 8 ms; OP15 = 3 HTP TCP workers 7071-7073 layers 0-5/6-11/
+12-17, Pixel CPU packed Q4 7074 layers 18-23; the harness's Pixel fd-9 flock fails under mksh → started via
+`pixel_worker_start.sh` without the lock):
+```
+worker        rows 1: rpc p50 / compute / transport p50 (p99)     rows 4: rpc p50 / compute / transport p50 (p99)
+op15-htp0-2   14.2-15.0 / 7.7-7.9 / 6.4-7.2 (10.3-10.5) ms         18.2-18.4 / 11.1 / 7.1-7.2 (24-27) ms
+pixel         10.5 / 6.1 / 4.5 (8.1) ms                            18.1 / 13.3 / 4.7 (9.5) ms
+USB ref OP15   9.6 / 8.9 / ~0.7-1.5 ms
+```
+WiFi adds ~5-6 ms per call (≈ 120-150 ms per 24-call token); the real workers' tail is tame (p99 ≤ ~10 ms at 1-2
+rows). Server arms cpu / split-25 / phone × c 1, 4 launched on GPU 0 (host contaminated: kz96891 ~10 CPU-bound
+python procs, load 12, GPU 1 at 100 %).
+
+## 2026-09-28 23:50 UTC - Server on the router LAN (192.168.0.73, 10 Gb/s); server→OP15 WiFi tail is catastrophic for a synchronous chain
+
+User moved the router's internet port to 2.5G; FCHLLX01 enp2s0 got 192.168.0.73/24 at 10 Gb/s. Main suite after the
+batch-growth merge: 155/155. Server → OP15 (ICMP, 1,000 pings every 10 ms; `W0-ping-server-op15.json`):
+```
+payload   recv      p50      p90      p99      p99.9    max      mean
+10 KB     958/1000  6.28 ms  70.2 ms  134 ms   161 ms   161 ms   20.9 ms
+64 B      994/1000  5.88     73.9     129      153      153      21.5
+```
+Median is ~4× the USB call (1.5 ms) and the tail is fatal for 18-24 synchronous calls per token: with p90 = 70 ms,
+P(a token hits ≥ one 70 ms stall) ≈ 1 − 0.9^24 ≈ 92 %. (Caveat: low-latency mode on the OP15 could not be re-verified —
+the OP15 dropped off the desktop's USB entirely (not in lsusb) while staying on WiFi; the Pixel dozed and left WiFi
+after the router restart and does not auto-rejoin (needs the passphrase: `cmd wifi connect-network`).) Verdict so
+far: per-layer synchronous FFN offload over this WiFi is not viable; WiFi needs a design with ~1 exchange per token
+per phone (whole-block ownership incl. attention/KV) and/or batching, plus tail mitigation.
+
+## 2026-09-28 23:30 UTC - Server harness ready; arm (a) measured on FCHLLX01; prediction: per-layer offload over ~8 ms WiFi LOSES on this server
+
+`reports/20260928-wifi-server/harness/` (agent): `wifi_config.example.json`, `phone_workers.sh` (start/stop/status/
+echo/wifi-tune; OP15 = three TCP workers HTP0/1/2 on ports 7071-7073 for layers 0-5/6-11/12-17 with the existing
+shards `/data/local/tmp/s42-ffn-shards-20260904-v1/qwen/HTPk.ffn.gguf`, Pixel CPU packed Q4 layers 18-23 port 7074),
+`server_bench.py` (arms cpu / phone / split-25/50/75 / gpu; env `S41_SERVER_FFN_HELPERS`, `…HELPER<k>_{LABEL,
+LAYER_MASK,TRANSPORT=tcp,HOST,PORT}`, runtime control `POST /v1/chat/completions/control`), `analyze.py`, 25 tests.
+Measured today (Qwen3-14B dequant-f16, 5 × 128 tokens, GPU 0):
+```
+arm                      conc   step ms   decode tok/s   GPU W   GPU J/token
+cpu  (-ngl 16, phones' layers on CPU)   1   224.4     4.46        102     21.7
+cpu                        4   246.0    16.26        109      6.34
+gpu  (all layers on GPU)   1    42.7    23.4         294     12.0
+gpu                        4    44.7    89.5         292      3.22
+```
+Server CPU fitted at 83.6 GB/s (not 69); GPU idles at 84 W once a CUDA context is loaded (26 W without); RAPL
+root-only and perf_event_paranoid=4 → CPU energy unmeasurable today. Code limits: helper layer masks are disjoint
+(one phone per layer, `server.cpp:258-272`) and one column share for all helpers → split = CPU + one phone per layer,
+≤ ~1.7-1.9× on the FFN part; TCP calls print no per-call timing (`S41SERVERFFNUSB` is FunctionFS-only) → tap proxy.
+Predicted step vs the cpu arm: RTT 1.5 ms → split-25 −17 %, phone +36 %; 3 ms → split-25 −14 %; 5 ms → split-25 +7 %,
+phone +74 %. With the measured ~7-8 ms WiFi RTT every phone arm is predicted to be slower than the server CPU alone,
+and the all-GPU arm is 5× faster anyway. Honest conclusion pending the wired-server TCP RTT: per-layer FFN offload
+over this WiFi does not pay on the A6000 server; only a design with ~1 exchange per token per phone could.
+
+## 2026-09-28 23:05 UTC - First WiFi 7 numbers: works, but ~7-8 ms per 10 KB round trip (USB: 1.5 ms)
+
+Both phones on "Boyd612_6G" (router DHCP 192.168.0.0/24): OP15 192.168.0.194 (11be, RSSI −37, link 270 Mbps),
+Pixel 192.168.0.202 (11be, 1,921 Mbps). ICMP from the phones (root ping):
+```
+path                          cadence   mode          56 B avg (min/max)     10 KB avg (min/max)     loss
+OP15 → router                 200 ms    default       10.4 (5.0/46.8)        10.1 (7.8/14.0)         0 %
+OP15 → Pixel (2 hops)         200 ms    default       481 (7.9/1,642)        438 (15.3/962)          8 / 56 %  ← power save
+OP15 → router                  20 ms    low-latency    7.2 (4.1/43.7)         8.3 (5.4/15.8)         0 %
+Pixel → router                 20 ms    low-latency    —                      7.4 (4.9/16.3)         0 %
+OP15 → Pixel (2 hops)          20 ms    low-latency    8.3 (4.2/23.2)        14.2 (11.4/60.4)        0.3 %
+```
+`cmd wifi force-low-latency-mode enabled` (both phones, power save off) removes the losses; the ~5 ms floor and
+~8 ms mean per 10 KB round trip stay (ICMP to the router's CPU; the real test is server-wired ↔ phone TCP).
+Implication: at ~8 ms per synchronous call × 18-24 calls per token, transport adds ~150-190 ms per token (USB: ~36)
+→ the per-layer FFN-offload design loses most of its benefit over this WiFi; batching (one call carries all rows)
+and fewer round trips per token (phone owns whole layer blocks incl. attention/KV → 1 exchange per token per phone,
+the existing layersplit pipeline) are the levers. Server port: `enp2s0` has link (10 Gb/s) but DHCP never answers
+(NM "getting IP configuration" → disconnected; 5 rx packets / 15 s) → likely cabled to the router's WAN port.
+
+## 2026-09-28 22:43 UTC - Batch-growth verdict inheritance merged (6 files, iso suite 155/155); s1e needs the USB kernel back
+
+Agent: the exhausted budget forces the host in `coherence.py::_server_probe_policy` (:273-283 → `return
+session.baseline`), `server_directive` stores host as `group.policy`, `_server_group` never re-proposes; the budget ran
+out with ZERO comparable windows because `record_server_window` charges every phone window while the joiner is
+still prefilling (`server_window_is_comparable` needs len(peers) == active_batch). Correction: batch 2 starts at
+~763 s (006 admitted, prefilling), the budget runs out at ~796 s, 006 decodes from ~797 s. Fix (opt-in
+`adaptive_decode_overrides.batch_growth_verdict_inheritance`, requires coherence): inherit the nearest smaller batch's
+phone verdict as the provisional decision (`_growth_inheritance`, `_keep_inherited_policy`), label
+`BATCH_GROWTH_INHERITED` + `inherited_from_batch`; measured guards (SERVER_PAIR_NOT_IMPROVED, SERVER_ENERGY_DOMINATED,
+SERVER_LATENCY_BOUND_EXCEEDED, phone failure) still overturn. 16 tests (RED on main). Merged, residual 0, pyflakes
+clean, affected modules 139 tests OK; main suite running. Template `template-eval2-s2` (= s1 + inheritance) staged.
+s1e/s2 on the desktop's two-phone arm needs the OP15 on the FunctionFS candidate kernel again (fastboot boot, user
+authorization) — the OP15 is now on the stock kernel for WiFi.
+
+## 2026-09-28 22:41 UTC - OP15 WiFi root cause: our RAM-booted test kernel lacks cfg80211 → rebooted to stock (user-authorized)
+
+Why the OP15 "turned WiFi off": settings wifi_on=1 but `Wi-Fi is disabled`, no wlan0; dmesg: `qca_cld3_peach_v2:
+Unknown symbol wiphy_register / cfg80211_* (err -2)` ×~20, `wifiDriverReload` exited 1; /proc/kallsyms has 0
+cfg80211 symbols → the RAM-booted candidate kernel `6.12.23-android16-5-o-g227664cbe007-4k` (built for the FunctionFS
+dmabuf USB transport, boot image `/mnt/storage/s42-dmabuf-cancel-20260914-v1-gBJdFx/candidate-boot.img`) was built
+without the wireless layer. User: "ok reboot it" → `adb reboot` 22:40 UTC → stock kernel
+`6.12.23-android16-5-gb3b66ace21e0-ab14672634-4k`, boot in ~20 s, WiFi up (auto-joined campus PAWS-Secure,
+172.20.179.95/16). Consequences: WiFi/TCP experiments run on the stock kernel; USB FunctionFS arms on the desktop now
+need the candidate kernel again (`fastboot boot` + `boot_candidate.py` + `s43_g2_recreate.sh`, user authorization per
+instance) — or a rebuilt candidate kernel with CFG80211=y. Pixel already on the WiFi 7 router "Boyd612_6G" (11be,
+1,921 Mbps, 192.168.0.202, router DHCP) → simpler topology: cable FCHLLX01 enp2s0 to a router LAN port with
+`ipv4.method auto` (no server DHCP/NAT). OP15 still needs to join Boyd612_6G (password: user).
+
+## 2026-09-28 22:40 UTC - Server prep for the WiFi 7 test (user: server creates the local network, phones join later)
+
+FCHLLX01 now idle (load 0.4, both A6000 free; the other user's SGLang is gone). Toolchain present (nvcc, cmake, ninja,
+adb, nmcli, dnsmasq). Started: (1) fresh CUDA build `build-cuda-s43` from current main (llama-server,
+llama-ffn-split-worker, llama-bench; the old `build-cuda` is from 09-20 and lacks the S2a caps); (2) copy of the
+phones' exact Qwen artifact `Qwen3-14B-Q4KM-dequant-f16.gguf` (sha256:d89e9e82…, 29.5 GB) from the desktop — only
+7 MB/s over the desktop's campus WiFi, ~70 min, low priority; no measured runs on the desktop until it finishes.
+`NETWORK_SETUP.md`: router in AP mode cabled to `enp2s0`; server hands out 192.168.77.0/24 via NetworkManager shared
+mode (or manual + dnsmasq without NAT); phones' WiFi state (OP15 off, Pixel unassociated); toybox netcat on both
+phones supports `-L … cat` echo for `wifi_rtt.py`. s1e (batch-verdict fix) waits for the fix agent + the copy.
+
+## 2026-09-28 22:15 UTC - s1d (publication re-plan): best latency, energy 103.1 kJ — the remaining variance is ONE policy defect
+
+```
+run   host kJ   p50 s   p90 s   waits s   Gemma:op15   002/006 SERVER_PROBE_BUDGET_EXHAUSTED   thermal excl
+s1a    88.0     227     539     1,747     47,568         0                                     0 s
+s1b    97.7     199     591     1,826     28,584       102                                     0 s
+s1c    83.9     340     894     3,032     45,672        13                                     0 s
+s1d   103.1     214     534     1,557     26,472       107                                     0 s
+```
+s1d: HELPER_ADOPTED_LATE ×2 (late adoption now fires on hardware), hysteresis 10 skips / 0 holds, affinity 3
+displacements, `continuous_join_publication_replans 0` (not needed this time: 001 was already live when 003 arrived;
+003 still started exactly at 001's end, 413.8 s — ~10 s serialization left). Energy variance is now explained: in
+s1b/s1d Gemma 002 ran assisted (1,000,000) until Gemma 006 joined (~797 s) → active batch 2 → new context with no
+verdict → server probe budget exhausted → fraction 0 for BOTH until 002 ended (~1,000 s, ~200 s host-only); in
+s1a/s1c the pair kept the phone through the join. Fix = batch-growth verdict inheritance (rows nearly free on both
+stages ⇒ a phone win at batch b stays a win at b+1; measured loss can still overturn). Agent launched
+(~/.cache/claude-work/batch-verdict/). Artifacts s1b/s1d copied locally.
+
+## 2026-09-28 21:25 UTC - Publication re-plan merged (8 files, iso suite 154/154); s1d scripted to follow a green main suite
+
+Agent root cause: the only publication-time re-plan (`observe_automated_runtime_snapshot`, observations.py:69)
+could not fire at 461.9 s — its work-conserving rule needs every predecessor ACQUIRED (002 had just gone
+REPLAN_REQUIRED via `release_prepare_leases`), and affinity only counts other-model tickets whose CURRENT plan changes
+residency (002 still carried its stale hot plan) → `publication_replans 0`; nothing re-checked queued same-model work
+after 002's switch was committed at 462.2; `replan_commit.py:447-465` only tried affinity, never the join bypass.
+Fix (continuous_join only): `_unified/automated_requests_ops/join_publication.py` wakes QUEUED/DEFERRED same-model
+attempts decided before their server went live (wake `continuous_join_server_live`, stat
+`continuous_join_publication_replans`) at the end of the snapshot observation AND after a replan that reserves a
+residency change; replan-side bounded bypass (`continuous_join_replan_bypass`) after affinity refuses. On the rig the
+joiners' decisions will read `MODEL_AFFINITY_DISPLACEMENT` (affinity is tried first), not DESKTOP_PARENT (assisted rows
+are rejected upstream; the leader's phone help is an async attachment). Open item for the user: arrival-time "no gain"
+compares calendar starts only (002@312 was reserved at its arrival yet queue-ordered behind the deferred 001) —
+changing it alters affinity outside continuous_join and fairness toward 001.
+Merged (residual 0, pyflakes clean, new module + dispatch/arrival 105 tests OK); main suite running; deploy + s1d
+(`template-eval2-s1`) wait for green + `rig_ready.sh` (OP15 status 0, ≤ 32 °C, not latched, lock free).
+
+## 2026-09-28 20:35 UTC - s1c (step-1 fix): 83.9 kJ host (−63.3 %, new best) but latency worse — energy/latency trade exposed; last join gap found
+
+```
+run   host kJ   CPU kJ   p50 lat s   p90 lat s   003 wait s   Qwen batches                       identical
+s1a    88.0     34.8     223         539          64          001+003+004 | 005+007 | 011+012    11/14
+s1b    97.7     45.0     197         591          58          same as s1a                         13/14
+s1c    83.9     31.3     312         894         737          001 solo | 003+004+005+007 | 011+012 11/14
+```
+(Trace SLO is 30 s per request: 0-3/14 met in every arm — not a usable metric on this rig; report p50/p90.)
+Fix worked: hysteresis 12 skips (OWN_MODEL_WAITED_LONGER…), 1 hold (SAME_MODEL_QUEUED), 0 wasted holds; early
+re-provision fired for the first switch too (`desktop_commitment_source: "queued"` ×2) → 001 started WITH the phone
+(explored [0, 1e6]), zero PHONE_HELPER_UNAVAILABLE in the run. But an assisted 001 holds the capacity-1 phone lanes,
+and 003 (arrived 404 during 001's load) / 004 (458) were queued behind the Gemma switch and NOT re-evaluated while
+001 decoded 467-527 with 3 free slots (003's re-plans: 570, 736, 762, 822, 1046) → no join; they batched 4-wide at
+1,141 s. Energy best (more phone assistance, 4-row batch), latency p90 +50 %. The s1a/s1b joins happened only
+because 001 ran helper-less. Missing trigger: re-plan the new model's queued requests when its server becomes live
+(`publication_replans 0`). Fix agent launched (deliverables ~/.cache/claude-work/publication-replan/).
+
+## 2026-09-28 19:46 UTC - Step-1 fix merged (15 files, iso suite 153/153); s1b repeat = 97.7 kJ, same batch structure as s1a
+
+Fix agent's corrections of my s1a reading: the Llama control request DOES change residency (evicts Gemma from
+cuda0) so holding it was legal, just useless; Qwen 001 DID adopt the late helper at 437.5 s via the READY-layout
+path (no marker there) and LOST it at 450.5 s when a second rebuild failed `runtime helper plan history changed
+identity` (tokens 42-62 helper-less); early re-provision DID fire (`desktop_reprovision.desktop_commitment_source:
+"queued"`) for 4 of 5 switches — only the first (Qwen 001) missed because Qwen's learning demand was refused with
+`MARGINAL_SYSTEM_COST_UNKNOWN` while Gemma was protected. Fixes: `_internal/runtime_residency_hysteresis.py` (hold
+only for SAME_MODEL_QUEUED or SAME_MODEL_ARRIVAL_LIKELY from a learned inter-arrival mean, threshold
+`residency_hysteresis_min_probability_ppm` default 500000; skips OTHER_RESIDENCY_RESOURCE /
+OWN_MODEL_WAITED_LONGER_THAN_HYSTERESIS / ARRIVAL_UNLIKELY; replaying s1a skips all 5 holds); retain a helper that
+matches the READY layout instead of rebuilding it (`HELPER_MATERIALIZATION_RETAINED`) + `HELPER_ADOPTED_LATE`
+with `source`; queued demand tolerates MARGINAL_SYSTEM_COST_UNKNOWN. Main: merged, pyflakes clean, affected
+modules 153 tests OK, full suite running; deploy + s1c launch scripted to follow a green suite.
+
+s1b (same code as s1a): PASS 97.7 kJ, 13/14 identical, waits 1,826 s; SAME batch structure as s1a (001+003+004,
+002+006, 005+007, 011+012) — the first time two runs did not fork; difference = Gemma OP15 calls 28,584 vs 47,568
+(CPU 45.0 vs 34.8 kJ). Arm so far 88.0 / 97.7 kJ. Caution: in both runs the 20 s hold on Qwen 001's switch delayed
+001's decode into 003/004's arrival → the "useless" hold acted as a BATCHING WINDOW for the incoming model; the fix
+removes it → s1c tests whether the good ordering survives.
+
+## 2026-09-28 19:05 UTC - New test track: WiFi transport + stronger server (plan + RTT tool written)
+
+User: test that WiFi works for our system and that a stronger server still saves energy. `reports/20260928-wifi-
+server/PLAN.md` + `wifi_rtt.py` (self-tested). Facts: the worker already has a TCP mode (`--port P --bind ADDR`,
+exclusive with FunctionFS) and the server helper client takes any host → no phone code for WiFi; only 10 KB per call
+crosses the link, so the per-call round trip and its tail decide. FCHLLX01: wired campus NIC `enp1s0f0` 1 GbE +
+FREE `enp2s0` (cable the router here); `build-cuda` from 2026-09-20 lacks the S2a caps → rebuild from main; models
+on disk: Qwen3-14B f16 (not the phones' dequant artifact), gemma-4-12B f16/bf16/Q8; 235 GB free. Pixel: WiFi on but
+not associated; the desktop itself is on WiFi (wlp3s0 172.20.74.85/16) + ZeroTier + OP15 NCM. Stages: W1 RTT go/no-go
+(p99 ≤ 5 ms) → W2 real FFN calls over WiFi → W3 desktop end-to-end WiFi vs USB (isolates the link) → S1 server
+mechanism microbenchmark (same phone artifact, forced spill, CPU vs phone vs column split) → S2 realistic model
+(Qwen3-32B f16 on one A6000, or one model per GPU). Needs from the user: router + phones joined, `enp2s0` cabled,
+RAPL read access on FCHLLX01, a quiet window (other user's SGLang at ~3,200 % CPU).
+
+## 2026-09-28 18:40 UTC - s1a PASS 88.0 kJ host (−61.5 %, best of the campaign) — but the step-1 mechanisms did not earn it
+
+```
+run   host kJ   CPU kJ   waits s   Qwen:op15   Gemma:op15   identical
+pe1    95.7     40.5     2,287     24,192      45,120       10/14
+cj2    98.3     45.2     2,196     23,274      37,512       13/14
+s1a    88.0     34.8     1,747     22,554      47,568       11/14
+```
+Qwen 001+003+004 co-decoded (3-row batch from 465 s), 002+006, 005+007. Attribution: hysteresis held 5 switches
+× 20 s and admitted NOTHING (`residency_hysteresis_admissions 0`) — pure delay, it even held the Llama control
+request; late-helper adoption never fired (001 started helper-less at 429, Qwen shards READY +430..467, 10×
+PHONE_HELPER_UNAVAILABLE, explored [0], no HELPER_ADOPTED_LATE); early re-provision never fired (authorized +417 s
+vs the switch decided ≤ 322 / acquired 342; no `source: queued` rows). The win came from timing again: 001 ran
+desktop-only (no phone lanes held), so assisted 003/004 could co-decode with it; plus 3 affinity displacements
+and a cool phone. Join bypass: still 0 (only refusal: 002@312, nothing to bypass). Follow-up agent launched
+(deliverables ~/.cache/claude-work/step1-fix/): conditional hysteresis (queued same-model work or learned
+arrival probability), late adoption for a never-bound session, re-provision at the switch decision. s1b (repeat,
+same code) queued for variance. Artifacts copied to ~/.cache/claude-work/s1a-artifacts/.
+
+## 2026-09-28 18:15 UTC - Related-work check: our design is attention-FFN disaggregation (AFD) — crowded in 2026; novelty must be the regime + scheduler
+
+Main confirmation suite with step 1: 153/153 OK. Web check (sources in PAPER_NOVELTY.md): MegaScale-Infer / Step-3
+(AFD for MoE, microbatch ping-pong), **AFlex (arXiv 2608.01891): AFD + per-operator DVFS** with an ILP scheduler —
+closest neighbour to "phones do FFN + scheduler DVFS"; OpWeave (2609.14237), AFD-Ledger, OpScale (heterogeneous
+operator disaggregation planning); DVFS serving (DynamoLLM, throttLL'eM, GreenLLM, VoltanaLLM, EcoInfer, BiScale);
+edge collaborative (LOIP/LIME, Jupiter); CPU/GPU split (PowerInfer, HeteGen, NEO). So "AFD" and "DVFS for serving"
+are not novel alone. Our novelty: (a) the regime — dense models at batch 1-4 on a VRAM-bound consumer host with
+phones as bandwidth donors over USB, every stage bandwidth-bound, rows nearly free (opposite of datacenter AFD's
+compute-bound FFN; their ping-pong loses to batching here, which we measured); (b) the scheduler exploiting it —
+batch manufacturing coupled with helper residency/readiness and calendar-driven device power under helper churn;
+(c) hardware energy incl. the phones' batteries, variance explained by timing forks.
+
+## 2026-09-28 17:56 UTC - Step 1 merged (iso suite 153/153), deployed; gate s1a launched
+
+rsync iso-p1 → main (24 files), residual empty, pyflakes clean, new modules 137 tests OK; confirmation suite on
+main running concurrently (identical content to the passing iso tree). Stage + deploy == main. s1a =
+`launch_arm.sh s1a template-eval2-s1` at 17:55 UTC (OP15 27.5 °C, status 0, notify 0, 77 %). Markers to check:
+`RESIDENCY_HYSTERESIS_HELD` on the Gemma switch after 001 (held_until = release + 20 s), `residency_hysteresis_
+admissions` ≥ 1, 003 admitted hot before the switch; `HELPER_ADOPTED_LATE` for sessions that start helper-less;
+re-provision `source: queued` / REASON_REPROVISION before the new model's first admission; Qwen OP15 calls back
+toward 23k; host kJ vs pe1 95.7 / cj2 98.3 and the bad-fork runs 125-130.
+
+## 2026-09-28 17:52 UTC - Speculative rows merged (main 152/152 green); step-1 agent finished before the rate limit; gate template staged
+
+Speculative rows (agent, 15 files, `adapters/speculative_rows.py`, 22 tests): opt-in `speculative_rows` per model;
+the fork's server needs `--spec-type draft-simple --spec-draft-model P --spec-draft-n-max K`. Two C++ limits
+found: per-request `speculative.n_max` is compiled out (`server-schema.cpp #if 0`) → one launch-wide K; and the
+draft model loads in the same process with the FFN-split env → its graph would hit the phone callback with the
+wrong n_embd → a stock server must not draft with a phone attached (launcher refuses fail-closed). Works today on
+desktop-only routes; phone routes need `server_speculative.diff` (proposal, not applied) + rebuild +
+re-qualification + a `patched_server_sha256` pin. Main suite 152/152 OK (microbenchmark passed this time).
+Step 1 (hysteresis + late-helper adoption + early re-provision): the agent was cut by the rate limit AFTER
+writing `step1.diff` (24 files) + PROGRESS.md and after re-syncing its tree onto the merged main → iso-p1 = main +
+step 1 exactly; its full suite was at 88 modules / 0 failed and is finishing. Design: hysteresis hold lives in
+the dispatch queue (`_residency_release`, `_residency_hysteresis_until`, note `RESIDENCY_HYSTERESIS_HELD`, wake
+`residency_hysteresis_released`, stats only when H > 0); late adoption = `helper_attachment_opportunity` ELIGIBLE
+for a never-bound helper-less session with ≥ N remaining tokens (`HELPER_ADOPTED_LATE` event); early
+re-provision = `_desktop_commitment` follows the queued-next model (`count_queued_demand`) and a decided QUEUED
+load triggers the layout re-evaluation (`early_on_transition`). Gate template `template-eval2-s1` staged on the
+desktop (continuous_join + H=20 s + late adoption min 24 tokens + both re-provision flags).
+
+## 2026-09-28 17:40 UTC - MEASURED OP15 energy: 9.7 kJ per run (5.3 W mean) vs 4.7 kJ assumed — the phone model was ~2× low
+
+pe1 (standard two-phone arm, charging disabled): PASS 95.7 kJ host (−58.1 %), 1,817 s, 10/14 identical, Qwen OP15
+calls 24,192, Gemma 45,120. OP15 power log (1,784 samples): USB pinned at the 500 mA SDP cap the whole run
+(494-500 mA @ 5.1 V = 2.47 W → 4.5 kJ) + battery coulomb counter 5,424 → 5,072 mAh (352 mAh @ 4.11 V = 5.2 kJ)
+→ 9.7 kJ total, 5.3 W mean (`battery/current_now` reads 0 with mmi off — the counter is the truth). RESULT's
+assumed phone-system energy for the same run: 4.71 kJ (859 s active @ 4.5 W + 958 s idle @ 0.875 W). With the
+Pixel still assumed (2.2 kJ), fleet = 95.7 + 9.7 + 2.2 = 107.6 kJ vs legacy 230.5 → −53 % (was −56 % assumed).
+Implication: the OP15 draws ~10 W while serving (NPU + 55 GB/s DRAM, DCVS pinned at max, sleep disabled) and
+≥ 1 W idle — the phone-side DCVS lever matters for both energy and thermal. Charging re-enabled (mmi 1, Charging,
+75 %, 35 °C). Method now reusable: `run_phone_energy.sh ATT` (+ POWER file integration).
+
+## 2026-09-28 17:08 UTC - Measured phone energy run pe1 launched (standard two-phone arm, OP15 battery charging disabled)
+
+Phone energy has been ASSUMED (4.5 W active / 0.875 W idle) in every result. Method now: `run_phone_energy.sh` sets
+`/sys/class/oplus_chg/battery/mmi_charging_enable=0` (root) for the run and restores it in a trap; the campaign's
+1 Hz POWER sampler already logs `usb/current_now`, `usb/voltage_now`, `battery/current_now`, `battery/charge_counter`,
+`battery/voltage_now` → phone power = USB V·I + battery discharge (the desktop port is a 500 mA SDP, so bursts
+above 2.5 W must come from the battery and show in the coulomb counter). With charging disabled the OP15 shows
+status "Not charging", battery current 0, USB 94 mA @ 5.12 V (0.48 W) at rest. pe1 started 17:07:53 UTC (OP15
+24.8 °C, 80 %, status 0). Post-run: integrate the POWER file, compare with the assumed model, and correct the
+fleet kJ in the data sheet if the assumption is off.
+
+## 2026-09-28 06:10 UTC - Next round launched (step 1: hysteresis + late-helper adoption + early re-provision; step 3: speculative rows); paper framing drafted
+
+Two agents in iso-p1/iso-p2 (deliverables ~/.cache/claude-work/step1-hysteresis/, step3-speculative/). Facts for
+step 3: the fork's server has draft-model speculation (`common/speculative.cpp`, per-request `speculative.n_max`,
+draft stats in timings); Qwen3-0.6B-Q8 shares Qwen3-14B's 151,936 vocab (valid draft, on the desktop); no Gemma-4
+draft GGUF yet (vocab 262,144). `reports/20260927-batch-dvfs-overlap/PAPER_NOVELTY.md`: thesis (coincidence
+engineering for energy on a bandwidth-bound heterogeneous fleet), 5 contributions, honest positioning, claims-vs-
+evidence table (batch manufacturing and speculative rows unproven; phone energy still ASSUMED), evaluation plan.
+
+## 2026-09-28 05:22 UTC - cj5 PASS 129.9 kJ: no verdict on join-v3 (its precondition never arose); Qwen assistance collapsed
+
+Timeline: 001 Qwen 326-401.6 s; 003 arrived 404 (2 s AFTER 001 finished) → no same-model co-tenant ACQUIRED →
+neither affinity nor the join bypass had a candidate (statistics all 0, bypass_counts {}); the queued Gemma
+switch (002, arrived 312) started the instant the server freed (444) → 003/004/005 waited until 755 (after Gemma
++ a Qwen reload). This is the residency-HYSTERESIS case (resident model, server just went idle, switch about to
+start, same-model arrivals imminent) — outside the bypass's design (needs a running co-tenant). Energy 129.9 kJ:
+Qwen OP15 calls 4,302 (cj2 23,274) — 001/003/004/005/007 explored fractions [0] only (never tried the phone),
+011/012 assisted; Gemma 43,464 calls (highest). NOT thermal (OP15 qualified 0-1,085 s; the Qwen batch ran
+755-953) and NOT a join-v3 regression: `ASSISTANCE_DECISION PHONE_HELPER_UNAVAILABLE` ×62 for 001/003/005 because
+the OP15 still held the GEMMA shards — the phone re-provision to Qwen happened only at +743..786 s (cj4: +393..467,
+before 001's start at 395). For 001 (124 tokens, solo) the resident-model policy declined a ~45 s re-provision
+(correct); for 003/004/005 the shards became READY 2-30 s AFTER the batch started (755) and the running sessions
+never adopted the late helper (unavailable at start → `PHONE_HELPER_UNAVAILABLE` every boundary; 004 attached at
+fraction 0 and followed a helper-less leader). Cost ≈ 20 kJ. Two new work items: (1) start the phone re-provision
+as soon as the switch is decided, overlapping the desktop load (warm page cache makes the desktop load faster
+than the 3×15 s phone loads); (2) let running sessions adopt a helper that becomes ready mid-session. SERVER_HELPER_LEASES_SHARED 3 (Gemma 008+009, Qwen 011+012 shared leases: defect-B
+path alive where a co-tenant existed).
+Night: cj2 98.3 / dp1 97.3 / cj3 130.4 / dp2 125.0 / cj4 115.8 / cj5 129.9 kJ. Stopping hardware runs (6 runs).
+
+## 2026-09-28 04:44 UTC - join-v3: main suite 150/151 (known load microbenchmark), deployed (stage + deploy == main), cj5 launched
+
+cj5 = `launch_arm.sh cj5 template-eval2-cj` at 04:43:34 UTC (OP15 28.4 °C, status 0, 73 % charging). Markers to
+check: 003/004-pattern decisions with `dispatch_policy.kind == CONTINUOUS_JOIN_BARRIER_BYPASS`,
+`reserved_start_us ≈ arrival`, reason `CONTINUOUS_JOIN_DESKTOP_PARENT`, plan `residency:hot` without transitions,
+`continuous_join_bypasses ≥ 1`; joiner `explored_split_fractions_ppm` containing 1,000,000 from its first
+boundary, `SERVER_HELPER_LEASES_SHARED`, phone calls/min holding while two requests co-decode; if refused, the
+`(bounded by ...)` suffix in `dispatch_policy.refusals`.
+
+## 2026-09-28 04:35 UTC - Both cj4 defects root-caused and fixed (agent join-v3), merged to main; suite running
+
+**A (bypass blind to the join):** `selection.py::_prepare_automated_submit_context` pre-projects a KEPT epoch's
+SELECTED template — on the rig 001's assisted+load route — which can only be previewed at 001's lease horizon
+(capacity-1 phone lanes held, a load needs every slot); when residency/memory differ there it raises
+`live_not_before[resource]` for EVERY resource of the template incl. cuda0 and plans from the projected (cold)
+snapshot → the transition-free desktop parent is bounded to 1,193.5 s → 27 cold candidates; the cancel changes
+nothing because the re-resolution walks the same template-derived bound (and the caller's stale
+`causal_not_before_by_resource` was passed through). The 458.9 s REPLAN that did join uses
+`_prepare_automated_replan` (no pre-projection). Fix: under the bypass marker the pre-projection previews the
+epoch's BASELINE (desktop-parent) template; `live_not_before_after_displacement` keeps a caller barrier only if a
+live non-displaced ticket's lease still reaches it; refusal strings end with `(bounded by not_before[res]=X |
+transition[id] | calendar[res])`.
+**B (joiner never assisted):** a desktop-parent joiner starts `helper_available=False`; the coherence branch of
+`helper_attachment_opportunity` keys on `server_policy_key(session)` which is None without a layout → never
+ELIGIBLE → `INSUFFICIENT_OPPORTUNITY` for life (Gemma 006 `[0]`). Fix: `joiner_group_runs_phone_policy` (same
+artifact + desktop placement group running a non-baseline policy) → ELIGIBLE → fraction-0 attach → `helper_ready`
+→ next boundary `server_directive` = group policy, leases shared.
+7 files, +9 tests (RED on main), iso suite 151 modules / 2,283 tests OK; merged (residual vs iso empty),
+pyflakes clean, dispatch/coherence/goldens OK; main suite running → deploy → cj5 queued (marker
+`.deploy-synced-joinv3`, OP15 cool-down, battery 68 %).
+
+## 2026-09-28 03:41 UTC - cj4 PASS 115.8 kJ: best ordering of the night (waits 1,743 s), join bypass still 0, refusal half is now KNOWN
+
+```
+run   host kJ   waits s   Gemma:op15   Qwen:op15   note
+cj2    98.3     2,196     37,512       23,274      lucky cohort join
+cj3   130.4     3,881     38,136       11,580      bad fork, Qwen lost assistance
+cj4   115.8     1,743     20,544       23,022      003+004 admitted the instant 001 finished (affinity displaced 002 twice); GEMMA lost assistance
+```
+Timeline: 001 (395-469) → 003+004 co-decoded 469-679 (waited 65 s, not 443) → 002+006 Gemma 733-1,074 → 005+007
+→ 008, 009+010 → 011, 012; 5 large-model servers (cj3: 6-7). Refusals (new detailed reasons): 002@312 and 003@404
+`re-resolved start X >= original X` with EQUAL starts (003: 1,193.5 s both) → half (a), not the residency half:
+after cancelling the switch the joiner's assisted plan is still placed at the co-tenant's lease HORIZON (001's
+worst-case finish ≈ 1,193 s, actual 469 s) because it needs 001's capacity-1 phone lanes; the desktop-parent
+alternative was not chosen — join-hook markers (DESKTOP_PARENT / PHONE_LANES_HELD / RESIDENCY_TRANSITION) all 0,
+so the hook's preconditions did not match on the rig. Decision log at 404 s: ALL 27 candidates for 003 are
+`...:hot:desktop:residency:cold` (reload Qwen after the projected Gemma switch) at start 1,193.5 s — no
+"join the live server" candidate existed; the in-transaction re-resolution after cancelling the switch gave the
+same 1,193.5 s (suspects: the pre-displacement `causal_not_before_by_resource` is passed unchanged into the
+re-resolution; the residency projection still holds the switch; the assisted rows are bound to 001's lease
+horizon 1,306 s). At 458.9 s (004's arrival, affinity displaced 002) 003's REPLAN yielded `residency:hot` at
+458.9 → so the join is possible, the bypass's re-resolution just cannot see it. **Defect B:** Gemma 006 joined
+002 as desktop parent at 797.8 s and NEVER got assistance (`explored_split_fractions_ppm [0]`), and the mixed slot
+policies cut the leader's assistance too (server-10 calls/min 2,736 → 984 → 148 → 3,164): the "adopt the group
+policy at the first boundary" path did not happen on hardware → Gemma OP15 calls 20,544 vs 37,512 (cj2), +16 kJ
+CPU. OP15 after the run 35.9 °C, status 0 (thermal not the cause this time). Fix agent launched for A + B
+(deliverables ~/.cache/claude-work/join-v3/). No more hardware runs tonight (OP15 68 %, 4 runs).
+
+## 2026-09-28 03:08 UTC - Join-refusal fix: main suite 150/151 (same load-induced microbenchmark), deployed; cj4 queued
+
+Stage + deploy == main. `.deploy-synced-joinfix` set → `queue_cj4.sh` launches `launch_arm.sh cj4 template-eval2-cj`
+once the OP15 is back to status 0 / ≤ 32 °C. Markers to check in cj4: `CONTINUOUS_JOIN_BARRIER_BYPASS` +
+`CONTINUOUS_JOIN_DESKTOP_PARENT` for the 003/004 pattern, `PHONE_LANES_HELD_BY_RUNNING_REQUEST` /
+`CONTINUOUS_JOIN_RESIDENCY_TRANSITION` rejections, or — if still refused — the transition id in
+`dispatch_policy.refusals[*].reason`.
+
+## 2026-09-28 03:05 UTC - Join-refusal mechanism found (agent) and fixed in main; suite running
+
+Not a stale snapshot: the re-projection only uses ACTIVE/QUEUED tickets, so the cancelled switch is excluded and
+the "start not earlier" half cannot fire once the lanes are freed. The reachable half is `plan_changes_residency`,
+which counts ANY exclusive residency device — and the rig declares each phone HTP as one (`phone_exclusive_
+residency_resource_id: op15-htp`, plus cuda0). Any re-resolved joiner row that prepares a phone session or reloads
+the desktop (under remote-resident FFN a desktop-only parent may need `load:cuda0`) trips it even though the start
+IS earlier → paired refusals, committed plan behind the switch, zero DESKTOP_PARENT markers. Second bug: the join
+hook matched co-tenant REQUEST ids against calendar lane owners, but cohort-admitted lanes are owned by the COHORT
+id → the hook was silent for every joiner after a ≥2-member batch (cj2's 3-row batch).
+Fix (7 files, +8 tests, iso suite 151/2,275 OK): refusal reasons now name the failing half with numbers/transition
+ids (`no_gain_reason`); `lease_holders` includes cohort ids; a scoped `continuous_join_resolution` marker makes the
+join hook reject transition-bearing rows (`CONTINUOUS_JOIN_RESIDENCY_TRANSITION`) during the bypass re-resolution
+so the joiner is planned as the transition-free desktop parent; rolled-back displacement attempts verified to leave
+no side effect (`test_refused_double_displacement_leaves_no_side_effect`). Honest caveat: no synthetic fixture
+reproduces the rig's transition-bearing row — the next hardware run's refusal string settles it. Merged to main
+(patch -p0, residual vs iso empty), pyflakes clean, dispatch/runtime/coherence modules OK, full suite running;
+deploy after dp2, then cj4 when the OP15 cools.
+
+## 2026-09-28 02:05 UTC - cj3 PASS but WORSE: 130.4 kJ (−42.9 %); the join bypass engaged and refused every case
+
+```
+run   host kJ   waits (s)   Qwen:op15 calls   switches   note
+cj2    98.3     2,196       23,274            ~5         003 landed inside 001's fresh cohort (Qwen load finished AFTER 003 arrived)
+cj3   130.4     3,881       11,580            ~7         Qwen load faster (warm cache) → 001 decoding 19 s before 003 arrived → cohort sealed →
+                                                          003 waited 443 s behind the Gemma switch + an extra Qwen reload; batches 1/2/3 instead of 2/3
+```
+`dispatch_policy.refusals` (new): for 002@312, 003@404, 007@989, 008@1272, 010@1496 — `AFFINITY_REFUSED: displacement
+does not help` then `CONTINUOUS_JOIN_REFUSED: bypass does not start the joiner earlier` (same check: re-resolved
+start not earlier OR re-resolved plan still changes residency; the join rule = affinity's rule + a stricter
+extension bound, so the fall-through can never rescue an affinity "does not help" refusal — my earlier fix only
+adds diagnostics). CONTINUOUS_JOIN_DESKTOP_PARENT markers 0 → the join-selection hook never fired either.
+Hypotheses: (a) the assisted route is placed after the co-tenant's capacity-1 phone-lane lease → not earlier;
+(b) the re-resolution reuses the pre-cancel snapshot → still projects Gemma residency → plans a Qwen reload →
+`plan_changes_residency` true. Also possible harm: the affinity attempt's `replan_queued_now` cancels/replans the
+displaced tickets even when rolled back (double churn with the fall-through). Investigation agent launched
+(reproduce with assisted plans + sealed cohort + queued switch; split the reason; fix). Phone warmer in cj3
+(Gemma 402-437 ms/token vs 373). dp2 (decode_cap 1200) queued, waiting for the OP15 (36 °C) to cool.
+
+## 2026-09-28 01:15 UTC - dp1 PASS 97.3 kJ (−57.4 %): device-power controller proven on hardware; energy effect small until decode is capped
+
+```
+state (dp1)   seconds   GPU W   CPU W    what
+RESTORED       1,486    32.6    28.1     decode (uncapped: SM 2,295-2,595 MHz, P2/P0)
+LOAD_MIN         222    15.1     9.2     model loads at 210 MHz SM (tp2/cj2 loading: ~38 W)
+IDLE_MIN          88    14.4     4.1     idle gaps with weights resident (tp2 loaded-idle 27.6 W, cj2 20 W)
+OFF                6     8.2    10.2     before the probe
+```
+27 DEVICE_POWER_STATE events, all `sudo -n nvidia-smi` rc 0; 7 load_begin/load_end pairs, 6 idle_gap entries,
+3 restored by `transition_active`, 1 `late_restore`, final `end_trace` restore; GPU after the run 210 MHz P8
+10.5 W (clocks unlocked). Saving ≈ (38−15) W × 222 s + (20−14) W × 88 s ≈ 5.6 kJ, invisible in the run total
+(97.3 vs cj2 98.3; timelines differ) because loads + idle gaps are only ~17 % of this trace. Readbacks right
+after `-rgc` show 210 MHz momentarily (GPU idle at that instant; not a lock failure). Memory clock stays at
+8,751 MHz in IDLE_MIN (controller never touches it): a `-lmc 405` idle option would reach the 10.5 W floor.
+Phone side unchanged: Qwen rows=3 batch assisted (4,248 calls), a Gemma 2-row join (1,992 calls).
+Next: dp2 = dp1 + `decode_cap sm_max_mhz=1200` (template-eval2-dp2, queued after cj3) to attack the 32.6 W
+decode state, checking per-token period vs cj2 (Gemma 373 ms). cj fix deployed 01:16 (stage + deploy == main),
+`.deploy-synced-cjfix` set → cj3 launches when the OP15 is ≤ 32 °C.
+
+## 2026-09-28 00:58 UTC - Fix suite: 150/151; the one failure is a wall-clock microbenchmark under a load-41 workstation (verified on the pre-fix tree)
+
+`test_cached_synthetic_refinement_is_below_ten_milliseconds` measured 10.3-11.4 ms vs a 10 ms bound; the
+workstation runs someone's `sglang::scheduler` at 3,257 % CPU (load avg 41). The identical test on the PRE-fix
+tree (backup tar + symlinks) fails the same way (10.7 / 11.4 ms) → load, not the change. Everything else passes
+(dispatch-policy 47/47 incl. the 3 new tests, goldens OK). Deploy of the fix waits for dp1 to finish (never
+touch the deploy source mid-run); `queue_cj3.sh` then launches cj3 once `.deploy-synced-cjfix` exists, the lock
+is free and the OP15 is back to status 0 / ≤ 32 °C.
+
+## 2026-09-28 00:44 UTC - dp1 (device_power gate) auto-launched 00:35, preflight PASS, controller LIVE on hardware
+
+`device-power-control:desktop-cuda` PASS ("sudo permits nvidia-smi -lgc/-rgc"). First events in
+`DEVICE_POWER_EVENTS.json`: OFF→RESTORED capability_probe (readback 210/405 MHz P8) → RESTORED→LOAD_MIN
+load_begin (GPU held at 210 MHz P8 during the Gemma load) → LOAD_MIN→RESTORED load_end (readback 2,595/8,751
+MHz P5). Live GPU during decode: 2,595 MHz P2 31.6 W. Cosmetic defect: the probe event's `at_us` is on the
+pre-trace clock (epoch not yet set) → mark pre-trace events instead of a bogus timestamp. Run ends ~01:15 UTC;
+analysis = `tools/device_power_energy.py` per state + `analyze_run.py` + EV2DP1 energy table vs tp2/cj2.
+
+## 2026-09-28 00:55 UTC - Why continuous_join never fired in cj2, and the fix (main, suite running)
+
+Receipts + code: 003 (arrived 404 s) was admitted ahead of the queued Gemma switch by **model_affinity**
+(`model_affinity_displaced` on 002 at 413 s) — the existing policy already covers the "resident model arrival
+before a queued switch" case. For 004 (458 s) affinity found the same switch, tried its displacement, REFUSED
+(`affinity_refusals`, reason not recorded anywhere) and the submit path fell straight to the plain commit: the
+continuous-join bypass was only tried in the `else` branch when affinity found no candidate (selection.py). So
+the new bypass never saw 004, its designed case. 006→002 (+34 s) used the pre-existing desktop-parent join.
+Fix in main: (1) after a refused affinity displacement (transaction rolled back) the barrier bypass now judges
+the arrival by its own rule; (2) every refused displacement/bypass records `{kind, request_id, reason,
+observed_at_us}` → `dispatch_policy.refusals` in RESULT (only when non-empty; never rolled back; capped 512).
++3 tests (fall-through via a stubbed affinity refusal; refusal record; none when policy off). dispatch-policy
+module 47/47, goldens OK; full suite running. Next: deploy, cj3 after dp1 (OP15 cooling: 36 °C at 00:28).
+
+## 2026-09-28 00:29 UTC - cj2 PASS 98.3 kJ (−57.0 %), 13/14 identical — but the continuous_join code never engaged
+
+```
+run          host kJ   Gemma:op15  Qwen:op15  Qwen:pixel  identical   note
+run 1        94.4      40,488      23,364     7,176       13/14       reference
+tp2          112.2     42,216      5,526      1,566       12/14       OP15 thermally excluded in the Qwen window
+cj2          98.3      37,512      23,274     6,948       13/14       no thermal exclusion (cool start), 3-row Qwen batch assisted
+```
+Timeline: 003 joined 001 at +2.5 s (model_affinity displaced the queued Gemma switch: receipt
+`model_affinity_displaced` on 002 at 413 s), 006 joined 002 at +34 s (pre-existing desktop-parent path, as in
+run 1), 004/005/007 batched (rows=3 phone calls: 4,266) — but 004 (arrived 458 s) again waited until 1,126 s.
+RESULT dispatch_policy: continuous_join=true, max_barrier_extension_s=120; statistics continuous_join_bypasses=0,
+continuous_join_refusals=0, affinity_displacements=2, affinity_refusals=2; no CONTINUOUS_JOIN_* markers → the
+new hooks' preconditions never matched on hardware. Energy: cj2 ≈ run 1; the spread is the OP15 thermal state.
+Per-token: Gemma 373 ms (OP15 call 6.4 ms rt on a cool phone) vs 406 in tp2.
+
+## 2026-09-28 00:11 UTC - sudoers rule active (`NOPASSWD: /usr/bin/nvidia-smi`, parsed OK, verified after `sudo -k`); probe passes from a detached ssh
+
+dp1 will auto-launch from `queue_dp1.sh` once cj2 is done and the OP15 is back at status 0 / ≤ 32 °C. GPU during
+cj2 decode right now: 2,595 MHz SM / 8,751 MHz mem, P2, 34.1 W (the 34 W "active" state the controller targets
+with idle-min 210 MHz between requests and load_min during model loads). The user's rule test pinned the GPU at
+210 MHz for ~1 s during cj2 (negligible).
+
+## 2026-09-28 00:04 UTC - cj2 running (started 23:57 UTC); sudoers wildcard rule rejected → GPU-only rule; dp1 queued
+
+The user's first sudoers file failed `visudo -c` ("wildcards are not allowed in command arguments" on this sudo);
+the `clocks_ok` they saw was a false positive from the cached password. Corrected rule: `NOPASSWD: /usr/bin/nvidia-smi`
+(no argument pattern), verify after `sudo -k`. CPU EPP dropped from the gate (would need a root-owned wrapper);
+`template-eval2-dp` now idle.cpu_epp=null (GPU idle-min 210 MHz + load_min). `queue_dp1.sh` waits for: cj2 chain
+done, rig lock free, `sudo -n -l nvidia-smi -lgc` OK, OP15 thermal status 0 and ≤ 32 °C, notify ≠ 512, then runs
+`launch_arm.sh dp1 template-eval2-dp` (log `chains/QUEUE-dp1.log`).
+
+## 2026-09-27 23:51 UTC - OP15 replugged (notify 0); cj2 continuous-join gate launched
+
+Software routes to clear the charger latch were exhausted first: `mmi_charging_enable` 0→1 left notify 512;
+`uhubctl` (even `-f`) reports the OP15's root-hub port 2-2 has no per-port power switching; no APSD/re-detect
+node; Type-C partner is a plain 5 V source (no PD contract for a role swap); phone reboot ruled out (RAM-booted
+qualified kernel). A user replug cleared it. cj2 = `launch_arm.sh cj2 template-eval2-cj` (continuous_join=true,
+max_barrier_extension_s=120, WC + server_policy_coherence; Gemma parallel 2, Qwen 4); OP15 26.7 °C status 0,
+Pixel 100 %. Battery stage passed, preflight started 23:51:01 UTC. The earlier cj1/cj2 refusals are in
+`failed-attempts/`.
+
+## 2026-09-27 21:56 UTC - cj1 refused by the chain's battery pre-check: OP15 charger latched off (notify 512) → needs a replug
+
+`RuntimeError('OP15 battery_notify_code 512 (charger latched off): stop and replug')` at the preflight-before
+battery stage (OP15 80 %, Pixel 100 %). Known OPLUS `chg_over_time` latch on the desktop's 2.5 W port; only a
+physical replug clears it (user rule: no battery guard, just tell them). Leftovers moved to
+`failed-attempts/cj1-battery-latch/`. Both hardware gates now wait on the user:
+- continuous_join: replug the OP15, then `launch_arm.sh cj2 template-eval2-cj`;
+- device_power: install `SUDOERS_DEVICE_POWER.txt`, then `launch_arm.sh dp1 template-eval2-dp`.
+Deployed code == main (151/151), both features opt-in and inert in the existing arms.
+
+## 2026-09-27 21:54 UTC - Main suite 151/151 with BOTH merges; stage + deploy synced; cj1 gate launched
+
+Both opt-in features (device_power, continuous_join) are inert in the existing arms (byte-identical RESULT).
+`launch_arm.sh cj1 template-eval2-cj` started at 21:53 UTC with the OP15 at thermal status 0 / 24.6 °C, Pixel
+25 °C, rig idle. Prepare MATERIALIZED; the arm campaign.json carries continuous_join.
+
+## 2026-09-27 - `dispatch_policy.continuous_join` merged into main (opt-in; hardware-unverified)
+
+Agent delivered in iso-p1 (deliverables ~/.cache/claude-work/continuous-join/; iso suite 150 modules / 2,234
+tests OK): flag `continuous_join` + `max_barrier_extension_s` (requires WC; runner fails closed without
+`server_policy_coherence`); join selection (`_unified/automated_selection_ops/continuous_join.py`): same-artifact
+ticket ACQUIRED on the baseline endpoint, free slot, count < min(parallel, cohort capacity), assisted row's
+capacity-1 lane held by a co-tenant → assisted rows rejected `PHONE_LANES_HELD_BY_RUNNING_REQUEST`, desktop parent
+selected `CONTINUOUS_JOIN_DESKTOP_PARENT` (assistance via the shared helper window + coherence group policy);
+barrier bypass (`_unified/automated_requests_ops/continuous_join.py`): a QUEUED other-model residency change
+ahead is displaced (wake `continuous_join_displaced`) iff the joiner starts earlier, needs no transition and
+extends the committed busy window by ≤ `max_barrier_extension_s` — note `CONTINUOUS_JOIN_BARRIER_BYPASS`,
+stats `continuous_join_bypasses/refusals`; same-artifact+endpoint co-tenants excluded from the external-activity
+hash (`batch_member_ticket_ids`). 18 edited + 2 new files, +15 tests, all goldens unchanged.
+Merge: `patch -p1` onto main (which already had device-power) applied cleanly; the two NEW modules were missing
+from the `-ru` diff (Only-in lines) → copied from iso-p1; targeted tests OK; full suite on main running.
+Gate: `launch_arm.sh cj1 template-eval2-cj` (continuous_join=true, max_barrier_extension_s=120; Gemma parallel 2,
+Qwen 4); check with `analyze_run.py`: co-decoded requests (006 with 002, 004 with 001/003), markers, rows ≥ 2
+calls, energy vs tp2 (112.2 kJ) and run 1 (94.4 kJ).
+
+## 2026-09-27 - Main suite 151/151 after the device-power merge; stage + deploy synced (residual empty)
+
+Device-power code is inert without the `device_power` campaign key, so the deployed arms are byte-identical.
+Ready to run once the sudoers rule is installed: `launch_arm.sh dp1 template-eval2-dp` (two-phone eval_v2 with
+idle-min 210 MHz + EPP power + load_min), then `tools/device_power_energy.py --run-dir <run>` and
+`analysis/analyze_run.py <run>` against tp2 (GPU 34 W active / 27.6 W loaded-idle / 11 W unloaded baseline).
+
+## 2026-09-27 - Device power controller merged into main (opt-in `device_power`; hardware-unverified, needs sudoers)
+
+Agent delivered in iso-p2 (rate-limit cut the hand-back; PROGRESS.md + diff + suite log in ~/.cache/claude-work/
+device-power/): `adapters/device_power.py` (DevicePowerPolicy; DeviceClockControl protocol with NvidiaClockControl
+`sudo -n /usr/bin/nvidia-smi -lgc <min>,<max> -i <uuid>` / `-rgc` and CpuEppControl via `sudo -n tee`; controller
+states OFF/UNAVAILABLE/RESTORED/IDLE_MIN/DECODE_CAP/LOAD_MIN on its own thread, predictive restore from the
+arrival calendar + queued starts, load-min during transitions, decode SM cap, late_restore fallback,
+`DEVICE_POWER_STATE` events → `DEVICE_POWER_EVENTS.json` + RESULT `device_power_events` only when set),
+campaign field + `--device-power-json`, preflight advisory `device-power-control:desktop-cuda`, host sampler
+adds `clocks_sm_mhz/clocks_mem_mhz/pstate` only under the policy, `tools/device_power_energy.py` (kJ per state).
+My fix: the runner fed arrivals to every rig (`rig.note_next_arrival`) → a stub rig in test_runner_rejections
+broke and the default path was no longer byte-identical → `_note_next_arrival(rig, us)` only under a policy.
+iso-p2 suite 151/151 OK; merged (15 files), pyflakes clean, targeted OK; main suite running. Enable:
+`"device_power": {"device": "desktop-cuda", "gpu_uuid": "GPU-3d43c513-5a75-7fd0-a503-da920e0ffa08",
+"idle": {"min_gap_s": 60, "lead_ms": 500, "gpu_min_clocks_mhz": 210, "cpu_epp": "power"}}` (+ optional
+`"decode_cap": {"sm_max_mhz": 1200}`, `"load_min": true`). Gate blocked on the sudoers rule.
+
+## 2026-09-27 - Idea-1 staging experiment result (desktop only, deployed llama-server, rig lock held)
+
+```
+                                      Gemma decode ms/token   Qwen load s   note
+cold                                        450 (baseline)        68.3      Gemma cold load 34.6 s
+bounded staging 10 GiB @150 MB/s            479 (+6.4 %)          42.3      after: 448 (no lasting harm)
+unbounded staging 27.5 GiB @400 MB/s        478 (+6 %)            41.8      after: 445; Cached stayed 28.3 GiB
+```
+Reading the next model during decode costs ~6 % per token while the reader runs and does NOT evict the resident
+model's hot pages (the kernel's active list protects them; the reader's own older pages go first). On the 30 GB
+box the benefit saturates: ~10-12 GiB of the next model can stay cached whatever you read → load 68 → 42 s
+(−26 s, −38 %) per switch; ×6 switches ≈ −150 s/run minus ~30 s of slowed decode ≈ −120 s (~6 %), ~5-7 kJ.
+The joint-decision framing adds little here: any rate-limited background read at any time during decode reaches
+the ceiling; the scheduler's only leverage is knowing WHICH model is next and finishing the read before the
+switch. With 64 GB RAM the full model stays cached (3.6 s loads, −60 s per switch, ~20 % of the run) and the
+problem disappears. Eviction via posix_fadvise(DONTNEED) works without root (useful for controlled tests).
+
+## 2026-09-27 - Testing pasted ideas 1 and 2 before judging novelty
+
+Idea 2 (stagger vs batch) is decided by the existing batch-4 qualification run (`mechanism-b4-r1/both-full`):
+OP15 Qwen call rows=1 9.6 ms rt / 8.9 compute; rows=4 12.7 / 11.1 → +32 % for 4× rows → per-row cost ÷ 3.
+With p (phone) and d (desktop) stage times, k staggered B1 streams give k tokens per k·max(p,d) while one
+batch of k rows gives k tokens per (p·(1+ε_p)+d·(1+ε_d)); Qwen at k=4: 4×318 = 1,272 ms vs 257+334 = 591 ms;
+two micro-batches of 2: 648 ms. Batching dominates at every k ≤ 4 and reads phone weights once. No build needed.
+Idea 1 (stage the next model while the phone computes): headroom cannot be read from MemAvailable (it counts
+the resident model's own page cache: 26.7-29 GiB "available" during tp2). Running `analysis/staging_experiment.py`
+on the idle desktop (rig lock held, no phones): llama-server Gemma ngl 22 decoding 128-192 tokens while a rate-
+limited reader stages the Qwen file into page cache — bounded (10 GiB @150 MB/s) vs unbounded (29.5 GB @400 MB/s);
+then Qwen load time after each; eviction via posix_fadvise(DONTNEED) (no root). E0: eviction works (Cached
+27.8 → 2.8 GiB); E1: Qwen cold load 68.3 s (matches the runs).
+
+## 2026-09-27 - Checked four pasted research ideas (offload+transfer joint choice; stagger vs batch; streamed tiles + deferred norm; successor placement before thermal exclusion)
+
+- Stagger vs batch is settled by the measurements: 2 tokens per 2·max(p,d) = 426 ms staggered vs (p+d)(1+ε) = 426 ms
+  batched; batching reads phone weights once → always batch compatible rows. This also withdraws my own idea A
+  ("ping-pong ×1.8 on top of batching") — corrected in OVERLAP_IDEAS.md.
+- Joint offload/transfer staging: window is real (host bus idle 48 % of each token, ~1,250 s of decode per run) but
+  bounded by RAM (~10-14 GB free with the current model's 13.6-17.2 GB CPU pages resident) → stage 40-55 % of the
+  next model → ~25-33 s of the ~60 s switch, ~150-200 s/run; must not evict the resident model's pages (page-cache
+  drop cost 152 s in run7). 64 GB RAM makes it moot. Prior art: HeteGen (CPU-GPU async transfer), ChunkFlow
+  (arXiv 2605.11335, chunked prefetch for DiT layerwise offloading, PCIe-contention aware). FastPP: not found.
+- Streamed down-projection tiles + deferred RMSNorm (FlashNorm): ceiling ≈ down-proj share of a phone layer
+  (~2.2 of 6.5 ms) × 24 = ~50 ms/token before the added per-tile USB latency (payload 10 KB = 16 µs; the 1.5 ms
+  per call is round-trip latency, so tiling multiplies it); numerics change → token re-qualification. Not worth it.
+- Successor placement before thermal exclusion: tp2 shows the RUNNING Gemma group kept its phone calls through
+  the onset (server-10 calls/30 s ~1,750 before and after 730 s; token period 390→405 ms) — exclusion blocks only
+  NEW attachments (the Qwen batch at 1,080 s). Pixel cannot take over (6 Qwen layers, Q4 shards, ~2× slower per
+  byte, Pixel-only not an improvement by evidence); the desktop is the only successor and its only preparation is
+  pre-touching the phone-owned FFN pages (8.5 GB ≈ 19 s at 450 MB/s). The merged `maximum_thermal_status` policy
+  removes most of the observed exclusion anyway. Closest migration work: Llumnix, SpotServe; ours is reactive.
+
+## 2026-09-27 - `analyze_run.py` (report dir + desktop analysis/) consolidates the audit; joins already happen when no phone lane is needed
+
+`reports/20260927-batch-dvfs-overlap/analyze_run.py <run>`: timeline with co-decoded requests + CONTINUOUS_JOIN /
+DEVICE_POWER markers, phone calls by rows, per-token split, host kJ per state. On tp2 it shows 010 joined 009
+3.5 s after arriving (desktop-parent path under WC admission) and 009+010 / 011+012 / 003-007 co-decoded; the
+blocked cases are an assisted joiner against an assisted holder (capacity-1 phone lanes) and a same-model
+arrival behind a queued switch (004 in run 1). Gate template `template-eval2-cj` (+ `launch_arm.sh ATT TEMPLATE`)
+prepared on the desktop: dispatch_policy + continuous_join=true, max_barrier_extension_s=120; Gemma parallel 2
+(kv-unified n_ctx 32,768), Qwen 4 (n_ctx 4,096) — no calibration change needed for the first gate.
+
+## 2026-09-27 - Root cause of "no mid-decode join" mapped; two implementation agents launched
+
+Why 006 waited for 002 (map, read-only): the assisted lease holds capacity-1 phone resources (op15-htp,
+op15-functionfs, op15-ncm, op15-adreno, desktop-usb-root); a second assisted request is placed after the
+holder's reserved_until and blocked as a causal successor. Only a decode cohort shares those lanes, and cohorts
+form within 2.5 s of the leader's admission → batches come only from the backlog at a server start. 004 (run 1)
+waited 663 s behind a queued Gemma switch: barriers order conflicting entries by arrival.
+Plan A (agent, iso-p1): `dispatch_policy.continuous_join` — joiner dispatched as desktop parent on its own slot
+lane, assisted through the shared helper window + server_policy_coherence; bounded bypass of a queued
+other-model barrier (`max_barrier_extension_s`, default 0); joiners excluded from the external-activity reset.
+Plan B (agent, iso-p2): `device_power` — `DevicePowerController` (idle → GPU min clocks + CPU EPP, predictive
+restore from the arrival calendar, load-min during transitions, decode SM cap), DEVICE_POWER_STATE events,
+fail-closed UNAVAILABLE without the sudoers rule; analysis tool for kJ per state.
+
+## 2026-09-27 - Overlap ideas written; desktop needs a sudoers rule for scheduler-driven clocks; /tmp scratch wiped
+
+`reports/20260927-batch-dvfs-overlap/OVERLAP_IDEAS.md`: seven ideas ranked (M: PCIe weight streaming into the
+phone round-trip holes, ~2.3 GB/token hideable, est. 406 → 290-330 ms and CPU pkg −50..−70 %; A: two-stream
+ping-pong across the USB boundary = decode-time pipeline with the phone as a stage, ×1.8 tokens/s at same power;
+E: speculative rows fill the free batch; D: queue-aware pre-staging of the next model; C/F/B minor or RAM-bound).
+Rejected with reasons: attention-to-GPU re-partition (VRAM bytes conserved), VTCM prefetch, dual-engine.
+Mechanism facts: the phone FFN is a sync RPC in the server's eval callback (`build_dense_ffn_split` fills
+`ffn_phone_partial`); the HTP worker pins DSP DCVS off at VCORNER_MAX with sleep disabled for its whole life
+(`ggml-hexagon/htp/main.c:66-85`) → phone-side idle power lever for the DVFS item; desktop: `nvidia-smi -lgc`
+refused without root, no passwordless sudo → `SUDOERS_DEVICE_POWER.txt` has the one-line rule + verify commands.
+Housekeeping: the /tmp scratchpad was wiped overnight (iso trees, agent diffs, suite logs); nothing lost since
+all fixes were merged; iso-p1/iso-p2 recreated from main; durable notes now go to the report dir / ~/.cache.
+
+## 2026-09-27 - Utilization audit of the two-phone run (tp2) and the user's next three asks
+
+User asked whether phone / system utilization is maxed and where the bottlenecks are. Measured from tp2 (1,849 s, 14 req, 112 kJ host = CPU pkg + GPU board):
+
+```
+one decode token (median)          Gemma 406 ms        Qwen 516 ms       desktop-only: 464 / 611
+  wait on OP15 round trip           193 (48 %)          198 (38 %)        24 / 18 layers, 8.1 / 11.0 ms per call
+    of which USB transport           37                  32               1.5 ms per call
+  CPU attention between phone FFNs  116 (29 %)          117 (23 %)        5-6 ms/layer (~15 GB/s: thread-bound, 8 of 24 threads)
+  rest (GPU 21/15 layers + head,    100 (25 %)          197 (38 %)        Qwen rest includes the Pixel's 6 layers (~100 ms;
+   leftover CPU layers, Pixel)                                             only 15 ms/token faster than the CPU doing them)
+OP15 per call: 54-59 GB/s weight stream = DRAM roof; busy 17 % of the run, 29-39 % while its model is resident
+GPU: util 8.8 % mean, 0 % in 76 % of samples; 34 W active / 27.6 W loaded-idle / 11 W unloaded; 55 kJ = 49 % (same in every arm)
+CPU: 8 of 24 threads, 3.4 busy on average; 57 kJ
+time: decoding 1,251 s (68 %) | model switches ~410 s (22 %; 6 reloads of 24-30 GB f16 at 400-500 MB/s, page cache
+      can't hold 53 GB in 30 GB RAM; same load 3.6 s when cached) | idle 190 s (10 %); requests waited 2,531 s total
+batch is free: 4 Qwen decoded together at 615-632 ms/step vs 611 solo (desktop path); phone calls rows=2/3 cost +3-13 %
+floor: 15.4 W unloaded x 1,849 s = 28 kJ (25 %) is fixed by the trace's arrival span
+```
+Verdict: the phone is at its ceiling per call but idle 83 % of the run; the system decodes one token at a time on
+a bandwidth-bound path whose power (~75 W) is flat in batch. Bottlenecks ranked: serial chain at batch 1 >
+GPU parked at P0 > thread-bound CPU attention > disk reloads > OP15 thermal exclusion > USB transport > floor.
+Batches only ever formed from the backlog at a server start (006 Gemma waited 16 s for 002 to finish instead of
+joining its free slot) — the "work-conserving back-fill" item.
+
+User direction (2026-09-27): (1) implement batch > 1 that still saves energy (continuous join of same-model
+arrivals into a decoding server, phone calls with 2-4 rows); (2) scheduler lowers device frequency when a
+device is idle (GPU clocks / CPU EPP / phone) — desktop needs a sudoers rule: `nvidia-smi -lgc` is refused
+without root, no passwordless sudo, cpufreq sysfs root-owned; (3) novel ideas for overlapping computation and
+memory transfer. Two read-only mapping agents launched (admission/lease path; power-control hook points);
+iso-p2 created for the power-controller work, iso-p1 resynced for the batching work.
+
+## 2026-09-26 09:32 UTC - Main == stage == deploy (dispatcher fix + opt-in thermal limit); rig idle; nothing committed
+
+Full suite on main after both merges: 150 modules OK, exit 0. Stage and deploy source synced (residual empty).
+Pre-merge backups: `~/.cache/premerge-main-scheduler-20260926T082117Z-dispatchrecovery.tgz`,
+`~/.cache/premerge-main-scheduler-20260926T092155Z-thermallimit.tgz`. Launchers `launch_twophone.sh` /
+`launch_g1.sh` now default to the S2a identities. OP15: charging, 77 %, battery 36.5 °C, thermal status 0.
+
+Open for the user: (1) enable `maximum_thermal_status: 1` for op15-phone and run the confirming two-phone arm
+(expected to recover most of the 94.4 → 112 kJ gap); (2) G2 OP15-loss gate needs the reboot permission or a
+manual unplug; (3) review + commit (whole tree uncommitted).
+
+## 2026-09-26 09:25 UTC - g11 PASS: mask-out recovery keeps the server on hardware (dispatcher fix confirmed)
+
+```
+t (s)   event
+505.5   Pixel worker killed mid-call (active=300 trigger) -> helper_lost classified
+505.5   HELPER_MASKED_OUT on physical:hot:desktop (Qwen server keeps running, host computes layers 18-23)
+505.5   REQUEST_RECOVERED x2: Qwen 003 (attempt 1->2, 71 tokens discarded, penalty 47.0 s)
+                              Qwen 004 (attempt 0->1, 72 tokens discarded, penalty 47.2 s)
+        both FALLBACK admissions carry dispatch_policy RECOVERY_RETAINED_QUEUE_PLACE (seq 4, 5; waiters listed)
+        -> NO HELPER_MASK_ENDED cause=SERVER_STOPPED, NO SERVER_EXITED (g9: server stopped 4 s after the mask)
+570.3   HELPER_REATTACHED mode=live_reconnect (Pixel re-joins the RUNNING server) + DEVICE_READMITTED (+65 s)
+```
+Energy 121.4 kJ host (−46.9 % vs legacy; g9 137.7 kJ), 1,814 s, 12/14 identical (baseline floor 12/14).
+Still thermally hampered: OP15 Android thermal status ≠ 0 for 529 s (episodes 647–909, 1,037–1,298 s,
+2 short), 17,240 THERMAL_LIMIT rows — now visible as `thermal_deferral_events` in RESULT (new). The opt-in
+`maximum_thermal_status` policy is merged but NOT enabled; enabling it is the next confirming run.
+
+Both elastic recovery modes are now proven on hardware: retire (g1g, reload) and mask_out (g11, no reload).
+
+## 2026-09-26 09:23 UTC - Opt-in per-device `maximum_thermal_status` merged into main (default 0 = byte-identical; NOT enabled)
+
+Why: tp2 lost the Qwen window because `thermal_qualified = Android Thermal Status == 0` is a hard-coded rule
+(status 1 = LIGHT, "UX not impacted", excluded the OP15 for 515 s). Design (agent, iso tree, suite 150 modules OK):
+- raw status carried through `PhoneRuntimeProbe.thermal_status` (ADB probe = coarsest of platform status and
+  every sensor) → `DeviceRuntimeTelemetry` → `RuntimeExecutorState.thermal_status` (serialized only under a
+  non-default policy); `thermal_qualified_under(limit)` used by feasibility (THERMAL_LIMIT), templates hash,
+  ready_plan, rig transition safety, preflight advisory; THERMAL_DEFERRAL row gains limit + observed status.
+- capability `maximum_thermal_status: int = 0` (0..6, bool rejected, overlays merged with min, emitted only
+  when non-zero) declared `CANONICAL_OMIT_DEFAULT` so catalog/snapshot/route identities are unchanged at default
+  (decision logs MAIN vs ISO byte-identical; a set policy DOES change the capability identity).
+- config: `campaign.json` `"phone_thermal_status_limits": [{"phone_device_id": "op15-phone",
+  "maximum_thermal_status": 1}]` (+ `--phone-thermal-status-limits-json`), applied to the loaded catalog before
+  the scheduler and rig are built; RESOLVED_CONFIGURATION records it.
+Merged: 17 files + new tests/test_thermal_status_limit.py (18 tests); one existing probe-shape assertion gains
+`thermal_status=0`; targeted 115 OK; full suite running. Enabling it (limit 1, or 2) is the user's call —
+recommended for the next confirming two-phone run so the evidence-based demotion, not a status rule, decides.
+
+## 2026-09-26 08:50 UTC - tp2 PASS 112.2 kJ (−50.9 %): re-provisioning stall gone, OP15 thermal verdict is the last variance source; g10 mask-out gate launched
+
+```
+two-phone   host kJ   OP15 Qwen calls   stall markers            OP15 thermal-excluded
+run 1       94.4      23,364            —                        0 s
+run 2 ev8   120.6     2,940             85 + 469 (F1–F3 bug)     gate at ticket time
+run 3 tp2   112.2     5,526             0                        515 s (t=730–1,245 s = Qwen window)
+```
+Mechanism: `thermal_qualified = Android Thermal Status == 0` (probes.py) → any LIGHT throttling (status 1,
+"UX not impacted") excludes every route through the phone (THERMAL_LIMIT ×35,290). The configured 90 °C limit
+never binds (OP15 max sensor 66.7 °C). Pixel stayed qualified all run; Pixel-alone Qwen is not an improvement by
+evidence (H1), so Qwen went desktop-only for 8.5 min. Recommendation (user decision): make the status limit a
+per-device policy (`maximum_thermal_status`, default 0 = byte-identical) and run with 1 or 2 so the
+evidence-based demotion (H1) — not a hard-coded status rule — decides; opt-in implementation delegated.
+
+g10 prepare was refused (same missing S2a identity envs; `launch_g1.sh` now exports them too; leftovers in
+`failed-attempts/g10-identity/`) → relaunched as **g11** = `launch_g1.sh g11 active=300 mask_out` on the merged
+dispatcher fix (rig idle, OP15 status 0, battery 35.9 °C); prepare PASS 08:47:51, preflight started. Hardware check: FALLBACK note `RECOVERY_RETAINED_QUEUE_PLACE`, no `HELPER_MASK_ENDED
+cause=SERVER_STOPPED` right after the mask, request 001 finishes on the kept server before the Gemma switch.
+
+## 2026-09-26 08:30 UTC - Dispatcher-recovery fix merged into main (g9 "mask-out benefit voided" root cause)
+
+Root cause (agent report, main line numbers): a FALLBACK recovery attempt re-enters the queue as a NEW admission
+with the newest sequence; the waiting Gemma switch (residency barrier, no running predecessor once the failed
+attempt left) is then ordered first by arrival order, its replan defers the recovery as a dependent, and the
+freed server is stopped for the switch (g9: HELPER_MASK_ENDED cause=SERVER_STOPPED 4 s after the mask).
+
+Fix (scheduler only, gated to helper_lost/server_exited failures with another model's attempt waiting):
+- the recovery takes the failed attempt's sequence and its waiters (`queue.admit(retained_order=...)`,
+  controller `recovery_dispatch_order` / `retained_dispatch_order`, wake-ups held until the transaction ends);
+  waiters that held reservations replan behind it; FALLBACK note `dispatch_policy: RECOVERY_RETAINED_QUEUE_PLACE`.
+- retire mode: the recovered request's reload is now planned before the later switch.
+- THERMAL_DEFERRAL / THERMAL_DEFERRAL_CLEARED rows (one per onset per device: temperature, limit, phone verdict)
+  via `ThermalGateLog` in route_generation/feasibility.py; RESULT key `thermal_deferral_events` only under
+  `elastic_phones` and only if non-empty.
+- new tests/test_elastic_recovery_dispatch.py (12 tests, 6 fail on pre-fix code and reproduce g9's order).
+
+Merge: checksum rsync iso-p1 -> main (10 files + 1 test), pyflakes clean, targeted 153 tests OK; full suite
+running (iso: 149 modules exit 0). Deploy sync waits for the tp2 chain to finish (it rsyncs the stage at start).
+Hardware check on the next mask-out run: RECOVERY_RETAINED_QUEUE_PLACE note present, no HELPER_MASK_ENDED
+cause=SERVER_STOPPED right after the mask.
+
+Housekeeping: the workstation root FS hit 100 % (my scratch copies: 4 × 29 GB repo clones per fix dir);
+deleted the superseded root/base/basecheck clones (diffs + notes kept) -> 236 GB free. Pre-merge backup now in
+~/.cache/premerge-main-scheduler-20260926T082117Z-dispatchrecovery.tgz.
+
+## 2026-09-26 07:57 UTC - Confirming run relaunched as tp2 (tp1 prepare refused: identity envs missing)
+
+`launch_twophone.sh` did not export the S2a identity overrides that the g9 launch carried on its command line, so
+prepare fail-closed with "server identity run used another server library" (deploy runs the S2a-rebuilt server;
+r1 server-identity pins the old library). Fix: the launcher now exports `S43_TRANSPORT_IDENTITY`
+(S2A_20260926) and `S43_SERVER_IDENTITY_DIR=server-identity-r2` by default. The failed tp1 leftovers
+(stale PREPARE log made the relaunch raise FileExistsError) were moved to `failed-attempts/tp1-identity/`;
+relaunched as tp2 → prepare PASS 07:57:31, preflight STARTED (OP15 80 %, notify 0; Pixel 100 %).
+
+## 2026-09-26 07:22 UTC - Confirming OP15+Pixel run (tp1) launched on a cooled OP15 (29.3 °C after 33 min idle; Pixel 28.7 °C)
+
+Elastic OFF, deploy = main with the re-provisioning fixes F1–F3 (first hardware run of F2 session expansion
+outside the g9 disturbance). Purpose: quantify the variance shrink vs run 2 (120.6 kJ) and the reference 94.4 kJ.
+Dispatcher-recovery + THERMAL_DEFERRAL agent was cut off by an API rate limit mid-edit ("wire it into the failure
+path"); resumed after the reset with instructions to finish or revert — its partial edits live only in the iso
+tree (main and the deploy are untouched).
+
+## 2026-09-26 07:00 UTC - g9 side finding: 14× `adaptive active helper rebind geometry differs` at 1,793.2 s (requests 007/011/012) = the moment layout gen 15 (HTP0 → geometry 55cdf…) became READY under active adaptive requests
+
+Late in the run (last Qwen phase), a re-provisioning swap completed while three adaptive requests were bound to
+the previous geometry; the rebind refused (fail-closed, no failure) so those requests kept their old envelope
+for the rest of the phase. Low impact here (~15 s before the end), but it is the "active requests across a
+layout swap" path — to be folded into the re-provisioning follow-up (rebind should accept a same-session-set
+geometry change, or defer the swap until the active window boundary). Dispatcher-recovery + THERMAL-deferral
+agent running; OP15 battery 36.1 °C right after g9 (Pixel 30.7 °C) → cool-down before the confirming
+OP15+Pixel run with the re-provisioning fixes (target ≥ 40 min idle).
+
+## 2026-09-26 06:58 UTC - g9 diagnosis: the mask-out was correct but moot — the dispatcher switched the freed Qwen server to Gemma 4 s later; thermal gate active again (512 THERMAL_LIMIT mentions)
+
+Decision log: 435.0 s 001 FALLBACK (same-server mask-out) → 435.4 s Gemma 002 (arrived 312 s, waiting) REPLANned →
+the Qwen server, now without a running request, was stopped at 439 s (`HELPER_MASK_ENDED cause=SERVER_STOPPED`) and
+Gemma launched at ~445 s; Qwen relaunched only at ~1,010 s, so 001's recovered attempt waited ~575 s (same
+shape as the retire run). I.e. the work-conserving/affinity dispatcher treats the server freed by the fault as
+idle and follows arrival order (002 < 003), instead of counting the recovered request (original arrival 118 s)
+and the queued Qwen 003 as live demand for the current model. Fix to make (small, dispatcher): a FALLBACK
+attempt keeps its request's original arrival for admission/affinity and counts as demand for the live masked
+server before any model switch is decided. Energy (137.7 kJ) is dominated by the thermal gate (512 mentions,
+290 PHONE_HELPER_UNAVAILABLE, Qwen OP15 calls 14,676) — the OP15 has run ~15 h nearly continuously; a
+cool-down before the confirming runs is needed, and a THERMAL deferral event should be recorded. Also 14×
+`HELPER_REMATERIALIZATION_FAILED: adaptive active helper rebind geometry differs` (new; F2 session expansion's
+first hardware run — to check).
+
+## 2026-09-26 06:50 UTC - g9 (S2a mask_out) PASS mechanically — mask-out + same-server recovery + re-join, no SERVER_EXITED — but the masked server was STOPPED 4 s later and the run's energy is the worst of the disturbed runs (137.7 kJ, −39.8 %)
+
+RESULT: `HELPER_MASKED_OUT{physical:hot:desktop, pixel10pro-phone, tcp}` 435.0 s; `REQUEST_RECOVERED{001,
+recovery: same_server_mask_out, tokens_discarded 60, penalty 40.0 s}`; `HELPER_MASK_ENDED cause=SERVER_STOPPED`
+439.2 s (!); `DEVICE_QUARANTINED` 435.0 → `DEVICE_READMITTED` 499.6 s; no `SERVER_EXITED`; 14/14 served,
+11/14 identical. Energy 137.7 kJ / 1,948 s vs retire-mode g1g 112.9 / 1,795 and undisturbed 94.4 / 1,833; Qwen
+OP15 calls 14,676 (vs 23,364), Pixel 5,094, CPU 77.5 kJ. Open questions: why the scheduler stopped the masked
+Qwen server 4 s after the mask (planned Gemma switch? residency re-plan after the quarantine?) — which would
+void the mask-out's benefit; and why Qwen assistance was lower again (thermal gate? F2 session expansion first
+hardware run?). Diagnosing from the decision log / placement events.
+
+## 2026-09-26 06:08 UTC - Pixel server-token-identity re-qualified on the rebuilt server (PASS, 4/4 identical) → G1h relaunched as g9 (mask_out)
+
+`server-identity-r2`: `token_identity [True, True, True, True]` on `libllama-server-impl` ac9dc1ba…. g9 launched
+with `S43_TRANSPORT_IDENTITY=…S2A_20260926.json` + `S43_SERVER_IDENTITY_DIR=server-identity-r2`, `active=300`,
+`helper_loss_recovery=mask_out`.
+
+## 2026-09-26 06:05 UTC - G1h prepare refused (fail-closed): the Pixel's server-token-identity run was bound to the OLD server library → re-qualifying against the rebuilt server
+
+`prepare_campaign_eval.py::server_identity` asserts the identity run's server library == the current one
+("server identity run used another server library") — correct: a rebuilt server needs a fresh
+`tools/qualify_pixel_server.py` run (the Pixel worker's outputs vs the desktop, on the new library). Running the
+chain's `--server-identity` step into `server-identity-r2`; prepare now honours `S43_SERVER_IDENTITY_DIR`.
+Then G1h relaunch with `S43_TRANSPORT_IDENTITY=…S2A…` + `S43_SERVER_IDENTITY_DIR=server-identity-r2`.
+
+## 2026-09-26 05:55 UTC - S2a server built and identity re-pinned; G1h (mask_out) launched
+
+Link fix: export `LD_LIBRARY_PATH=/mnt/storage/s21_deps/cuda-13.2.1/lib` (ld resolves libggml-cuda's
+libcudart/libcublas deps through it; interactive shells had it, mine did not). Build OK:
+`libllama-server-impl.so` a87e7772… → **ac9dc1ba…**, `llama-server` binary unchanged (ca975ce2…), caps string
+present. `MATERIALIZE_TRANSPORT_S2A.sh` → `TRANSPORT_QUALIFICATION_IDENTITY_S2A_20260926.json`
+(`s43-s2a-mask-out-20260926`, 15 receipts, phone pins re-verified live; only `host_dependency_sha256:
+llama-server-impl` changed). Deploy Python = main (elastic + S2a v2 + re-provisioning F1–F3). **G1h**
+launched (`S43_TRANSPORT_IDENTITY=…S2A… launch_g1.sh g8 active=300 mask_out`): expect no SERVER_EXITED, the
+errored requests recovering on the SAME live server (`recovery: same_server_mask_out`, penalty ≪ 60 s),
+`HELPER_MASKED_OUT` then Pixel re-join; also the first hardware run of the re-provisioning fix (F2 session
+expansion) and the first with the rebuilt server.
+
+## 2026-09-26 05:50 UTC - Repeat 4/4: OP15 all-on 111.2 kJ (+6.4 %), Qwen again unassisted (2,016 calls vs 26,262) with 1,148 THERMAL_LIMIT mentions (run 1: 0) — thermal gate confirmed as the trigger; S2a build hit a CUDA link error
+
+Repeat set complete: legacy +9.5 %, desktop+DP −2.3 %, OP15 +6.4 %, OP15+Pixel +28 %. Both phone arms' run 2
+lost Qwen assistance through the same chain (thermal gate → unqualified split-row runtime bound for life →
+"no helper opportunity"); Gemma assistance normal → Gemma carries most of the OP15 saving. OP15 battery 35 °C
+at idle now. Deploy synced with all merged Python (elastic, S2a v2, re-provisioning fix F1–F3; suite 148/148).
+S2a C++ installed into the deploy source; `cmake` was not on PATH in the non-interactive shell (fixed: the
+cache's `/mnt/storage/s21_deps/cmake-4.2.3…/bin/cmake`); the llama-server link then failed with undefined
+references into `libcudart.so.13`/`libcublas.so.13` from `libggml-cuda.so` — the CUDA runtime lib dir
+(`/mnt/storage/s21_deps/cuda-13.2.1/lib`) is not on the linker path in this shell; fixing the build script's
+environment next.
+
+## 2026-09-26 05:25 UTC - Re-provisioning variance ROOT-CAUSED and fixed (merged to main): a heat spike + two design flaws left run 2's Qwen without a helper
+
+Timeline (event dumps): run 2's OP15 was THERMALLY gated during the phase-B load (THERMAL_LIMIT on 10/10 phone
+routes at 1,062–1,137 s; run 1 had none) → (b) with every phone route excluded, the dormant-runtime fallback
+(`automated_selection_ops/dormant.py:122-150`) picked the alphabetically-first candidate `operator_split:750000`
+= the UNQUALIFIED `split-row` batch plan (only `coalesced-batch` is qualified) and the desktop server keeps that
+runtime for its whole life → every READY layout afterwards "produced no helper opportunity" (58×) — the printed
+reasons were all admissible, hence unexplained; (c) the envelope "additive" check (`model_placement_ops/
+requests.py:388`) requires the mask to equal the OP15 layout mask, impossible with the Pixel's layers in the
+two-phone envelope → "envelope identity is immutable" (11×); (a) same-geometry PROPOSAL_UPDATED drops the
+recorded replacement source → "replacement source is not ready" until the load finishes (5 overlaps in r2 vs 1
+in r1; no assistance lost by itself). Fixes (iso → main): F1 fallback ranks QUALIFIED helper executors first;
+F1b error names the batch plan; F2 additivity keeps the co-helper layers exactly; F3a keep the replacement source
+on proposal updates (gated on `phone_resident_model_reprovisioning`, ungated changed two golden replay hashes);
+F3b DRAINING old layout accepted only for the PREPARING target. 15 tests replaying recorded r2 values
+(`tests/test_reprovision_variance.py`, 9 fail pre-fix); suite 148/148 iso. Expected: phase C recovered + tail
+of phase B → ~half of the +26 kJ gap; the rest is the thermal gate (a real safety gate; needs a deferral event).
+F2 enables session expansion in the two-phone arm — never run on hardware → the next two-phone run is its gate.
+
+## 2026-09-26 05:10 UTC - Repeat 3/4: desktop+dispatcher 174.1 kJ / 1,810 s (−2.3 % vs run 1) — the scheduler-only arm reproduces; OP15 repeat running
+
+Repeat spread so far: legacy +9.5 %, desktop+DP −2.3 %, OP15+Pixel +28 % (re-provisioning stall). Queue after the
+OP15 repeat (~05:45): sync Python deploy → rsync the 3 S2a C++ files → `BUILD_S2A_SERVER.sh` (cuda-build, lock
+held) → `MATERIALIZE_TRANSPORT_S2A.sh` (same pins/receipts, new host digests → `…_S2A_20260926.json`) → G1h
+(`S43_TRANSPORT_IDENTITY=… launch_g1.sh g8 active=300 mask_out`). Re-provisioning root-cause agent still
+running (its fix merges before G1h if ready).
+
+## 2026-09-26 04:45 UTC - Repeat 2/4: OP15+Pixel 120.6 kJ (vs 94.4) — Qwen barely assisted; re-provisioning stall is the variance source
+
+Same duration (1,833 s), Gemma phone calls normal (38,376), but Qwen OP15 calls 2,940 (vs 23,364) and Pixel 1,128
+(vs 7,176): only the probe windows ran assisted (16+32 OP15-only, 110+72 two-phone tokens of 1,524). Evidence:
+`PREPARATION_ENVELOPE_REJECTED` ×469 "phone helper replacement source is not ready" (run 1: ×122),
+`HELPER_REMATERIALIZATION_FAILED` ×85 ("ready layout produced no helper opportunity: …operator_split:750000:
+sessions:3…" ×58, "request helper envelope identity is immutable" ×11), `PHONE_HELPER_UNAVAILABLE` ×301 (run 1:
+×14). This is the earlier robustness item (#4 re-provisioning readiness), now a 28 % energy swing on the
+headline arm → root-cause + fix (event dumps in scratchpad/reprov-variance/). Also: legacy repeat +9.5 %.
+
+## 2026-09-26 04:35 UTC - S2a v2: review fixes applied (USB SHUTDOWN + no same-apply USB reconnect, RESET line without old error text, re-latched reconnect errors, fence join, remote-resident gate, weight_hash on re-join); Python merged to main; C++ patch applied to the main tree (build pending)
+
+Reviewer verdict: safe to build, no blockers; token identity confirmed after mask-out / re-join on the scratch
+build. v2 changes: `S41SERVERFFNCAPS helper_mask_out=1 helper_reconnect_tcp=1` (USB re-joins only through a
+session relaunch, `HELPER_REATTACH_PENDING_RELAUNCH{USB_SESSION}`; after a primary loss the next FunctionFS
+transition relaunches the OP15 session instead of reusing it), `S41SERVERFFNRESET cause=… resets=N` printed
+after a successful reset, classifier ignores RESET lines, SO_SNDTIMEO before connect, weight_hash required
+on re-join. 26 + 2 tests; suite 147/147 iso; Python merged to main (suite running); `git apply` of
+`S2A_SERVER.diff` onto main OK (backup of the 3 files in `scratchpad/premerge-cpp-s2a/`). Deploy plan when the
+repeats finish: sync Python → rsync the 3 C++ files to the deploy source → rebuild `cuda-build` → materialize
+the transport identity (new server lib sha) → G1h gate (`helper_loss_recovery: mask_out`). Residual: retire
+mode can still reuse a dead OP15 session after a primary loss; USB flow recorded-only until G2.
+
+## 2026-09-26 04:05 UTC - S2a delivered: Python merged to main (mask_out mode, capability-gated), server diff under review
+
+C++ findings: (a) a latched-failed client makes `eval` return `ask` for every tensor BEFORE the runtime policy →
+even a mask-0 policy aborts every decode ("Compute aborted."); (b) `apply_policy` connects only a client that
+is not `ready()`, a failed TCP client keeps its fd → never reconnects. `S2A_SERVER.diff` (4 hunks,
+ffn-split-client.{h,cpp} + server.cpp): idle failed session returns `!ask` (host computes), `reset_session()`
++ `peer_closed()` reconnect when a policy owns the helper again (`S41SERVERFFNRESET`), startup
+`S41SERVERFFNCAPS helper_mask_out=1 helper_reconnect=1` (Python masks out only if printed, else retire),
+labeled `S41SERVERFFNERROR` at failure time. Author built it in a scratch copy; native gate 2/2 on the patch,
+fails on the unpatched server. Python: `elastic_phones.helper_loss_recovery: mask_out|retire`,
+`helper_masks.py` (mask-out on a live capable server, policy guard drops any control giving a masked device a
+layer, re-join = live reconnect or pending-relaunch), RESULT `helper_mask_events`; recovered co-tenants restart
+on the same server, penalty < 5 s (vs 60.6 s retire). G2 add-on: primary re-join gated on `uname -r` == pinned
+release (`JOIN_REJECTED{KERNEL_RELEASE_MISMATCH}`), primary loss recoverable without its session. 20 + 2 tests;
+suite 147/147 iso; Python merged to main (suite running); deploy sync + server build + identity
+re-materialization AFTER the repeats (no CPU load during energy runs). Adversarial C++ review launched.
+
+## 2026-09-26 04:00 UTC - Repeat 1/4: legacy baseline 250.4 kJ / 2,429 s (+9.5 % vs run 1); baseline-vs-baseline identity 12/14
+
+The all-desktop baseline's own run-to-run spread is ~10 % energy / 8 % duration, and two desktop-only runs
+agree on only 12/14 outputs → the identity metric has a server-side floor (batch-composition FP order); the
+two-phone arms' 13/14 → 10/14 sit within/near it. Two-phone repeat running (04:03 UTC). S2a agent finishing
+(suite running).
+
+## 2026-09-26 03:10 UTC - User: "ok, fix them" → repeats running, S2a in development, G2 injector staged
+
+Repeat set `CHAIN-ev8` (legacy → OP15+Pixel → desktop+DP → OP15, elastic off) launched 03:08 UTC on the idle rig
+(OP15 79 %, qualified kernel). S2a (mask the lost helper out, keep the live server, no reload) handed to an agent:
+C++ feasibility (latched-failed client: does `connect()` reset it? if not → minimal server diff proposed in
+`S2A_SERVER.diff`, to be built + identity re-materialized) + Python sub-option
+`elastic_phones.helper_loss_recovery: mask_out|retire` (default retire = today's proven path). G2 (primary OP15
+loss) injector staged (`inject_op15_loss.sh RUN_DIR SECONDS` → `adb reboot`; the stock kernel afterwards means
+the join watcher must REFUSE the re-join on the identity pin — part of the demonstration; the qualified kernel is
+then RAM-booted again with the recorder copy and g2 recreated). Order: repeats (~05:40) → G2 → S2a gate.
+
+## 2026-09-26 02:58 UTC - **G1g PASS: full drop → recover → reload → re-join chain on hardware**
+
+| run | dur s | host kJ | vs baseline | Pixel calls | identical |
+| --- | ---: | ---: | ---: | ---: | --- |
+| two-phone undisturbed | 1,833 | 94.4 | −58.7 % | 7,176 | 13/14 |
+| G1c (idle kill; quarantine + re-join) | 1,932 | 102.2 | −55.3 % | 8,088 | 11/14 |
+| **G1g (mid-call kill; recovery)** | 1,795 | 112.9 | −50.6 % | 7,338 | 10/14 |
+
+RESULT rows: `SERVER_EXITED{cause: HELPER_LOST, executor physical:hot:desktop, rc 0}` at 432.08 s;
+`REQUEST_RECOVERED{request 001, attempt:1 → attempt:2, failure_kind helper_lost, tokens_discarded 95,
+penalty_us 60.6 s, attempt_stream request-001.raw.attempt1, quarantine route_retained_helper_device_lost}`;
+`DEVICE_QUARANTINED` 432.08 s → `DEVICE_READMITTED IDENTITY_VERIFIED_JOIN` 497.17 s. No FAILURE, 14/14
+requests served. Cost of the fault ≈ +18 kJ (reload + re-decode + fewer Gemma phone calls 25,464 vs 40,488).
+Everything behind `elastic_phones`; 145/145 modules; nothing committed. Next: per-request identity check of
+the recovered request; G2 (OP15 loss — user unplug/`adb reboot`); repeats; S2a mask-out (no reload).
+
+## 2026-09-26 02:19 UTC - Fix 3c merged + deployed (stale adaptive registration released on failure / at the recovered attempt's start), G1g launched
+
+Root cause: `admission.py:203-208` refuses a request id already in `_sessions`/`_sealed_sessions`/`_completed`;
+a failed adaptive-split attempt was parked in `_completed` (FAILED) and a desktop-parent attempt with a dormant
+FFN runtime never closed its session → the recovered attempt on the reloaded dormant parent could not
+`start_adaptive_decode`. Fix (helper_lost/server_exited only): the failure closes the session whatever the
+execution mode (`recover_attempt_for_restart`); `start_adaptive_decode` first releases what a recorded failed
+earlier attempt of the SAME request left behind (`release_restarted_attempt`, logged in
+`adaptive_decode_restarted_attempts()`); a genuine duplicate start or another request's registration is never
+touched. Tests: exact G1f path (FALLBACK → 2× REPLAN → ACQUIRED on the reloaded dormant parent → completes),
+co-tenants, guards (all fail pre-fix). Other per-request state audited (cohorts, helper watcher, dormant-share
+accounting, helper contexts): no change needed. Suite 145/145 iso; main suite running; deploy synced; **G1g**
+launched 02:18 UTC (`g7 active=300`).
+
+## 2026-09-26 02:00 UTC - G1f final: recovery started correctly, but the recovered request failed at execution start 522 s later with `adaptive request already exists`
+
+Decision log: 434.9 s FALLBACK 001 attempt 2 (PAIRED_DESKTOP_RECOVERY) → REPLAN attempt 3 (494.0 s) and attempt 4
+(956.7 s, DESKTOP_BASELINE_CONTROL) while Gemma 002/003 ran and Qwen reloaded (01:53:48 UTC) → ACQUIRED 957.5 s →
+FAILED 963.0 s: `AdaptiveDecodeError: adaptive request already exists` → `physical_execution_control_failed` →
+fail-fast (004/005/006 cancelled). The failed attempt's adaptive-decode registration was never released, so the
+recovered attempt could not register on the reloaded server. Also visible: recovery latency was dominated by
+the model-switch schedule (the reload waited behind the Gemma phase, 522 s) — a design consequence of
+recovery-through-reload to state in the report (S2a mask-out would avoid it). Fix-3 agent resumed (release the
+registration on FALLBACK/replan; tolerate a stale same-request registration; recorded test with the double
+replan). Rig clean after the abort.
+
+## 2026-09-26 01:47 UTC - G1f interim: FIRST in-flight recovery on hardware — kill mid-call at 427 s, request 001 re-executed (`request-001.raw.attempt1` aside), Pixel quarantined at 432 s and re-joined at 497 s, run continuing
+
+`active` trigger fired at 427.3 s (Pixel layer calls 0→5, pid 9826 TERM); HELPER_LOST 432.3 s; JOINED 496.9 s
+(identity verified, readmissions 1); the partial stream of request 001 moved to `.attempt1` and the canonical
+stream is being rewritten by the FALLBACK attempt; 3 server launches so far (Gemma, Qwen, Qwen reload); no
+FAILURE.json. Waiting for RESULT (REQUEST_RECOVERED / SERVER_EXITED rows, energy, identity).
+
+## 2026-09-26 01:32 UTC - Fix 3b merged + deployed (recovery planned at max(failed_at, snapshot capture); fresh bounded snapshot after retire; co-tenant races), G1f launched
+
+Root cause of the G1e "system snapshot is stale": not the retire's duration — `fail_automated_request` planned
+the recovery at `failed_at_us` while candidate generation requires `captured_at_us <= t < valid_until_us`
+and the adapter samples the recovery snapshot AFTER the failure → always stale (reproduced in-process with an
+instant retire). Fix (helper_lost/server_exited only): plan/preview/commit at `max(failed_at_us,
+captured_at_us)`; `_recover_elastic` samples a fresh rig snapshot after the retire (≤ 4 tries, else
+`recovery unavailable: … SYSTEM_SNAPSHOT_STALE`); co-tenants: a start on a retired endpoint →
+`LlamaServerExitedError` → server_exited recovery; a classification during another request's retire waits for
+it; a recovery after a co-tenant's reload may use the relaunched route (`exited_executor_id`). 19 tests in
+`test_elastic_g1d_recovery.py` (wall-clock 150 ms snapshots vs 400 ms retire). Suite 145/145 iso; main suite
+running; deploy synced; **G1f** launched 01:31 UTC (`g6 active=300`).
+
+## 2026-09-26 00:58 UTC - G1e: kill mid-call → classified → retired → recovery failed on `system snapshot is stale`
+
+`active` trigger fired at 464.7 s (Pixel calls 0→3), server `Compute aborted` + poisoned client, classifier
+`helper_lost:pixel10pro-phone`, rig HELPER_LOST at 471.1 s, then `_prepare_automated_failure_fallback` raised
+`RuntimeCapabilityError: system snapshot is stale` → `recovery unavailable` → fail-fast at 474.2 s (request 001;
+002/004 cancelled, 003 READY_DESKTOP_HELPER_RUNTIME_UNAVAILABLE). Cause: the synchronous retire (server stop +
+NVML post-exit wait) outlived the runtime snapshot's validity window; recorded tests use non-wall-clock
+validity. Fix-3 agent resumed: take a fresh snapshot after the retire and feed exactly that to the recovery;
+wall-clock-valid test. Each hardware run peels one layer: G1 idle kill → G1b control-path classification →
+G1d live-server retire → G1e snapshot freshness.
+
+## 2026-09-26 00:40 UTC - Fix 3: CORRECTION — the llama-server does NOT die on a helper loss; it keeps serving with a poisoned helper client. Retire-and-reload implemented, deployed, G1e launched
+
+Fix-3 agent's finding (verified against `tools/server/server-context.cpp:3149-3159`): `update_slots` catches the
+`decode()` exception ("Compute aborted."), errors every processing slot and KEEPS SERVING; `S41SERVERFFNERROR`
+is printed only at `ffn_runtime.finish()` (i.e. when the rig later stopped the server). The Pixel's FFN
+client latches failed (`ffn-split-client.cpp:1839`), so any later graph reaching that helper aborts. This
+corrects the earlier plan/talks statements ("helper failure kills the whole server"). G1d chain: classifier
+waited 10 s for an exit that never came → no reap; the tickets ran on the desktop route itself, whose two
+recoveries (CPU whole-model: not admitted for the large model; paired desktop baseline: the failed route) →
+FALLBACK_UNAVAILABLE. Fix (flag-gated): `retire_helper_lost_executor` stops the poisoned server synchronously
+(marked retiring → unavailable), one SERVER_EXITED{cause: HELPER_LOST}; evidence wait ends at `decode()
+failed:`; `_snapshot_once` reaps exited servers and waits for a post-exit NVML row (crediting the stopped
+server's bytes); recovery tries the paired desktop baseline first (now a cold load), CPU fallback last;
+co-tenants share one reload; unrecoverable → explicit `recovery unavailable: <reason>`, run stays fail-fast.
+14 new tests (`tests/test_elastic_g1d_recovery.py`, 3 co-tenants through the real coordinator; 12 fail
+pre-fix). Suite 145/145 in iso; merged to main; deploy synced; **G1e** launched 00:39 UTC (`g5 active=300`).
+Follow-up idea (cheaper than reload): mask the poisoned helper out via runtime control and keep the live
+server (needs the latched client not to block `apply_policy`/`failed()` checks) — S2a.
+
+## 2026-09-25 23:45 UTC - G1d (kill mid-call via `active` trigger): classification now correct (`helper_lost:pixel10pro-phone`), but recovery found NO safe alternative → run FAILED
+
+Tool fired at 805.97 s when the Pixel's layer calls went 0 → 3 (pid 13866 TERM); server `S41SERVERFFNERROR
+helper=pixel10pro … EXECUTE header exchange failed` → `Compute aborted`; scheduler classified
+`PhysicalBackendFailure: helper_lost: compute aborted; helper session not alive` (fix 2 works), rig probe
+HELPER_LOST at 815.6 s. Then `fail_automated_request` → decision `QUALIFIED_FALLBACK_NO_SAFE_ALTERNATIVE`
+with `candidates: []` for request 005 and its co-tenant (attempts FAILED at 821.0 s) → `_execute_once`
+raised `physical_backend_failed:helper_lost:pixel10pro-phone` → fail-fast abort. Suspects: the dead Qwen
+executor not yet reaped when the fallback was selected (desktop baseline route on a "hot but not ready"
+executor → no load candidate), or the memory preview rejecting the reload (VRAM sample lag). Diagnosis in
+progress (decision-log rejection reasons + rig snapshot at 800–825 s).
+
+## 2026-09-25 23:25 UTC - G1c PASS: loss flagged at the first check (47 µs after the kill), re-join in 65 s; G1d launched with the `active` trigger
+
+| arm (eval_v2) | dur s | host kJ | vs baseline | Pixel calls | identical | membership |
+| --- | ---: | ---: | ---: | ---: | --- | --- |
+| two-phone (undisturbed) | 1,833 | 94.4 | −58.7 % | 7,176 | 13/14 | — |
+| G1 (TERM, idle Pixel) | 1,912 | 98.8 | −56.8 % | 7,578 | 12/14 | LOST +409 s (probe), JOINED +65 s |
+| G1b (TERM mid-call, old code) | FAIL @525 s | — | — | — | — | classifier missed the control path |
+| **G1c** (TERM at t=520, fix 2) | 1,932 | 102.2 | −55.3 % | 8,088 | 11/14 | **LOST at first check (client_exited), JOINED +65 s** |
+
+`HELPER_MEMBERSHIP_PROBE.jsonl` now journals every check (~5.3 s cadence, ~300 ms each); the kill again hit
+an idle Pixel (the two-phone set was not active at t=520 in this run), so the in-flight recovery path is
+still undemonstrated on hardware → new tool trigger `--when active=SECONDS` fires when the newest hot
+server's `S41SERVERFFNCALL … layer=18..23` count grows (5 tests, `tests/test_inject_helper_loss_active.py`);
+deployed; **G1d** launched 23:25 UTC (`launch_g1.sh g4 active=300`). Identical-output count drifts
+13→12→11 across the disturbed runs: near-ties, to be checked per request in the report analysis.
+
+## 2026-09-25 22:42 UTC - Fix 2 merged (control-path classification, stop-after-loss, first-check loss), deploy synced, G1c launched
+
+Root causes from G1b: (1) the stats call's `StalePhysicalSlotError` was wrapped by the stale-window discard
+(`AdaptiveDecodeError` → `UnifiedScheduleError`) and `_server_side_failure` counted neither → stderr read
+with 0 s wait while the server was still exiting → no classification. Fix: refused FFN control/stats/cohort
+calls are tagged (`server_control_message`), `StalePhysicalSlotError`/tagged failures count as server-side
+(wait for exit, read stderr since the marker; the control text `helper <label>` is evidence). (2) resident
+`stop()` judged idleness from the worker log ("client disconnected" never written for a mid-call kill) and
+raised before removing the forward → `stop(release_exited=)`: no pid on the phone → end client, remove
+forward, receipt `already_exited`. (3) probe: no bug found; `client_exited()` now irreversible → loss at the
+FIRST failed check (5 s), journal rows carry `client_exited`. End-to-end recorded test drives the real
+adaptive controller + real `read_ffn_stats` against a local control endpoint on an exited server → reap →
+FALLBACK through a load + REQUEST_RECOVERED + DEVICE_QUARANTINED. Suite 143/143 in iso; main suite running.
+Deploy + stage synced; **G1c** launched 22:42 UTC (`launch_g1.sh g3 t=520`). Flaky note: wall-clock test
+`test_cached_synthetic_refinement_is_below_ten_milliseconds` (10.33 ms vs 10 ms) fails occasionally.
+
+## 2026-09-25 21:55 UTC - G1b (kill at t=520 s, truly in-flight) → run FAILED: the helper loss reached the scheduler through the boundary-stats control path, which the classifier does not cover
+
+Facts: TERM at 21:52:36 to pid 26888 (worker log ends abruptly at requests=480 → died mid-request); Qwen server:
+`S41SERVERFFNERROR helper=pixel10pro detail=FFN split EXECUTE header exchange failed` → `decode() failed:
+Compute aborted.` → SSE error chunk; scheduler: `_process_boundary → _read_boundary_stats → read_ffn_stats →
+StalePhysicalSlotError("FFN stats failed")` → `RuntimeExecutionFailure(execution_control, retry_safe=False)` →
+`PhysicalAdapterError: physical_execution_control_failed` → fail-fast abort at 525 s (request 003). No
+membership event (probe silent in the ~15 s window), cleanup: "co-helper stop failed: resident adb-tcp worker
+stays running" (worker was in fact dead; stale forward tcp:26991 removed by hand). Fix needed: classify
+control-path failures (StalePhysicalSlotError / boundary stats) against the server stderr helper error →
+`helper_lost` → FALLBACK; make the co-helper stop tolerate a dead worker; then rerun. Liveness instrumentation
+(HELPER_MEMBERSHIP_PROBE.jsonl) merged to main, not yet deployed.
+
+## 2026-09-25 21:40 UTC - G1 (Pixel worker SIGTERM mid-run) result: run PASS, quarantine + identity-verified re-join on hardware; the in-flight-drop part did NOT happen as intended
+
+| arm (eval_v2) | dur s | host kJ | vs baseline | Pixel calls | identical |
+| --- | ---: | ---: | ---: | ---: | --- |
+| two-phone (undisturbed) | 1,833 | 94.4 | −58.7 % | 7,176 | 13/14 |
+| **G1 elastic + SIGTERM** | 1,912 | 98.8 | −56.8 % | 7,578 | 12/14 |
+
+Events: `DEVICE_QUARANTINED HELPER_LOST` at 1,120.5 s → `DEVICE_READMITTED IDENTITY_VERIFIED_JOIN` at
+1,185.3 s (cooldown 60 s honoured, identity pins verified, worker relaunched, Pixel served the rest of the
+trace: 7,578 calls). No `REQUEST_RECOVERED`/`SERVER_EXITED` — no request failed. Facts: the tool sent TERM to
+pid 21569 (exe verified) at 21:11:08 UTC (~711 s) with rc 0; request 004's stream already held its final
+41,720 bytes then (the runner writes the stream at request end → the `request=NNN` condition fires AFTER the
+request completes, not during decode); the Qwen server that owned the Pixel exited cleanly at 21:17:48 with
+helper status ok, and the worker log's last line is "client disconnected" (worker alive until then?). The
+loss was flagged only at 1,120 s (probe should take ≤ 10 s). Open questions: (a) did SIGTERM kill the worker
+(signal path verified on a scratch process; worker masks normal) or did something survive; (b) why the
+liveness probe took ~400 s. Controlled TERM test + probe code read in progress. Fix needed in the tool: fire
+on decode progress (stream growth / server shape log), not on a full stream.
+
+## 2026-09-25 20:55 UTC - Elastic phones MERGED into main (143/143), deploy synced, G1 launched
+
+Fix pass closed M1–M4 + m1–m4, m6 with regression tests (each shown failing on the pre-fix tree); m7 was
+already correct (FALLBACK commit releases progress); m5/m8 left as notes. Merged iso-p1 → main by checksum
+rsync (30 modified + 4 new: `tests/test_elastic_drop_recovery.py`, `tests/test_elastic_join.py`,
+`campaigns/burstgpt/tools/{__init__,inject_helper_loss}.py`); main suite 143 modules OK; pre-merge backup
+`scratchpad/premerge-main-scheduler-20260925T195359Z.tgz`. Stage + deploy synced (dry-runs empty; server not
+rebuilt → identity unchanged). **G1 launched** (`launch_g1.sh g1 004`): fresh two-phone eval_v2 inputs with
+`elastic_phones {drop_recovery, join, probe 10 s, cooldown 60 s, max 3}`; the authorized tool SIGTERMs the
+Pixel worker once request 004 (long Qwen) is decoding. Expect: run PASS, `REQUEST_RECOVERED` +
+`DEVICE_QUARANTINED` → join → `DEVICE_READMITTED`, outputs identical/near-tie, saving still ≫ baseline.
+
+## 2026-09-25 20:05 UTC - Elastic phones: both slices implemented (76 new tests, 143/143 modules), review found 4 majors → fix pass running
+
+Slice 1 (drop → recover) and slice 2 (quarantine / join) landed in `iso-p1`; runner wired
+(`elastic_phones` into the rig config, `device_membership_events`/`helper_membership_events` in RESULT);
+combined suite 143 modules OK. Adversarial review (no blockers): **M1** join identity mismatch raises
+`UnifiedTraceError`, escapes the handler → no JOIN_REJECTED event (test masked it with a fake); **M2**
+`_abandon_failed_start` orphans a phone-side worker and changes flag-absent behaviour; **M3** a
+scheduler-side quarantine reaches static routes only after the device's probe thread catches up (can be
+stuck 60–90 s in `alive()`); **M4** recovered-request latency/TTFT under-reported (terminal attempt only).
+Minors: classification on any exception (m1), no membership generation on late failures (m2),
+`_bind_scheduler` flush order (m3), primary probe unguarded (m4), tool gaps (m6), progress not reset (m7).
+Clean: reaping under lock, co-tenant double-load serialized, recovery never uses the lost device, stream
+aside before the new attempt, payload identical. Fix agent running; then merge → deploy → G1
+(`launch_g1.sh`: SIGTERM the Pixel worker during request 004, expect recovery + re-join).
+
+## 2026-09-25 18:55 UTC - Elastic phones (drop/join) implementation started: SPEC + two agents in the isolated copy
+
+`reports/20260925-elastic-phones/SPEC.md`: opt-in `elastic_phones` config; slice 1 (drop → classify
+`helper_lost`/`server_exited`, reap the dead llama-server so the next route reloads, FALLBACK re-execution
+allowed mid-stream, partial stream `.attempt<k>`, `REQUEST_RECOVERED`/`SERVER_EXITED`) and slice 2
+(`quarantine_device`/`readmit_device` across all policy groups + runtime resources + telemetry UNAVAILABLE,
+co-helper lifecycle tolerant of an absent phone, `helper-membership` liveness/join probe with identity pins,
+cooldown, cap; `tools/inject_helper_loss.py`). Disjoint file ownership; isolated copy `iso-p1` baseline 141/141
+green after symlinking gguf-py + source trees. Hardware gates after merge: G1 Pixel SIGTERM mid-run + re-join;
+G2 OP15 loss (user). Rig idle meanwhile (OP15 recharging toward 80 %).
+
+## 2026-09-25 18:40 UTC - Gate H1 PASS: slow Pixel demoted by evidence (240 calls vs 7,176; 109.2 kJ ≈ OP15-only 104.5)
+
+Slow worker (38/54 ms per layer) confirmed live in the run. Policy probed OP15+Pixel at B1 (8 tok, 39.3 vs 34.7
+J/tok) and B2 (24 tok, 41.4 vs 36.7) → `SERVER_DEVICE_SET_NOT_IMPROVED` for both → OP15-only for 1,331 Qwen
+tokens; 13/14 identical; −52.2 % vs baseline (fast-Pixel run −58.7 %). Robustness evidence for "adaptive per
+device, no hard-coded rules" (with the fast-Pixel run as the admit direction). Next: user direction "implement
+and test phones dropping or joining at runtime" → P1 implementation started in an isolated copy (`iso-p1`);
+two code maps done (server death: process exit is never reaped, next request sees EXECUTOR_NOT_READY / terminal;
+join: server already defers unreachable co-helpers, scheduler lifecycle raises).
+
+## 2026-09-25 17:55 UTC - eval_v2 complete (4 arms): dispatcher −22.0 %, +OP15 −54.3 %, +OP15+Pixel −58.7 %
+
+| arm | dur s | host kJ | vs baseline | vs desktop+DP | identical |
+| --- | ---: | ---: | ---: | ---: | --- |
+| baseline (legacy all-desktop) | 2,244 | 228.5 | — | | — |
+| desktop + dispatcher | 1,835 | 178.2 | **−22.0 %** | — | 13/14 |
+| + OP15 | 1,822 | 104.5 | −54.3 % | −41.4 % | 12/14 |
+| + OP15 + Pixel | 1,833 | 94.4 | **−58.7 %** | **−47.0 %** | 13/14 |
+
+Saving decomposition (134.1 kJ): dispatcher 37 % (and all of the duration gain), OP15 55 %, Pixel 8 %.
+Phone utilization (Σ calls × RPC / duration): OP15 23.6–25.4 % busy, Pixel 3.3 % → user direction: maximize
+per-phone utilization (Pixel more Qwen layers + a Gemma shard; layer share as a policy dimension; row split
+across phones at B ≥ 2) → P2b in `ROBUSTNESS_PLAN.md` (layout code map in progress). H1 degraded-Pixel gate
+started right after the chain (slow-worker int-2 config). Analysis `analysis/EV2_*`, data sheet
+`reports/20260925-two-phone-eval/EVAL_V2_DATA.md`.
+
+## 2026-09-25 17:20 UTC - eval_v2 three-column result: baseline 228.5 → +OP15 104.5 (−54.3 %) → +OP15+Pixel 94.4 kJ (−58.7 %)
+
+| arm | dur s | host kJ | host W | vs baseline | phone calls | identical |
+| --- | ---: | ---: | ---: | ---: | --- | --- |
+| baseline (legacy all-desktop) | 2,244 | 228.5 | 101.8 | — | 0 | — |
+| + OP15 (all-on) | 1,822 | 104.5 | 57.3 | **−54.3 %** | op15 56,862 | 12/14 |
+| + OP15 + Pixel (per-device) | 1,833 | 94.4 | 51.5 | **−58.7 %** | op15 63,852 + pixel 7,176 | 13/14 |
+
+Pixel adds −9.7 % host on top of the OP15 at equal duration. The policy's own evidence (Qwen, fleet J/tok):
+OP15-only probes 35.8 / 38.5 / 40.3 at B1/B2/B3 vs OP15+Pixel 27.3 / 27.3 / 30.9 → two-phone set chosen
+for 238 / 268 / 666 tokens; Gemma OP15-only. Loads 9 → 7. Desktop+dispatcher control running (17:13 UTC).
+Data sheet `reports/20260925-two-phone-eval/EVAL_V2_DATA.md`; analysis `analysis/EV2_*` on the desktop.
+
+## 2026-09-25 16:55 UTC - Robustness plan written (`research_dev/ROBUSTNESS_PLAN.md`)
+
+User asked whether the scheduler is robust to new traces / devices and for a plan for the four gaps.
+Grounded in code: server has per-helper runtime masks (`apply_policy`) but a helper RPC failure errors the
+request (no in-flight host fallback); `coherence.py` has device-set drop codes + monitored-verdict rejection
+but no re-admission or drift detector; onboarding = scattered scripts (~1 day/device). Plan: P1 graceful
+degradation (S1 scheduler quarantine + request recovery, S2 server in-flight host fallback, S3 re-admission;
+gates G1-G3 kill/loss/re-plug), P2 demotion + re-admission (drift detector, gates H1 degraded Pixel / H2
+mid-run stress), P3 trace families T1-T3 via the builder, P4 `onboarding/onboard_helper.py` + third phone
+(OP11/OP12 over adb-tcp). Novelty = P1+P2 as "safe elasticity" (evidence-gated, correctness-preserving);
+P3/P4 are generality evidence / qualification contract. OP15 all-on arm still running (started 16:42).
+
+## 2026-09-25 16:40 UTC - eval_v2 HEADLINE: OP15+Pixel −58.7 % host energy vs the all-desktop baseline (single runs)
+
+| arm (`longtail_eval_v2`, 14 req, 3,604 out tok) | dur s | host kJ | host W | vs legacy | phone calls | identical |
+| --- | ---: | ---: | ---: | ---: | --- | --- |
+| legacy all-desktop | 2,244 | 228.5 | 101.8 | — | 0 | — |
+| OP15+Pixel per-device | 1,833 | **94.4** | 51.5 | **−58.7 %** | op15 63,852 + **pixel 7,176** | 13/14 |
+
+Pixel per-layer RPC 12.7/14.5/17.4 ms (B1/B2/B3) vs OP15 10.4–12.2 ms → the policy kept both phones on
+all Qwen compositions; Gemma OP15-only. Loads 7/338 s vs 9/425 s. Fleet (assumed phone energy) −57.1 %.
+User's report story = baseline → +OP15 → +OP15+Pixel, so the queue was reordered with the chain's
+`CANCEL` hook: OP15 all-on runs now (`CHAIN-ev3`, 16:34 UTC), desktop+dispatcher last. Data sheet:
+`reports/20260925-two-phone-eval/EVAL_V2_DATA.md`.
+
+## 2026-09-25 15:12 UTC - Qualified OP15 kernel RAM-booted again (user-authorized); eval_v2 four-arm chain running
+
+User: "we need the fastboot to achieve low latency" (authorization) and "test once now, we need to get
+the result in 2 hr". Ran the 09-14 recorder from a fresh copy
+(`/mnt/storage/s43-op15-kernel-restore-20260925-v1/boot_candidate.py`, authorization text updated,
+originals untouched): image `f13c7c03…` verified -> `adb reboot bootloader` -> exact serial in fastboot
+-> `fastboot boot` -> `KERNEL_RESTORED` `6.12.23-android16-5-o-g227664cbe007-4k`, BTF `77a8ce5a…`,
+`CANDIDATE_BOOTED_IDENTITY_VERIFIED`, boot_id `d35fc53f-…`, slot `_b`, root OK, no flash. Then g2
+recreated (`0x2d00`/`SCHEDFFN0001`); charger notify 0, 494 mA.
+
+`launch_ev2.sh ev2` (one outer rig lock): prepare `ev2` PASS -> legacy derived -> `CHAIN-ev2` arms in
+this order so the baseline/full-system pair lands first: **legacy all-desktop -> OP15+Pixel
+per-device -> desktop+dispatcher -> OP15 all-on**, single runs on `longtail_eval_v2`
+(14 req / 3,604 out tokens / 1,675 s span). Started 15:11:40 UTC; ~6 min preflight + ~30-40 min per arm.
+
+## 2026-09-25 14:55 UTC - OP15 charger latch cleared by `adb reboot` (no replug); RAM kernel lost; eval_v2 desktop arms launched
+
+User could only ssh the desktop. Every host-side lever failed: mmi/OTG toggles, Type-C role swap
+(rc=1), host-port `disable` (link drops, VBUS stays), `uhubctl` (the OP15 hangs off root hub usb2
+port 2 — not switchable; only the ASM107x hub 2-9 carrying the Pixel has per-port power).
+`adb reboot` cleared it: `battery_notify_code` 0, USB 497 mA @ 5.07 V (SDP 2.5 W), battery
+-235 mA, level 80 %. Recreated the g2 gadget (`/data/local/tmp/s43_g2_recreate.sh`, configfs is
+lost on reboot).
+
+| | before reboot | after |
+| --- | --- | --- |
+| notify code | 512 (latched) | **0** |
+| USB current | 0 | 497 mA |
+| kernel | `6.12.23-android16-5-o-g227664cbe007-4k` (RAM-booted, qualified) | `…-gb3b66ace21e0-ab14672634-4k` (**stock**) |
+| boot_id | … | 78cfc714-… |
+
+Consequence: the transport identity pins the RAM-booted kernel and boot image
+`f13c7c03…` (= `/mnt/storage/s42-dmabuf-cancel-20260914-v1-gBJdFx/candidate-boot.img`, verified
+sha); `adapters/phone_session_ops/transport.py::_phone_kernel_release` rejects a mismatch
+fail-closed, so **no OP15 FunctionFS arm can run until the user authorizes a temporary
+`fastboot boot`** (recorder `boot_candidate.py` in that dir; ran remotely OK on 09-14; RAM only, no
+flash). Pitfall: `adb shell su -c "cat $(...)"` expands in the outer non-root shell → push a root
+script (`/data/local/tmp/op15_state.sh`).
+
+Meanwhile: `template-eval2` derived from `template-longtail` (diff = 4 trace paths + id);
+`prepare ev1` → `inputs-{desktop,op15,two-phone}-ev1` + `qualification-ev1`; legacy arm derived with
+`--drop-dispatch-policy`. Found and fixed a trap first: the chain's `--stage` tree was 12 files
+behind the deploy (replan fix + fail-fast were synced straight to the deploy); the chain's sync
+step would have reverted the deploy. Stage now == deploy == local main. `CHAIN-ev1` launched:
+legacy all-desktop → desktop + dispatcher on `longtail_eval_v2` (14 requests, 3,604 output tokens).
+
+**15:00 UTC outcome: `CHAIN-ev1` stopped after 13 s of the first run.** Preflight PASSED on the stock
+kernel, but `runner.py` builds the OP15 session controller at startup for EVERY arm (also
+`selection_mode = desktop-baseline`) and `_phone_kernel_release` raised `phone kernel is not
+qualified for direct DMA-BUF: 6.12.23-android16-5-gb3b66ace21e0-ab14672634-4k`. Fail-closed, nothing
+left running (0 servers, 0 forwards). So **all four arms, desktop-only included, wait for the
+authorized temporary `fastboot boot`** of the qualified image (~60 s, RAM only; then the g2 recreate
+script). Inputs `*-ev1` stay valid; the chain is re-launchable as is.
+
+## 2026-09-25 14:21 UTC - Half-size evaluation trace `longtail_eval_v2` built; deploy synced; OP15 still latched
+
+User asked for a shorter trace. Same honesty rule as longtail_v1 (real 30-min window, real arrivals,
+log long-tail share within 0.05) with 14-18 requests and <= 4,000 capped output tokens, >= 4 per
+model: 14 requests (7 Qwen, 6 Gemma, 1 Llama), 3 long (max 614), 3,604 output tokens (44 % of
+longtail_v1), span 1,675 s; long tail 21.4 % / 49.5 % (log 18.6 % / 49.3 %). Expected ~25-35 min
+per arm -> run each arm twice. Deploy source synced to merged main (replan fix + fail-fast, 12
+files, verified) while the rig is idle. OP15 charger still latched (512) -> waiting for the replug.
+
+## 2026-09-25 09:25 UTC - lifecycle failures now abort the run at once (fail-fast, merged); two-phone README corrected
+
+- **Fail-fast.** `CanonicalArrivalCoordinator` stops the run at the next arrival tick or submission once any
+  request lifecycle fails. Before, it checked only in `drain()` after the last arrival.
+  - The abort is unchanged (`drain()`'s code, shared): pending tickets are cancelled, the rest settle, and the
+    lifecycle's own exception is raised. FAILURE.json, the FAILURE_* dumps, cleanup and phone restore are the same.
+  - It is the default. `--lifecycle-failure-mode drain` (coordinator `fail_fast=False`) restores the old behaviour.
+
+| lost to drain-time detection | failed | noticed |
+| --- | --- | --- |
+| 09-25 OP15 longtail | 007 at 431.4 s | 1,582 s (~1,150 s lost) |
+| 09-23 run-treatment-4 | 003 at 330.9 s | ~27 min later |
+
+| check | base | fixed |
+| --- | --- | --- |
+| failure at request k -> k+1 never submitted | FAIL (base kept submitting) | pass |
+| submit after a recorded failure | FAIL | pass (refused) |
+| non-failing decision-log digest (pinned clock) | 03c92218... | identical, both modes |
+| main suite after merge | | 141 modules / 2,031 tests, exit 0 |
+
+- **Two-phone README corrected** (a Correction paragraph, the history is kept). The OP15 arm died with Qwen 007 at
+  431.4 s (record 29). 018 is Gemma, and it failed at 1,583 s only after the drain-time abort (records 130-143).
+  027 is the Qwen load. The paragraph also notes that both fixes are merged.
+- Report: `campaigns/burstgpt/reports/20260925-replan-reprojection-fix/failfast/`. The deploy is NOT synced.
+  Nothing is committed.
+
+## 2026-09-25 08:45 UTC - replan crash fixed and merged: the OP15 longtail arm really died at 431 s (request 007)
+
+- **Root cause.** The OP15 all-on longtail arm lost request 007 at 431.4 s (decision record 29), not
+  018 at 1,583 s.
+  - 007's queued Gemma switch 004 had been displaced by affinity, so 004 became 007's causal
+    dependent, although with an earlier sequence.
+  - While 007 held no lease, 004 was replanned to 667.2 s.
+  - 007's `capacity_released_early` replan then hit 004's host-RAM replacement: its hot baseline
+    was memory-rejected, and selection raised before the loop's dependent deferral could run.
+- **Why it surfaced late.** The coordinator only checks futures in `drain()`, after the last arrival
+  (1,580.2 s). Its abort at 1,582.1 s woke 018, which hit the same bug against 027 (also a
+  dependent); that second error is what the README reported.
+- **Fix** (`reports/20260925-replan-reprojection-fix/`): when a replan's baseline is memory-rejected,
+  the replan loop first defers the queued causal dependents reserved before the rejected window ends.
+  Otherwise it re-projects residency at the baseline's start from the unprojected snapshot, but never
+  ahead of a dependent. It stays one bounded loop and fails closed.
+
+| check | base (main before) | fixed |
+| --- | --- | --- |
+| replay of this run (arrivals + recorded durations, real scheduler) | crash at 1,585.9 s, same message | 31/31 |
+| replay of the 09-24 longtail desktop run, WC | crash at 1,017.2 s | 31/31 |
+| other 26 replay cells (5 runs x 3 policies x 2 modes) | complete | byte-identical logs |
+| 5 new tests (incl. the rig's 007 path) | 4 fail with the rig message, 1 fail-closed passes | pass |
+| main suite after merge | | 141 modules / 2,026 tests; only the known-flaky 10 ms test (passes alone) |
+
+- Merged into main (backups in `$SCRATCH/replanfix/premerge-backup/`). The deploy is NOT synced.
+  Nothing is committed.
+- Not fixed: the coordinator surfacing lifecycle failures only at drain, which cost about 1,150 s of
+  rig time here.
+
+## 2026-09-25 07:35 UTC - longtail_v1 stopped: OP15 all-on crashed (replan bug), retry blocked by OP15 notify 512 -> needs the user
+
+| longtail_v1 arm (31 req, host = RAPL+NVML) | dur s | host kJ | vs legacy |
+| --- | ---: | ---: | ---: |
+| desktop, legacy dispatcher (all-desktop baseline) | 4,984 | 536.3 | ref |
+| desktop + dispatch policy | 3,381 | 393.0 | -26.7 % |
+| OP15 all-on | crashed at 1,583 s | - | - |
+| OP15+Pixel per-device | not run | - | - |
+
+- OP15 all-on: `qualified desktop baseline is not available: MEMORY_REPLACEMENT_CONFLICT_CURRENT:host-ram` while
+  replanning Qwen 018, 3 s after 027 was admitted with a cold 31 GB load. The replan loop
+  (`replan_commit._execute_automated_replan`) lacks the re-projection the 09-23 arrival fix added
+  (`_reproject_rejected_baseline`), so the run aborts. Not Pixel-related; 14 requests had been phone-assisted.
+- Retry (fresh inputs lt2) stopped at its first battery check: OP15 `battery_notify_code` 512 (80 %). No
+  hardware since; rig idle, lock free, no worker/forward.
+- User: replug the OP15; choose retry-as-is vs a replan re-projection fix first; commit checkpoint.
+  Resume command: reports/20260925-two-phone-eval/README.md (status section).
+
+## 2026-09-25 06:16 UTC - longtail_v1 2/4: dispatcher alone saves 26.7 % on the all-desktop rig
+
+| longtail_v1 arm (31 req) | dur s | host kJ | vs legacy desktop |
+| --- | ---: | ---: | ---: |
+| desktop, legacy dispatcher | 4,984 | 536.3 | ref |
+| desktop + dispatch policy (work-conserving + model affinity) | 3,381 | **393.0** | **-26.7 %** (dur -32.2 %) |
+
+Next: OP15 all-on, then OP15+Pixel per-device.
+
+## 2026-09-25 05:15 UTC - longtail_v1 1/4: legacy all-desktop baseline re-measured
+
+| longtail_v1 arm (31 req) | dur s | CPU kJ | GPU kJ | host kJ |
+| --- | ---: | ---: | ---: | ---: |
+| desktop, legacy dispatcher (this run) | 4,984 | 377.0 | 159.3 | **536.3** |
+| same arm on 09-23 (older code) | 4,901 | | | 523.7 |
+
+Next in the same locked chain: desktop + dispatch policy, OP15 all-on, OP15+Pixel per-device (~80 min each).
+Report: scheduler/campaigns/burstgpt/reports/20260925-two-phone-eval/.
+
+## 2026-09-25 03:45 UTC - dev_v2 matched arms with the fixed Pixel: per-device policy keeps the Pixel at B1 and B4; gate PASS -> longtail_v1
+
+Same deploy/tree (scheduler 062ce583, server a87e7772), pair 2 counterbalanced (two-phone first). Host =
+RAPL+NVML measured; phones assumed 4.5/0.875 W in "fleet" (not used here).
+
+| dev_v2 arm | dur s | host kJ | vs desktop | Qwen / Gemma assisted | Qwen window kJ / s |
+| --- | ---: | ---: | ---: | --- | --- |
+| desktop + dispatcher | 627 | 63.97 | ref | - | 18.05 / 146 |
+| OP15 all-on r1 / r2 | 635 / 631 | 34.49 / 41.87 | -46.1 / -34.6 % | 4/4+4/4, **0/4**+4/4 | 9.99 / 134, 18.56 / 151 |
+| OP15+Pixel per-device r1 / r2 | 729 / 622 | 48.37 / 35.64 | -24.4 / -44.3 % | 4/4+**2/4**, 4/4+3/4 | 10.01 / 142, **9.11** / 140 |
+
+- Trace-level spread is assistance availability, not the Pixel: identical OP15 runs differ by 21 % (r2 lost all
+  Qwen assistance: Gemma->Qwen re-provisioning "replacement source is not ready" x119); two-phone r1 lost Gemma
+  000/001 (Gemma still page-cached -> 3 s load -> started before the OP15 sessions were ready).
+- Where the Pixel acts (Qwen, all assisted): 9.99 vs 10.01 / 9.11 kJ (-4.4 %), +5 % time. The per-device
+  policy started with OP15 alone, then OP15+Pixel won at B4 and B1 in both runs (window J/token -13..-28 %);
+  no drops. Pixel per-layer RPC in the server: 12.8-13.4 (B1) / 22.7-23.3 ms (B4) (old worker 38 / 82).
+- Phone power diagnostic (1 Hz sysfs): OP15 assisting ~4-6 W (2.5 W USB cap + battery drain, above the 4.5 W
+  assumption); Pixel 0.49 W idle, ~1.3-1.8 W over the Qwen window (below the 4.5 W assumption).
+- Gate (per-device >= OP15 all-on within noise): PASS. Next: longtail_v1 (legacy desktop, desktop+DP, OP15
+  all-on, OP15+Pixel), ~6 h. Report: scheduler/campaigns/burstgpt/reports/20260925-two-phone-eval/.
+
+## 2026-09-25 02:20 UTC - Fixed Pixel worker adopted: fresh Pixel-only server identity PASS, Pixel now beats the desktop CPU at B1
+
+Deploy synced to main (scheduler digest 5e351e70 -> 062ce583, per-device policies now on the rig; no server
+rebuild). Fresh token-identity receipt: unchanged Pixel-only llama-server harness, fixed worker (sha 5d824455 +
+uclamp/poll/batch-pair flags), rooted, finite budget.
+
+| request (64 tokens, B1) | request s | host J | vs desktop |
+| --- | ---: | ---: | ---: |
+| desktop (mean of before/after) | 42.3 | 4,885 | ref |
+| Pixel 50 % of layers 18-23 | 38.7 | 4,468 | -8.5 % |
+| Pixel 100 % of layers 18-23 | 39.2 | 4,036 | **-17.3 %** |
+| (old worker, 09-24, Pixel 100 %) | 49.1 | 4,324 | -10.6 % |
+
+4/4 outputs identical, 744 Pixel calls, clean exits. Receipt checks: `prepare_campaign_eval.py` accepts the new
+worker hash only through a byte-identity bridge to the numerically qualified worker (TCP rows 1/2/4 hash-bound,
+phone-local rows 3, flag matrix); 20 unit tests. Cost prior: B1 7.7 ms/layer (was 28.3), link kept
+conservative. Pixel power diagnostic (1 Hz sysfs): ~0.55 W idle, ~1.9 W mean while serving (bursts above the
+4.6 W USB cap drawn from the battery). Next: dev_v2 matched arms (desktop+DP, OP15 all-on, OP15+Pixel
+per-device). Report: scheduler/campaigns/burstgpt/reports/20260925-two-phone-eval/.
+
+## 2026-09-25 01:44 UTC - Pixel: CPU+GPU split FAILS (1.01x); real cause = DVFS; fixed worker 2.7-3x faster -> adopting
+
+Bench (real worker, replayed layer 18-23 activations, 3 reps): packed CPU-only 6.0/8.0/17.2 ms
+(M1/2/4, back-to-back) vs Vulkan-only 14.5/30.2/86.8 ms; best split cell 1.01x (gate 1.4x); the
+GPU is 2.4-5x slower than the packed CPU and interferes (CPU leg -15-30 %, GPU clock 470-970 MHz).
+Diagnosis: at server cadence (6-30 ms calls, 250 ms between tokens) the Pixel CPU clusters sit at
+400-550 MHz (governor needs 75-300 ms busy to ramp) -> production worker 28.5-67.8 ms/layer.
+Fix (env-gated in the worker): S43_PIXEL_UCLAMP_MIN=1024, S43_PIXEL_CPU_POLL=100,
+S43_PIXEL_CPU_BATCH_PAIR=1 -> per-layer RPC over adb TCP 38.4/61.4/88.4 -> 13.6/20.2/32.5 ms
+(B1/B2/B4), byte-identical outputs, 4.5-min sustained run stable. Pixel 6 layers/token now
+81-195 ms ~ OP15 18 layers 175-220 ms. Caveat: active power rises (spin ~25-65 ms after calls);
+phone power is still assumed. Decision: adopt the fixed worker (evidence bundle, receipt check,
+cost recalibration, fresh token-identity receipt), then dev_v2 matched arms (gate: per-device >=
+OP15 all-on) -> full longtail_v1 vs all-desktop baseline. Pixel power sampled as a diagnostic.
+Report: reports/20260925-pixel-cpu-gpu/; eval: reports/20260925-two-phone-eval/.
+
+## 2026-09-25 03:40 UTC - Pixel CPU+GPU split FAILS (<=1.01x); the real Pixel problem is DVFS -> 2.7-3.0x per-layer RPC fix, byte-identical
+
+Report: `scheduler/campaigns/burstgpt/reports/20260925-pixel-cpu-gpu/` (README, BENCH_TABLE.md). Phone-local
+bench on the real worker (packed CPU + Vulkan F16, 6 layers streamed, 3 reps) and over-TCP qualification with
+the production AdbTcpPhoneWorkerSession. No trace, OP15 untouched, nothing committed.
+
+| Pixel per-layer, full width | B1 | B2 | B4 |
+| --- | ---: | ---: | ---: |
+| CPU+GPU split, best share (x vs CPU-only, burst / server cadence) | 0.94x / 0.99x | 1.01x / 0.75x | 0.98x / 0.79x |
+| GPU only F16 (burst ms) | 14.5 | 30.2 | 86.8 |
+| production worker, RPC over TCP (ms) | 38.4 | 61.4 | 88.4 |
+| + uclamp 1024 + poll 100 + batch pair, RPC over TCP (ms) | **13.6** | **20.2** | **32.5** |
+| Pixel 6 layers per token (ms), before -> after | 231 -> 81 | 369 -> 121 | 530 -> 195 |
+
+- CPU+GPU: GPU F16 is 2.4-5x slower than the packed CPU (Q4_K multi-column Vulkan pipeline does not compile on
+  PowerVR); ideal bound 1.42/1.27/1.20x, measured interference makes every cell <= 1.01x -> not integrated.
+- Cause of the 38/82 ms campaign layers: at server cadence the CPU clusters run at 400-550 MHz and the DSU at
+  ~400-530 MHz (sched_pixel needs 75/300 ms of busy time to ramp; calls are 6-30 ms bursts). Per-process
+  `S43_PIXEL_UCLAMP_MIN=1024` + `S43_PIXEL_CPU_POLL=100` (+ `S43_PIXEL_CPU_BATCH_PAIR=1`) fixes it; outputs
+  byte-identical at rows 1-4; 4.5 min sustained run stable. Phone power unmeasured (still the 4.5 W model).
+- To use in a campaign: new worker sha 5d824455 in `/data/local/tmp/s43-pixel-cpugpu-20260925-v1`, new
+  worker_environment, new numerical receipt + cost calibration (kernel ~6.5 ms B1 instead of ~29 ms) - README s6.
+
+## 2026-09-25 01:12 UTC - Per-device phone policies merged (code only; hardware deferred by the user)
+
+The user changed the plan at about 00:40 UTC: no rig, phone or adb action. The rig lock and the Pixel
+belong to the Pixel CPU+GPU workstream. Code, tests and merge are done; the dev_v2 and longtail_v1
+arms are written up to run later.
+
+**Design.** Option (a) without a server change. The llama-server already switches a whole phone off
+at runtime:
+- the control accepts any layer mask inside the union;
+- `apply_policy` gives each helper its owned subset, and a helper with none gets (0, 0);
+- the dormant host share keeps and restores the switched-off layers on the host.
+
+Each device set is therefore a sub-policy of the one two-phone route. There is no rebuild and no
+identity work. Per-phone *fractions* would need C++. Option (b), alternative routes, would reload the
+model per switch and cannot follow batch changes within a request.
+
+| rule (coherent server probe, per batch composition) | behaviour |
+| --- | --- |
+| policy space | {OP15, OP15+Pixel, Pixel} x {25..100 %} = 12 policies (Stage A had 4) |
+| cold start | OP15 alone first (cheapest), vs host with the unchanged bounds |
+| add the Pixel | OP15+Pixel challenges the OP15 verdict. It replaces the verdict only if its energy upper bound is at most OP15's lower bound x 0.99, it beats the host, and it stays within the 1.25x latency bound. Otherwise it is dropped for that composition (`SERVER_DEVICE_SET_NOT_IMPROVED` / `_LATENCY_BOUND_EXCEEDED` / `_PROBE_BUDGET_EXHAUSTED`). |
+| composition change | Restart from the cheapest set. A B4 drop never touches the B1 verdict. |
+| failure | The failed set and its supersets are dropped for all compositions. Fallback is OP15, then the Pixel alone (only after OP15 failed), then the host. |
+| records | Decisions, windows and snapshots carry device sets. Proofs require calls only from the phones of executed sets. A Pixel-only window does not charge the OP15. |
+
+**Checks.**
+- 18 new tests: 13 FAIL/ERROR on base, 18/18 on root. Guards pass on both, including a one-phone
+  coherent-trace digest that is identical on base and root.
+- Main after the merge: 141 modules / 2,021 tests, all pass.
+- Diff: 17 files, +912 / -50 lines (484 of the added lines are tests).
+
+Also new: `prepare_trace_inputs_v2.py --drop-dispatch-policy`, which derives the legacy all-desktop
+arm with tooling. The desktop deploy is NOT synced.
+
+Report: scheduler/campaigns/burstgpt/reports/20260924-per-device-policies/README.md (section 6 = arms to run).
+
+## 2026-09-25 00:24 UTC - Trace paused; Pixel CPU+GPU concurrent worker first (user decision)
+
+User: "we can stop the trace, we can fix the pixel problem first." The per-device-policy agent had
+not touched the rig (lock free); it continues CODE ONLY (policies, tests, merge; no hardware). New
+Opus agent on the Pixel: bench CPU-only / Vulkan-only / CPU+Vulkan column split (and a row-split
+variant) over 6 real Qwen layers 18-23 at M=1/2/4, GPU-share sweep; rationale: the Pixel's CPU path
+is compute-bound (~7-14 GB/s of a ~60+ GB/s bus) so a concurrent GPU stream should add throughput,
+unlike the OP15 where the NPU already sat at the bus limit. Gate >= 1.4x at M=2-4 -> integrate into
+the Pixel worker (env-gated, per-backend weight formats), qualify, then per-device policies use it.
+Report dir: reports/20260925-pixel-cpu-gpu/.
+
+## 2026-09-25 00:09 UTC - Direction: per-device policies (robust, evidence-driven), then full longtail_v1 vs all-desktop baseline
+
+User: "we use different policy for different phone, but the scheduler should be smart enough to be
+robust. then we rerun the mixed trace and compare with all desktop baseline." Launched one Opus
+agent: policy space = device set (OP15 / OP15+Pixel / Pixel) x fraction; evidence and verdicts
+per device set and batch composition; unchanged qualification/latency bounds; slower device
+dropped per composition, re-checked per existing rules; failure fallback; cold-start = cheapest
+probe first; per-device proofs; single-phone byte-identical. Design choice to resolve: runtime
+per-helper column control (server C++ change + identity re-materialization) vs alternative
+routes (OP15-only vs OP15+Pixel) chosen per request from evidence. Then dev_v2 matched arms
+(gate: per-device >= OP15 all-on within noise), then longtail_v1: desktop legacy (all-desktop
+baseline), desktop+dispatcher, OP15 all-on, OP15+Pixel per-device (~80 min each).
+Report dir: reports/20260924-per-device-policies/.
+
+## 2026-09-24 23:50 UTC - Pixel integration 2 done: two-phone activation works, the Pixel does not help (2 matched pairs)
+
+Counterbalanced repeat (two-phone first, then OP15) confirms the first dev_v2 pair. Host = RAPL+NVML
+measured; phone kJ = assumed 4.5/0.875 W model (not measured).
+
+| dev_v2 arm | r1 dur s / host kJ | r2 dur s / host kJ | mean host kJ | Qwen window kJ / s (r1, r2) |
+| --- | --- | --- | ---: | --- |
+| desktop + dispatcher | 682.2 / 68.04 | - | 68.04 | 17.70 / 145 |
+| OP15 all-on | 617.4 / 40.82 | 652.1 / 38.84 | 39.83 (-41.5 %) | 15.44 / 141 (1/4 assisted), 10.31 / 135 (4/4) |
+| OP15 + Pixel all-on | 806.2 / 42.54 | 681.5 / 40.13 | 41.34 (-39.2 %) | 12.84 / 189, 13.76 / 161 |
+
+Pixel vs OP15: host +4.2 % / +3.3 % per pair, time +31 % / +4.5 %; the r1 extra time was mostly
+slow model loads (page cache, not reproduced in r2). Root cause: Pixel packed-CPU over ADB TCP costs
+38 ms/layer at B1 and 82 ms at B4 (OP15 10-13 ms for 18 layers), and Stage A makes every Qwen phone route
+include the Pixel, so B>=2 batches pay it. Identity 5-8/9 per arm (near-tie positions, full lengths).
+longtail_v1 pair NOT run (conditional on a Pixel benefit). Options for the user: faster Pixel worker at
+B>=2, Stage B per-batch device choice (Pixel only at B1), or other layers; and a commit checkpoint.
+Report: scheduler/campaigns/burstgpt/reports/20260924-pixel-integration-2/README.md.
+
+## 2026-09-24 23:14 UTC - Pixel integration 2: matched dev_v2 arms - Pixel does not help (single run), repeat running
+
+Same deploy (server a87e7772, merged main), trace longtail_dev_v2 (9 req), all phone arms with coherence +
+coalesced both + re-provisioning + dispatch policy. Host = RAPL+NVML measured; phone kJ = assumed 4.5/0.875 W.
+
+| arm | dur s | host kJ | vs desktop | phone kJ* | identical | Qwen assisted | Pixel calls |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| desktop + dispatcher | 682.2 | 68.04 | ref | 0.60 | ref | - | - |
+| OP15 all-on | 617.4 | 40.82 | -40.0 % | 1.38 | 7/9 | 1/4 | 0 |
+| OP15 + Pixel all-on | 806.2 | 42.54 | -37.5 % | 3.00 | 6/9 | 4/4 | 1,926 |
+
+Pixel vs OP15: host +4.2 %, time +30.6 %. Inside the Qwen batch the two-phone arm used 12.8 vs 15.4 kJ
+(-17 %, 189 vs 141 s), but slower model loads (Qwen 114 vs 47 s, Gemma 91 vs 63 s; page cache, not Pixel)
+and the longer Qwen batch push the rest later. Pixel RPC per layer grows 38 -> 82 ms from B1 to B4
+(OP15 10 -> 12 ms for 18 layers), so every Qwen phone route (Stage A always includes the Pixel) is
+latency-bound at B>=2. Counterbalanced repeat (two-phone first) running before deciding on longtail_v1.
+
+## 2026-09-24 22:20 UTC - Pixel integration 2: first two-phone trace with real Pixel FFN calls (dev_v1)
+
+Merged the Pixel agent's Stage A v7 integration into main (26 files, clean 3-way on replan.py +
+test_dispatch_policy.py; suite 1,988 PASS), then fixed both activation blockers (suite 1,999, only the
+known 10 ms timing flake): (a) OP15 residency checks now use OP15's own layers (`primary_phone_ffn_contract`)
+instead of the OP15+Pixel union; (b) frontier keeps the `operator_split` representative per resident
+envelope (v7 snapshot: 0 -> 4 adaptive policies; single-phone replays unchanged). 11 new tests, 8 fail before.
+
+| dev_v1 (6 req) | dur s | host kJ (meas.) | OP15 / Pixel kJ (assumed) | FFN calls OP15 / Pixel | identical |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| desktop + dispatcher | 714.5 | 64.78 | - | - | ref |
+| OP15 + Pixel all-on | 785.8 | 32.48 (-49.9 %) | 1.94 / 1.41 | 20,541 / **1,998** | 5/6 |
+
+0 PREPARATION_FAILED (v7: 225); OP15 did Qwen -> Gemma -> Qwen shard replacement incl. the v7 partial
+case (HTP1 Qwen with HTP0/2 still Gemma) - all SESSION_VERIFIED. Qwen 3/3 assisted by both phones at
+full width; Pixel idle-TERM exit 0. Qwen 004 differs from token 149/196 (near tie). Not an incremental
+Pixel number: matched dev_v2 desktop / OP15 / OP15+Pixel arms running now.
+Report: scheduler/campaigns/burstgpt/reports/20260924-pixel-integration-2/.
+
+## 2026-09-24 20:51 UTC - Taking over Pixel two-phone integration (user request)
+
+Pixel agent's last state (reports/20260924-pixel-second-phone/README.md 20:48 UTC): Pixel
+execution path qualified; automatic two-phone activation FAILS — 225 PREPARATION_FAILED
+"exact partial phone residency transition is unavailable" because the OP15 Gemma->Qwen shard
+replacement check compares the COMBINED OP15+Pixel mask against OP15's shards alone; separately,
+bounded candidate ranking can drop the operator_split policies adaptive probing needs. Its Stage A
+v7 integration is only in /mnt/storage/s42-two-phone-pixel-20260924-v1/stagea-source (behind our
+main by today's merges, ahead by STAGEA_V7 + REPLAN_CORRECTIONS + ROOTED_WORKER_LIFECYCLE diffs).
+Rig is free. One Opus agent now: rebase its integration onto main and merge; fix the two blockers
+with tests; short Gemma->Qwen transition test with real Pixel calls; matched dev_v2 arms
+(desktop+dispatcher / OP15 all-on / OP15+Pixel all-on); longtail pair only if the Pixel helps.
+Report dir: reports/20260924-pixel-integration-2/.
+
+## 2026-09-24 20:48 UTC - Pixel v7 completes; activation FAIL, partial-transition refusal identified, retries stopped
+
+v7 preflight PASS20:26:38UTC; trace completion PASS9/9 at20:41:29UTC,
+863.662723s, measured host61.905323kJ. Coverage FAIL: Pixel0calls, Qwen0/4assisted.
+OP15 Gemma3/4assisted,15936calls. Exact tokens vs prior desktop+dispatcher FAIL7/9;
+Gemma000 differs at19, Qwen004 at111 (zero-based). Inputs match, but build/code
+are different, so24.801% below the82.322534kJ historical control is diagnostic,
+not a Pixel saving. Fresh controls were not run. Prior best OP15-only45.685598kJ
+and exact-output coherentEF2 28.0% remain the reference results.
+Final logs show225 repeated partial phone preparation refusals. Source review:
+DirectPhoneFfnSession compares a combined OP15+Pixel resident mask against
+OP15-only shards, before the existing late primary-state projection. Needs an
+ownership-aware transition regression and consistent primary-contract projection.
+Independent bounded-frontier reproducer PASS: current zero policies, diagnostic
+split preference yields four widths4352/8704/13056/17408. Actual live admissions
+had two small split candidates, so pruning is not the only live blocker.
+Two completed zero-Pixel activation failures (v6/v7); conservatively stopped
+hardware retries per handoff. Cleanup PASS: Pixel idleTERM exit0,no worker or
+forward,boot unchanged; OP15 notify0. No active or queued job from this session.
+Integration remains isolated, no commit/push. Rebased review diff preserves newer
+main affinity changes;245 functional tests passed after restoring one fixture,
+pyflakes26 PASS, git apply --check PASS. Rebased code has no hardware validation.
+Next: primary-contract and frontier regressions, short mixed-model transition
+smoke with actual Pixel calls, then matched three-arm dev trace, then full31trace.
+Report: research_dev/scheduler/campaigns/burstgpt/reports/20260924-pixel-second-phone/README.md.
+
+## 2026-09-24 20:30 UTC - Pixel v7 preflight PASS; corrected Qwen grid reaches the trace
+
+Preflight PASS at 20:26:38 UTC; nine-request trace is active under the shared
+rig lock. Actual catalog check PASS: all four Qwen split coordinators use
+17,408 columns / 4,352 quantum / four partitions. First Gemma used OP15;
+Qwen server registered both helpers and is warming up. Pixel execution, trace
+energy, exact outputs and fresh controls remain unverified. The isolated code
+snapshot excludes the other session's newer model-affinity changes; two shared
+files need a careful rebase before merging. Report: reports/20260924-pixel-second-phone.
+
+## 2026-09-24 20:20 UTC - First Pixel-configured trace completes; activation FAIL, shared-grid root cause fixed locally
+
+v6/run-r1 completionPASS9/9,924.684964s,host61.351856kJ at20:17:59UTC.
+OP15 only Gemma005/007:14520/600calls. Qwen0/4assisted; Pixel0calls: coverageFAIL.
+Queue crashes did not recur; final Pixel idleTERM cleanupPASS exit0,no worker,
+forward removed,boot unchanged. Raw output physical/campaign-v6-run-r1.
+Found actual catalog ffn_column_quantum8704: combining primary512minimum as a
+fixed alignment with Pixel4352 block rejected quarter/three-quarter widths,
+leaving no Qwen operator_split candidate (all four Qwen admissions confirmed).
+Use primary quantum as minimum; enforce divisibility against actual helper blocks
+when selecting runtime partitions. Synthetic non-divisor-minimum regressionFAIL
+before/PASSafter,167functional helper/route/adaptive testsPASS plus9catalog testsPASS.
+First suite command named nonexistent test_runtime_catalog (loader error retained),
+correct test_catalog_materialization passed separately. Pyflakes26changed filesPASS.
+Fresh v7 preflight active20:19:40UTC. No incremental Pixel trace saving yet.
+Accounting audit: v6 assumed OP15=1.458508kJ,Pixel=0.824508kJ; old comparator omits
+Pixel from fleet totals. New report comparator includes both, still labels power assumed.
+
+## 2026-09-24 20:17 UTC - Model-affinity follow-up merged (affinity now also fires when a model's load is published)
+
+Root cause (dev2baseDP/allon decision logs): affinity was evaluated only at ARRIVAL and requires
+the arriving request's model to be hot with a ready executor; every same-model arrival in dev_v2
+came during that model's load (Qwen loading 79-129 s; 003/004/006 arrived then), so the path
+returned None -> 0 displacements/refusals. The publication replan then kept 006 behind 005's
+cancelled Gemma plan (queue re-link keeps existing conflicting links; 005 held all 8 GPU lanes)
+-> 006 DEFERRED_REPLAN waiting on 005. The earlier replay predicted 663 s only because it used
+the legacy arm's 97 s cold Gemma load (rig had a warm page cache: 6 s).
+Fix (model_affinity only; 9 files +478/-20): model_affinity_replan_displacement (a replan whose
+model is resident and ready displaces another model's not-yet-started switch, same bounds);
+_replan_with_model_affinity runs first in a nested transaction with a guard against plans that
+still need a switch; runtime_queue.admit reverses links for displaced work; publication wake in
+observations.py; replan.py no longer defers later-arrived work queued ahead of displaced work
+(closes a latent hazard in the arrival path too). 7 new tests (fail on base). Replay with each
+arm's own durations: desktop+dispatcher 863 -> 624 s / 5 -> 3 loads; all-on 802 -> 595 s; 006
+joins the Qwen server at publication, Gemma 007 joins 005; longtail neutral (+1.9 % time,
++3.9 % energy desktop-only; ~0 with phone). Flag-off logs identical to main. Not measured yet.
+Report: reports/20260924-dispatch-policy/affinity-followup/.
+
+## 2026-09-24 20:02 UTC - #4 follow-up fixes merged (layout-identity coherence keys; boundary re-evaluation gate)
+
+Problem 1: server-policy group was keyed by phone layout generation -> every swap reset verdicts
+(Gemma 007 ran 26/26 tokens on host; Qwen 006 re-probed). Fix: key = (model, placement, None,
+artifact_layout_identity_sha256 of the model's own shards: layer mask, columns, geometry, operator
+plan); same identity across generations 3/9/15 (Gemma 24) and 6/12 (Qwen 17); no identity ->
+old key (fail-closed); coherence-off byte-identical. Caveat: a failed-phone host verdict now
+lasts until the model's shards change.
+Problem 2: boundary hook's duplicate check compared learning status with a source route against
+the compiler's status without one -> never equal -> full evaluation every token (1,202
+REPROVISION_RETAINED). Fix (knob on): re-evaluate on state change or at most every
+boundary_reevaluation_interval_us (default 10 s); coalesce identical RETAINED/HOLD records with
+counters; dispatch/release/session-ready paths ungated. Replay: coherentRP 1,202 -> ~73 evals /
+~33 records; RESULT.json ~41 -> ~21 MB. Latent knob-off storm left as-is (knob-off identical).
+16 new tests; merged tree related files pass; pyflakes clean. Not yet validated on hardware.
+Report: reports/20260924-phone-reprovision/followup-fixes/.
+
+## 2026-09-24 19:57 UTC - Pixel v5 trace FAIL at long-request replan after preparation; bounded fix tested, v6 preflight active
+
+v5 preflightPASS19:46:13UTC; traceFAIL19:49:13UTC, no Pixel FFN calls.
+Qwen003 failed with qualified desktop baseline unavailable just after Qwen002
+preparation. Snapshot shows hot/healthy Qwen and no quarantine. Offline six-request
+fixture reproduces long-request replan rejection behind later model replacements
+(MEMORY_REPLACEMENT_CONFLICT_CURRENT:gpu-memory). Reuse priority compaction for
+preparation_phase_completed, as already done for capacity_released_early. Regression
+now joins a2 at load completion and keeps later b1 after it; active a1 preserved.
+147/148targeted testsPASS, existing timing thresholdFAIL10.040539ms vs10ms.
+No threshold change. Diagnostic exception now includes baseline rejection reason.
+Pixel cleanupPASS exit0/no worker/no forward/boot unchanged. Full failed output in
+physical/campaign-v5-run-r1. v6 fresh preflight active19:57:08UTC; stop if same
+baseline-rejection failure repeats. No completed two-phone trace energy/token claim.
+
+## 2026-09-24 19:49 UTC - Pixel v5 preflight PASS; third trace underway after tested compaction fix
+
+Fresh preflight PASS19:46:13UTC; nine-request two-phone campaign began19:46:14.
+Deployed callback and compaction SHA256 match locally tested source. All21changed
+Python files pyflakesPASS,147related testsPASS. OP15 Gemma1200calls observed;
+Qwen parent loading, Pixel rooted worker ready. No completed trace result yet.
+Implementation remains isolated; v5 diff and hashes archived in the Pixel report.
+
+## 2026-09-24 19:41 UTC - Second Pixel campaign FAIL in priority compaction; exact regression and fix PASS
+
+Fresh v4 preflight PASS; run-r1 FAIL19:32:13UTC before Pixel FFN calls.
+Gemma completed 2304 OP15 calls (456 multi-row); the optional-helper callback
+fix worked. A valid residency-projection deferral left the root awaiting replan,
+then compaction incorrectly tried to release its nonexistent new reservation.
+Three-line guard preserves the root and detached followers until the predecessor
+finishes. New regression reproduces the exact exception before the fix and proves
+root/follower eventual completion after it. Related147testsPASS; pyflakesPASS.
+Pixel cleanupPASS idleTERM/exit0/no forward/no worker/boot unchanged. Entire failed
+output is physical/campaign-v4-run-r1. Fresh v5 inputs preparing under shared lock.
+No completed two-phone trace or incremental trace saving; implementation isolated.
+
+## 2026-09-24 19:24 UTC - First Pixel campaign attempt FAIL in optional-helper energy callback; fix tested, fresh retry preparing
+
+inputs-two-phone-v3/run-r2 failed19:21:50UTC before Pixel FFN calls. New callback
+sliced the absent co-helper binding on an OP15-only Gemma window (NoneType).
+Corrected empty-binding fallback; regression exercises Gemma without helper and
+Qwen with helper ownership. Targeted108testsPASS; changed callback/tests pyflakesPASS.
+Pixel lifecycle cleanupPASS exit0, forward removed, no worker, boot unchanged.
+Failed run fully archived in reports/20260924-pixel-second-phone/physical/campaign-run-r2.
+Fresh v4 inputs generated for all three arms; two-phone preflight/retry active.
+No completed two-phone trace or trace energy saving yet; implementation stays isolated.
+
+## 2026-09-24 19:19 UTC - Pixel two-phone campaign preflight PASS; first development trace started
+
+Fresh v3 preflight r1 FAIL duplicated per-model phone-state IDs in multi-phone
+catalog. Fixed per-device IDs (legacy single-phone IDs unchanged) and strict
+phone-helper physical endpoint validation. Regression27PASS, pyflakes19filesPASS.
+Transport admission PASS Qwen4rows/40960B, Gemma8rows/61440B, exactly one qualified
+coalesced helper per parent, Pixel only on Qwen18-23. Fresh physical preflight r2
+PASS19:19:12UTC. OP15+Pixel nine-request longtail_dev_v2 campaign started immediately
+under shared rig lock, output /mnt/storage/s42-two-phone-pixel-20260924-v1/inputs-two-phone-v3/run-r2.
+Scratch code is isolated, no commits. No trace completion/energy/token claim yet;
+fresh OP15-only and desktop controls pending. Report:
+scheduler/campaigns/burstgpt/reports/20260924-pixel-second-phone/README.md.
+
+## 2026-09-24 19:10 UTC - Resumed; coordination with the Pixel agent
+
+Pixel agent status (its entries 17:03-19:01 UTC; report reports/20260924-pixel-second-phone/):
+Pixel path = packed-CPU worker over ADB TCP (rooted, six pinned threads), lifecycle = automatic
+idle TERM with connected-stop refused (settles our "how to stop the Pixel worker" question; the
+two-FunctionFS host work stays PARKED as a partial diff). Rooted AOA transport measured
+(-42 % B1 call latency) but idle robustness FAIL; not FunctionFS. Two-phone mechanism PASS
+(OP15 layers 0-17 + Pixel 18-23, B1 outputs identical, B4 coalescing PASS); Pixel adds host
+saving at B1 but at B4 costs +7.4 % energy / +49 % latency vs OP15 alone. It rebuilt the SHARED
+deploy server (/mnt/storage/s42-trace-v2-20260921-prep, 17:59 UTC) with the merged multi-helper
+code, re-materialized the base identity and made TRANSPORT_QUALIFICATION_IDENTITY_PIXEL_STAGEA_COALESCED_BOTH.json;
+it wrote our RIG_RESULTS_ALLON.md; its rooted-lifecycle patch (ROOTED_WORKER_LIFECYCLE.diff) is
+only in its stagea-source copy, NOT in main. It holds the rig lock (two-phone v3 preflight
+iterating). Our rig work queues behind it.
+Our resumed work (isolated copies, Opus subagents): #4 follow-up fixes from the partial diff;
+why model affinity never displaced (affinity_displacements = 0 in both dispatch arms).
+
+## 2026-09-24 19:05 UTC - MEASURED (dev_v2): dispatcher alone -14.9 % on desktop-only; everything on -52.8 %
+
+| dev_v2 | dur | host kJ | vs legacy desktop | identical |
+| --- | ---: | ---: | ---: | --- |
+| desktop only, legacy dispatcher | 1,154 s | 96.7 | | |
+| desktop only + dispatch_policy | 865 s | 82.3 | -14.9 % | 7/9 |
+| coherentEF (#1) | 925 s | 71.9 | -25.7 % | 9/9 |
+| coherentRP (#1 + #4) | 898 s | 53.7 | -44.5 % | 6/9 |
+| allon (#1 + #4 + dispatcher + fixes) | 812 s | 45.7 | -52.8 % (-44.5 % vs desktop+dispatcher) | 7/9 |
+
+Dispatcher arms: 4 same-model overlapping executions (legacy 1), loads 5 -> 3, but
+affinity_displacements = 0 (Gemma 005 still ran alone 317-625 s while Qwen 006 waited to 715 s;
+replay predicted 2 loads / 663 s) -> follow-up. Gemma 26-layer shards generated + pushed
+(/mnt/storage/s42-ffn-shards-20260924-v3-gemma26, phone /data/local/tmp/s43-ffn-shards-20260924-v3).
+All three agents (analysis, #4 follow-ups, two-FFS host) were cut off by the usage limit; partial
+diffs preserved in reports/20260924-phone-reprovision/followup-fixes/ and
+reports/20260924-two-phone-readiness/two-ffs/ (unmerged, unfinished). Rig idle, lock free, nothing
+running. Handoff updated: research_dev/NEXT_AGENT_PROMPT_SCHEDULER.md.
+
+## 2026-09-24 19:01 UTC - Pixel campaign qualification: TCP and resident lifecycle PASS after two bounded fixes
+
+TCP calibration first attempt FAIL malformed B2 element count; corrected r2
+PASS216calls with normal finite exit0. Median overhead B1/B2/B4 11.836/15.987/20.528ms.
+Resident idle-stop first attempt FAIL rooted basename not matched by PID discovery;
+manual idle TERM with exact /proc/exe/socket verification. r1 raw PASS is invalidated
+by ASSESSMENT.json. PID fix and fresh r2 PASS: two reconnects, connected stop refused,
+automatic idle TERM, exit0, no worker/forward, unchanged boot. Full scratch module
+suite1788tests: one timing assertion FAIL10.011ms; isolated10.376ms and unchanged
+main10.376ms vs10ms threshold. All functional tests pass, 7local real-worker lifecycle
+tests pass, latest51targeted pass(one skip), pyflakes18files pass. Catalog resolvePASS;
+fresh v3 physical preflight pending, no two-phone campaign trace claim. Report:
+scheduler/campaigns/burstgpt/reports/20260924-pixel-second-phone/README.md.
+
+## 2026-09-24 18:37 UTC - Two-phone mechanism correctness PASS; Pixel energy benefit depends on concurrency
+
+Native OP15 FunctionFS + Pixel packed CPU over ADB TCP: all five B1 outputs
+64/64 tokens identical; B4 desktop/OP15/both all four outputs identical.
+Combined ownership PASS: OP15 1,098 calls on layers0-17; Pixel366 on18-23.
+B4 coalescing PASS4,338/1,446 rows. Every Pixel finite worker exited0 and
+removed its forward; no signals, boot unchanged. B1 request host energy
+4.847kJ desktop mean,2.414OP15,2.627both-matched,2.048both-full. Pixel full
+saves15.2% more host energy than OP15 but adds21.1% latency. At B4: desktop
+6.669kJ/49.629s,OP15 3.214kJ/47.755s,both3.452kJ/71.202s. Incremental Pixel
+saving FAIL at B4:7.4% more energy,49.1% more latency. Not a trace claim.
+Phone energy remains assumed. OP15 after gate80%,30.4C,charging,notify0;
+Pixel100%,28.4C,USB powered. Rooted lifecycle patch full regression passed
+1,955 tests after one scratch fixture rerun. New campaign wiring remains
+isolated and under test. See scheduler/campaigns/burstgpt/reports/20260924-pixel-second-phone/README.md.
+
+## 2026-09-24 18:03 UTC - Pixel packed CPU server qualification PASS; native two-helper rebuild PASS
+
+Exhaustive packed/F16 parent check PASS1,604,321,280 values across18 tensors.
+Bounded server retry PASS744FFN calls, four64-token outputs identical,24 cleanup
+calls outside measurement, both worker/server exit0. Mean desktop control
+4835.138J; Pixel half/full4308.755/4324.380J (-10.887/-10.563% host request).
+Half/full decode41.747/46.385s vs38.344s control (+8.875/+20.971%). ADB TCP,
+rooted six pinned CPU threads, paired SDOT/fused residual/dynamic64. One request
+per split; no phone-energy measurement or two-phone/trace claim. First attempt
+FAILbeforePixelcalls: microbenchmark worker idle timeout60s < server startup79s.
+Retry uses preserved finite-budget CPU worker without that timeout. Failed run
+retained; idle server stopped gracefully, own forward removed.
+
+Rig binary lacked already-merged multi-helper code. Native rebuild PASS17S41
+markers plus helper env/marker; old binary/source backed up. Base transport
+identity refreshed; new coalesced identity is TRANSPORT_QUALIFICATION_IDENTITY_PIXEL_STAGEA_COALESCED_BOTH.json.
+Old derived coalesced identities are stale after rebuild. Optional rooted helper
+launch/phone lock PASS58targeted tests; full suite running in isolated copy.
+OP15+Pixel mechanism qualification and campaign integration remain pending.
+Report: scheduler/campaigns/burstgpt/reports/20260924-pixel-second-phone/README.md.
+
+## 2026-09-24 17:51 UTC - Scheduler all-on review: energy PASS, exact-token gate FAIL; Pixel integration requested
+
+Matched longtail_dev_v2 runs completed 9/9 requests each, zero rejected. With the
+new dispatcher in both arms, desktop host energy 82.322534 kJ / 865.004 s versus
+OP15 all-on 45.685598 kJ / 811.949 s: -44.504% host energy, -6.133% time.
+Phone assumptions are separate: 0.756879 / 2.050036 kJ, not measured. Strict
+saved-token comparison FAIL 7/9: Qwen004 differs at index57 and Gemma005 at146.
+All input fields match. This is a single 9-request development pair, not a full
+longtail evaluation. Native batching PASS: Qwen1854 three-row +108 two-row
+calls, Gemma96 two-row; all4 Qwen and3/4 Gemma requests assisted. Aggregate
+active_slots_peak=1 conflicts with native counts; do not infer serialization.
+Report: scheduler/campaigns/burstgpt/reports/20260924-coherent-policy-coalesced/RIG_RESULTS_ALLON.md.
+
+User requests Pixel integration and a two-phone trace. Existing static co-helper
+contracts and native multi-helper dispatcher are merged; lifecycle, Pixel
+receipts/costs and campaign launch remain fail-closed. Pending two-FunctionFS
+and reprovision scratch changes are unfinished and remain unmerged. Packed
+Pixel parent verification PASS: all1,604,321,280 weights across18 tensors are
+bit-exact to desktop F16 after dequantization/rounding. Full execution arithmetic
+and token identity are separate checks; a bounded server qualification is active.
+AOA stock-accessory framing is different from OP15 FunctionFS DMA-BUF framing.
+
+## 2026-09-24 17:18 UTC - PAUSED by the user; handoff written
+
+Handoff prompt: research_dev/NEXT_AGENT_PROMPT_SCHEDULER.md (separate from the Pixel agent's
+NEXT_AGENT_PROMPT.md). In flight at pause: rig chain dev2baseDP -> dev2allon (allon started
+17:17 UTC; results -> reports/20260924-coherent-policy-coalesced/RIG_RESULTS_ALLON.md); #4
+follow-up fixes (-> reports/20260924-phone-reprovision/followup-fixes/, not merged); two-FunctionFS
+host support (-> reports/20260924-two-phone-readiness/two-ffs/, not merged). Merged tree: 136
+files / 1,954 tests pass; nothing committed. Best measured: dev_v2 coherentRP -44.5 % host.
+
+## 2026-09-24 17:18 UTC - Pixel rooted AOA completed: continuous latency PASS, idle robustness FAIL
+
+User requested the rooted Pixel USB offload test. Functional/numerical/build/cleanup
+PASS: 53 completed arms, 9,936 FFN calls / 14,256 output rows byte-exact to the archived
+packed CPU candidate, plus 6,820 validated echo exchanges. Both transports used the same
+rooted phone, private worker, six pinned CPU threads and packed Qwen layers18-23. All
+workers exited 0. Mode changes and bulk endpoints selected by Pixel physical port 2-9.2
+AND serial 5A040DLCH004ES; no OP15-targeted operation. This is stock /dev/usb_accessory
+AOA, NOT Pixel FunctionFS qualification. No production server/scheduler/kernel changes.
+
+Matched A/B/B/A pooled medians: full B1 ADB 10.565 -> AOA 6.152 ms (-41.77%);
+half B1 7.858 -> 3.918 (-50.14%); full B2 13.882 -> 8.859 (-36.19%); full B4
+22.091 -> 15.872 (-28.15%). Continuous 10KB echo 1.970 -> 0.213 ms (-89.17%).
+Full B1 outside compute 1.234 -> 0.349 ms; compute also changes, so do not attribute
+the whole gain to the wire. Two runs per transport, 600 timed calls each for B1; larger
+batches contain repeated rows. Shared host not reserved for full inference.
+
+Idle robustness FAIL: with requested 5 ms pauses, full FFN 29.824 -> 28.179 ms
+(-5.51%); echo 3.090 -> 4.529 (+46.60%, regression). Temporary timed wake lock
+FAIL to restore continuous performance: full FFN 29.597 -> 28.724 (-2.95%). Device
+reported Dozing but successful-suspend counters stayed 0 in the wake-lock arms; remaining
+CPU idle/frequency, USB link-power and scheduling contributions NOT ISOLATED. No clocks,
+governor, SELinux or persistent settings changed. Earlier slow Python-audit harness arms
+remain in evidence but are not pooled with the final harness. Three pre-compute startup
+failures and a reset -5 during successful re-enumeration are documented, not hidden.
+
+Cleanup PASS: Pixel normal 18d1:4ee7 / adb at 5000 Mb/s, unchanged boot/root, no probe
+workers/forward/wake locks, phone lock available and shell-owned. Staged files retained.
+Full server latency/overlap, generated tokens, energy and two-phone integration NOT
+MEASURED. Need a cadence-matched serving experiment before an energy/performance claim.
+Report: research_dev/scheduler/campaigns/burstgpt/reports/20260922-fast-path-M3/PIXEL_AOA_RESULTS.md.
+Raw desktop: /mnt/storage/s42-pixel10pro-aoa-20260924-v1.
+
+## 2026-09-24 17:03 UTC - Pixel rooted AOA direct FFN transport: first PASS, confirmation active
+
+User requested the rooted Pixel USB offload test. Root PASS uid=0, stock kernel
+6.6.102, SELinux Enforcing, unchanged boot 573ce3f8-b84b-4a29-a9fd-a546747c90a7.
+Pixel port 2-9.2 switched from 18d1:4ee7 to accessory+adb 18d1:2d01, still 5000 Mb/s.
+This probe uses /dev/usb_accessory and libusb, NOT FunctionFS; OP15 port 2-2 is untouched.
+All USB open/switch operations require Pixel serial 5A040DLCH004ES at its physical port.
+Private packed-CPU worker adds buffered accessory reads, retaining the existing FFN protocol,
+CPU kernels, weights and finite request exit. No production server/scheduler changes.
+Transport smoke PASS 110/110 frames: ADB 2.192 vs AOA 0.245 ms median at
+10280/10288 bytes. Repeated full-width B1 FFN confirmation PASS 4 x 420 calls:
+ADB/AOA/AOA/ADB medians 12.404/6.157/6.152/9.647 ms; outside compute
+1.509/0.332/0.364/1.100 ms. All outputs exact to the same packed-CPU reference.
+Compute also changes with request cadence; total gain is not an isolated wire speedup.
+Harness v1 performed Python FNV/file work between calls; v2 caches repeated checksums
+and compares every response byte-for-byte. Both sets retained, not pooled.
+Half-width, multi-row wire payloads and cleanup still running under the Pixel-only lock.
+Remote evidence: /mnt/storage/s42-pixel10pro-aoa-20260924-v1. Full server/energy/token
+benefit and FunctionFS qualification remain unverified. Three startup-only harness
+failures (root-owned target, shell fd inheritance, stale own forward) preserved; zero
+phone FFN calls in those failures. No phone worker killed, no kernel/clock changes.
+
+## 2026-09-24 16:55 UTC - MEASURED: #4 re-provisioning -44.5 % host on dev_v2 (noise 3.1 %)
+
+| dev_v2 | dur | host kJ | vs desktop | identical |
+| --- | ---: | ---: | ---: | --- |
+| desktop only | 1,154 s | 96.75 | | |
+| coherentEF | 925 s | 71.86 | -25.7 % | 9/9 |
+| coherentEF2 (repeat) | 1,043 s | 69.64 | -28.0 % | 9/9 |
+| coherentRP (#1 + #4) | 898 s | 53.69 | -44.5 % | 6/9 |
+
+Repeat run: host energy differs 3.1 % (duration 12.8 %, cold page cache on first Gemma load) ->
+#4 gain (-23..-25 % vs both coherentEF runs) ~7-8x noise. Phone held 17 Qwen (live limit
+9.30-9.46 GB < 9.626 needed for 18) and 24 Gemma layers; Qwen phone share 39 -> 88 %; Qwen
+batch-2 phone 30.9 -> 19.7 J/tok; latency not worse. 15 swaps (one session per stage, 10-22 s
+each, learned rate 161 -> 217 MB/s), all 4 desktop switches followed, verified 9-39 s before the
+server started, 0 failures. Exactness 6/9 (near-tie positions seen before + Qwen 004 @57).
+Repeat inverted both Qwen batch verdicts -> single-window server verdicts are noise-limited (the
+server-probe fix, now merged, was not in these arms).
+PROBLEMS (fix in progress): coherence group keyed by layout generation -> every swap wipes
+verdicts (Gemma 007 INSUFFICIENT_OPPORTUNITY, ~0.9 kJ); per-token re-evaluation storm (1,202
+REPROVISION_RETAINED events, RESULT.json 41 MB). Queued: dev2baseDP vs dev2allon.
+Report: reports/20260924-phone-reprovision/RIG_RESULTS.md.
+
+## 2026-09-24 16:47 UTC - Pixel is rooted; another agent builds its USB transfer -> prepare host for two FunctionFS phones
+
+User: Pixel 10 Pro (5A040DLCH004ES) rooted; another agent works on the Pixel USB transfer. Our
+two-phone code assumed an adb-forwarded TCP Pixel worker; a FunctionFS Pixel changes: host USB
+client selects the gadget by VID:PID only (`libusb_open_device_with_vid_pid`) -> ambiguous with
+two gadgets -> select by serial / bus path (OP15 2-2, Pixel 2-9.2, same xHCI); per-device
+identity + receipts; per-device gadget switch/restore isolation; lifecycle via a per-phone
+session script (makes the "stop the TCP worker" question moot for USB). Agent launched
+(isolated copy, host-side + scheduler only; Pixel-side untouched). Full merged suite: 136 files /
+1,954 tests pass.
+
+## 2026-09-24 16:36 UTC - Two-phone gaps 1-3 merged (Pixel as a static co-helper; run still fail-closed)
+
+New declaration `phone_co_helpers_v1` (plan_contracts/co_helpers.py): Pixel = its own FFN-only
+executor `physical:<pixel>` (SHADOW unless in qualified_helper_phone_ids) participating in the
+model's phone routes with fixed layers, quantum lcm(OP15 2176, Pixel 4352) = 4352, proof session
+PIXEL0; its shard never enters OP15's layout/CoW. Route generation assigns Pixel layers; plans
+carry the union mask + `phone_helpers` binding (OP15 first) -> launch hook emits
+S41_SERVER_FFN_HELPERS=2. Dormant/residency/ticket checks accept the binding. Adaptive policies
+carry device_layer_masks (hash unchanged for single phone); proofs split per phone. Gap 4
+(Pixel worker lifecycle) = designed hook `adapters/co_helper_lifecycle.py`, refuses to start
+without a stop policy (user decision pending). Gaps 5-6 (Pixel receipts, cost evidence) BLOCKED
+in preflight; launch refuses a real two-phone run; the campaign catalog withholds the co-helper
+until Pixel cost evidence exists. 29 new tests (25 fail on base) + 4 single-phone digest guards.
+Property: with a co-helper declared, ALL phone routes of that model use both phones -> an
+unqualified/cold Pixel disables Qwen phone assist; rig forward_port must be fixed (e.g. 26991).
+Report: reports/20260924-two-phone-readiness/GAPS_README.md (smoke plan updated).
+
+## 2026-09-24 16:28 UTC - Rig queue: #4 arm + noise repeat running; "everything on" A/B queued behind it
+
+Running (lock held): dev2coherentRP (coherentEF + phone re-provisioning), then dev2coherentEF2
+(exact repeat of coherentEF = single-run noise estimate). Queued on the lock: dev2baseDP
+(desktop-only + dispatch_policy = new reference) and dev2allon (coherence + coalesced both +
+re-provisioning + dispatch_policy + all fixes), from the merged main tree (server binary
+unchanged). After those runs, under the same lock: generate Gemma 26-layer shards to
+/mnt/storage and push to a new phone dir (no arm with them yet). Pending decisions: Pixel worker
+shutdown method; Pixel smoke-test slot; review/commit checkpoint (nothing committed).
+
+## 2026-09-24 16:27 UTC - Server-probe thin-evidence fix merged (+3 logging fixes)
+
+coherence.py: after a failed server pair test, `_server_pair_next_measurement` decides: means
+favour phone but bounds overlap -> keep measuring (SERVER_PAIR_INCONCLUSIVE, host first, F1a);
+means against phone with < 2 host windows and overlapping energy bounds -> one more host window
+(SERVER_REFERENCE_BASELINE, F2); else host verdict as before. Budget/attempt cap (4) still bound
+it. Labels: coherence-off co-tenant follow = CO_TENANT_POLICY_FOLLOW; per-batch `reasons`.
+C++ client summary now counts multi-row decode calls as decode (needs server rebuild + identity
+re-materialization; deferred). 9 new tests (6 fail on base). Replay of coherentEF 002: 106 host /
+11 phone -> 26 host / 91 phone tokens (-11.5 % window energy, est.). Merged; related tests pass.
+Report: reports/20260924-server-probe-fix/.
+
+## 2026-09-24 16:09 UTC - #2 work-conserving + #5 model affinity merged (opt-in `dispatch_policy`)
+
+Root causes (dev2base decision log + replay): every desktop plan was a residency barrier (arrival
+order for all); a request arriving during a load planned its own load after the predecessor;
+early completion woke only dependents. Fix (RuntimeDispatchPolicy): barrier only for plans with
+exclusive-device transitions; same-model work replans when a load finishes or a lane frees early;
+affinity at arrival displaces another model's queued switch (rollback-transaction replan, kept
+only if earlier with no transition); fairness by bypass count / wait (defaults 10 / 1200 s; 3/300
+was worse on longtail). All admission checks unchanged; decisions logged
+(selected.dispatch_policy, replan reason model_affinity_displaced); RESULT dispatch_policy stats.
+Enable: "dispatch_policy": {"work_conserving_admission": true, "model_affinity": true}.
+Flag-off replays identical to legacy. 22 new tests (15 fail on base). Merged tree: related files
+pass (admission's flaky timing test aside), pyflakes clean.
+Replay (legacy replay matches real within 1-2 %): dev_v2 makespan 1,147 -> 959 (WC) -> 663 s
+(WC+affinity, 5 -> 2 loads); longtail with #1: 379.6 -> 315.7 -> 264.4 kJ; paired 12 -> 27/28.
+Not done: tighter decode estimates (spread 0.2-9.7x, not a bias). Caveat: stale-receipt replan
+bug (reachable in legacy too) fixed only under the policy. Report reports/20260924-dispatch-policy/.
+
+## 2026-09-24 15:49 UTC - dev_v2: coherent + coalesced + evidence fixes = -25.7 % host, 9/9 identical
+
+| dev_v2 (9 req) | dur | host kJ | vs desktop | vs plainEF | identical |
+| --- | ---: | ---: | ---: | ---: | --- |
+| desktop only | 1,154 s | 96.75 | | | |
+| plainEF (phone + evidence fixes) | 1,035 s | 76.31 | -21.1 % | | 6/9 |
+| coherentEF (+ coherence, coalesced both) | 925 s | 71.86 | -25.7 % | -5.8 % kJ, -10.7 % s | 9/9 |
+
+Qwen pair on phone with 660 two-row calls at 30.9 J/tok (host shared passes 37.0, plain mixed
+72.6); 2-row call 10.23 vs 1-row 9.90 ms; mixed passes 121 -> 1; pair phase -43 % energy.
+Gemma ~87 % phone in both; no Gemma pair formed (dispatcher, #2). Evidence fixes active
+(HELPER_PHONE_SESSION_LOAD 15-16, TOKEN_STREAM_CATCH_UP 1-2). Single run per arm, dev trace.
+NEW DEFECT: coherence _server_probe_policy fixed batch 1 -> host permanently from one window
+pair (15.4 % saving < 19 % needed at n=1) -> ~3.4 kJ; with the fix est. ~-30 %. Fix +
+3 logging issues in progress (isolated copy). Two-phone gaps 1-3 in progress. Dispatcher
+#2/#5 in progress. Report: reports/20260924-coherent-policy-coalesced/README.md s4.4.
+
+## 2026-09-24 15:43 UTC - Pixel two-phone readiness merged (server multi-helper + scheduler contracts; run still fail-closed)
+
+Server: S41_SERVER_FFN_HELPERS=N with per-helper LABEL/LAYER_MASK/TRANSPORT/HOST/PORT; each phone
+owns whole disjoint layers; one policy per batch across both; call ids per helper; single-helper
+output byte-identical to today. Native test (tiny llama, local CPU workers over TCP): 3/3 pass
+patched, 3/3 fail base; test_remote_resident_native 17/17. Scheduler: rig.json helper_phones
+(legacy block untouched), models helper_phone_ffn_shards, adb-tcp transport, phone_helpers.py,
+phone_tcp_session.py, M3 gate two_phone_gate.py (never run); preflight adds USB rows +
+always-BLOCKED two-phone-dispatch; launch refuses real two-phone runs. 28 new tests.
+Pixel facts: protocol-v6 TCP worker behind `adb forward` (Vulkan0, shard layers 18-23,
+quantum 4352 vs OP15 2176 -> combined widths multiple of 4352); both phones on one xHCI
+(00:14.0) but distinct root ports (OP15 2-2, Pixel 2-9.2 via ASM107x hub), 5000M each.
+Gaps before a two-phone dev_v2 run: catalog/plan lack the Pixel; ticket whitelist; adaptive
+policies on the 4352 grid; Pixel worker lifecycle; Pixel receipts; Pixel cost/energy evidence;
+USER DECISION: how to stop a trace-length Pixel worker (shutdown message in the Pixel agent's
+worker vs opt-in SIGTERM when no client connected). Smoke plan (each step needs authorization)
+in reports/20260924-two-phone-readiness/README.md.
+
+## 2026-09-24 15:31 UTC - #4 phone re-provisioning merged (phone follows the desktop's model; opt-in)
+
+Campaign field `"phone_resident_model_reprovisioning": {}` (optional load_bytes_per_second,
+default 200e6; minimum_learned_samples 2; exclusive with fixed_phone_residency). Phone follows
+the model loading/running on the desktop (one model -> all sessions RAM + shards allow; two ->
+split by remaining decode work; no work -> hold layout so an arrival doesn't trigger a swap).
+Swap starts at dispatch of a request needing a desktop load (overlaps it), one session per
+proposal, never touches in-use sessions (WAITING_FOR_HELPER_RELEASE). Load rate learned per
+SESSION_LOADING->VERIFIED wall window. Events carry a desktop_reprovision block.
+Tests: 30 + 7 new (fail/import-fail on base); merged tree: related files pass, pyflakes clean.
+Replay estimate (hypotheticals.py, conservative): 18Q/24G -34.2 % alone, -43.2 % with #1;
+18Q/26G -37.3 % / -46.5 %. Qwen needs no new shards (0-17 exist, 6 layers/session cap ->
+18 max, 17 if live limit < 9.626 GB); Gemma 24-25 need native/ffn_shard_gguf.py (command in
+reports/20260924-phone-reprovision/README.md, not run). Not yet exercised on hardware.
+
+## 2026-09-24 14:43 UTC - Fable usage limit stopped all four agents; relaunched on Opus from their saved copies
+
+All four workstream agents (dev_v2 A/B, #2/#5 dispatcher, #4 re-provisioning, Pixel two-phone)
+hit the Fable usage limit. Nothing was left half-done on the rig (lock free, no new arms
+created; the deploy source still lacks the evidence fixes — the A/B agent syncs it under the
+lock). Partial work survives in the isolated copies (scratchpad/{dispatch-fixes,reprovision,
+two-phone}/root). Relaunched on Opus 5.5; each continues from its copy, rebases onto the
+current main tree before delivering, and keeps a PROGRESS.md checkpoint for restarts.
+
+## 2026-09-24 14:38 UTC - Gemma coalesced qualification done; premise corrected (Gemma parallel=2 -> 15,360 B was already admissible)
+
+Receipts 6/6 PASS on OP15 (61,440 B: h2d 0.507 ms 453 MB/s, d2h 0.525 ms 422 MB/s; 38,400 B:
+0.385/0.331 ms), new identity TRANSPORT_QUALIFICATION_IDENTITY_COALESCED_BOTH.json
+(s43-coalesced-both-20260924, 15 receipts), admission PASS for both models coalesced.
+CORRECTION: Gemma's desktop parent runs parallel=2 (catalog merges the measured desktop plan),
+so its coalesced call is 15,360 B — admissible under the old identity too; the coherent arm's
+lockout was purely the mixed batch-plan config. Fix = qualify coalesced for BOTH models.
+Larger Gemma batches (parallel 5/8) are a desktop-parent contract change, receipts ready.
+Next rig A/B (dev_v2, main tree = #1 + F1-F4): plainEF vs coherentEF (coherence + coalesced both).
+Report: reports/20260924-gemma-coalesced-qualification/.
+
+## 2026-09-24 14:36 UTC - Gemma coalesced transport qualified (61,440 / 38,400 B) + both-model identity; premise corrected: catalog Gemma parallel is 2
+
+| receipt (depth 4, devmem, ring-v2, USB 5000) | median ms | p90 ms | MB/s |
+| --- | ---: | ---: | ---: |
+| 61,440 h2d / d2h / duplex | 0.507 / 0.525 / 0.703 | 0.623 / 0.583 / 0.863 | 452.8 / 422.4 / 334.2 each way |
+| 38,400 h2d / d2h / duplex | 0.385 / 0.331 / 0.393 | 0.682 / 0.562 / 0.549 | 321.7 / 387.8 / 337.5 each way |
+
+- Same method/binary as the 09-22 task1 receipts (stage ffs_dmabuf_host 61bc2907, rrphone-v3b session, phone
+  worker e2c66e6b); only a NEW phone session root; production dirs/identities untouched; 6/6 PASS, notify code 0.
+- New identity /mnt/storage/s42-trace-v2-20260921-prep/TRANSPORT_QUALIFICATION_IDENTITY_COALESCED_BOTH.json
+  (id s43-coalesced-both-20260924, identity sha 866f628e..., 15 receipts = 9 task1 + 6 new).
+- Admission (resolve-only + check_admission_both.py) PASS for both models coalesced: Gemma 61,440 -> payload-61440,
+  Qwen 40,960 -> payload-40960, parallel-5 38,400 -> payload-38400; negative control refused vs old identity.
+- CORRECTION: the catalog/runtime Gemma parent runs parallel 2 (measured desktop plan overrides models.json 8;
+  server n_seq_max=2), so a Gemma coalesced call is 2 rows = 15,360 B and was ALREADY admissible with the 09-22
+  receipts. The coherent arm's Gemma lock-out was the mixed batch plans (Qwen-only coalesced), not receipts.
+  Fix = derive with hot=coalesced-batch AND cold=coalesced-batch (no mixed flag). parallel 5/8 needs a re-measured
+  desktop baseline plan, not transport work.
+- No arm run, no physical preflight. Report: reports/20260924-gemma-coalesced-qualification/.
+
+## 2026-09-24 14:08 UTC - Plan approved: #2/#5 dispatcher, Gemma coalesced qualification, #4 re-provisioning, Pixel two-phone readiness
+
+User: "yes do them, and we should be ready to integrate the pixel phone into our system and test
+with the trace." Four workstreams launched, each in an ISOLATED copy of research_dev/scheduler
+(parent merges sequentially; rig A/Bs only from the merged main tree, so no half-done code leaks
+into the deploy):
+1. #2 work-conserving admission + #5 model affinity (dispatcher: _bind_causal_predecessors arrival
+   fallback, _exclusive_transition_barriers leasing all lanes, pessimistic lease estimate); opt-in.
+2. Gemma coalesced qualification: 61,440-byte (parallel 8) + 38,400-byte (parallel 5) receipts on
+   OP15 with the existing qualification binary; new identity incl. both models' coalesced plans.
+3. #4 dynamic phone re-provisioning per resident desktop model (18 Qwen / 26 Gemma layers, swap
+   during desktop load; Gemma shards 24-25 needed); opt-in.
+4. Pixel two-phone readiness: server multi-client FFN (disjoint layer ranges per phone), scheduler
+   per-device residency/identity, gap list + smoke plan; Pixel execution path stays with its agent.
+Merged tree state: 129 files / 1,827 tests pass; pyflakes clean; nothing committed.
+Recommendation recorded: F6 off for now.
+
+## 2026-09-24 05:52 UTC - #1 coherent policy measured cleanly: -5.3 % host vs plain (dev_v2), mixed passes 109 -> 5
+
+| dev_v2 | dur | host kJ | vs desktop | vs plain | identical | Qwen calls | Qwen mixed passes |
+| --- | ---: | ---: | ---: | ---: | --- | ---: | ---: |
+| desktop only | 1,154 s | 96.7 | | | | | |
+| phone plain | 964 s | 81.8 | -15.4 % | | 8/9 | 672 | 109 |
+| phone coherence-only (#1, split-row both) | 1,108 s | 77.5 | -19.9 % | -5.3 % | 7/9 | 2,064 | 5 |
+
+- Mechanism confirmed: batch-2 Qwen pair shares the phone policy; Gemma comparable across arms.
+- Cost: +15 % duration (batch-2 phone passes = 2 sequential 1-row calls/layer); needs coalesced
+  calls for both models (Gemma 61,440-byte receipts or Gemma parallel <= 5).
+- 7/9 identical: the two differing outputs are the batch-2 phone Qwen pair (tokens 103, 210).
+- "Locked-out model" = mixed batch plans on one phone session (Qwen coalesced, Gemma split-row):
+  adapter refuses the partial reconfiguration (shares_resident_session_with compares batch_plan);
+  also the m4a8b failure. prepare_trace_inputs_v2 now refuses mixed plans unless allowed.
+- "No pairs" = active_slots_peak artifact (adaptive requests never feed the /slots probe);
+  003+004 did decode together; other serialization is the dispatcher calendar (#2), same in
+  the desktop arm.
+- Arms ran BEFORE the evidence-fix merge. Next: #2 work-conserving admission + #5 model affinity.
+Report: reports/20260924-coherent-policy-coalesced/.
+
+## 2026-09-24 05:49 UTC - Evidence fixes F1a/F1b/F2/F3/F4 merged (phone no longer dropped on thin evidence)
+
+Patch reports/20260924-phone-rejection-diagnosis/EVIDENCE_FIXES.diff applied to the main tree
+(10 files +262/-4, new tests/test_adaptive_evidence_fixes.py 12 tests: 8 fail before / pass after,
+4 regression guards). Every promotion still goes through the unchanged _qualifies.
+- F1a inconclusive incumbent re-check -> measure more windows (decisive re-check still demotes)
+- F1b eligible host windows re-check measured phone candidates (CANDIDATE_REQUALIFIED)
+- F2 one-host-window rejection takes a second host reference first (if budget allows)
+- F3 TOKEN_STREAM_CATCH_UP: stall-then-burst windows removed from evidence
+- F4 HELPER_PHONE_SESSION_LOAD: no evidence/probes while the helper's phone loads a session
+Replay (real controller over recorded windows): 000 host -> P100 (25 -> 89 phone tokens),
+001 host -> P100 (51 -> 551); 002/004 unchanged; run-5: no batch-2 rejection can flip.
+Adaptive/coherence/residency test files pass on the merged tree; pyflakes clean.
+Not done: F5 (overlaps coherence), F6 (needs user sign-off). Caveat: F4 conservative, F3
+thresholds fit on two runs.
+
+## 2026-09-24 05:40 UTC - dev_v2 arms: phone arms never pair; coherent starves one model (again)
+
+| dev_v2 (9 req) | dur | host kJ | vs desktop | identical | Gemma calls | Qwen calls | slots peak |
+| --- | ---: | ---: | ---: | --- | ---: | ---: | ---: |
+| desktop only | 1,154 s | 96.7 | | | | | 2 |
+| phone plain | 964 s | 81.8 | -15.4 % | 8/9 | 10,488 | 672 | 1 |
+| phone coherent (#1) | 1,088 s | 77.3 | -20.1 % | 8/9 | 15,400 | 0 | 1 |
+
+- Desktop dispatcher runs roughly FIFO, one model at a time: 8 overlap opportunities, 1 pair;
+  Gemma 005 (arr 109 s) runs before Qwen 006 (arr 112 s) -> Qwen 006 waits ~850 s, 2 extra
+  switches. -> #2 work-conserving + #5 model affinity are the next dispatcher work.
+- Phone arms: NO pairs at all (peak 1) -> #1 batching path never exercised; all calls 1-row;
+  the coherent -20 % is phone-assignment luck, not #1.
+- Coherent arm starves a model: dev_v1 Gemma 0 calls, dev_v2 Qwen 0 calls -> suspected #1 bug.
+Both handed to the #1 agent; no further runs until understood.
+
+## 2026-09-24 05:12 UTC - Pixel CPU paired SDOT and row scheduling COMPLETE: latency/correctness PASS
+
+41 arms / 7008 calls / 9648 input rows pass numerical and dispatch checks.
+All5376 optimized outputs are byte-identical to native; all6912 packed outputs
+meet independent-reference tolerance, max row relativeL2=0.000562194. B1/2/4/8
+correctness PASS; performance selected only B1. Native control also240/240 exact
+to preserved worker-v5. Actual tuned projection counters Q4/Q6=44992/5624.
+
+| Repeated CPU configuration | full ms | half ms | full reduction |
+| --- | ---: | ---: | ---: |
+| native fused | 8.094 | 4.119 | baseline |
+| native + dynamic64 | 8.186 | 4.156 | -1.13percent, FAIL |
+| SDOT single, static | 6.670 | 3.387 | 17.60percent |
+| paired SDOT, static | 6.565 | 3.323 | 18.89percent |
+| SDOT single + dynamic64 | 6.482 | 3.355 | 19.92percent |
+| paired SDOT + dynamic64 | 6.325 | 3.239 | 21.855percent, PASS |
+
+Selected full p998.778->7.422ms (-15.45percent), max9.117->7.519ms.
+Half p994.464->4.004ms improves, but max4.511->5.274ms worsens; retain outlier.
+Most gain is the SDOT-enabled rewrite; paired loop adds1.56percent, dynamic
+queue on paired adds3.66percent. Native scheduling alone FAIL despite better
+load balance. Profile includes startup/cold calls and is not a warm breakdown.
+Useful84.55GFLOP/s, unique-weight24.99GB/s; neither is physical peak usage.
+
+Worker build-Werror, three Python pyflakes/parse, source/binary hashes PASS.
+CPU candidate: original packed weights, unchanged residual correction,
+six persistent threads maskfc,PAIR_DOT1,ROW_CHUNK64. Worker SHA256
+64133753f47160c418b1c251cd6cb056b3bbe17fbd76490e229b81433d7bdcf5.
+CleanupPASS05:07UTC: same boot, no worker/forward, lock free, no queued job.
+No production/default change, new server/USB/energy/full-token or mixedCPU/GPU
+qualification. No commit/push/PR.
+Evidence:M3 PIXEL_PACKED_CPU_RESULTS.md/.json,PIXEL_PACKED_CPU_CANDIDATE.json,
+PIXEL_PACKED_CPU_BUILD_CHECKS.json,PIXEL_PACKED_CPU_CLEANUP.json.
+
+## 2026-09-24 05:06 UTC - Pixel paired SDOT + row queue confirmation PASS, ~22percent lower CPU latency
+
+4320/4320 outputs byte-identical to native fusedCPU; native mode also240/240
+exact to preserved worker-v5. Max relativeL2=0.000519396. Four controls stable
+8.086/8.099/8.092/8.100ms full. PairedSDOT+dynamic64 repeats6.317/6.334ms,
+half3.242/3.236ms. SDOT separate6.667/6.672ms, paired static6.577/6.554ms;
+SDOT separate+dynamic64 6.468/6.495ms. Most gain comes from SDOT.
+Native dynamic64 8.187/8.185ms: scheduling-alone speed FAIL after warmup,
+correcting the exploratory smoke impression. Combined speed and p99 PASS.
+Paired chunks16/32/128/256 give6.456/6.298/6.375/6.294ms in single arms;
+retain repeatedly measured64 until more evidence, no global optimum claim.
+Independent B1/2/4/8 accuracy suite1056calls active. No production, energy,
+server/token or physical peak result.
+Evidence:M3 PIXEL_PACKED_CPU_CONFIRM_COMPARISON.json,
+physical/pixel10pro-packed-cpu-confirm-1/run1/SUITE_RESULT.json.
+
+## 2026-09-24 05:01 UTC - Pixel dynamic CPU / SDOT paired smoke numerical PASS, speed promising
+
+1632/1632 outputs exactly match the native fused CPU control; max relativeL2
+0.000519396. Custom projection counts and optional row-profile coverage PASS.
+Native full controls9.825/9.866/9.576/9.698ms. Dynamic64 native8.281ms,
+SDOT separate8.045ms, paired7.752ms, paired+dynamic64 7.148ms full/3.709half.
+Dynamic16/32 native regresses to10.172ms; not all queue sizes help.
+Profiles include startup/cold calls: static fastest thread718536rows/471217us
+versus slower threads~718536rows/1301532us,845022us early-completion slack.
+Dynamic32 assigns fastest1610464rows and reduces its slack to47422us;
+these aggregate software timings are not a warm per-op breakdown or counters.
+Longer4320-call confirmation active: repeated/reversed native, dynamic64,
+SDOT separate/pair and their combinations; extra paired row-chunk sizes.
+No server, energy or full-token qualification. Pixel-only hardware scope.
+Evidence:M3 physical/pixel10pro-packed-cpu-smoke-1/run1/SUITE_RESULT.json,
+PIXEL_PACKED_CPU_CONFIRM_CONFIG.json.
+
+## 2026-09-24 04:55 UTC - Pixel CPU path: where to gain (analysis, no new run)
+
+At a 50 % split the path is 4.1 ms fused-CPU compute + 5.0 ms outside the worker
+(ADB forward) = 9.2 of 9.55 ms. Wire time for 40 KiB at 5 Gbps is ~0.03 ms, so the
+5 ms is adb relay + wakeups. The Pixel supports NCM USB tethering without root
+(`mUsbTetheringFunction: NCM`, currently adb only). AOA needs an app because
+`/dev/usb_accessory` is root:usb.
+
+Max phone share hidden behind the desktop (19.1 ms/layer), full-layer compute vs transport:
+
+| Transport (per call) | CPU now 8.1 ms | CPU at 30.5 GB/s 4.9 ms | CPU+GPU packed ~3.6 ms |
+| --- | ---: | ---: | ---: |
+| ADB forward 5.0 ms (measured) | 52 % | 59 % | 62 % |
+| NCM ~2.0 ms (OP15 fit) | 63 % | 71 % | 75 % |
+| AOA app ~0.7 ms (OP15 fit) | 68 % | 77 % | 81 % |
+
+The CPU kernel reads 150 MB of packed Q4_K per layer at ~18.5 GB/s vs the 30.5 GB/s the
+same cores stream. In the server the GPU worker ran 21.1 ms vs 18.2-19.0 locally, a
+cadence penalty. Order: NCM A/B -> keep-warm between calls -> packed GPU (another agent)
+-> AOA app.
+
+## 2026-09-24 04:57 UTC - Pixel dynamic CPU rows and paired NEON build PASS; smoke active
+
+User authorized dynamic row scheduling and paired residual dot kernels.
+Private builder extends immutable layout-worker-v5, preserving original packed
+weights and correction formula. New per-projection queues support16/32/64/128/256
+rows; separate SDOT single/pair modes isolate ISA benefit from shared decoding.
+Read-only disassembly confirms old Q4/Q6 dots have0 SDOT,14 SMULL and1 SMLAL;
+new binary has96 SDOT instructions. Pixel reports ASIMDDP on all8 cores.
+Function target attributes leave the baseline worker compilation flags intact.
+Build-Werror and three Python pyflakes checks PASS, worker SHA256
+64133753f47160c418b1c251cd6cb056b3bbe17fbd76490e229b81433d7bdcf5.
+1632-call17-arm smoke active with native controls, row-chunk sweep, SDOT-only,
+paired dots and three separate per-thread profile arms. Numerical/speed unverified.
+Pixel lock and ADB5037 only; no production or desktop model changes.
+Evidence:M3 pixel_packed_cpu.h,build_pixel_packed_cpu.py,
+PIXEL_PACKED_CPU_SMOKE_CONFIG.json,PIXEL_PACKED_CPU_INSTRUCTIONS.json.
+
+## 2026-09-24 04:37 UTC - Pixel custom packed GPU tuning complete: numerical PASS, GPU-over-CPU speed FAIL
+
+Four shader designs and geometry/subgroup sweeps: 50 arms / 6528 calls,
+all numerical and dispatch checks PASS, max relativeL2=0.000519396;
+3360 custom calls maxL2=0.000514465. Q4/Q6 custom dispatches28736/3592
+including startup. Final2880-call repeat: nativeGPU full/half20.200/11.157ms,
+new block16 WG256/rows8/SG128 19.854/11.088ms (-1.71/-0.62percent),
+F16GPU20.085/11.558ms, fusedCPU8.122/4.120ms. BestGPU still2.44xCPU.
+Custom full p9926.284ms vs native27.223ms; CPU8.799ms. Small final mean
+gain is provisional: bracketing repeats2.80/0.63percent, preceding same
+variant20.531ms vs native19.885-20.687ms. No stable gain or promotion.
+Vec4/pair8 and shuffle reductions rejected. Original stored weights unchanged;
+F32 activations/accumulation. No physical B2/4/8 qualification for new kernels.
+BuildPASS: v5 eight SPIR-V modules validate, source/binary hashes and three
+Python pyflakes checks PASS. CleanupPASS04:34UTC: no worker/forward,
+same boot, free Pixel lock, no job queued. Initial lock check omitted explicit
+fd inheritance; corrected 9>&9 succeeds. No production, desktop model,
+other-phone, energy, server-token or physical peak result.
+Evidence: M3 PIXEL_PACKED_GPU_RESULTS.md/.json, PIXEL_PACKED_GPU_BUILD_CHECKS.json,
+PIXEL_PACKED_GPU_CLEANUP.json, software/pixel10pro-packed-gemv-v5.
+
+## 2026-09-24 04:34 UTC - dev_v1 four arms: plain -21 %, coherent -10 % with ZERO Gemma phone calls
+
+| dev_v1 (6 req, no concurrency) | dur | host kJ | vs desktop | identical | Gemma calls | Qwen calls |
+| --- | ---: | ---: | ---: | --- | ---: | ---: |
+| desktop only | 898 s | 76.7 | | | | |
+| phone dual engine | 905 s | 71.8 | -6.4 % | 6/6 | 312 | 2,940 |
+| phone plain (NPU only) | 916 s | 60.5 | -21.1 % | 6/6 | 4,536 | 4,008 |
+| phone coherent (#1) | 853 s | 69.0 | -10.1 % | 6/6 | 0 | 5,427 |
+
+The spread is mostly the Gemma coin flip (single runs on a short trace are noisy until F1/F2
+land). Coherent arm: 0 Gemma calls despite no concurrency -> suspected side effect of #1
+(identity / batch-plan qualification / cross-model verdict); #1 agent diagnosing while its
+dev_v2 arms run.
+
+## 2026-09-24 04:32 UTC - Why the controller dropped a better phone (dev_v1 000/001): evidence handling, not eligibility
+
+CORRECTION: my earlier "every window measurement_eligible=false" was a misread (the key is
+written only when false); 224/258 dev windows were eligible. Real causes (replayed with the
+run-time controller code; report reports/20260924-phone-rejection-diagnosis/):
+- 001 Gemma: P100 qualified by 0.11 J/tok; at token 60 the incumbent re-check failed because
+  the band uses isqrt(n) (isqrt(2)=1, no narrowing) -> INCUMBENT_NO_LONGER_BENEFICIAL -> host;
+  host windows never re-check candidates -> 129 host windows. Replay: re-qualifies at token 75.
+- 000 Qwen: its only host reference window was a stall+burst artifact (40.9 vs steady 75.6 J/tok)
+  -> one-window LEARNING check permanently eliminated P100. Replay without it: qualifies at t35.
+- With 1-3 windows/side the bounds need phone <= 0.81 x host: Qwen (0.62) passes, Gemma
+  (0.775-0.81) is a coin flip. Run-5 had no such case (its losses were batch-2 + 4 requests
+  never re-probed at batch 1, ~8 kJ inferred).
+Fixes being implemented in an isolated copy (merge after the #1 A/B): F1a keep incumbent on
+inconclusive evidence, F1b re-check on host windows, F2 no permanent one-window elimination,
+F3 stall/burst guard, F4 phone session load = disturbance. F6 (continuous sqrt band) loosens
+certification -> awaiting user decision. Est. dev_v1 phone share 29 % -> ~89 %.
+
+## 2026-09-24 04:29 UTC - Pixel subgroup GPU numerical PASS; speed FAIL
+
+1536 calls / 16 arms pass numerical and actual Q4_K/Q6_K custom dispatch.
+Best shared block16 full20.531ms vs native GPU controls20.392/20.231/19.885/
+20.687ms; fusedCPU9.830ms. Shuffle best20.659ms, 64-lane reductions near40ms.
+No reliable speed gain. Matching native pipeline robustness does not rescue
+vec4/pair8 (25.434/24.955ms). Max relativeL2=0.000519396 includingCPU;
+custom <=0.000514260. Same boot, all normal exits. Bounded2880-call longer
+confirmation prepared with repeated nativeGPU, CPU and F16GPU endpoints.
+Evidence: M3 physical/pixel10pro-packed-gpu-shuffle-1/run1/SUITE_RESULT.json,
+PIXEL_PACKED_GPU_CONFIRM_CONFIG.json. No production/energy/token claim.
+
+## 2026-09-24 04:24 UTC - Pixel GPU block16 numerical PASS; speed advantage unconfirmed
+
+1152 calls / 12 arms pass numerical and per-type custom dispatch, max relative
+L2 0.000519396 including CPU. Block16 scale reuse/Q6 barrier removal brings
+best full latency to19.757ms (256 threads,8 output rows), vs native controls
+22.778/19.626/19.910ms. Control drift prevents a stable gain claim. Half best
+10.963ms; CPU9.745ms full. Subgroup32/64 roughly19.86/19.92ms full.
+Next1536-call sweep uses subgroup shuffle reduction and matches native packed
+pipeline robustness (disable checks after validated bounds); v3/v4 used default
+robustness, a potential comparison confound. Separate shared-memory candidates
+in v5 isolate that setting from shuffle. No physical memory/energy/token claim.
+Evidence: M3 physical/pixel10pro-packed-gpu-block16-1/run1/SUITE_RESULT.json,
+PIXEL_PACKED_GPU_SHUFFLE_CONFIG.json, software/pixel10pro-packed-gemv-v5.
+
+## 2026-09-24 04:20 UTC - Pixel packed GPU smoke numerical PASS; speed FAIL
+
+960 calls / 10 arms pass numerical and actual custom Q4_K/Q6_K dispatch checks.
+Best custom pair8/rows4 full25.045ms, half13.655ms versus old packed GPU
+full20.832/19.995ms and half11.185/11.052ms. All six new variants slower;
+not selected. CPU fused9.731ms and F16 GPU20.332ms in this smoke.
+Maximum relative L2 0.000519396 including CPU; new GPU <=0.000514309.
+All arms exit normally, same boot, no forced cleanup.
+Next private block16 variant reuses scale decode across16 values per lane
+and removes native Q6 shared scale-cache barriers; build and bounded1152-call
+geometry sweep underway. No new production/energy/server/token result.
+Evidence: M3 physical/pixel10pro-packed-gpu-smoke-1/run1/SUITE_RESULT.json,
+PIXEL_PACKED_GPU_BLOCK16_CONFIG.json, software/pixel10pro-packed-gemv-v4.
+
+## 2026-09-24 04:40 UTC - Phone-path latency budget for overlap and for energy (analysis, no new run)
+
+From PIXEL_GEMV_SERVER.json (4060 Ti desktop, Qwen3-14B, phone FFN on layers 18-23,
+host full FFN 19.10 ms/layer) and PIXEL_CPU_SERVER_OVERLAP_ASSESSMENT.md.
+Rule: exposed = max(0, phone path - host share); ~5.0 ms of the path is outside the worker.
+
+| Phone share | Hidden (no slowdown) if path <= | Host-energy break-even path <= (host waiting 68 W .. 27.6 W, phone 4.5 W assumed) |
+| ---: | ---: | ---: |
+| 25 % | 14.3 ms | 21-30 ms |
+| 50 % | 9.6 ms | 25-44 ms |
+| 100 % | never (next layer needs FFN out) | 32-71 ms |
+
+| Phone path / layer | 50 % | 100 % |
+| --- | ---: | ---: |
+| Pixel GPU, measured in server | 24.9 | 33.4 (host energy -11.4 / -12.4 %, decode +8.3 / +15.3 %) |
+| Pixel fused CPU + 5 ms outside (projection) | ~9.2 | ~12.9 |
+| Pixel TPU full width (probe RPC) | - | 40.6 |
+
+Energy does not need overlap: host power drops 120 -> 98 / 91 W while it waits.
+F16 half-FFN = 267 MB; at 46.5 GB/s that is >= 5.7 ms before transport, so it cannot
+hide at 50 %. The CPU path fits only because it reads the packed Q4_K/Q6_K bytes.
+
+## 2026-09-24 04:15 UTC - Pixel custom packed GPU kernels build PASS; finite smoke active
+
+User authorized Pixel-specific GPU kernels. Added private Q4_K/Q6_K direct
+packed vec4/pair8 shaders with multi-output workgroups and F32 inputs/accumulation.
+Original stored weights unchanged; no new quantization. Pipeline selection and
+per-type custom dispatch counters extend the existing qualified Vulkan backend.
+Four SPIR-V modules validate; backend build PASS, SHA256
+050cc07ae96402d5b81df49e4a333d18c04f4208efa4e4076224fb388a1ba2dd.
+Build v1/v2 failed GLSL boolean ternary/reserved half identifier before deployment;
+corrected in v3, all failed logs retained. Three Python pyflakes checks PASS.
+960-call smoke: 6 layers, half/full widths, two kernels x rows2/4/8 per128-thread
+workgroup, old packed GPU and F16 GPU and fused CPU controls. Numerical/speed
+NOT VERIFIED yet. Pixel-only lock; no desktop model, other phone or production change.
+Evidence: M3 pixel_packed_gemv.comp, build_pixel_packed_gemv.py,
+PIXEL_PACKED_GPU_SMOKE_CONFIG.json, software/pixel10pro-packed-gemv-v3.
+
+## 2026-09-24 04:25 UTC - Why Pixel bandwidth stops at ~43-46 GB/s (not 67.6)
+
+| Run | core 7 cap / clock | CPU memory-clock vote during load | CPU+GPU | GPU alone (wall / device) |
+| --- | --- | --- | ---: | ---: |
+| screen off (dozing) | 3,168 / 3,168 MHz | 3,148 MHz ~100 % | 43.7 | 37.3 / 43.1 |
+| screen on | 3,782 / 3,782 MHz | 3,148 MHz 83-99 %, 4,224 <= 17 % | 43.2 | 38.5 / 43.6 |
+
+- Lifting the core 7 cap changes nothing, so the CPU cap is not the limiter.
+- The CPU memory-latency vote settles at 3,148 MHz = 6,296 MT/s = 50.4 GB/s peak.
+  Measured 43-46.5 GB/s is 86-92 % of that, i.e. DRAM looks saturated at the
+  clock the governor picked.
+- There is a shared cap: GPU alone ~= CPU+GPU, and 30.5 + 37.7 is far above
+  the 46.5 measured together.
+- NOT VERIFIED: the granted memory clock and the GPU/TPU votes are not visible
+  without root. Decisive test = pin GMC at 4,224 MHz (root) and rerun.
+- The TPU's 19.6 GB/s is below every CPU/GPU number, so its limit is inside the
+  TPU path, not DRAM.
+
+## 2026-09-24 04:06 UTC - Pixel 10 Pro DRAM ceiling: GMC top 4,224 MHz -> ~67.6 GB/s
+
+Boot prop says `16GiB,Samsung,LPDDR5,0109`, but the memory-controller (GMC) clock
+reaches 4,224 MHz = 8,448 MT/s, which only LPDDR5X-class parts reach (LPDDR5 max 6,400).
+Read with `atrace freq cpm memory` (vendor HAL) during load: `clock_set_rate` events
+`gmclat`/`cpuNgmc` (CPU memory-latency votes). Shell cannot read `memss_freq` sysfs and
+perfetto `linux.ftrace` records nothing as shell. Pixel-only, Pixel lock held, outside
+the desktop lock with user OK.
+
+| GMC level (seen) | Data rate | Peak @64-bit* |
+| ---: | ---: | ---: |
+| 4,224 MHz (top) | 8,448 MT/s | **67.6 GB/s** |
+| 3,686 | 7,372 | 59.0 |
+| 3,148 (CPU vote 545/600 during load) | 6,296 | 50.4 |
+| 2,688 / 2,227 / 1,536 / 1,344 / 672 | | |
+
+| Measured (this run) | GB/s | % of 67.6 |
+| --- | ---: | ---: |
+| CPU 6 thr + GPU joint | 43.7 | 65 % |
+| GPU alone wall / device ts | 37.3 / 43.1 | 55 / 64 % |
+| TPU GEMV (M3 FFN B1, vendor hw time) | 19.6 | 29 % |
+
+*64-bit = 4x16-bit, from a spec leak, not read from the device. These are votes, not the
+granted clock; GPU/TPU votes are not visible in this trace.
+
+## 2026-09-24 04:00 UTC - Concurrency dev trace `longtail_dev_v2` (pairs form; ~15 min)
+
+dev_v1 cannot exercise batching (requests alternate Qwen/Gemma, active_slots_peak = 1). New builder
+rules (`--min-same-model-overlaps`, `--min-requests-per-model`, `--overlap-service-s-per-token`,
+tests added): first 600-s window with 8-12 requests, long-tail tol 0.10, <= 1,600 capped output
+tokens, >= 6 same-model pairs overlapping at declared arrival scale 0.4, >= 2 requests per model.
+
+| | dev_v1 | dev_v2 |
+| --- | --- | --- |
+| requests | 6 (3Q, 2G, 1L) | 9 (4Q, 4G, 1L) |
+| output tokens | 1,071 | 1,420 |
+| arrival span | 392 s | 127 s |
+| same-model overlaps | 0 | 8 (Qwen 79/86/99/112 s; Gemma 1/1/109/128 s) |
+| long tail | 1/6, 54 % tokens | 1/9 (617 tok), 43.5 % tokens |
+
+/mnt/storage/burstgpt-source/longtail_dev_v2 (validate_trace OK). #1 A/B moves to dev_v2
+(baseline, plain, coherent) instead of the 30-min v2a arms.
+
+## 2026-09-24 03:56 UTC - Pixel NEON/GPU/layout tuning COMPLETE: CPU latency PASS, mixed tail goal FAIL
+
+86 arms / 13944 completed phone calls; numerical and dispatch PASS,
+max row relative L2 0.000536187. All 5304 mixed intervals overlap.
+Fused corrected packed CPU payloads are byte-identical to the old corrected
+CPU in 1632/1632 comparisons, including B1/2/4. Original Q4_K/Q6_K weight
+bytes are preserved; the new CPU op quantizes both activation/residual together
+and reuses each weight row for both existing native NEON dot calls.
+
+Focused 2160-call endpoint run, three repeats per mode, 180 warm samples per
+width: old packed CPU full/half 10.179/5.189 ms; fused CPU 8.122/4.135 ms,
+20.21/20.31 percent lower. Full p99 11.949 -> 8.873 ms: CPU mean/tail PASS.
+CPU 94.118 percent + GPU 5.882 percent (GPU F16 tiled 8x4) full/half
+7.928/4.121 ms, 22.11/20.59 percent below old CPU. Versus fused CPU this is
+2.39/0.35 percent mean improvement, but full p99 9.712 ms and maximum
+20.993 ms: mixed tail improvement FAIL. Fused CPU selected as private B1
+candidate; mixed retained experimentally. GPU branch 4.763 ms overlaps
+CPU 7.885 ms; merge 0.006 ms. No missing concurrency in these samples.
+
+F16 hand-written NEON FMLAL/tiling pooled full 18.190 vs 18.265 ms,
+unstable/poor tail, not selected; GPU F16 8x4 full 20.129 vs 20.345 ms,
+small gain only. Coarse device formats before fusion failed to beat CPU.
+Earlier slow fused CPU repeat 10.217 ms remains in report; cause unverified.
+GPU-specific expansion adds about 14.02 percent resident weight bytes versus
+all-packed CPU; no extra weight quantization. Useful full-FFN rates
+52.54 -> 65.84 GFLOP/s CPU, 67.45 mixed, not physical peak measurements.
+
+Build, 33 SPIR-V modules, 5 Python pyflakes/parse checks and provenance PASS.
+Cleanup PASS: same boot, no worker/forward/queued job, Pixel lock free.
+Private probes only; production defaults unchanged. Physical DRAM/compute peak,
+energy, USB/server latency, full-model tokens and sustained thermal behavior
+NOT VERIFIED. No commit/push/PR. Preparatory failures and rejected variants kept.
+Evidence: M3 PIXEL_DEVICE_LAYOUT_RESULTS.md/.json,
+PIXEL_FUSED_CPU_CANDIDATE.json, PIXEL_DEVICE_MIXED_CANDIDATE.json,
+PIXEL_DEVICE_LAYOUT_FINAL_CHECKS.json, PIXEL_DEVICE_LAYOUT_CLEANUP.json.
+
+## 2026-09-24 03:54 UTC - Dev-trace pair: dual-engine parked; controller rejects a better phone; dev trace has no concurrency
+
+| dev trace (6 req) | dur | CPU kJ | GPU kJ | host kJ |
+| --- | ---: | ---: | ---: | ---: |
+| desktop only | 898 s | 51.5 | 25.2 | 76.7 |
+| phone, dual-engine zero-copy | 905 s | 45.6 | 26.2 | 71.8 (-6.4 %), 6/6 identical |
+
+- Dual engine over real USB: Qwen 1.01x, Gemma 0.91x (GPU wakes up late after the ~0.4 s idle
+  between tokens; +4-6 ms on each token's first call). PARKED; production stays NPU-only.
+  Report reports/20260923-dual-engine-integration/.
+- Run length is queueing, not decode: one large model on the desktop at a time, 5 switches
+  (~290 s of loads, 32 %), every request waits 50-535 s.
+- CONTROLLER REJECTED A BETTER PHONE: 001 Gemma phone@100 % 448 ms / 47.5 J per token vs desktop
+  468 / 59.2, yet 126 of 143 windows on desktop; 000 Qwen phone 549 / 48.9 vs 614 / 75.6, one 50 %
+  probe during the phone's Gemma session load read 1,433 ms/token, then desktop to the end. All
+  windows measurement_eligible=false. Read-only diagnosis agent running.
+- Dev trace has NO concurrency (active_slots_peak=1: requests alternate Qwen/Gemma), so it can't
+  test #1/#2/#3; the 24-request v2a trace forms pairs -> coherent + plain arms queued there.
+- #1 coherent phone policy + coalesced calls: code + tests done (per-batch-size server verdicts,
+  budget exhaustion no longer a permanent host decision, failures route the server to host);
+  first rig attempt stopped on the agent's own script import path; being restarted.
+
+## 2026-09-24 03:48 UTC - Pixel device-layout confirmation and batch accuracy PASS; endpoint variation retest active
+
+Confirmation PASS: 4560 calls, max relative L2 0.000519396; 960/960 mixed
+intervals overlap; fused CPU 480/480 byte-identical to old corrected packed CPU.
+CPU FMLAL full 18.499/17.881 ms vs matched 18.258/18.276 ms: first repeat
+speed FAIL, second PASS; no stable promotion. GPU 8x4 full 20.062/20.196 ms,
+1.07/2.15 percent below bracketing controls, small gain only. Fused packed CPU
+8.095/10.217 ms varies sharply (matched gains 20.24/1.74 percent).
+Best mixed CPU 94.118 percent + GPU 5.882 percent 7.844/8.098 ms,
+22.71/22.13 percent below matched old packed CPU; no peak utilization claim.
+Batch-shape PASS: 816 calls, max row relative L2 0.000536187; fused CPU
+144/144 payloads exact to old packed CPU at B1/2/4; 144/144 mixed overlaps.
+Focused 2160-call endpoint comparison active, three repeats per candidate.
+Initial 40-repeat prepare refused insufficient archived references before phone
+access; bounded 20-repeat config uses qualified inputs. Failure preserved.
+No production, energy, full-model token or server-latency result.
+Evidence: M3 physical/pixel10pro-device-layout-confirm-1/run1/SUITE_RESULT.json,
+physical/pixel10pro-device-layout-batch-check-1/run1/SUITE_RESULT.json,
+PIXEL_DEVICE_LAYOUT_CONFIRM_COMPARISON.json, PIXEL_DEVICE_LAYOUT_ENDPOINT_CONFIG.json.
+
+## 2026-09-24 03:38 UTC - Pixel residual-pass fusion smoke PASS: CPU9.772ms, exact to old corrected CPU
+
+864 calls numericalPASS,maxL2=0.000519396;384/384 mixed intervals overlap.
+Combines primary/residual Q8_K conversion in one custom op,then runs both
+existing native NEON dots consecutively per weight row. Three CPU-only
+variants return288/288 payloads byte-identical to old corrected packed CPU.
+Six pinned threads full9.772/half5.049ms vs old controls11.654/11.663 and
+5.899/5.892ms; preliminary16.18percent full reduction. CPU4=12.235ms,
+CPU2=23.254ms; not selected. CPU94.118percent/GPU5.882percent full9.745ms,
+half5.117ms: near tie with fusedCPU,speed advantage unverified.
+Final4560-call reversed confirmation prepared; ten warm repeats per arm.
+No production change,full-model token,energy or DRAM-traffic claim.
+Evidence:M3 physical/pixel10pro-fused-residual-smoke-1/run1/SUITE_RESULT.json,
+PIXEL_DEVICE_LAYOUT_CONFIRM_CONFIG.json,software/pixel10pro-layout-worker-v5.
+
+## 2026-09-24 03:34 UTC - Pixel device-format3456 calls numerical PASS; combined speed FAIL
+
+18 arms pass accuracy,maxL2=0.000519396;all2880 mixed calls overlap.
+CPU original Q4_K/Q6_K with residual correction;only GPU-owned weights
+expanded toF16 and tiled8x4. Best tested CPU6/CPU82.353percent full10.830ms
+vs bracketing packedCPU10.298/10.227ms,half5.812ms vs5.218/5.206ms:
+speed goalFAIL. Four-thread best11.560ms; six-thread50percent22.540ms.
+OldF16 mixed controls13.187/13.153ms. NewGPUlayout helps versus plainF16
+GPU at same CPU82.353percent14.183ms, but cannot beat CPU-only.
+Bestmixed CPU interval10.801ms/GPU8.939ms/overlap8.939ms/merge0.008ms;
+concurrency is real,CPU branch slows under simultaneousGPU work.
+Next bounded864-call private test fuses the two residual dot passes per row,
+reusing existing native NEON dots and identical Q8_K correction formula.
+No new weight quantization,production/server/energy/token claim.
+Evidence:M3 physical/pixel10pro-device-format-sweep-1/run1/SUITE_RESULT.json,
+PIXEL_FUSED_RESIDUAL_SMOKE_CONFIG.json.
+
+## 2026-09-24 03:26 UTC - Pixel widening NEON FMLAL smoke PASS; device formats sweep active
+
+1152 calls numericalPASS,maxL2=0.000519396 including packed control;
+newFMLAL kernels maxL2=0.0001207,FP16 operands/FP32 accumulation.
+Disassembly confirms208 FMLAL instructions. Six pinned CPU threads:
+full native controls18.251/18.533ms,FMLAL8rows17.946ms,FMLAL4rows/unroll2
+17.977ms;F32 custom19.013ms. Explicit prefetch64/256 regresses19.251/
+18.773ms. Only4 warm repeats; gains exploratory,no promotion.
+Original packed CPU11.635ms still leads. Next3456-call sweep uses original
+packed CPU weights with residual correction and expands only GPU-owned
+weights toF16,then tiles them8x4; 4/6CPU threads,six unequal ratios.
+No new weight quantization,production change,server/tokens/energy claim.
+Evidence:M3 physical/pixel10pro-neon-fmlal-smoke-1/run1/SUITE_RESULT.json,
+software/pixel10pro-layout-worker-v2/DISASSEMBLY.txt,
+PIXEL_DEVICE_FORMAT_SWEEP_CONFIG.json.
+
+## 2026-09-24 03:24 UTC - Pixel lossless F16 layout smoke PASS; speed gain unconfirmed
+
+Private NEON2/4/8-output kernels,FP32 accumulation,row-major and interleaved
+F16 layouts; GPU8-row tiles with4/16-element chunks. Build-Werror and33
+SPIR-V modules PASS. All936 calls accuracyPASS,maxL2=0.000519396 including
+packed control;216/216 mixed intervals overlap. Six layers,half/full widths.
+Exploratory full means: nativeF16 CPU19.314ms,NEON2 packed19.167ms;
+GPUold20.768ms,tile4=20.398ms,tile16=22.125ms;oldmixed14.241ms,
+newNEON/GPUtile4 at50/50=14.349ms. Original packed CPU12.347ms remains
+faster. Only3 warm repetitions: no promotion or repeatability claim.
+FMLAL and device-specific CPU packed/GPU F16 follow-ups underway.
+Weights reordered at load,not requantized; no production/server/energy claim.
+Evidence: M3 physical/pixel10pro-f16-layout-smoke-1/run1/SUITE_RESULT.json,
+PIXEL_F16_LAYOUT_BUILD_CHECKS.json. Audit-only control metadata was missing
+and added after execution; original configs and failed audit retained.
+
+## 2026-09-24 01:43 UTC - Pixel TPU runtime audit and vendor hardware counters PASS
+
+Checked pinned LiteRT2.2.0 source and actual compiled FFN files: one
+DISPATCH_OP per graph, resident executable/context reused, NPU-only execution;
+no LiteRT CPU fallback. Compiler sharding=minimal, runtime performance hint
+unset (vendor default/clocks unknown). One partition does not prove one
+hardware kernel or ideal tiling.
+
+Two finite instrumented arms PASS, 48 calls / 120 rows, max relative
+L2=0.000547222. Vendor metrics count16 measured invocations after8 warmup.
+B1/B4 hardware counter totals437395/438707us, means27.337/27.419ms.
+Invocation remainder5.680/5.625ms; probe buffer handling1.221/3.873ms;
+USB/ADB/socket/host remainder6.566/12.862ms; total40.805/49.779ms.
+Hardware-time equality for4x useful FLOPs supports weight movement or fixed
+tile work as bottleneck candidates; actual DRAM stalls/MAC occupancy/per-op
+attribution NOT VERIFIED. No new CPU comparison or energy/token claim.
+CleanupPASS: same boot, no worker/forward, lockfree, no pending job.
+Evidence: M3 [runtime audit](scheduler/campaigns/burstgpt/reports/20260922-fast-path-M3/PIXEL_TPU_RUNTIME_AUDIT.md),
+PIXEL_TPU_RUNTIME_AUDIT.json, physical/pixel10pro-tpu-runtime-audit-1.
+
+## 2026-09-24 01:35 UTC - longtail_v1 offload accounting: 73 % of tokens assisted; pairs, floor and one-model-at-a-time ate the rest
+
+Offline read of run-baseline-1 vs run-treatment-5 (no hardware). Report + scripts + data:
+`scheduler/campaigns/burstgpt/reports/20260923-offload-accounting/` (README, parse_server_logs.py,
+offload_accounting.py, hypotheticals.py, data/).
+
+| where the decode tokens went (treatment) | tokens | share |
+| --- | ---: | ---: |
+| phone policy, batch 1 (exploit + probes) | 5,688 | 69 % |
+| phone policy in a mixed batch-2 pair (2x latency) | 272 | 3 % |
+| baseline because of a batch-2 pair (mixed, then eliminated) | 1,394 | 17 % |
+| baseline fallback / verification at batch 1 | 639 | 8 % |
+| overlay + first/tail tokens | 214 | 3 % |
+
+Measured: batch-1 phone 48.8 J/tok (Qwen, -36 %) / 46.5 (Gemma, -22 %); a plain batch-2 baseline pass is
+38.5 / 30.2 J per token, mixed pairs 52-73. Mixed pairs decoded 25-37 % slower than the same pairs in the
+baseline arm (`can_batch_with` refuses different ffn policies -> alternating passes; 547 mixed passes).
+Phone busy 10 % of the run; each model's layers idle ~49 % of the time because the desktop runs one model
+at a time; residency changed once (17 Qwen -> 12 Qwen + 8 Gemma at 251 s). Idle floor 27.6 W = 133 kJ
+(31 % of 431 kJ); 12 model loads + switch extras = 766 s (16 %) at the floor. Release/restore 3.5 s total.
+Dispatcher serialized: transition lease takes all cuda0/desktop-cpu lanes, residency barrier orders by
+arrival, decode estimate 1.8x pessimistic -> 16/28 large requests ran alone with same-model work queued.
+
+Estimates (pass model calibrated on the windows; replay validates 4,734 s / 410 kJ vs 4,826 / 431):
+coherent per-server phone policy + coalesced calls -7 % kJ (enabler); + work-conserving back-fill B<=2
+-42 % / -42 %; B<=4 -54 % time / -56 % kJ; phone re-provisioned per resident model (18 Qwen / 26 Gemma
+layers, swapped inside the 47 s desktop load) -37 % kJ alone; all together 2,170 s / 115 kJ. Affinity
+ordering only saves time (-6.5 %) since loads run at the floor. Nothing committed, nothing run on hardware.
+
+## 2026-09-24 01:30 UTC - Pixel SDK installation and real FFN TPU qualification complete
+
+Installation PASS, private Tensor SDKv2.0/Python3.12/LiteRT2.2.0; compiler
+and physical dispatch cover all6/6 FFN ops on TensorG5. 528 FFN calls /
+1056 rows plus24 exact ADD calls PASS. Full FP16 pooled warm B1/B4 medians:
+invoke33.500/31.806ms, worker34.671/35.998ms, USB40.646/47.213ms per batch.
+Maximum FP16 relativeL2=0.000571125 including tail512; full=0.000547222.
+FP16 repeated outputs exact across processes. BF16 accuracyPASS0.004686623
+but speed improvementFAIL (worker34.952ms); FP16 remains preferable.
+Initial speed goalFAIL against earlier CPU measurements; fresh matched CPU,
+full-model tokens, server overlap, energy and integration NOT VERIFIED.
+CleanupPASS, same boot, no worker/forward/pending job, Pixel lockfree.
+Private probes only; compiler/probe/source hashes and failed prelaunch retained.
+See [complete report](scheduler/campaigns/burstgpt/reports/20260922-fast-path-M3/PIXEL_TPU_SDK_RESULTS.md),
+[aggregate measurements](scheduler/campaigns/burstgpt/reports/20260922-fast-path-M3/PIXEL_TPU_SDK_RESULTS.json), and
+[SDK installation](TPU_SDK/README.md).
+
+## 2026-09-24 01:24 UTC - Pixel full-width TPU qualification PASS; initial speed goal FAIL
+
+Tensor G5 FP16 full layer18 FFN [N,5120] -> [N,17408] -> [N,5120]:
+all6/6 ops compiled, all dispatch nodes execute NPU-only. Each arm88 calls,
+80 warm. One-row median invoke33.794/worker35.007/USB40.832ms;
+four-row32.906/36.686/47.593ms per batch. Maximum per-row relative L2
+0.000547222; repeated outputs exact. Model535MB, warm-process load~315ms.
+These initial timings exceed earlier tuned Pixel CPU timings, but no fresh
+matched CPU comparison was run. Batch4 reuses weights well (similar invoke
+for4x work), while USB/buffer overhead grows. FP16 uses real source weights;
+inputs are synthetic qualification vectors, not production activations.
+BF16 compiler mode investigation pending. No energy, full-model tokens or
+production/server integration verified.
+Evidence: M3 physical/pixel10pro-tpu-sdk-1/run-ffn17408b1-1 and run-ffn17408b4-1.
+
+## 2026-09-24 01:16 UTC - Pixel Tensor SDK installation and real FFN TPU slice PASS
+
+Installed the user-supplied Tensor SDK v2.0 (2026-09-02) in
+`research_dev/TPU_SDK/installed/v2.0-20260902`, isolated Python3.12/LiteRT2.2.0.
+No system packages changed. Compiler ADD1/1 and FFN6/6 ops fully offloaded.
+Physical compiler-produced ADD PASS24 exact calls. Actual Qwen layer18 tail512
+FFN PASS88 calls/80 warm, NPU-only Google dispatch, all compiled graph ops
+on TPU, normal exit. Maximum relative L2=0.000571125 (0.0571percent),
+repeated outputs exact; reference is original F16 weights expanded to FP32.
+Median invoke3.351ms, worker4.021ms, USB/ADB roundtrip7.523ms. These are
+runtime invocation intervals, not hardware kernel counters. One prior
+launch rejected occupied/TIME_WAIT port26971 before starting a worker;
+fresh26973 retry PASS. Full17408-column investigation pending, no full-model
+tokens, energy or scheduler integration verified. Pixel-only physical lock.
+Corrected prior F16 batch candidate metadata: shardsha dd705a75 differs from
+parent/protocol identity d89e9e82; archived measurements unchanged.
+Evidence: M3 physical/pixel10pro-tpu-sdk-1 and TPU_SDK/probes compile records.
+
+## 2026-09-24 01:06 UTC - Direction: scheduler adaptivity; dual-engine 1.22x confirmed; dev trace built
+
+User direction: no phone-weight quantization now (more phones later); integrate zero-copy
+dual-engine; FOCUS = scheduler adapting to dynamic requests/resources to offload more; develop
+on a short trace.
+
+Dual-engine NPU+GPU worker (charged OP15, fused per-layer GPU layout): GPU share 0.15 ->
+5.07 -> 4.11 ms/layer (1.21-1.24x in 5/5 processes, 65.7 GB/s combined). Earlier flakiness was
+layout (20 tiny GPU kernels/call stalled behind NPU traffic), not only battery. The multi-token
+NPU copy (+14.7 % phone RAM) is unacceptable (RAM-bound) -> zero-copy MAX_TOKENS=0, valid
+because production batch_plan=split-row (all phone calls tokens=1). End-to-end only ~4 % Qwen /
+~2 % Gemma decode (phone = 12/40, 8/48 layers of ~558/453 ms per token).
+
+Charging: desktop port = SDP 2.5 W; OPLUS `chg_over_time` latched charging off (notify 512),
+cleared only by physical replug; user rule: NO battery guard, just tell them.
+
+Dev trace `burstgpt_longtail_dev_v1` (/mnt/storage/burstgpt-source/longtail_dev_v1): first 600-s
+window with 6-10 requests, long-tail rule (tol 0.07) and <= 1,600 capped output tokens (new
+`--max-output-tokens`): 6 requests (3 Qwen 141/51/196 out, 2 Gemma 578/58, 1 Llama 47),
+1,071 output tokens, arrivals span 392 s; long-tail 16.7 % / 54.0 % vs log 18.6 % / 49.3 %.
+
+In flight: (a) agent integrating zero-copy dual-engine into a new phone deployment + identity,
+smoke pair on the dev trace; (b) agent doing offline offload accounting of run-5 (tokens under
+phone policy, phone utilization, residency, queue effects, idle floor) -> ranked scheduler changes.
+
+## 2026-09-23 22:35 UTC - Pixel four-direction tuning COMPLETE: selected candidates PASS; failures retained
+
+Implemented and tested original packed weights, independent multi-row GPU
+kernels, joint CPU/core/channel ratios, and full-block coalescing in private
+variants. Ten completed suites:50,976 calls; native packed CPU/mixed arms
+fail accuracy on920 calls (960 calls in four rejected arms retained).
+Corrected packed CPU6 cores2-7 wins one row: full10.792 vs13.695 ms
+(-21.20%), half5.485 vs7.442 ms (-26.30%), maximum relative L2=0.000519396.
+Full/half p99 12.579/6.435 ms; both reversed repeats improve mean and p99.
+
+Final pinned F16 CPU endpoint follow-up PASS6816 calls,maxL2=0.000417678,
+960/960 repeated outputs exact,4800/4800 mixed intervals overlap. Full
+batch2/4/8 CPU-only19.829/21.697/35.423 ms versus matched old controls
+28.771/46.546/81.873 ms (-31.08%/-53.39%/-56.73%). Half9.907/10.873/
+18.106 ms (-38.99%/-58.67%/-63.47%). CPU-only beats the tested mixed
+CPU76.471%/GPU23.529% path in both comparisons; mixed full22.927/30.760/
+48.166 ms. Absolute timings still vary: CPU batch8 repeats27.809/43.037 ms;
+no sustained thermal guarantee. Batch2 packed versus pinned F16 CPU was
+measured in different suites, so their close ranking lacks a direct pair.
+
+Coalescing numerical PASS but speed goal FAIL: full0.92% gain,half4.68%
+regression,50% more resident weights. Packed GPU and uncorrected packed CPU
+not selected. Shared-memory mixed batch8 single39.576 ms remains exploratory.
+Prior broad batch strict overlap FAIL1/8640 is retained; final follow-up PASS.
+Selected-path max row error across these confirmations0.000562194 <0.01.
+Worker-Werror,27 shader modules per batch build,ten Python pyflakes/parse
+checks PASS. Cleanup PASS22:29 UTC: no worker,free Pixel lock,no forwards,
+same boot. No job queued,production changes,commit or push. Energy,full-model
+tokens,server latency,automatic batch switching and physical peaks NOT VERIFIED.
+Evidence: M3 [full report](scheduler/campaigns/burstgpt/reports/20260922-fast-path-M3/PIXEL_FFN_OPTIMIZATIONS_RESULTS.md),
+PIXEL_FFN_OPTIMIZATIONS_RESULTS.json,PIXEL_PACKED_CPU_CANDIDATE.json,
+PIXEL_FFN_BATCH_CPU_CANDIDATE.json,PIXEL_FFN_OPTIMIZATIONS_CLEANUP.json.
+
+## 2026-09-23 22:20 UTC - Pixel final batch audit: numerical PASS, CPU endpoint stability and strict overlap FAIL
+
+15 arms / 13,536 calls pass numerical checks; maximum row relative L2
+0.000562194. Packed CPU6 repeats are byte-exact 960/960; full batch1/2
+means 12.094/21.187 ms, matched reductions 20.24%/24.20%. Full batch8
+104.662 ms regresses 27.16%. Repeated F16 CPU6/GPU split with CPU76.471%
+and register tile2 gives full batch4/8 28.662/50.146 ms, matched reductions
+39.07%/38.98%; both repeats pass mean and p99 comparisons. The unbound
+F16 CPU6 endpoint is unstable: full B1 18.382 then121.389 ms, B2 18.064
+then301.126 ms. No stable CPU-only multi-row winner declared.
+Partition/timing consistency and dispatch coverage PASS; strict all-call
+positive overlap FAIL 8639/8640. One measured B2 half call in04-reg6-c6656
+started GPU after CPU finished; selected B4/8 intervals all overlap.
+Cleanup PASS, boot unchanged, no worker or forward. A bounded reversed
+6816-call follow-up pins the F16 CPU-only endpoint to cores2-7 and repeats
+the mixed candidate; no kernel change or broad new sweep. Energy, server
+latency and full-model tokens remain unverified.
+Evidence: M3 PIXEL_FFN_BATCH_CONFIRM_COMPARISONS.json,
+PIXEL_FFN_BATCH_CONFIRM_AGGREGATES.json, PIXEL_FFN_OPTIMIZATIONS_CLEANUP.json,
+PIXEL_FFN_PINNED_ENDPOINT_CONFIG.json.
+
+## 2026-09-23 22:01 UTC - Pixel packed CPU residual correction confirmation PASS: six pinned threads selected
+
+2160-call reversed confirmation numerical PASS,max relativeL2=0.000519396.
+CPU6 cores2-7,persistent poll0; original Q4_K/Q6_K weights,4352-column blocks,
+second packed dot corrects Q8_K activation residual. Repeats full10.3628/11.2208ms,
+half5.2685/5.7021ms. Aggregate full10.791833 vs matched
+13.694537ms (-21.196%),half5.485275 vs
+7.442371ms (-26.297%). Full p99
+12.578810 vs22.173970ms;half6.435170 vs
+11.604590ms. Affinity PASS,repeats240/240 exact.
+Against historical best13.05775/7.076942ms,full17.35% andhalf22.49% faster;
+use matched controls above for primary comparison. CPU4 slower;unboundCPU6
+close but slightly slower. No CPU8/paired blocks selected. Private candidate
+only; energy,full-model tokens and server/USB integration NOT VERIFIED.
+Final13536-call steady-by-batch comparison running.
+Evidence: M3 PIXEL_PACKED_CPU_CANDIDATE.json,
+physical/pixel10pro-ffn-residual-confirm-1/run1,software/pixel10pro-cpu-gpu-v8.
+
+## 2026-09-23 21:59 UTC - Pixel residual correction4320 numerical PASS; shared-memory smoke672 PASS, speed not established
+
+Packed CPU residual correction reduces max relativeL2 from0.018877 to
+0.0005194;18 arms4320 numerical checks PASS. CPU6 full10.240 then15.523ms,
+so speedup is not repeatable yet. CPU8 full19.365 then69.518ms; pairedCPU8
+272.161/247.317ms: severe tail/performance FAIL,excluded from candidates.
+CPU paired blocks also fail CPU6 speed13.209/15.364ms. Mixed corrected
+ratios58.8/70.6/76.5 percent CPU take21.901/21.107/20.773ms full.
+Fresh2160-call pinnedCPU6/CPU4 versus unboundCPU6 confirmation completed,
+audit pending. Shared-memory8x256 tile672-call smoke numerical/dispatch
+PASS,maxL2=0.000417672; full8-row GPU114.295/mixed82.638ms,not a speed win.
+Final13536-call batch comparison prepared:20repeats and10warmups per batch,
+CPU6 endpoint and mixed70.6/76.5/82.4 percent ratios,shared tile and packed
+corrected CPU6; key modes repeated. No production change or energy/tokens.
+Evidence: M3 physical/pixel10pro-ffn-residual-2/run1,
+physical/pixel10pro-ffn-shared-smoke-1/run1,PIXEL_FFN_BATCH_CONFIRM_CONFIG.json.
+
+## 2026-09-23 21:52 UTC - Pixel batch sweep14496 numerical/dispatch PASS; CPU-only leads8-row throughput
+
+16 arms14496 calls PASS,max rowL2=0.000417706509,12480/12480
+mixed backend intervals overlap. Tiled GPU dispatch counts cover all expected
+projections at2/4/8 rows. Subgroups64/32 regress;128 remains best. Among mixed
+arms,tile2 CPUc4096 full batch2=26.495ms;CPUc4864 batch4=34.899,batch8=63.232ms.
+CPU-only6 threads leads batches2/4/8 at23.467/25.182/38.442ms;GPU-only tile2
+is29.040/54.220/115.800ms. Shape-interleaved sweep has B1 controls29-32ms,
+so it cannot replace the steady single-row13.06ms baseline. Confirmation
+will group repeats by batch and warm up each batch separately.
+A shared-memory tile (8output rows,16 K lanes/row,256-wide K tile,
+12KiB shared at8 inputs) now builds; fewer accumulators/thread. Numerical
+qualification pending. Residual correction18-arm4320-call run completed
+normally; numerical audit pending. No energy/full-model tokens.
+Evidence: M3 physical/pixel10pro-ffn-batch-sweep-1/run1/SUITE_RESULT.json,
+PIXEL_FFN_BATCH_SWEEP_COMPARISONS.json,pixel_dense_batch_shared.glsl.
+
+## 2026-09-23 21:32 UTC - Pixel packed/coalescing confirmation: accuracy FAIL for native packed CPU; coalescing small gain only
+
+13 arms3120 calls completed normally; all metadata/partition/dispatch checks
+PASS. F16 selected controls full13.063823/half7.046517ms.
+Coalesced full12.943708ms (-0.919%),half7.376308ms
+(+4.680% slower),maxL2=0.000286559;738GPU
+projection dispatches per arm verifies6 total GEMVs/full request.1.5x resident
+weights; not promoted for both widths. Packed GPU passes(maxL2=0.000514351),
+full19.926/20.607ms,slower than F16 mixed. Packed CPU6 full5.844/5.900ms,
+but maxL2=0.018877 exceeds pre-existing0.01 limit: numerical FAIL.
+Packed mixed/coalesced full22.104/21.626ms,maxL2=0.012111,also FAIL.
+Do not promote low precision timings. Residual correction under test:
+reuse native Q8_K converter to compute input-minus-rounded-input,then add
+a second packed dot per CPU projection; keep original packed weights.
+Batch14,496-call sweep running. No energy/full-model token verification.
+Evidence: M3 physical/pixel10pro-ffn-packed-coalesce-1/run1/SUITE_RESULT.json,
+pixel_quant_residual.py,software/pixel10pro-cpu-gpu-v6.
+
+## 2026-09-23 21:26 UTC - Pixel multi-row smoke2 numerical/dispatch PASS; packed CPU buffer failure fixed for retest
+
+Fresh batch1/2/4/8 suite672 calls PASS,max row relativeL2=0.000417331.
+96 independent phoneCPU single-row references; row0 cross-check against
+archived desktopCPU passes(maxL2=9.88841e-5),not byte-identical across
+architectures.576 mixed calls overlap/partition checked. Both new shaders
+count162 tiled GPU projections at each batch2/4/8,full coverage PASS.
+Short timings not promoted: tiles8/4 perform poorly at8 rows.16-arm14496-call
+sweep prepared,tiles1/2,subgroups32/64/128 and5 unequal CPU shares.
+Packed GPU smoke36 calls numerical PASS,maxL2=0.000514351; CPU startup
+FAIL optional repacking buffer rejects mixed Q4_K/Q6_K tensor allocation.
+Private v5 uses standard CPU buffer for packed mode,build PASS.13-arm3120-call
+packed/coalescing confirmation running,20reps/10warmups. No signal/force-kill,
+server integration,energy or full-model token measurement.
+Evidence: M3 physical/pixel10pro-ffn-batch-smoke-2/run1/SUITE_RESULT.json,
+physical/pixel10pro-ffn-packed-smoke-1/run1/FAILURE.json,
+software/pixel10pro-cpu-gpu-v5,PIXEL_FFN_BATCH_SWEEP_CONFIG.json.
+
+## 2026-09-23 21:19 UTC - Pixel batch smoke1 FAIL: client element count; graceful finite drain PASS
+
+ReferenceCPU96 single-row calls completed; first mixed arm accepted12
+single-row calls then rejected request13 because new harness sent elements5120
+for tokens2. Worker validation behaved correctly. Worker was idle after
+client disconnect; drained remaining132 valid single-row requests to its
+finite limit,without signals or force-kill. Original malformed packets
+preserved; remaining3 arms used corrected headers for diagnostics only.
+Whole run excluded from performance comparisons and FAILURE.json recorded.
+Fixed request and response audit elements to5120*tokens,added independent
+serialized packet extent validation. Fresh672-call retry prepared with
+new dispatch counters;27 SPIR-V modules PASS. No multi-row win claimed.
+Evidence: M3 physical/pixel10pro-ffn-batch-smoke-1/run1/FAILURE.json,
+recovery/,pixel_experiment_suite.py,software/pixel10pro-dense-batch-v2.
+
+## 2026-09-23 21:11 UTC - Pixel four-direction optimization: joint sweep and coalescing smoke PASS
+
+Joint1/2/3/4/6-thread,15-ratio-point sweep:21 arms5040 numerical,
+partition/overlap and affinity checks PASS,max relativeL2=0.00030946652.
+ExistingCPU4/c3456 controls full mean13.181039ms; best non-four-thread
+armCPU6/c3968 full13.193633ms. No replacement established by this sweep.
+Private v4 supports mixed per-tensor Q4_K/Q6_K and full-block coalescing;
+coalesced full/half use6 GEMVs with1.5x resident weights.144-call smoke
+numerical PASS,maxL2=0.000286656; new inactive mode byte-exact to controls.
+Only6 warm samples/width and controls19.403/20.055ms full: no smoke speed
+claim. New batch shader reuses each F16 weight across2/4/8 independent
+rows;27 SPIR-V modules validate PASS. Batch/packed physical tests pending.
+Original packed tensors extracted losslessly; F16 rounding sampled32rows
+per tensor PASS,exhaustive proxy comparison not done. No server/energy test.
+Evidence: M3 physical/pixel10pro-cpu-gpu-joint-1/run1,
+physical/pixel10pro-ffn-coalesce-smoke-1/run1,software/pixel10pro-cpu-gpu-v4,
+software/pixel10pro-dense-batch-v1.
+
+## 2026-09-23 20:51 UTC - Pixel bandwidth/compute headroom assessment PASS; physical peaks unverified
+
+Source/arithmetic review only; no new hardware test or queue. Full FFN has
+534.774 MB nominal weights and534.774 MFLOP,13.05775 ms ->40.955 GB/s
+and40.955 matrix GFLOP/s. This is88.05% of best measured joint stream
+46.515 GB/s; half37.783 GB/s is81.23%. Conditional weight-only times at
+that stream rate11.497/5.748 ms (11.95%/18.77% below measured latency),
+not hard bounds or physical DRAM-utilization measurements. Stream uses
+CPU1+GPU; FFN usesCPU4+GPU. Clocks are not locked.
+Vendor DXT-48-1536 specification1536 FP32 FLOPs/clock gives conditional
+1.680 TFLOP/s GPU at observed snapshot1.094GHz,not measured sustained peak.
+GPU FFN branch about24.995 GFLOP/s; do not compare combined41 GFLOP/s
+with GPU peak as a utilization measurement. Batch1 intensity~1 FLOP/byte.
+Next candidates:joint CPU-count/ratio tuning; packed weights for single-token
+latency; real multi-row tiled kernels for throughput; full-block coalescing
+and overhead profiling. Current custom fast shader onlyNUM_COLS==1.
+Previous fusion +3.191% full latency; output merge only0.0121ms now.
+No new energy/server/token/multi-row or compute-only peak qualification.
+Evidence:M3 PIXEL_CPU_GPU_ROOFLINE_ASSESSMENT.md/.json,with primary-source links.
+
+## 2026-09-23 20:42 UTC - Pixel unequal CPU/GPU ratio tuning COMPLETE:39.7/60.3 selected PASS
+
+20 mixed ratios,59 arms,11340 numerical checks PASS,max relativeL2=0.000325483.
+Recommended shared ratioCPU39.7059%/GPU60.2941%,half3456/5248 channels,
+full6912/10496. CPU4 persistent,poll0,pinned4-7; GPUhost0-3;
+vec4_u1/WG128/SG128/rows8,unfused. Full13.057750ms versus matched
+50/50 15.378746 (-15.092%),CPU6-only18.329833 (-28.762%),GPU21.135125
+(-38.218%). Half7.076942 versus50/50 8.166492 (-13.342%),CPU9.232958
+(-23.351%),GPU12.014917 (-41.099%). Selected reversed full repeats
+13.06245/13.05305ms,half7.12540/7.02848ms,both mean-speed PASS.
+Observed p99 PASS:full14.029 vsCPU19.034ms,half8.104 vsCPU9.582ms;
+120 warm samples/width. Lowest full mean42.647%CPU13.02075ms is only
+0.037ms faster but half p99 FAIL12.404ms; retain39.706% for both widths.
+Selected maxL2=0.000286656,240/240 outputs exact across repeats.
+Final5280 calls and4080/4080 overlap checks PASS; whole exploration strict
+overlap FAIL1/9420 from coarse request64,retained,9419/9420 overlap.
+Five Python files pyflakes PASS;worker/backend build and27 SPIR-V PASS.
+Warmup10 in final versus2 in historical runs; matched current controls used.
+Cleanup PASS:normal exits,boot unchanged,Pixel lock free,no worker/forward.
+No USB/server/energy/full-model-token/multi-row/scheduler integration test.
+Private generated worker/kernel only; canonical worker not changed by this task.
+Evidence:M3 PIXEL_CPU_GPU_RATIO_RESULTS.md/.json,
+PIXEL_CPU_GPU_RATIO_CANDIDATE.json,PIXEL_CPU_GPU_RATIO_CLEANUP.json.
+
+## 2026-09-23 20:29 UTC - Pixel ratio refinement PASS; fine confirmation staging
+
+17 arms4080 numerical checks PASS,maxL2=0.000310862.3600/3600 dual
+records overlap,partition/timing/affinity/cleanup PASS. No scheduling gap
+in this run. Warmup2 results preserved; prespecified warmup10 sensitivity
+finds best tested38.235%CPU/61.765%GPU (3328/5376 per half),full13.145350ms,
+half7.083967ms. Matched50 controls full15.765042,half8.330267ms
+(-16.62%/-14.96%),but individual50 full controls13.564..16.497ms.
+CPU-only endpoints18.123/18.129ms. Candidate not promoted from this sweep.
+Fine confirmation22 arms5280 calls,20 repeats with10 warmups,tests CPU
+3200/3264/3328/3392/3456/3712 in forward/reverse order with old50,
+CPU6-only and GPU-only references. All slow calls retained; compare tails.
+No server/energy/full-token test. Evidence: M3
+physical/pixel10pro-cpu-gpu-ratio-refine-1/run1/STEADY_STATE_AUDIT.json,
+PIXEL_CPU_GPU_RATIO_CONFIRM_CONFIG.json.
+
+## 2026-09-23 20:24 UTC - Pixel ratio benchmark warmup policy updated from measured ramp
+
+Coarse raw full50 control by repeats0..9:32.24,25.13,26.46,20.49,
+17.58,15.38,15.56,15.09,13.87,14.32ms. Two warmups were insufficient
+to isolate steady execution. Refinement already running20repeats/arm;
+keep original warmup2 analysis, also inspect repeat10..19 sensitivity.
+Final confirmation will explicitly use warmup10,20 total repetitions.
+Policy recorded before refinement results fetched. CPU/GPU numerical
+checks still include every request; no outlier exclusion. Default warmup2
+reanalyzes smoke/coarse identically; pyflakes4 files PASS. No new speed claim.
+Evidence: M3 PIXEL_CPU_GPU_RATIO_ANALYSIS_POLICY.json.
+
+## 2026-09-23 20:22 UTC - Pixel coarse unequal-ratio sweep numerical PASS; refinement staging
+
+15 arms1800 calls numerical/affinity/cleanup PASS,maxL2=0.000299222.
+Partition/timing arithmetic PASS1560 dual calls; strict overlap FAIL one
+half-width call in35.29%CPU arm10-cpu3072 request64: CPUdone5864us,
+GPUstart5874us,worker15205us.1559/1560 overlap. Auditor now retains this
+as explicit FAIL while completing numerical/timing analysis; no sample dropped.
+Initial failed partial audit preserved in run1/partial-audit-1.
+Full25%CPU15.134625ms vs surrounding50 controls17.541396 (-13.72%);
+35.294%CPU14.582729 vs16.036396 (-9.06%). Half7.924/7.892ms.
+Old50 full controls17.345/17.738/15.493/16.580ms; CPU-only22.524->18.227ms
+shows drift. Results exploratory: no optimal-ratio promotion yet.
+Next17 arms4080 calls extend/refine12.5-38.235%CPU,20repeats/arm;
+fixed CPU4 cores4-7/GPUhost0-3. No server/energy/full-token test.
+Evidence: M3 physical/pixel10pro-cpu-gpu-ratio-coarse-1/run1,
+PIXEL_CPU_GPU_RATIO_REFINE_CONFIG.json.
+
+## 2026-09-23 20:14 UTC - Pixel fine-ratio smoke numerical/overlap PASS; coarse sweep staging
+
+180 calls across5 arms PASS,max relativeL2=0.000281345;180 full-coverage
+and overlap records PASS,all CPU/GPU-host affinities PASS. New fine50/50
+is36/36 byte-exact to old50/50; repeated old control also36/36 exact.
+Unequal44.85/55.15 percent CPU shares are numerical PASS. Only6 warm
+samples/width: old50 full controls25.979/24.149ms versus new50 24.350ms,
+44.85%27.109ms,55.15%19.918ms. Large variance and slower controls than
+previous confirmation: no speed/optimal-ratio claim from this smoke.
+Cleanup PASS,boot unchanged. Coarse9-ratio15-arm1800-call sweep staging,
+fixed CPU4 cores4-7/GPU host0-3,interleaved old50 controls.
+Evidence: M3 physical/pixel10pro-cpu-gpu-ratio-smoke-1/run1,
+PIXEL_CPU_GPU_RATIO_COARSE_CONFIG.json. No server/energy result.
+
+## 2026-09-23 20:12 UTC - Pixel CPU/GPU unequal ratio build PASS; smoke staged
+
+User requests tuning unequal CPU/GPU shares rather than assuming50/50.
+Private v3 worker supports CPU half-columns64..8640 in64-channel steps;
+partitions [CPU,GPU,GPU,CPU] preserve full17408 and suffix8704 coverage.
+Shader fast path widened to64-aligned K<=8704; all27 SPIR-V validations
+and pyflakes on3 changed Python files PASS. CPU4 cores4-7 and GPU host
+cores0-3 stay fixed. New50/50 must reproduce old50/50 bytes before sweep.
+180-call finite smoke staging; physical correctness/speed NOT VERIFIED.
+Canonical worker unchanged by this task; no server/energy or integration run.
+Evidence: M3 PIXEL_CPU_GPU_RATIO_LOCAL_CHECKS.json,
+software/pixel10pro-cpu-gpu-v3/CPU_GPU.patch,
+software/pixel10pro-dense-gemv-ratio-v1/DENSE_SHADER.patch.
+
+## 2026-09-23 19:45 UTC - Pixel concurrent CPU/GPU FFN COMPLETE: mean speed PASS, p99 FAIL versus CPU
+
+35 finite arms5100 calls numerical PASS,2916 partition/overlap records PASS.
+Whole4352-channel blocks assigned to CPU/GPU; both compute gate/up/activation/down
+concurrently and merge FP32 on phone before one F16 response. Selected50/50:
+CPU4 persistent,poll0,pinned4-7; GPU host thread0-3; vec4_u1 shader unchanged.
+Actual CPU/helper affinities PASS; private CPU affinity library required.
+Two selected repeats full15.274/15.395ms,half8.070/8.103ms. Aggregate full
+15.334273ms vs matched CPU18.209868 (-15.791%) and
+GPU21.013991 (-27.028%); half8.086380 vsCPU9.168806
+(-11.806%). Full branch CPU15.029/GPU14.311ms,overlap14.046ms,
+merge0.0081ms. Numerical maxL2 all0.000325483,selected0.000279321; selected
+repeats240/240 byte-exact,also exact to unbound4. CPU-only remains numerically
+different from mixed backend output. Tail FAIL:full p99 25.294 vsCPU18.716ms;
+half11.009 vs9.514ms. Unbound sweep failed; explicit affinity produces the win.
+Final cleanup PASS19:40:56 UTC,boot unchanged,lock free,no worker/forward.
+Private worker/candidate only; one-token phone-local replay. No USB/server,
+full-model token,energy,multi-row or scheduler-integration qualification.
+Evidence: M3 PIXEL_CPU_GPU_SPLIT_RESULTS.md/.json,PIXEL_CPU_GPU_SPLIT_CANDIDATE.json,
+software/pixel10pro-cpu-gpu-v2/CPU_GPU.patch,physical/pixel10pro-cpu-gpu-confirm-1/run1.
+
+## 2026-09-23 19:35 UTC - Pixel CPU/GPU ratio/thread sweep numerical PASS; speed FAIL
+
+19 arms2280 calls PASS,max relativeL2=0.000325483;1440 dual calls
+verify complete disjoint CPU/GPU columns and overlapping backend intervals.
+CPU threads1/2/4/6 with full CPU/GPU75/25,50/50,25/75; all half-width
+calls split4352/4352. Best full/half is CPU4 50/50:19.349/10.062ms vs
+matched CPU6 controls18.214/9.162ms (+6.23%/+9.82%). No split beats CPU.
+CPU6 split full32.5-34.2ms; CPU1/2 unbalanced cases up to40.5ms. GPU
+controls21.326/20.652ms full. Best full branch CPU18.108/GPU17.772ms,
+overlap16.625ms, merge0.00996ms; kernel timestamps not measured.
+Cleanup PASS, boot unchanged. Isolated v2 retains CPU pool and adds explicit
+GPU host-thread affinity so it does not inherit a pinned CPU compute core.
+2640-call reversed-order confirmation compares unbound4 and pinned4/6,
+with actual thread masks checked. No desktop/USB/server/energy claims.
+Evidence: M3 physical/pixel10pro-cpu-gpu-sweep-1/run1/SWEEP_AUDIT.json,
+DUAL_COVERAGE.json,PIXEL_CPU_GPU_SPLIT_CONFIRM_CONFIG.json.
+
+## 2026-09-23 19:26 UTC - Pixel CPU/GPU split build and 180-call smoke PASS; initial speed FAIL
+
+Private whole-block variant reuses existing dual worker and qualified CPU
+persistent pool; root worker untouched. GPU owns selected4352-column blocks,
+CPU owns the rest, branches run concurrently and merge FP32 before F16 reply.
+Build-Werror/pyflakes PASS.180/180 numerical checks PASS,maxL2=0.000325483;
+new CPU-only mode36/36 exact to qualified CPU.36/36 split/overlap records PASS.
+Initial50/50 CPU6 full22.128ms vs CPU controls18.280ms (+21.05% slower),
+half14.647 vs9.207ms (+59.09%); six warm samples/width, preliminary only.
+Full branch overlap16.196ms,CPU19.780/GPU18.375ms,merge0.0085ms. These are
+backend branch intervals, not GPU kernel timestamps. Cleanup PASS, boot unchanged.
+19-arm2280-call ratio/thread sweep prepared and launching with Pixel-local lock;
+no desktop model, energy, USB/server-token or production integration measurement.
+Evidence: M3 software/pixel10pro-cpu-gpu-v1,physical/pixel10pro-cpu-gpu-smoke-1/run1,
+PIXEL_CPU_GPU_SPLIT_SWEEP_CONFIG.json.
+
+## 2026-09-23 19:10 UTC - Pixel CPU/GPU FFN review PASS; combined speedup unverified
+
+Measured full CPU6-persistent18.291ms and GPU20.610ms; half9.162/11.848ms.
+Concurrent CPU6/GPU streaming falls to20.278/25.324GB/s, aggregate45.537;
+best repeated CPU1+GPU aggregate46.515GB/s. Raw stream improvement does not
+establish FFN speedup. Equal whole-block split sensitivity model gives
+17.763ms before extra merge/synchronization, conditional on stream-like
+contention; not a validated prediction. Existing secondary-backend worker
+inspected only; Pixel CPU pool settings and GPU sub-block shapes require
+qualification. No new code, hardware run, queue, energy or token result.
+Evidence: M3 PIXEL_CPU_GPU_FFN_ASSESSMENT.md/.json.
+
+## 2026-09-23 18:54 UTC - Pixel CPU/server overlap review PASS; physical retest not run, shared lock busy
+
+Existing asynchronous server FFN overlap confirmed in source and prior GPU
+server logs. New CPU worker can use the same RPC/partial-sum mechanism; no
+new overlap engine needed. At50%, historical host window9.552ms, new local
+CPU9.162ms, historical outside-worker5.041ms imply14.203ms phone path and
+4.651ms exposed wait/layer (27.906ms over six). At100%, no host FFN branch:
+CPU18.291 plus4.789 overhead implies23.066ms exposed wait. ESTIMATES ONLY;
+new CPU under server cadence, token equality and energy NOT VERIFIED.
+At50%, overhead budget to fully hide phone is0.390ms. Linear/affine model
+balances near37.55% phone;25% is available with4352-column blocks and estimated
+hidden,37.5% requires finer partition qualification. Full-layer dependencies
+prevent borrowing all of the rest of the token's server time as overlap.
+Rig lock probe FAIL exit1, active/queued OP15 sweeps observed; no server launch,
+no interruption, no queued job. No new code or hardware measurement.
+Evidence: M3 PIXEL_CPU_SERVER_OVERLAP_ASSESSMENT.md/.json.
+
+## 2026-09-23 18:42 UTC - Pixel bandwidth task COMPLETE:55 arms PASS, dynamic CPU30.5 and joint46.5GB/s
+
+55 checked bandwidth arms/8594 measured engine passes,512MiB per engine.
+Dynamic4MiB CPU chunks on six cores2-7 repeat30.421/30.565GB/s vs static
+24.059 (+26.74%). Core7 reads220MiB while others44/76/84/44/44MiB; equal
+slices underutilize the fast core. GPU confirmed37.25-38.04GB/s wall,
+43.19-43.71 device; exploratory highest38.694/44.163. Scalar27.33-27.76.
+CPU1+GPU joint46.577/46.474/46.495GB/s,matched gain22.91%;both slow
+individually. More CPU threads in the joint case are worse45.1-45.5GB/s.
+Copy24.348GB/s counts read+write separately. Checksums,finite exits,boot and
+cleanup PASS; battery28.2-35.5C,unlocked clocks. No physical DRAM counters
+or theoretical peak established. Concurrent FFN split/merge and energy NOT
+VERIFIED. FFN practical win is separately confirmed CPU6 persistent pool:
+44.291->18.291ms (-58.70%,2.421x),GPU20.610ms;2520 checks PASS,all2040 CPU
+outputs exact to original CPU. Original affinity no-op FAIL,private guard
+fix actual masks PASS; selected unbound6 needs only worker threadpool knobs.
+No production defaults changed; no queued jobs or phone worker left.
+Evidence: M3 PIXEL_BANDWIDTH_RESULTS.md/.json,PIXEL_CPU_TUNE_RESULTS.md/.json,
+PIXEL_CPU_TUNED_CANDIDATE.json,all three raw bandwidth runs and two FFN runs.
+
+## 2026-09-23 18:37 UTC - Pixel CPU FFN confirmation PASS: persistent6 threads58.70% less latency
+
+1320-call confirmation numerical PASS;2520 total across sweep/confirmation.
+All2040 CPU outputs byte-identical to original Pixel CPU; overall maxL2
+0.000325483. Affinity guard fix PASS: actual thread masks2-7 and4-7 match.
+Fastest repeated candidate keeps original CPU library:6 persistent threads,
+poll0,unbound. Full18.290896ms vs44.290875ms matched
+original controls (58.703% less,2.421x throughput),
+GPU reference20.610167ms. Half9.162302 vs23.576120ms.
+Full effective weights29.237GB/s,not DRAM counters.
+Strict6-core pinning18.951/18.920ms is slightly slower than unbound
+18.265/18.317ms. Four-thread persistent26.057ms also beats original44ms.
+Cleanup/builds/pyflakes PASS. Private candidate saved; production unchanged.
+No energy,server/USB/token or combined CPU/GPU FFN proof. Dynamic-chunk raw
+bandwidth experiment started18:35:36 UTC,PID25963; results pending.
+Evidence: M3 PIXEL_CPU_TUNE_RESULTS.md/.json,PIXEL_CPU_TUNED_CANDIDATE.json,
+physical/pixel10pro-cpu-tune-confirm-1/run1/CPU_AFFINITY.json.
+
+## 2026-09-23 18:32 UTC - Pixel read bandwidth repeated PASS; combined46.5GB/s sustained
+
+17-arm confirmation checksums/cleanup PASS. Three CPU1/core7 reads26.968,
+26.770,26.778GB/s; GPU vec4/16384 invocations37.790,38.044,37.252GB/s.
+Scalar GPU27.335/27.762. Combined CPU1+GPU46.577/46.474GB/s; CPU2+GPU
+45.290/45.051. Single-thread CPU16.889/16.796 and GPU29.786/29.738GB/s
+under joint load show contention, despite aggregate gain. CPU prefetch1024,
+GPU extra unrolling and reduced4096 invocations do not establish a gain.
+All values use wall elapsed/read-only logical bytes; no DRAM counters.
+The FFN6-thread persistent result can outperform static-slice CPU streaming,
+so CPU bandwidth ceiling is NOT established by equal work per core. Dynamic
+1/4MiB chunks are prepared to test heterogeneous-core load balance.
+1320-call FFN confirmation now uses the private Android affinity guard fix;
+per-thread actual masks must pass before calling any arm pinned.
+Evidence: M3 physical/pixel10pro-bandwidth-confirm-1/run1/RESULT.json,
+PIXEL_BANDWIDTH_DYNAMIC_CONFIG.json,PIXEL_CPU_TUNE_CONFIRM_CONFIG.json.
+
+## 2026-09-23 18:31 UTC - Pixel CPU FFN numerical PASS; requested affinity coverage FAIL, private fix built
+
+1200/1200 outputs pass saved-reference checks,maxL2=0.000325483; cleanup PASS.
+Original CPU full43.720/43.950/50.227ms; persistent4-thread25.992/20.809ms;
+persistent6-thread18.267ms; two-thread41.554 and one-thread43.313ms. GPU
+controls20.581/20.841ms. These are exploratory and CPU scheduling varies.
+All requested masks FAIL: /proc thread masks remain0-7. The qualified
+CPU library tests __gnu_linux__ around affinity; Android enters a no-op
+stub returning success. None of those arms establishes a pinning benefit.
+Private one-line guard adds __ANDROID__ to existing sched_setaffinity path.
+Library build PASS (one earlier link-path parser failure retained; no phone
+use), same math/object files; workerSHAf81f7221d9dd2e29a1a449f187c2f9ef744613e332980d0ab83b7107d9f008e0.
+Numerical/comparison audit PASS after analysis-only metadata marks outer GPU
+arms as references; original CONFIG retained, ANALYSIS_CONFIG records fix.
+1320-call repeated CPU test prepared; will start after active bandwidth
+confirmation. Raw CPU bandwidth also needs dynamic work assignment because
+equal slices across heterogeneous cores can underestimate attainable rates.
+Evidence: M3 physical/pixel10pro-cpu-tune-1/run1/CPU_AFFINITY.json,
+SWEEP_AUDIT.json,software/pixel10pro-cpu-tune-v3/ANDROID_AFFINITY.patch.
+
+## 2026-09-23 18:22 UTC - Pixel streaming bandwidth sweep PASS; FFN CPU tuning running
+
+24 finite phone-local arms,512MiB/engine,8 warmup passes plus2s measured.
+All CPU slice and every GPU-output checksum/copy checks PASS; cleanup PASS.
+Best isolated read in this sweep: CPU1/core7=26.737GB/s; GPU vector4,
+16384 invocations=38.694GB/s wall,44.163GB/s device timestamps. Four unpinned
+CPU threads drift22.627->17.443GB/s; affinity/prefetch are not yet confirmed
+improvements. Eight equal CPU slices across heterogeneous cores give13.199.
+Scalar GPU27.967GB/s; vec4 unroll4/8 give37.187/36.551,WG256/u4=37.813.
+Concurrent CPU2+GPU reads44.218GB/s aggregate (CPU17.581,GPU26.721),99.686%
+overlap. CPU4/6 joint=43.978/43.298; isolated rates do not add. Copy24.348GB/s
+counts reads plus writes and is separate. Logical traffic only, no physical
+DRAM counters or theoretical peak; battery28.2-30.4C. GPU mapped allocation flags7,
+128MiB descriptor range; four chunks scan512MiB. No host model/energy/RPC work.
+Initial build FAIL on Android affinity API and signed Vulkan flags; corrected
+build-Werror and four SPIR-V modules PASS, no failed-build phone run.
+Private CPU-worker build PASS, existing persistent-threadpool/affinity APIs,
+same FP32 CPU math/lib.1200-call interleaved CPU/GPU test started18:22:01 UTC,
+PID22421; numerical and FFN improvement NOT VERIFIED yet. No defaults changed.
+Evidence: M3 physical/pixel10pro-bandwidth-1/run1/RESULT.json,
+software/pixel10pro-bandwidth-v2,software/pixel10pro-cpu-tune-v1,
+PIXEL_CPU_TUNE_CONFIG.json. Raw phone wall date is wrong; host UTC is authoritative.
+
+## 2026-09-23 17:59 UTC - Pixel bandwidth/concurrent-backend analysis PASS; physical ceiling and overlap unverified
+
+User asked why CPU/GPU do not reach peak bandwidth and whether both can help.
+510MiB logical F16 weights/full FFN over measured worker time gives GPU26.834
+and CPU11.664GB/s. These are application-effective rates, not DRAM counters;
+physical/sustainable bandwidth, memory clock, occupancy and issue limits remain
+NOT VERIFIED. CPU generic4-thread build and disposable per-graph threadpool,
+GPU F16 conversion/F32 dot products/subgroup reductions are confirmed costs,
+not a quantified attribution. CPU/GPU share system memory; their independent
+rates cannot be assumed to add under concurrent load.
+Ideal linear/no-contention model:~70% GPU/~30% CPU,13.891ms vsGPU19.929ms,
+1.435x throughput. This is an unmeasured estimate, not a prediction of reaching
+peak. Existing four-block25% CPU/75% GPU split estimates14.95ms proportional
+or15.71ms with a two-width affine fit, before contention/merge costs.50/50
+already takes~23.975ms at isolated CPU-half rate. Proposed tests: read streams
+alone/together, then disjoint-channel FFN split with resident weights and
+fixed-order FP32 merge. No new kernel change, hardware run or speedup claim.
+Evidence: M3 PIXEL_BANDWIDTH_ASSESSMENT.md/.json; PowerVR performance guidance,
+Khronos UMA documentation, existing matched CPU/GPU results.
+
+## 2026-09-23 17:54 UTC - Pixel CPU versus GPU comparison PASS; GPU faster by2.09x/2.30x
+
+User clarified CPU-versus-GPU comparison, not a CPU fusion experiment.
+Five matched phone-local arms GPU/CPU/GPU/CPU/GPU,600 calls total, layers18-23,
+same F16 weights/wire inputs, one token, widths8704/17408, quantum4352.
+CPU uses existing generic AArch64-O3 build and four configured threads;
+GPU uses prior vec4_u1,128/128/8, fusion off. Half-width CPU23.974813ms vs
+GPU11.486870ms (GPU2.0871x); full CPU45.848635ms vsGPU19.929104ms (2.3006x).
+Both CPU repeats are slower than each surrounding GPU control. Full matrix
+work per worker second: CPU11.664GFLOP/s,GPU26.834GFLOP/s,not pure-kernel rates.
+Numerical PASS600/600; max relative L2 against saved desktop reference
+0.000325482692 overall,0.000098884078 for CPU. CPU/GPU outputs are not byte
+identical; each layer/width repeats deterministically. GPU controls exact.
+Existing archived CPU timings9.076/18.134ms are desktop i9-12900K timings,
+not Pixel CPU. CPU-specific architecture/kernel/thread/affinity tuning and
+fusion were not tested. Battery28.2-28.9C. No host model work,USB latency,
+energy,server tokens or multi-phone test. Cleanup and pyflakes PASS; all finite
+workers exit0,boot unchanged,no forwards. Previous kernel selection unchanged.
+Evidence: M3 PIXEL_CPU_GPU_RESULTS.md/.json,physical/pixel10pro-cpu-local-1/run1.
+
+## 2026-09-23 17:11 UTC - Pixel matvec/SwiGLU fusion numerical and coverage PASS; speed FAIL
+
+Final2160-call confirmation: all outputs byte-identical to original Vulkan;
+CPU max relative L2=0.000325482692. Keeping the FP32 input alive fixes the
+alias rejection: both fused arms744/744 actual dispatches. Full-width worker
+21.001449ms vs20.352023ms matched fusion-off controls (+3.190965% slower);
+half11.818894ms vs11.652174ms (+1.430805%). Full-width loses in both repeats
+(+4.4462%,+1.9151%) and to each surrounding control. Compared with bracketed
+prior vec4_u1 library/original-worker controls, full+6.1604%, half+5.0094%;
+those wider-spaced controls drift, so matched same-build comparisons isolate
+fusion. Battery28.8-29.7C. Performance candidate REJECTED; previous selection
+retained. No production defaults changed. Total3012 exact outputs across
+initial sweep,12-call diagnostic and confirmation; all CPU checks PASS.
+Build/pyflakes,27-module SPIR-V validation and reproduced prior audits PASS.
+Cleanup PASS at17:10 UTC, boot unchanged,no workers/no forwards. No host
+model work, USB latency, energy, full-server/token or multi-phone test.
+Evidence: M3 PIXEL_SWIGLU_RESULTS.md and PIXEL_SWIGLU_RESULTS.json; all raw
+logs, patches, input hashes and binary provenance retained under the M3 report.
+
+## 2026-09-23 17:07 UTC - Pixel fusion first sweep numerical PASS; full fusion coverage FAIL, buffer-lifetime fix testing
+
+First840 calls are byte-identical to original Pixel outputs; CPU max relative
+L2=0.000325482692. Each fused arm records264/384 possible fused dispatches.
+Initial full-width means20.661/19.924ms vs20.789/20.543ms matched controls
+(-0.616%/-3.010%); exploratory only. A12-call profiled diagnostic reproduces
+exact output and shows zero standalone GLUs in six startup warmups, then one
+unfused GLU per half/full request. The fusion label was selected; the existing
+post-selection buffer-alias safety check rejects that one fusion. Actual
+count48/60 agrees. Do not disable that safety check.
+A one-line private worker change marks the FP32 input as a graph output to
+retain its buffer until graph completion. Worker build PASS with-Werror,
+SHA0450721e4c42bb80b7e5943f531de947a48334accb70bab370f60d038ef9e4ac.
+A2160-call confirmation started17:06:23 UTC, Pixel PID20189. Both on/off arms
+use that same worker; interleaved controls isolate fusion, with prior unmodified
+vec4_u1 library/worker controls bracketing the whole comparison. Complete fusion
+coverage, numerical correctness and speedup for the fix remain NOT VERIFIED.
+Initial/diagnostic cleanup PASS; no phone reboot, no forwards or host model work.
+Evidence: M3 physical/pixel10pro-swiglu-local-1/run1/FUSION_COVERAGE.json,
+physical/pixel10pro-swiglu-coverage-1/run1/DIAGNOSTIC_AUDIT.json,
+software/pixel10pro-swiglu-input-v1/PRESERVE_INPUT.patch.
+
+## 2026-09-23 16:59 UTC - Pixel up-matvec/SwiGLU fusion build PASS; physical benchmark running
+
+Private backend reuses Vulkan graph fusion and its dependency/alias checks.
+The up matvec reads the completed gate and writes SiLU(gate)*up directly,
+eliminating one SwiGLU dispatch and one up intermediate write/read per4352
+channel chunk. Narrow F16[4352,5120] by F32[5120,1] guard; FP32 arithmetic;
+activation remains4352 wide; existing down/add fusions remain. Default off,
+S42_PIXEL_FUSE_SWIGLU=1 enables it only with the private dense shader.
+Actual fused dispatches are counted at shutdown. Build/pyflakes PASS and all27
+SPIR-V modules validate; library SHA513d8eb1ea5931b26190a97dc5bf09c6942c0ee6e957613bb67e905dd1c8e40c.
+Seven-arm840-call phone-local test started16:58:39 UTC, Pixel PID19823,
+using the private Pixel lock and archived CPU references. Fusion on/off use
+identical vec4_u1,128/128/8 kernels; first/last original-runtime controls.
+Physical numerical and performance results NOT VERIFIED yet. No host model
+work, USB latency, energy or server-token claim; no production default changed.
+Evidence: M3 software/pixel10pro-swiglu-fusion-v1 and physical/pixel10pro-swiglu-local-1.
+
+## 2026-09-23 16:40 UTC - Pixel weight-partition concurrency source review PASS; speedup unverified
+
+User proposed duplicating inputs, splitting weights, concurrent execution and
+merging. Algebra is valid when splitting FFN hidden channels: four4352-wide
+parts share x5120; each gate/up[4352,5120], down[5120,4352], outputs sum5120.
+The worker already has this partition/merge; explicit overlap is the new part.
+Vulkan dependency barriers and buffer reuse can limit overlap; one queue does
+not imply strict serialization, and multiple queues do not guarantee more
+hardware capacity. Existing row8 dispatches already have544/640 workgroups.
+The full one-token FFN reads510MiB of F16 weights for534.774MFLOP; partitioning
+does not reduce weight traffic. Bandwidth/occupancy ceilings remain unmeasured.
+Proposed bounded test: same four partitions,1/2/4 eligible concurrently,
+shared input, distinct FP32 partials, fixed-order GPU sum, phone-local replay.
+No code/kernel change, hardware run or speedup verification in this review.
+Evidence: M3 PIXEL_FFN_CONCURRENCY.md; existing graph-reorder arm was+0.804% slower.
+
+## 2026-09-23 08:25 UTC - longtail_v1 pair COMPLETE: host -17.7 %, 24/31 token-identical
+
+| run | status | dur | CPU kJ | GPU kJ | host kJ |
+| --- | --- | ---: | ---: | ---: | ---: |
+| baseline (desktop-only) | PASS 31/31 | 4,901 s | 367.6 | 156.1 | 523.7 |
+| treatment run-5 (OP15) | PASS 31/31 | 4,826 s | 275.8 | 155.2 | 431.0 (**-17.7 %**) |
+
+Saving is all CPU package (-25 %); GPU flat. Phone-assisted: Gemma 11/12, Qwen 16/16
+(57.5 k phone calls), Llama 0/3. Outputs: 24/31 identical, 7 diverge mid-stream (same lengths)
+-> strict exact check FAIL (batch-shape float near-ties, not investigated). Below the 25 % target.
+Report: `campaigns/burstgpt/reports/20260923-longtail-trace/`. Runs 1-4 needed 4 scheduler fixes
+(all with regression tests, 1,800-test suite green). Nothing committed.
+
+## 2026-09-23 06:55 UTC - run-4 failed on an adaptive sequencing dead-end; fix-4 deployed, run-5 started
+
+run-treatment-4 (3 fixes) kept pace + phone FFN active, but request 003 (Qwen) failed at replay
+330.9 s; surfaced only at drain (~27 min) because stored lifecycle failures raise after the last
+arrival. Chain: phone candidate eliminated LATENCY_BOUND_EXCEEDED yet sequencer entered
+verification (baseline lacked current-context records) -> baseline windows -> stage
+verification_candidate, control fb0ab9 deferred (helper window lease went to request 002,
+HELPER_WINDOW_NOT_SELECTED) -> next window drops the eliminated deferred policy but stays in
+verification_candidate with current = baseline -> "adaptive verification candidate differs".
+USB disconnect 1 s after FAILURE.json = cleanup, not cause. Run 1 had the same 003 failure (masked).
+Fix (`sequencing.py`, +13): when the dropped deferred policy is the pending verification candidate,
+end verification (eliminated -> next probe candidate; too few tokens -> continue best). Regression
+`test_deferred_eliminated_verification_candidate_advances`. m4a8b r2 = different race
+(control vs normal completion), still open.
+run-treatment-5 (4 fixes) started 06:54 UTC; monitor now also flags FAILED tickets mid-run.
+
+## 2026-09-23 06:02 UTC - run-3 failed on a pre-existing admission bug; fix-3 deployed, run-4 started
+
+run-treatment-3 died at replay 257 s: request 005 "qualified desktop baseline is not available".
+Reproduced offline from run-3 artifacts (all replayed plan hashes match). Pre-existing (fails
+identically with both earlier fixes reverted); runs 1-2 dodged it by timing. Cause: arrival
+submitted without a published epoch -> candidates built on residency as observed; hot baseline's
+first slot (766.9 s) falls inside queued 004's Gemma load (699-1364 s) -> memory ledger rejects it
+(MEMORY_REPLACEMENT_CONFLICT_CURRENT, correct) -> selection raises before the resolve loop can
+re-project. Fix (`selection.py` `_reproject_rejected_baseline`): on a memory-rejected baseline,
+re-project residency at its start and regenerate candidates (bounded loop, same checks) -> 005
+admitted as hot:residency:cold at 1363.9 s. Regression
+`test_arrival_baseline_rejected_behind_queued_replacement_replans`; 1,799 tests pass.
+run-treatment-4 (all three fixes) started 06:01 UTC.
+
+## 2026-09-23 05:22 UTC - Pixel-local shader tests complete: numerical PASS, small repeated gain
+
+All3960 calls across sweep+confirmation pass CPU checks; max relative L2
+0.000325482692. All2160 reversed-order confirmation outputs are byte-identical
+to original Pixel output. Best repeated average is vec4_u1 (native f16vec4
+loads, unroll1,128 threads/128 subgroup/8 rows): full20.455093ms vs21.244109ms
+matched controls (-3.7140%); half11.696111ms vs12.276546ms (-4.7280%). vec4_u2
+confirms only-2.6609% full, so initial-6.7716% is not the headline. Controls
+span20.489-21.753ms and the second u1 arm loses0.569% to its following control;
+small gain remains provisional. Full achieved matrix rate26.144GFLOP/s per
+worker second. No pure-shader/USB/server/energy claim; loopback cadence differs
+from previous USB-driven tests. Phone-only execution reused hash-matched CPU
+references, with no new desktop model work. Our desktop queue was cancelled,
+the longtail campaign untouched. Cleanup PASS, boot unchanged, finite workers
+all exited0, no forwards created. Pyflakes PASS; four prior audits exact PASS.
+Private candidate recorded; existing server-qualified selection unchanged.
+Evidence: M3 PIXEL_DENSE_LOCAL_RESULTS.md, PIXEL_DENSE_LOCAL_CONFIRM_SUMMARY.json.
+
+## 2026-09-23 05:20 UTC - run-treatment-2: starvation confirmed live, then OP15 USB drop; fix-2 deployed, run-3 started
+
+- run-treatment-2 (ordering fix only): no abort, but desktop idle replay ~815 s -> 4,291 s
+  (005's replan landed behind its own dependents' reservations). Fixed: replan now
+  defers QUEUED causal dependents reserved before its start and regenerates candidates
+  (bounded loop, fail-closed); regression `test_replanned_predecessor_is_not_pushed_behind_dependents`
+  (1611 !<= 1107 before). Deployed after run-2 exited (4 scheduler files).
+- run-2 then died at request 021 (346/892 tokens): OP15 USB disconnect 01:12:36 local
+  (kernel `usb 2-2: USB disconnect`, server `LIBUSB_ERROR_NO_DEVICE`, `Compute aborted`),
+  surfaced as misleading `adaptive stale window transaction differs` -> fail-closed
+  (correct). Cleanup "terminal receipt is not unique" = consequence (inferred).
+  Not a scheduler bug; phone did not reboot (link reset).
+- m4a8b r2 (09-22) failure is DIFFERENT: likely adaptive control vs normal completion
+  race ("stale control transaction differs"), still undiagnosed.
+- Follow-ups: label server abort/phone loss before stale-window discard; OP15 link stability.
+- run-treatment-3 (both fixes) preflight started 05:14 UTC.
+
+## 2026-09-23 05:16 UTC - Pixel-local shader sweep PASS; vector-load unroll2 leads
+
+All1800 calls pass CPU comparison, max relative L2 0.000325482692. Best full-width
+vec4_u2:19.597542ms vs21.021000ms surrounding current-best row8 controls (-6.7716%);
+half11.070833ms vs11.951271ms (-7.3669%). vec4_u1 is5.6467% faster at full width.
+Both leaders/control outputs are byte-exact to the original Pixel outputs.
+All other new bodies are slower, striped mapping61.653ms (~2.92x its controls).
+Local replay executes entirely on Pixel; archived CPU references are hash-matched.
+Phone-local cadence differs from USB-driven sweeps: do not claim an absolute
+speedup versus the earlier32.399ms figure. No USB/server latency or energy measured.
+Cleanup PASS, boot unchanged, no worker remaining. Reversed-order20-repeat2160-call
+confirmation is now running locally on Pixel. No desktop queue remains and no
+longtail campaign process was stopped. M3 PIXEL_DENSE_LOCAL_RESULTS.md / SWEEP.json.
+
+## 2026-09-23 05:13 UTC - Pixel shader sweep running locally on the phone
+
+User clarified that kernel tests need only the Pixel. The earlier whole-rig
+lock wait was broader than necessary for this scope. Reused120 byte/hash-checked
+CPU references from the qualified confirmation run; prepared identical v6 input
+packets and phone-local netcat replay. The rig performs no model/reference compute.
+Worker execution time is measured internally; USB RTT and host/phone energy are
+not measured. All15 arms use the same local replay, with interleaved row8 controls.
+Cancelled only our waiting queue PID2282252 and its waiting flock child, guarded
+RUN.sh against a launch race; no campaign/phone worker was stopped. Initial local
+launch FAIL before calls: Android mksh fd9 was not inherited by flock. Explicit
+9>&9 fixed the preflight; retry is executing on Pixel, first7 arms completed with
+normal finite exits. Numerical/performance audit PENDING until raw outputs return.
+Phone-only lock and no-existing-worker checks retain per-device exclusivity.
+Evidence: M3 pixel_local_sweep.py and physical/pixel10pro-dense-local-1/run1/.
+
+## 2026-09-23 04:34 UTC - Pixel shader tests queued persistently per user direction
+
+Second 900-second lock attempt FAIL exit75, zero Pixel calls; the longtail
+treatment-2 still owns the shared rig. Its long idle interval ended around
+04:25 UTC and request streams resumed. User explicitly chose to keep Pixel
+tests queued and leave the campaign running. Detached queue PID2282252 now
+retries flock-w900 until acquired, runs the finite15-arm/1800-call sweep once,
+then audits raw outputs and timings. No repeat after a physical failure.
+Build/validation remain PASS; new shader correctness/speedup/server tokens
+NOT VERIFIED. All test libraries are isolated, production runtime unchanged.
+Evidence: M3 PIXEL_DENSE_GEMV_PLAN.md, physical/pixel10pro-dense-gemv-1/
+LOCK_ATTEMPT_2.json and QUEUE.py; rig QUEUE_EVENTS.jsonl and DONE.json.
+
+## 2026-09-23 04:00 UTC - Stale-projection abort fixed (ordering), treatment rerun queued
+
+Root cause (unit-reproduced, exact production error): the residency projection validator
+ordered queued work by lease start, but the queue dispatches in causal order
+(`runtime_queue._causal_ready`). Request 005 was REPLAN_REQUIRED; later arrivals
+(009..022) took its slot and list 005 as predecessor. 005's replan (no predecessors)
+correctly evicts Gemma gen 8, but the validator applied 009..022's swaps first
+(Gemma -> gen 16) -> "lacks current exclusive eviction" -> identical replan -> abort.
+(My Llama-overlay/two-residents guess was wrong.)
+
+Fix: `project_scheduler_residency(causal_predecessors=...)` orders each attempt no
+earlier than its queued predecessors (cycle -> error); queue exposes
+`projection_causal_predecessors()`; arrival + observation paths pass it. All checks
+still run; the stale dependent is now blamed and deferred -> repair progresses.
+Regression `test_replan_behind_later_arrival_evicts_projected_resident`; full suite
+1,797 tests pass (known flaky timing test aside). Deployed to the scheduler source only.
+Open risk: 005 can still be starved behind its own dependents (only pulled forward on
+a capacity-release wake) -> watch the rerun timeline for idle gaps.
+Rerun `run-treatment-2` queued on the rig lock behind the Pixel qualification run.
+
+## 2026-09-23 03:46 UTC - Pixel shader-body physical launch FAIL: lock timeout, zero calls
+
+The prescribed 900-second shared-lock wait exited75 while the longtail
+retreatment continued. No run1, RUN.log or DONE.json exists; no phone file
+was deployed by this attempt, no shader executed, and no tuning job remains
+queued. This is a blocked launch, not a measured kernel regression.
+Nine actual shader variants and27 validated SPIR-V modules are built PASS;
+Python checks and prior-audit regression checks PASS. Changes cover native
+F16 vector loads, unroll1/2/4/8, FP32 accumulator chains and lane mapping.
+The staged15-arm/1800-call test can resume under the lock using the existing
+fresh run1 path. New numerical correctness/performance/full-model outputs
+NOT VERIFIED. Prior qualified32.399ms full-worker result remains the best
+confirmed setting. Evidence: M3 PIXEL_DENSE_GEMV_PLAN.md and
+physical/pixel10pro-dense-gemv-1/LOCK_ATTEMPT.json. Original runtime untouched.
+
+## 2026-09-23 03:30 UTC - Pixel shader-body tuning build PASS; physical run waiting on shared lock
+
+User requested actual kernel modifications beyond launch constants. Nine
+bounded dense GEMV loop variants built: native f16vec4 weight loads, unroll
+1/2/4/8, independent FP32 accumulator chains2/4, eight elements per lane, and
+striped lane-to-column mapping. Same weight format and FP32 arithmetic; no
+prepacking or precision reduction. Reuses existing bindings/reduction/fusion.
+All27 SPIR-V modules validate; no Float16 arithmetic capability, no compiler
+warnings. Pyflakes PASS, historical four-sweep audits unchanged. Isolated
+library SHA4d2b7058688ecc253dc2d95b11e1e954314191f823538741c7479db6357ce37b.
+15-arm/1800-call sweep staged, with four current-best row8 controls and two
+original references. Waiting under flock-w900 while the longtail treatment
+retest owns the rig. No Pixel execution yet; correctness/performance/full
+model tokens NOT VERIFIED. Existing qualified selection remains unchanged.
+Evidence: M3 PIXEL_DENSE_GEMV_PLAN.md, pixel_dense_gemv.glsl,
+build_pixel_dense_gemv.py and software/pixel10pro-dense-gemv-v1/.
+
+## 2026-09-23 03:08 UTC - Pixel selected kernel real-server qualification PASS
+
+Selected 128-thread / 128-lane / 8-output kernel passed all 4 x 64 generated
+tokens against desktop controls. Raw SSE token audit, per-layer call coverage
+and energy recomputation PASS; 744 measured phone calls (372 half, 372 full).
+Half/full phone worker means 19.848/28.642 ms, RPC 24.707/33.239 ms.
+Desktop mean decode 39.360 s vs half/full 42.637/45.398 s (+8.326%/+15.340%).
+Host CPU+GPU request energy 4935.632 J controls vs 4364.318/4322.180 J phone
+(-11.575%/-12.429%). One short request per split; phone energy unmeasured.
+This does not isolate tuned-vs-original server performance. Confirmed kernel
+improvement is the reversed-order synthetic result: 33.098 -> 32.399 ms,
+2.111% lower, with all 1680 confirmation outputs exact. All 4920 sweep calls
+passed CPU checks. Production default unchanged; isolated selected build and
+configuration are reusable. Worker/server exited 0, finite completion calls
+outside measurement, forward removed, boot unchanged; postrun cleanup PASS.
+Evidence: M3 PIXEL_KERNEL_TUNING.md, PIXEL_GEMV_SELECTED.json,
+PIXEL_GEMV_SERVER.json and physical/pixel10pro-gemv-server-1/.
+No full-trace, multi-phone integration, or large speedup claim. No jobs queued.
+
+## 2026-09-23 02:55 UTC - Pixel kernel confirmation PASS; full FFN latency reduced2.111%
+
+Reversed-order20-repeat confirmation completed1680 phone calls, every output
+byte-identical to the original. Raw-output/count/timing/determinism audit PASS;
+CPU max relative L2 0.000325483. Each arm has108 warm calls per width across
+six layers.128-thread/128-lane/8-output configuration full worker32.399ms
+vs33.098ms matched surrounding controls,2.111% lower; half18.397ms vs18.535ms,
+0.743% lower.4-output alternative full32.601ms (1.499% lower) and half18.711ms
+(0.950% slower).8-output selected for isolated real-server validation.
+Cleanup PASS, normal finite exits, no forwards/workers remaining, boot unchanged.
+Evidence: M3 PIXEL_GEMV_CONFIRM.json and physical/pixel10pro-gemv-confirm-1/.
+Total synthetic sweep calls4920, all CPU checks PASS. No production default,
+full-model token, or energy improvement claim for the tuned kernel yet.
+
+## 2026-09-23 02:51 UTC - Pixel subgroup sweep numerical PASS; smaller subgroups regress
+
+All1320 phone calls passed CPU checks, max relative L2 0.000325483; raw output
+and repeat-determinism audit PASS. Smaller subgroup32/64 variants full means
+36.563-39.861ms vs controls33.409/33.236/33.006ms. Existing128-thread,
+128-lane,8-row setting repeats at32.063ms,exact outputs vs stock. No precision
+change. Cleanup PASS, boot unchanged, all finite workers exit0. Evidence:
+M3 PIXEL_SUBGROUP_SWEEP.json and physical/pixel10pro-subgroup-tune-1/run1/.
+Longer reversed-order r4/r8 confirmation running; server verification next.
+
+## 2026-09-23 02:45 UTC - longtail_v1 baseline PASS; phone-assisted treatment FAIL (scheduler)
+
+| run | status | duration | host kJ (CPU+GPU) | host W |
+| --- | --- | ---: | ---: | ---: |
+| baseline (desktop-only) | PASS 31/31 | 4,901 s | 523.7 (367.6+156.1) | 106.9 |
+| treatment (energy-aware, OP15) | FAIL at ~19 min | - | - | - |
+
+Treatment error: `runtime stale projection repair made no progress`, request 005
+(Qwen hot -> desktop while Gemma resident; route flipped residency:hot -> :cold),
+`projected transition lacks current exclusive eviction: desktop-cpu`. desktop-cpu held
+Gemma + the Llama overlay; overlay-01 and 005 were planned at the same replay instant
+(784.76 s). Rig cleaned up (no host procs, OP15 idle, lock free). First attempt earlier
+failed in 8 s on my wrong trace inventory keys (role ids); fixed + builder guard.
+Root cause under investigation (offline, no hardware). Inputs:
+`/home/zhihao/s42-trace-longtail-{baseline,treatment}-20260923-inputs`.
+
+## 2026-09-23 02:42 UTC - Pixel graph-order sweep numerical PASS; performance FAIL
+
+All600 phone calls passed CPU tolerance (max relative L2 0.000325483), raw
+output/determinism audit PASS. Four-line existing-optimizer call did not help:
+full FFN33.321ms vs33.055ms surrounding controls,0.804% slower. Quantum8704
+with original/reordered graphs33.882/33.886ms (2.502/2.514% slower). Graph-order
+candidate rejected for performance and retained as isolated evidence.
+Cleanup PASS, no in-flight workers/owned forwards, boot unchanged. Evidence:
+M3 PIXEL_GRAPH_SWEEP.json and physical/pixel10pro-graph-tune-1/run1/.
+Next experiment varies subgroup width32/64/128 independently of workgroup
+size, reusing the same shaders and FP32 accumulator. No server/energy claim.
+
+## 2026-09-23 02:39 UTC - Pixel GEMV sweep PASS numerical; best exploratory latency reduction3.13%
+
+All1320 phone calls (11arms x120) passed CPU checks, maximum relative L2
+0.000325482692; repeat determinism and saved-output audit PASS.
+No profiler used. Controls full-width means32.856/33.448/33.287ms. Candidate
+means: w128r1=35.135, w256r2=38.347, w128r4=32.320, w512r2=56.604,
+w128r8=32.322, w512r4=55.790, quantum8704=33.855ms. Best normalized reduction
+3.135% for w128r8 vs surrounding controls; not yet confirmed. Kernel row4/8
+outputs exact vs original. Larger workgroups and larger blocks regress.
+Cleanup PASS, finite exits, unchanged boot. Evidence: M3 PIXEL_GEMV_SWEEP.json
+and physical/pixel10pro-gemv-tune-1/run1/. Graph-only sweep running next.
+No full-model token or energy claim; no production promotion.
+
+## 2026-09-23 01:24 UTC - Pixel tuning physical launch FAIL: shared lock timeout, zero calls
+
+The prescribed flock -w900 wait exited75; run1/, RUN.log and DONE.json are
+absent. The other session remains in the long-tail desktop baseline. No
+Pixel command from the tuning harness ran, so correctness and latency are
+NOT VERIFIED. No tuning process remains queued. Evidence:
+M3 physical/pixel10pro-gemv-tune-1/LOCK_ATTEMPT.json and archive hashes.
+Kernel build PASS (six workgroup/row settings plus independent quantum8704
+candidate prepared). Separate graph-order build PASS with -Werror: four
+added C++ lines call the existing backend optimizer before tensor allocation.
+It groups independent graph nodes using the existing Vulkan implementation;
+performance benefit is unmeasured. Worker SHA256
+6190b96d65a10cbf4b336c11eeeb19eddb61a03bb6773db96a7ca46540f1fd6a.
+The graph-order worker remains local and untested. Graph-only five-arm config
+and shared harness prepared; server harness accepts explicit phone environment
+settings for eventual winner verification. Pyflakes PASS on all four changed
+Python files. Production worker/backend hashes still match prior qualification.
+Next physical action: rerun the staged kernel RUN.sh under the shared lock;
+if it passes, audit raw outputs with analyze_pixel_gemv.py and test graph-order
+and the winning combination in fresh output/phone directories. Full-model
+output tokens and energy require a later server check. No new speedup claim.
+
+## 2026-09-23 01:09 UTC - Pixel GEMV tuning build PASS; physical sweep pending rig lock
+
+Isolated opt-in F16/F32 one-row GEMV tuning library built from the qualified
+Vulkan source. 31 changed C++ lines specialize workgroup size128/256/512 and
+rows1/2/4/8; the existing subgroup/hybrid shaders and FP32 arithmetic remain.
+All132 reused shader-object hashes match. Library SHA256
+89a04a4ad91ea51a1448524eeb6a41ee9febac132ad719ed1a69826ab9976865.
+Build log has no warnings; builder/harness pyflakes PASS. Production backend,
+worker and qualified phone runtime unchanged. Six kernel settings, a rebuilt
+default, original quantum8704, and three original controls planned: 11 phone
+arms x120 calls across layers18-23 and widths8704/17408, first2 repeats warmup.
+No profiler in timing arms. CPU tolerance0.01, unchanged controls must be exact.
+Sweep staged at /mnt/storage/s42-pixel10pro-gemv-tune-20260923-v1 and waiting
+under flock -w900; another session holds the shared lock for the long-tail
+baseline/treatment pair. No tuning phone worker or measurement started.
+Performance/correctness on Pixel, full-model tokens and energy NOT VERIFIED.
+Evidence: M3 build_pixel_gemv_tune.py, tune_pixel_gemv.py,
+PIXEL_GEMV_SWEEP_CONFIG.json, software/pixel10pro-gemv-tune/.
+
+## 2026-09-23 00:29 UTC - Pixel intact FFN per-operation profile PASS
+
+Final run finished00:29:16 under shared lock. All384 phone outputs exact
+across controls/fused/unfused profiles; CPU max relative L2 0.000325483.
+One logging-only Vulkan line adds node names; all132 shader objects reused.
+Full-width unfused GPU interval means per call: input cast0.665ms,gate2.491,
+up2.644,SwiGLU0.550,down1.808,add0.478,output cast0.018. Matrix effective
+rates17.888/16.855/24.650GFLOP/s. 36 warm FFN calls/width across6layers.
+Fused full-width GPU interval total32.594ms; unfused32.089ms. Normal worker
+control mean32.628ms vs profiled48.527-48.567ms (+48.7-48.9%); timestamp
+intervals include barriers/scheduling, not pure shader time or an exact
+normal-worker partition. Short half-width down intervals not treated as peak.
+Cleanup PASS, boot unchanged, no owned workers/forwards. No production source,
+shared deployment, phone energy or server-token change. Evidence: M3 README,
+PIXEL_FFN_NAMED_PROFILE.json, physical/pixel10pro-named-profile-1/.
+
+## 2026-09-23 00:23 UTC - Pixel isolated per-operation retry PASS; overhead limits interpretation
+
+Existing Vulkan timestamp/barrier/fence path enabled for each graph slice.
+All384 phone calls exact across four arms, CPU max relative L2 0.000325483;
+all1536 op records validated. Full-width isolated gate/up/down intervals
+5.180/5.269/5.403ms. Separate synchronization raises worker from32.869ms
+(control mean) to126.614ms, +285.209%; use as cross-check only. Half worker
+19.356->66.036ms. Cleanup PASS, boot unchanged, finite exits0, no forwards.
+Worker Werror build/pyflakes PASS. Evidence: PIXEL_FFN_OP_PROFILE.json and
+physical/pixel10pro-op-profile-2/. Intact graph profiling follows.
+
+## 2026-09-23 00:22 UTC - Long-tail trace built; full test runner repaired
+
+New trace `burstgpt_longtail_v1` (desktop `/mnt/storage/burstgpt-source/longtail_v1`).
+Selection rule (new `--long-tail-threshold 512 --long-tail-tolerance 0.05` in
+`build_realistic_trace.py`): FIRST 30-min window in scan order whose share of
+requests AND of output tokens with source output >512 each lie within 5 pts of
+the whole log -> representative, not cherry-picked.
+
+| | log (224,478 rows) | longtail_v1 | longdecode_v1 |
+| --- | ---: | ---: | ---: |
+| requests >512 out | 18.6 % | 16.1 % (5/31) | 0 |
+| output tokens in them | 49.3 % | 49.4 % | 0 |
+| max output | 2049 | 1100 (1 clipped of 1164) | 472 |
+
+31 requests (16 Qwen, 12 Gemma, 3 Llama overlay), span 1,579 s, 23,604 prompt /
+8,207 output tokens, caps 2048/1100, max prompt+output 2,954 <= 4,096/seq.
+validate_trace PASS; 715/737 in-range windows carry some tail, so longdecode_v1's
+472 max was its window, not the log. Not yet run: inputs dirs + preflight need the rig.
+
+Cleanup: pyflakes clean (scheduler + report tools). `tests/run_all.py` was
+stopping at file 7 (fixture module test_automated_runtime.py has no tests ->
+exit 5); now skips test-less modules, runs relative-import tests as modules,
+reports every failing file. Full suite: 127 files, 1,795 tests, all pass except
+flaky timing budget `test_cached_synthetic_refinement_is_below_ten_milliseconds`
+(10.03 ms vs 10 ms, 1 of 3 reruns fail on the shared host; budget left unchanged).
+
+## 2026-09-23 00:18 UTC - First Pixel isolated per-operation profile FAIL; cleanup PASS
+
+Ordinary graph_compute on individual node views failed all96 CPU numerical
+comparisons, max relative L2 46.418; original/named normal controls passed.
+Timings rejected. Worker exited normally after finite budget. Removed only
+owned adb forward tcp36157 under flock; boot unchanged, no FFN worker.
+Dependency tracking resets at graph boundaries; exact visibility/fence cause
+not proven. Retry uses existing Vulkan timestamp/barrier/fence path.
+Evidence: physical/pixel10pro-op-profile-1/ASSESSMENT.json and raw run.
+
+## 2026-09-22 22:33 UTC - Complete FFN shape/count audit PASS for 96 captured calls
+
+All48 half-width and48 full-width GPU-profile requests match matrix shapes
+and counts. Full-width physical calls:2 casts,8 gate/up GEMVs,4 SwiGLU,
+1 plain down,3 fused down-plus-add. Half-width:2/4/2/1/1 respectively.
+Source confirms input/output casts [5120,B], gate/up and SwiGLU [4352,B],
+down/partial sums [5120,B]; B=1 in this profile. SwiGLU separate inputs
+preserve4352 width. F16 weights/wire, F32 intermediates. RMSNorm and residual
+addition stay on server with [5120,B] activations; no split-path biases.
+No new physical run or tensor dump. Evidence: M3 PIXEL_FFN_SHAPES.json
+with source hashes and complete operation manifest, plus README audit.
+
+## 2026-09-22 22:27 UTC - Pixel matrix shapes and precision audit PASS
+
+Actual weight-first GEMV shapes per block: gate/up [4352,5120]*[5120,1]
+and down [5120,4352]*[4352,1]. Four blocks/full FFN -> 12 GEMVs;
+two blocks/half -> 6. Resident layers18-23 execute separately, not as N=6.
+Logical full width is17408. Weights F16, graph activations/intermediates and
+shader float/vec4 arithmetic F32; output wire F16. No matrix-core path.
+Each block projection:44,564,480 FLOPs and42.5MiB weights, ~1FLOP/byte.
+Full510MiB/29.464ms implies18.150GB/s effective weight throughput, not a
+DRAM-counter measurement or a ceiling. Low reuse explains why GEMM peak
+is an unsuitable comparison, but the exact memory/dispatch/driver bottleneck
+is unverified. No new hardware run. Sources: worker build_graph, Vulkan
+shader generator/mul_mat_vec.comp, captured worker log; M3 README audit.
+
+## 2026-09-22 22:20 UTC - Pixel kernel-rate arithmetic PASS; optimization candidates unverified
+
+From the existing phone-stage profile, one full-width FFN/row costs
+6*5120*17408 = 534,773,760 matrix FLOPs (two per multiply-add).
+Gate/up 22.413 ms = 15.907 GFLOP/s, down 7.051 ms = 25.281 GFLOP/s,
+all matrix intervals 29.464 ms = 18.150 GFLOP/s. Separate stage-only worker
+33.168 ms gives 16.123 GFLOP/s. Instrumented diagnostic rates, not hardware
+peak; profiler raised observed full-width worker time 15.7%.
+
+Small next experiment: column quantum 4352->8704, four->two full-width blocks;
+each weight matrix 85 MiB fits the captured 128 MiB Vulkan buffer range.
+Source finding: direct worker graph_compute skips the graph-optimization hook
+invoked by the backend scheduler. Graph reordering and PowerVR GEMV tuning
+are candidates, not measured gains. Local shader already has vector loads.
+Prior six-layer qualification measured batch4 worker 70.100 ms, 17.525 ms/row
+versus batch1 29.807 ms, 41.204% lower per row with higher call latency.
+No new code/hardware run/energy/token claim. Evidence: M3 README and
+PIXEL_KERNEL_GFLOPS.json with input hashes and exact arithmetic.
+
+## 2026-09-22 22:00 UTC - Status check; correction to my v73 buffer-limit note; one undiagnosed Task 1 failure
+
+Correction: my 2026-09-21 note that raising `HTP_OP_MAX_BUFS` to 64 was "host-side only" was wrong. The DSP
+mapping table stayed at 16 slots, so the raise turned a clean host assert into a silent zero-base weight load,
+and my "NULL DMA descriptor chain" diagnosis misread that fault. The 18:15 UTC repair (DSP capacity tied to 64,
+reuse mask, eviction, fatal guards) is the real fix; the M3 checklist now says so.
+
+Not in the status line: `s42-trace-v2a-m4a8b-20260922-inputs/run-treatment-2` (helper-identity fix plus the
+launcher startup-marker wait) ended 16:33 UTC with `physical_execution_control_failed` at 29 of 31 streams, after
+11,088 phone rows (1,404 two-row, 126 three-row calls). No RESULT.json; cause not diagnosed. It is the third
+distinct Task 1 failure mode after the tail proof and the startup-marker race.
+
+## 2026-09-22 21:58 UTC - Pixel phone-internal FFN latency profile: PASS
+
+New bounded run ended 21:55:50 UTC under the shared lock. CPU reference plus
+four Pixel arms (original, stage timers, GPU profiler, original), 96 calls
+each; all 384 Pixel outputs bit-identical across arms and repeats. CPU max
+relative L2 0.000325483. Six resident Qwen layers 18-23, one row, half/full
+columns interleaved, 36 warm samples per width per arm after discarding two
+repeats. Same runtime hashes as the earlier server test.
+
+Stage-only means, half/full ms per layer: setup 0.158/0.240, input write
+0.007/0.007, execution plus synchronization 18.755/32.646, output read
+0.287/0.275, total 19.207/33.168. Execution is 97.644%/98.425% of phone
+worker time. GPU timestamp diagnostic: matrix-vector intervals total
+14.966/29.464 ms (79.878%/89.797% of GPU timestamps), activation 3.058/2.654,
+conversion 0.712/0.694. Timestamp total 18.736/32.812 ms; profiler increases
+worker duration 29.952%/15.700% against bracketing control means, so do not
+combine its operator timings with the stage-only arm as an exact partition.
+Stage-only worker differs +3.211%/+0.440% from control means; clocks/thermals
+uncontrolled. This is a synthetic-activation microbenchmark, not a rerun of
+the previous server request or an energy result.
+
+Isolated diagnostic worker adds stage timestamps and one per-call log;
+production worker/server sources and binaries unchanged. Werror build,
+pyflakes, all stage sums, response totals, output hashes and source identities
+PASS. Finite exits 0, owned forwards removed, no Pixel FFN worker, boot unchanged.
+Evidence: M3 PIXEL_PHONE_STAGE_BREAKDOWN.json, physical/pixel10pro-profile-1/,
+software/pixel10pro-profile/ and profile_pixel_ffn.py/analyze_pixel_profile.py.
+
+## 2026-09-22 21:34 UTC - Pixel server time and overlap explanation: PASS
+
+Existing run6 analysis, no new run. For 64 outputs at half/full columns,
+remaining server decode time is 35.879/32.773 s plus measured phone join
+wait 6.189/12.705 s = 42.068/45.478 s. Remaining time includes local CPU/GPU
+work and runtime overhead; it is not a pure kernel timer. Pixel already uses
+the asynchronous FFN client thread, as OP15 does. Half-column host work is
+9.580 ms per layer versus 26.026 ms phone RPC; the unmatched phone tail is
+exposed. Full columns leave no local FFN branch. Qwen's next layer consumes
+the combined output, so unrelated later-layer work cannot hide this wait
+within this one-slot test. Sources: llama-graph.cpp build_dense_ffn_split,
+models/qwen3.cpp, ffn-split-client.cpp worker_loop/eval callback.
+
+Pixel worker rate: 47.489/34.035 layer calls/s, or 126.345/176.288 ms for
+the six selected FFNs per assisted token. Effective matrix throughput
+12.698/18.201 GFLOP/s from 6*5120*columns / worker duration; excludes
+non-matmul FLOPs and includes setup/copies in duration, not GPU peak.
+Whole-model decode 1.521/1.407 tokens/s vs desktop 1.663. No matched
+Pixel-versus-OP15 run or pure GPU timing added. Evidence: M3 report and
+PIXEL_SERVER_LATENCY_BREAKDOWN.json derived_server_and_pixel_rates.
+
+## 2026-09-22 21:26 UTC - Pixel six-layer latency accounting: PASS
+
+Derived from existing run6; no hardware rerun. Mean per-call half/full ms:
+worker 21.058/29.381, outside-worker round-trip cost 4.968/4.605,
+RPC 26.026/33.987, concurrent host branch 9.580/0.014,
+exposed wait 16.637/34.153, launch-to-join 26.217/34.167.
+372 calls per split, six calls per assisted token. Host branch plus wait
+matches launch-to-join within log rounding. Six-layer launch-to-join totals
+157.300/205.003 ms per assisted token. Control mean/half/full request
+41.188/44.702/48.164 s; decode 38.494/42.068/45.478 s.
+Worker timer includes graph setup and GPU buffer copies, not pure kernels;
+outside-worker cost combines transport and runtime, not pure USB wire time.
+Initial host tensor extraction/final publication and one-way transfers are
+not separately timed. Full request timing includes these costs. Startup
+excluded; one sample per split and two controls. Source hashes and arithmetic
+saved in reports/20260922-fast-path-M3/PIXEL_SERVER_LATENCY_BREAKDOWN.json.
+
+## 2026-09-22 21:09 UTC - Pixel GPU assists real Qwen server on six layers: PASS
+
+Run6 completed21:07:50, all4x64 outputs token-identical.744 native phone calls,
+372 each for50%/100% columns on layers18-23; ack token2,62calls per layer.
+Independent raw-SSE, per-layer coverage and raw-power integration audits PASS.
+Host request J: control4800.048,half4329.807,full4305.035,control4892.714.
+Against control mean4846.381J:10.659% half and11.170% full saving. Decode
+energy saving10.975%/11.629%; decode duration+9.242-9.324%/+18.099-18.187%.
+Half split is the better measured latency tradeoff for nearly the same saving.
+One prompt,one sample per split,two bracketing controls; no repeatability/full
+trace/25% claim. Pixel energy unmeasured. No automatic scheduler or two-phone
+integration. GPU path needs no Tensor SDK. CPU/Vulkan numerical qualification
+all6layers72calls/168rows PASS,max relative L2 0.000326951.
+
+Cleanup PASS21:09:03: server/worker exit0,24 filler calls outside measurement
+complete finite768-call budget, no owned workers/servers/forwards, boot same,
+USB5000M. OP15/shared server/scheduler/kernel/settings unchanged. Source change
+is only coalesced TCP response packing in ffn-split-worker.cpp, isolated Pixel
+binary. Werror build, pyflakes, identity/hash checks PASS. Run5 startup failure
+retained (port guard checked closing sockets); fresh-port/listen-only retry
+passed. Evidence reports/20260922-fast-path-M3/README.md, physical/
+pixel10pro-server-1/SIX_LAYER_AUDIT.json, run6-six-layer-server/ and CLEANUP.json.
+
+## 2026-09-22 21:04 UTC - Six-layer Pixel server startup guard corrected; retry pending
+
+Run5 FAIL before starting any worker/server: phone port26978 reported occupied
+immediately after finite qualification. The guard rejected all TCP states,
+including closing/TIME_WAIT connections; changed it to reject LISTEN sockets
+and save socket/process inventory. Exact socket state at failure was not saved;
+TIME_WAIT is plausible, not confirmed. Later inventory has no matching socket
+or FFN worker. Retry uses fresh port26982/output run6 under the shared lock.
+No phone process killed or system settings changed. Pyflakes PASS.
+
+## 2026-09-22 21:01 UTC - Pixel six-layer GPU qualification PASS
+
+All Qwen layers18-23 resident together,3060MiB F16 weights,quantum4352,
+coalesced replies.72calls/168rows at1/2/4rows; maximum relative L2
+0.000326951, repeat outputs exact, normal exits/forward cleanup. Median
+round trips33.673/48.526/77.804ms,18 warm samples per row count across6layers.
+This extends residency and per-layer numerical coverage, not server energy.
+Evidence physical/pixel10pro-server-1/run4-six-layer-qualification/.
+
+## 2026-09-22 20:58 UTC - Real llama.cpp server using Pixel GPU FFN PASS
+
+Layer18 at50%/100% columns, two bracketing host controls,64outputs each:
+all4 streams exact.124 phone calls,62 per split, policy ack token2; per-layer
+coverage and raw power integration independently audited PASS. Measured host
+request energy J: host4803.106,50%4739.356,100%4628.738,host4870.426.
+Full split saving3.630-4.962% against individual controls,4.301% against mean;
+decode energy saving2.816-5.164%,mean4.004%; decode time+2.062-2.791%.
+Half split mean request saving2.014%,decode1.607%,decode time+1.410-2.134%.
+One sample per split, first control prefill colder (4.305 vs2.63-2.64s).
+Not a trace result, not a statistical estimate; Pixel energy unmeasured.
+Server/worker exited0, four filler calls outside measurement consumed finite
+budget, owned forward removed, boot unchanged. Server/scheduler binary unchanged.
+Evidence physical/pixel10pro-server-1/run3-server/ and ONE_LAYER_AUDIT.json.
+
+## 2026-09-22 20:55 UTC - Pixel Vulkan server comparison started
+
+User requested Pixel GPU FFN assistance. Existing native server TCP client
+supports an isolated Pixel-only helper without scheduler integration changes.
+Bounded run uses Qwen3-14B F16 parent, GPU16/CPU24 layers, layer18 eligible,
+256 prompt tokens and64 greedy outputs. Sequence: host,50% columns,100%
+columns,host. Runtime policy changes at the first output callback; dormant
+release guard retained. Host RAPL/NVML measured, Pixel energy unmeasured.
+Run3-server pending under shared flock at /mnt/storage/s42-pixel10pro-server-20260922-v1.
+No OP15, kernel, shared server binary or scheduler deployment change.
+
+## 2026-09-22 20:51 UTC - Pixel FFN coalesced TCP response PASS
+
+Small worker correction packs response header/payload into one reusable frame;
+protocol bytes unchanged. Isolated Android Vulkan build with Wall/Wextra/Werror
+PASS. At quantum4352, layer18, rows1/2/4:12calls/28rows PASS, max relative L2
+0.000311957, repeats exact, all12 outputs bit-identical to original reply worker.
+Median round trip35.008/44.600/78.942ms; worker30.736/39.113/70.054ms.
+One-row outside time falls43.701->4.293ms. Three warm samples per row count;
+multi-row differences are not a controlled thermal/frequency result. Native
+change is local examples/layersplit/ffn-split-worker.cpp, deployed only in a
+new isolated Pixel directory. New qualification receipts bind the binary;
+production FunctionFS path and shared server build unchanged. Finite exits0,
+forward removed, boot unchanged. Server tokens/energy pending.
+
+## 2026-09-22 20:48 UTC - Pixel Vulkan larger FFN blocks PASS
+
+Existing worker flag column-quantum4352 reduces layer18 weight blocks34->4
+while retaining all17408 columns (510MiB).12calls/28rows against same-quantum
+CPU: maximum relative L2 0.000311957, repeats exact, normal exits0. Median
+phone compute27.007/43.289/65.360ms at1/2/4rows, versus previous512-column
+blocks59.600/95.484/188.701ms. TCP medians67.663/49.669/73.835ms; one-row
+outside time43.701ms remains. Single short qualification, no energy claim.
+Evidence for these arms: reports/20260922-fast-path-M3/physical/pixel10pro-server-1/.
+
+## 2026-09-22 20:38 UTC - Pixel FFN TPU feasibility and compiler prerequisite
+
+User asked to use Pixel for server FFN assistance like OP15. Reviewed the
+existing protocol-v6 and worker graph: resident column slices, SwiGLU and a
+partial down-projection result fit the same server split. Documented a first
+Qwen layer18/tail512-column/one-row TPU qualification, followed by full17408
+columns and every row count1..4 before server admission. No implementation or
+physical run in this review. Existing Vulkan FFN functional PASS and TPU add
+round-trip PASS remain distinct; actual Qwen TPU, server tokens and energy
+NOT RUN. Google docs confirm Tensor G5 AOT support, no on-device JIT, and
+SDK beta access for compilation; the user has no SDK installed. Provided the
+access link, did not submit a form. Full multi-phone integration remains
+deferred. Details: reports/20260922-fast-path-M3/README.md, Pixel FFN TPU path.
+
+## 2026-09-22 19:58 UTC - Pixel TPU round-trip PASS; reply framing removes large delay
+
+User requested TPU round trip and confirmed no Tensor SDK installed. Public
+LiteRT2.2.0 and Google precompiled P25 add permit real TPU testing without the
+compiler. All1/1 graph nodes delegated through GoogleTensor/edgetpu runtime,
+NPU-only flags, AHWB buffers; CPU/GPU fallback not selected. This is128-element
+float32 add, 1024 input/512 output bytes, not Qwen FFN or protocol-v6 payloads.
+
+A/B/A three60-call arms, ten warmups each: PASS180/180 mathematically exact
+outputs, exact repeats, matched input hashes and binary/runtime/model hashes.
+Median invocation/worker/outside/round-trip ms:
+A split reply3.140/3.746/46.334/50.003, p90RT53.008;
+B one response write1.356/1.689/2.870/4.666, p90RT5.203;
+A original binary again3.082/3.649/46.258/50.070, p90RT52.957.
+B mean additive stages: TPU runtime1.499 + buffers0.332 + outside2.863 =4.694ms.
+Reply packing effect reproduced; exact TCP/ADB delayed-ACK/buffering mechanism
+not packet-traced. Production FFN TCP worker also splits writes around2107;
+coalescing there is a follow-up candidate, not changed or tested here.
+
+Cleanup PASS19:58:34: finite normal exits, owned forwards removed, boot same,
+no root/kernel/settings/shared deployment change. Qwen TPU compilation blocked
+by missing compiler SDK; FFN TPU, energy, Wi-Fi, full tokens and integration
+NOT VERIFIED. Evidence: reports/20260922-fast-path-M3/README.md,
+PIXEL10PRO_TPU_ASSESSMENT.json, physical/pixel10pro-tpu-1/, software/pixel10pro-tpu/.
+
+## 2026-09-22 19:52 UTC - Pixel TPU standalone smoke PASS
+
+Public Google precompiled P25 float32 add, real TensorG5 TPU via LiteRT2.2.0.
+20 calls/20 correct, normal exit. Warm median invocation1.625ms, complete
+phone worker1.836ms; USB round trip not yet measured at this milestone.
+NNAPI inventory19:48 PASS found google-edgetpu type4/version2.0, but standard
+FP32 add support FAIL (supported0); no CPU result substituted. Isolated
+Android API31 builds with Wall/Wextra/Werror PASS. No Qwen AOT compiler installed.
+
+## 2026-09-22 19:26 UTC - Pixel 10 Pro FFN qualification PASS; latency improvement FAIL
+
+User connected Pixel10Pro 5A040DLCH004ES. TensorG5, Android16, PowerVR Vulkan,
+USB negotiated5000M; OP11 disconnected, OP15 still present. Isolated Vulkan
+worker, no root/kernel/shared deployment changes. Qwen layer18, 17408 columns,
+quantum512, F16, rows1/2/4: 12 calls/28 rows, max relative L2 0.000311882,
+exact repeats, identity/hash checks PASS, normal worker exits. Median Pixel
+worker/round-trip ms: 1row59.600/103.110, 2rows95.484/142.184,
+4rows188.701/201.093. Same-layer/input OP11 NPU round trips20.673/63.005/77.991.
+Latency improvement FAIL; GPU cost is substantial despite faster USB.
+Three warm samples per row count, not a sustained benchmark. Cleanup PASS:
+no owned worker/forward, boot unchanged, isolated artifacts retained. Tensor
+TPU, Wi-Fi (no IPv4/route), full tokens, energy and integration NOT VERIFIED.
+Tensor SDK supports G5 but separate LiteRT AOT conversion/backend work is needed.
+Evidence: reports/20260922-fast-path-M3/PIXEL10PRO_QUALIFICATION_ASSESSMENT.json,
+README.md, physical/pixel10pro-vulkan-1/, software/pixel10pro-vulkan/.
+
+## 2026-09-22 19:24 UTC - Pixel tiny Vulkan FFN PASS after caller correction
+
+12 calls/28 rows, max relative L2 0.000329620, exact repeats, normal exits.
+First attempt FAIL before any Pixel worker launch: artifact argument lacked
+required sha256: prefix and CPU rejected CLI. Corrected command passed with
+new output directory. No force kill or phone reboot. This fixture alone did
+not establish full-size Qwen performance or correctness.
+
+## 2026-09-22 19:21 UTC - Pixel isolated Vulkan build PASS
+
+Android arm64/API28 worker built using NDKr28b, Vulkan, no OpenMP or Hexagon.
+Initial setup failures were missing pocs source subtree and SPIR-V include
+path; corrected only in isolated build. No production Vulkan code change.
+Extended existing qualification harness phone label/backend/runtime hashes;
+local CPU fixture12calls/28rows zero error and pyflakes PASS. Physical Pixel
+qualification pending at this milestone; no TPU result inferred from drivers.
+
+## 2026-09-22 18:15 UTC - OP11 NPU fix qualification PASS; Wi-Fi comparison unavailable
+
+Mapping fix on normal DMA, HMX disabled, unsigned PD and stock kernel.
+Four-layer physical run finished 18:11:29 UTC: Qwen 18-21, rows 1/2/4,
+48 phone calls, 112 rows, max relative L2 0.000167056 (0.016706%, limit 1%),
+max NMSE 2.791e-8, zero failing rows, bit-exact repeats, identities/hashes PASS.
+CPU and phone exit 0. Mean NPU worker/outside/total ms per layer:
+1 row 15.892/34.017/49.909; 2 rows 18.268/44.856/63.124;
+4 rows 31.451/39.234/70.685. Compared with earlier OpenCL totals
+69.084/4751.136/4749.556 ms: 1.38x/75.27x/67.19x faster.
+Median NPU totals 59.622/63.301/77.097 ms; CPU 18.155/18.881/19.639 ms.
+
+Root cause: host buffer limit 64 but DSP mapping slots 16; mmap_buf silently
+left later bases zero. Retained fix ties limits, uses a 64-bit reuse mask,
+evicts on slot pressure and rejects invalid/exhausted mapping operations.
+DMA allocation null checks/partial cleanup also corrected. Removed the failed
+synchronous-copy workaround. Local actual-function regression reproduces
+old 16-slot failure and passes at 64, including bit63, eviction and guards;
+v73/v81 DSP builds, native harness, pyflakes/shell/diff checks PASS.
+v81 physical behavior and DMA allocation-failure injection NOT VERIFIED.
+
+Wi-Fi NOT MEASURED: OP11 has no wlan0 IPv4 or route, awaiting user network
+connection. Large outside-worker delay is not proven to be raw USB time.
+No OP11 worker, ADB forward or queued job remains; boot unchanged. Isolated
+new phone bin only, DSP sha 0025a0e4...; OP15/shared deployment untouched.
+Full-model tokens, layers22-23 numerics, all-six residency, two-phone scheduler
+integration and energy NOT VERIFIED. Full M3 integration still deferred.
+Evidence: reports/20260922-fast-path-M3/README.md, NPU_QUALIFICATION_ASSESSMENT.json,
+NPU_LATENCY_BREAKDOWN.json, physical/op11-v73-mmap-1/ and software/op11-v73-mmap/.
+
+## 2026-09-22 18:10 UTC - OP11 first NPU mapping-fix test PASS
+
+Qwen layer18, rows1/2/4: 12 calls, 28 rows, max relative L2 8.363e-5,
+max absolute error 0.00390625, repeats bit-exact, both workers exit0.
+Normal user DMA works after expanding DSP mapping slots to match the host
+64-buffer batch limit. Median worker 16.308/18.517/32.054 ms, round-trip
+20.673/63.005/77.991 ms. This single-layer result alone does not establish
+full-model correctness, two-phone integration or energy savings.
+
+## 2026-09-22 18:06 UTC - OP11 non-DMA diagnostic FAIL; zero-address weight load located
+
+User requested NPU repair and Wi-Fi assessment after qualification-only scope.
+Built isolated v73 synchronous-HVX-copy candidate with fatal DMA allocation
+checks, HMX disabled. One-layer startup aborted134 before measured calls.
+Logcat BadVA0 at dma_queue_push_sync+0xc0; objdump identifies vector source
+load. This rules out a DMA-only explanation for this attempt. Inspection
+found DSP mapping table still16 despite host maximum64; exhausted mmap_buf
+silently leaves base0. Candidate retained as evidence, removed from working
+source in favor of mapping fix. No phone reboot, forced kill or OP15 change.
+Artifacts physical/op11-v73-sync-1/ and software/op11-v73-sync/.
+
+## 2026-09-22 16:47 UTC - OP11 phone-path latency decomposition from existing receipts
+
+Analyzed the same 12 warm calls per row count; no new hardware run. Arithmetic
+means (worker / outside-worker / total ms): N=1 24.349 / 44.735 / 69.084;
+N=2 4746.182 / 4.954 / 4751.136; N=4 4742.482 / 7.074 / 4749.556.
+Worker time includes graph setup, input upload, OpenCL execution and output
+download; it is not a pure GPU-kernel timer. Outside-worker time includes
+ADB/TCP/USB both ways, validation/copy/hash and scheduling. Finer stage times
+NOT VERIFIED. Single-row overhead is 64.754% of total; N=2/4 worker share
+99.896%/99.851%. Payload 10/20/40 KiB each way. Detailed methodology and raw
+breakdown in reports/20260922-fast-path-M3/LATENCY_BREAKDOWN.json and README.
+Functional PASS and batched-latency blocker unchanged; no production changes.
+
+## 2026-09-22 16:40 UTC - OP11 TCP/OpenCL functional qualification PASS; batched performance blocks M3
+
+User authorized qualification only; full two-phone integration remains deferred.
+Real Qwen layers 18-21, 17408 columns, quantum 512, F16 I/O, 1/2/4 rows:
+48 successful calls per worker, 112 rows compared, max relative L2 3.273897e-4
+(0.032739%, limit 1%), max NMSE 1.071840e-7, zero rows above limit. Phone
+repeat outputs bit-identical. Wrong-artifact/missing-layer HELLO rejection,
+geometry, weight identity f8647098761d88b7 and payload hashes all PASS.
+
+Phone median round trips 68.652 / 4751.604 / 4749.101 ms for 1/2/4 rows;
+CPU reference 18.254 / 18.850 / 19.653 ms. Multi-row compute itself is
+4746.867 / 4741.751 ms, so shared-decode suitability FAIL on measured
+latency (>240x CPU), with no predeclared numeric latency gate claimed.
+Current OpenCL source switches F16 matmul to a local-memory GEMM above
+one row; exact deployed kernel cause is unverified. No backend fix attempted.
+
+Provenance PASS: actual parent SHA d89e9e82..., actual desktop/phone shard
+SHA dd705a75..., all 18 stored tensors for layers 18-23 match parent by
+raw SHA-256/shape/type. Existing index parent_verified=false unchanged;
+new standalone receipt records the verification. Cleanup PASS: CPU/phone
+exit 0 after 48 calls each, phone worker absent, forward removed, boot ID
+unchanged. OP15, binaries, production source/config and kernels untouched.
+Full-model exact tokens, six-layer simultaneous OpenCL capacity, two-phone
+routing and energy savings NOT VERIFIED. Physical calls finished 16:36:26
+UTC; provenance finished 16:37:23 UTC. Local native harness, local shard
+fixture, pyflakes and shell syntax PASS. No hardware run remains queued.
+
+Evidence: scheduler/campaigns/burstgpt/reports/20260922-fast-path-M3/README.md,
+QUALIFICATION_ASSESSMENT.json and physical/op11-tcp-1/. Shared lock held for
+both physical calls and provenance verification, after other session released
+m4a8b/run-treatment-2 (that run wrote FAILURE.json; no new Task 1 analysis here).
+No commits, pushes or PR text.
+
+## 2026-09-22 16:28 UTC - OP11 qualification only authorized; local protocol check PASS
+
+User narrowed M3 to OP11 qualification only. Full two-phone scheduler/runtime
+integration is deferred. Prepared a bounded protocol-v6 OpenCL-over-ADB-TCP
+check in scheduler/campaigns/burstgpt/reports/20260922-fast-path-M3/.
+Local native CPU harness validation PASS: 48 calls per worker at 1/2/4 rows,
+112 compared rows, max relative L2 0, two rejected identity handshakes per
+worker, both normal finite-request exits. Pyflakes and shell syntax PASS.
+Physical OP11 result NOT VERIFIED. Qualification queued under the shared rig
+lock at 16:27:49 UTC in /mnt/storage/s42-op11-qualification-20260922-v1;
+other session still owns m4a8b/run-treatment-2 (23 outputs complete at the
+read-only check). Existing scheduler, server, OP15 and kernel untouched.
+
+## 2026-09-22 16:06 UTC - M4a8b final FAIL; energy audit distinguishes historical >25% from current results
+
+Other session's run ended 15:58:47 UTC, exit 1, physical transition failed
+without fallback. No RESULT.json or completed-arm energy. Shared calls PASS:
+442 multi-row Qwen USB calls. Observed batch>=2 windows PASS: n=19, median
+38.134 J/token host + assumed phone (36.856 host), 3 measurement-eligible.
+Coverage FAIL: 4/15 scheduled Qwen assisted. Output completion FAIL: 19/24
+complete, all 19 token-exact; Qwen 88133 failed and four later Qwen cancelled.
+88121 completed; previous tail-proof abort did not recur. The second Qwen
+burst's helpers attached but 120 SERVER_POLICY_COHERENCE decisions selected
+fraction zero. Underlying controller and final transition causes unverified.
+This session only monitored and archived; no source deployment or new run.
+
+Fresh token audit of all 12 completed v2a arms: the best current 24/24-exact
+result is treatment 4, 132.253 -> 117.533 kJ host, 11.130% saving. Layout A
+111.245 kJ (15.885%) has 22/24 exact, both-release 111.534 kJ has 23/24 exact,
+and m4a5 94.909 kJ (28.237%) has 22/24 exact. Do not treat those as strict
+correctness passes. Best recent token-exact matched pair remains Task 2:
+203.348 -> 164.290 kJ, 19.208% host / 18.565% including assumed phone, 19/19.
+
+Historical v16/v16c DOES exceed 25%: 145.041 -> 107.582 kJ host, 25.827%;
+146.353 -> 109.592 kJ including assumed phone, 25.118%. Independently checked
+24/24 exact streams. This is an older deployment/control, not run7 or a new
+current result. Current >25% target remains FAIL. Evidence: report physical/
+CURRENT_ENERGY_AUDIT.json, HISTORICAL_V16_ENERGY_AUDIT.json, and
+m4a8b-monitor/PARTIAL_ACCEPTANCE.json. No commits, pushes or phone changes.
+
+## 2026-09-22 15:52 UTC - Task 1 m4a8b coverage FAIL; full trace still active
+
+Read-only native and stream check: 15 complete outputs, all exactly match
+baseline. Ten Qwen requests completed, only 88118, 88119, 88121 and 88123
+assisted. The second Qwen burst (88125/88126/88127/88129/88130) logged no phone
+calls. Final coverage cannot exceed 9/15, below the required 12/15, so Task 1
+acceptance is already FAIL. Shared-forward check remains PASS with 442 USB
+calls carrying more than one row. No failure artifact; all completed requests
+are COMPLETED in the scheduler. The other session's run continues for final
+energy, window measurements and 24/24 output comparison. No interference.
+
+## 2026-09-22 15:40 UTC - Task 1 m4a8b shared-forward check PASS; retest active
+
+User authorized fixing and retesting, then confirmed the concurrent session is
+their other agent and directed this session to monitor and assess its retest.
+No competing run or source deployment from this session. Its staging launcher
+exited before mutation because m4a8 inputs already existed; its isolated local
+rsync transfer was stopped. The other session owns m4a8b under the shared lock.
+
+M4a8 preflight FAIL: removing split-row left an existing calibration route
+profile pointing at an absent executor. M4a8b keeps split-row as SHADOW and
+coalesced as QUALIFIED. Each Qwen parent has one qualified coalesced helper;
+the two batch modes now have distinct settings. Physical preflight PASS.
+All 15 deployed source/test hashes match TASK1_RETEST_SOURCE_HASHES.json,
+including both corrected production modules. The stricter coalesced-only
+input check is not the configuration used by m4a8b.
+
+At 15:39:31 UTC: Qwen USB rows {1: 322, 2: 221, 3: 221}; shared-forward
+criterion PASS, 442 multi-row calls. Four of five completed Qwen streams have
+phone calls: 88118, 88119, 88121, 88123. All five outputs exactly match baseline.
+Latest scheduler snapshot marks 88121 COMPLETED, so its previous terminal
+proof failure has not repeated in this arm. Full 12/15 coverage, batch-window
+energy, >=22% saving and 24/24 output identity remain unverified.
+
+Read-only monitor artifacts: reports/20260921-fast-path-trace-v2a/physical/
+m4a8b-monitor. Rig inputs: /home/zhihao/s42-trace-v2a-m4a8b-20260922-inputs.
+Monitor RESULT.json/FAILURE.json and CHAIN.log; do not sync or launch another run.
+
+## 2026-09-22 15:16 UTC - Task 1 helper identity defect reproduced and corrected: LOCAL PASS
+
+Correction to the 14:35 diagnosis: the unsuffixed and coalesced Qwen helper
+executor IDs BOTH declared coalesced batching. Their archived capabilities
+match in every field except executor_id, for both CPU and GPU desktop parents
+in m4a6-r2 and m4a7. All three m4a7 co-tenant tickets expose the coalesced
+dormant-runtime hint. The READY filter accepted both aliases; no missing-hint
+or bypass path was established. Policy identity includes executor_id, so the
+aliases prevent co-tenants from following the same policy.
+
+Cause: the Task 1 common adapter override changed the unsuffixed helper to
+coalesced, while catalog materialization also emitted the explicitly named
+coalesced variant. Local correction emits each declared batch mode exactly
+once, respects its qualification, and supports a coalesced-only declaration.
+The Task 1 input patcher now selects only qualified coalesced Qwen helpers;
+the admission checker refuses multiple helper IDs per Qwen parent. Shared
+coordinator resources remain declared without a split-row helper.
+
+| Check | Result |
+| --- | --- |
+| Regression against old code | FAIL as expected (2 failures, 1 error) |
+| Main targeted suite | PASS, 153 tests, 13.657 s |
+| Multi-session and offline residency | PASS, 59 tests, 54.652 s |
+| Pyflakes | PASS, seven Python files |
+| Archived catalog replay | PASS, 2/2; old catalogs rejected; one corrected coalesced helper per parent |
+| Physical Task 1 | FAIL remains; no new run or deployment |
+
+Evidence and source before/after: reports/20260921-fast-path-trace-v2a/physical/
+task1-helper-identity-fix. The prior tail-proof fix remains local as well
+(493/493 row replay). Neither correction has physical coverage/energy/output
+validation. Keep the two-run stop in effect; fresh inputs are required for any
+future authorized run. No rig/phone mutation, commit or push.
+
+## 2026-09-22 14:35 UTC - Task 1 STOPPED/FAIL: repeated helper transport mismatch; shared USB calls PASS
+
+M4a7 ended 14:19:45 UTC, launcher exit 1. Qwen logged 272 two-row USB calls
+and 485 one-row calls (shared-call check PASS). Three of 15 scheduled Qwen
+requests used the phone; 10 Qwen streams finished. All 15 complete streams
+match baseline token-for-token. Scheduler lifecycle: 14 COMPLETED, 9 CANCELLED,
+1 FAILED. No RESULT.json: final host saving, full batch-window median and
+24/24 output identity are not verified. The failure artifact also reports a
+cleanup transition failure without fallback. Rig lock is free, both devices
+are visible on ADB 5037, and no owned desktop server/bridge process remains.
+
+STOP condition met: m4a6-r2 chose split-row for 88126 and coalesced for 88127;
+m4a7 chose coalesced for 88119/88121 but split-row for 88123. Both pairs share
+parent 42a306..., layout generation 3, geometry 1ff4e78..., mask 131071. The
+READY filter did not cover every admission path. No third hardware attempt.
+Evidence: reports/20260921-fast-path-trace-v2a/physical/REPEATED_HELPER_VARIANT_MISMATCH.json.
+
+A separate terminal proof failure on Qwen 88121 expected 476 layer rows but
+observed 493: 28 vs 29 per each of 17 layers. Native control applied at token
+16 of 45, so 29 is correct. The checker always subtracted one tail row even
+when counters showed no lookahead. A LOCAL ONLY correction derives the debit
+from the final policy acknowledgement and completed counters, preserving old
+records without counters. Missing/extra rows and wrong generations still fail.
+Regression failed before correction; 180 adapter/controller/cohort tests PASS,
+pyflakes clean. Offline replay reconciles 493/493; previous-arm requests still
+reconcile 66/66 and 697/697. Not deployed or physically verified.
+
+Keep all uncommitted changes and both source snapshots. Final report and partial
+acceptance are in reports/20260921-fast-path-trace-v2a, including the failed arm's
+native logs, streams, observations, helper events and scheduler journal. Task 1
+is not fixed. Task 2 is already measured; OP11 was not used. No commit, push,
+kernel change, rebuild or manual worker kill.
+
+## 2026-09-22 14:14 UTC - Task 1 m4a7 coverage FAIL during run
+
+Seven Qwen requests have completed. Native proof shows assistance for 88118,
+88119 and 88121, and none for completed 88122, 88123, 88125 or 88126. Even if
+all eight remaining Qwen requests attach, coverage is at most 11/15, below
+12/15. The shared-call check remains PASS (272 two-row calls); full energy,
+window efficiency and output identity checks await completion. No run was
+interrupted and no new source was synced. Final controller records are needed
+to identify why the second Qwen server has not issued phone calls.
+
+## 2026-09-22 14:08 UTC - Task 1 m4a7 shared phone calls PASS; full acceptance pending
+
+Native Qwen proof contains 272 two-row USB calls and 485 one-row calls as of
+14:07:44 UTC. Matching forward/USB request and layer IDs confirm that requests
+88119 and 88121 share the same call, with 20,480 payload bytes. Saved evidence:
+reports/20260921-fast-path-trace-v2a/physical/MULTI_ROW_MATCHED_PROOF.json.
+The first three Qwen requests used the phone. All five completed outputs match
+baseline token-for-token. Batch energy, final coverage, total host saving and
+all 24 outputs remain pending; the run continues under the lock.
+
+## 2026-09-22 14:00 UTC - Task 1 m4a7 preflight/admission PASS; acceptance active
+
+All 11 deployed source/test hashes match physical/task1-controller-fixes-v2.
+Physical preflight PASS. Actual catalog coalesced admission PASS at 40,960 bytes,
+queue depth 4, current matching rig identity cca2f10d... . M4a7 launched at
+13:59:58 UTC under the shared lock, fresh inputs:
+/home/zhihao/s42-trace-v2a-m4a7-20260922-inputs.
+No native rebuild or phone changes. Wait on RESULT.json, FAILURE.json and
+RUN_EXIT.txt; do not start another rig run or sync source while this is active.
+All five acceptance values remain pending. M4a6-r2 remains FAIL, 24/24 exact,
+138.748 kJ (+4.911%), Qwen 2/15, no multi-row USB calls.
+
+## 2026-09-22 13:52 UTC - Task 1 m4a6-r2 acceptance FAIL; controller fixes ready
+
+M4a6-r2 completed 24/24 requests, all token-identical to baseline (PASS).
+Task 1 overall FAIL: Qwen 2/15 assisted; 763 USB calls, all one row;
+11 active_batch>=2 phone windows, zero eligible, median fleet 111.602 J/token
+(host 109.930). Host energy 138.748 kJ vs 132.253 kJ baseline, +4.911%,
+duration 1519.066 s vs 1380.566 s. Assumed phone energy 1.533 kJ.
+No failure or cleanup-failure artifact; launcher exited 0 at 13:37:19 UTC.
+
+The final records confirm MARGINAL_SYSTEM_COST_UNKNOWN and short-request
+helper barriers. Helpers also select different transport variants on one
+immutable desktop runtime, preventing policy matching. READY materialization
+now filters to the desktop's USB batch plan. Probe admission uses the longest
+remaining co-tenant decode in the same server/layout group, preserving the
+shared token limit. A ready refresh of an available helper now uses the existing
+helper_rebound path; helper_ready had rejected it as changed after use.
+
+PASS: 260 broad tests before the final rebind correction; 18 focused helper
+checks and the multi-session integration test after it; pyflakes clean.
+New regressions reproduced failures before the corrections. These extend the
+three earlier fixes. M4a7 will be the second measured arm of this resumed work;
+stop if the same acceptance failure repeats. No native/phone changes.
+
+## 2026-09-22 13:30 UTC - Task 1 controller/helper regressions PASS: 256 tests
+
+Local changes preserve an unfinished shared probe when missing execution context
+or PROBE_INCOMPLETE forces a temporary host fallback. Previously that fallback
+marked the host policy qualified without a matched measurement. The regression
+failed before the correction and passes after it; the shared token budget is
+preserved across the pause.
+
+READY helper materialization now permits short requests under server policy
+coherence, while zero remaining tokens still reject. Unknown marginal contention
+cost permits adaptive measurement, retaining the candidate's rejection and
+LEARNING evidence status; transport or memory rejection still forbids a helper.
+This closes two admission barriers without changing physical qualification.
+
+PASS: 256 controller/runtime/helper/placement admission tests and pyflakes on
+all seven changed Python files. These changes are LOCAL ONLY while m4a6-r2 is
+active. Its first 17 completed outputs match baseline; only two Qwen requests
+have phone calls, all one-row. Final energy and acceptance are pending.
+
+## 2026-09-22 13:11 UTC - Task 1 m4a6-r2 preflight PASS; acceptance arm launched
+
+The regenerated rig and qualification identities match, and actual catalog
+capacity admission passes at 40,960 bytes / depth 4. Physical preflight PASS.
+The new 24-request arm is launched with RUN_TASK1_ARM.sh under the shared lock.
+Wait for RESULT.json / FAILURE.json and RUN_EXIT.txt; no other rig run may start.
+All acceptance values remain pending. No new production/native changes.
+
+## 2026-09-22 13:07 UTC - Task 1 m4a6 startup FAIL before inference; input builder corrected
+
+The runtime rejected the static transport identity before launching any request:
+I updated the measured boot-image identity but failed to propagate it to rig.json.
+No RESULT.json, no streams, no energy measurement. The launcher exited 1 and
+wrote its completion marker. The whole failed input directory and logs remain
+in physical/m4a6-startup-failure. This is an input preparation error.
+
+The builder now updates both rig boot-image metadata and the verified image
+path, checks the image's SHA-256, and checks rig/qualification equality for
+boot hash, kernel release and serial. No boot or flash action is performed.
+Fresh inputs /home/zhihao/s42-trace-v2a-m4a6-r2-20260922-inputs are in physical
+preflight. No inference is active. All changed Python files pass pyflakes 3.4.0
+in the isolated /tmp/s42-task1-pyflakes tools directory.
+
+## 2026-09-22 13:03 UTC - Task 1 m4a6 preflight PASS; first new acceptance arm active
+
+Fresh m4a6 inputs passed physical preflight. The actual coalesced transfer
+capacity check is separately saved as TRANSPORT_ADMISSION.json. The 24-request
+arm runs under the shared lock, with completion files and RUN_EXIT.txt. No
+production/native change since m4a5 except the already validated proof parser.
+154 local tests PASS. All five acceptance checks remain pending.
+
+## 2026-09-22 12:58 UTC - Task 1 transport qualification/admission PASS; 154 local tests PASS
+
+Fresh USB measurements passed 9/9 cases (7,680 / 10,240 / 40,960 bytes;
+h2d / d2h / duplex; queue depth 4). All restored Android USB; boot ID stayed
+ca2e7442-c4ed-4029-b85b-ad292e088c26. The unrelated failed Gemma direct service
+PID 25713 retains separate gemma_b1 endpoints and was left untouched; g2 was
+unbound and had no function links before this experiment. The initial strict
+precheck stopped before any USB action; its failed directory is retained.
+
+Current kernel notes/BTF match the verified candidate boot image f13c7c03...,
+not the older 26e8d418... image named by the previous campaign identity. No
+kernel was changed. Fresh m4a6 inputs bind the actual image, current native
+stack, inference phone binaries, and all 9 new transport receipts. The native
+library still has 16 FFN markers; no rebuild. The real catalog's coalesced
+capacity admission passes at 40,960 bytes, depth 4. Source configuration is
+m4a3 plus server_policy_coherence and Qwen coalesced transport.
+
+All 154 coherence/controller/runtime/transport tests pass. Physical campaign
+preflight is pending; no new 24-request acceptance result exists yet. Evidence:
+scheduler/campaigns/burstgpt/reports/20260921-fast-path-trace-v2a/physical/task1-transport-v2.
+
+## 2026-09-22 12:48 UTC - Task 1 resumed; corrected owner-handoff regression PASS (19/19)
+
+The user explicitly requested Task 1 fixes after the earlier stop. The prior
+owner-handoff diagnostic held active_batch=2 after one of two requests ended.
+With the real membership update to 1, the transition window is ineligible and
+the next stable window requests a phone probe. The regression passes with the
+existing controller; no production handoff change is needed. All 19 coherence
+tests and pyflakes pass. The historical failed diagnostic remains archived.
+
+M4a5 transport rejection is explained by its receipt envelope: measured USB
+payloads stop at 10,240 bytes while coalesced Qwen admission requires 40,960.
+Larger receipts from September 16 have a different qualification stack and
+will not be relabelled. Fresh measurements on the current rig are next. Task 1
+physical acceptance remains FAIL/unverified; no new acceptance run has started.
+
+## 2026-09-22 06:25 UTC - Task 2 matched pair PASS: 19.208% host saving, 19/19 exact outputs
+
+Treatment retry completed at 06:21:57 UTC, 19/19 requests, zero rejected, all
+3267 output tokens identical to the baseline. Host energy 203.348 -> 164.290 kJ
+(-19.208%); duration 2057.388 -> 2094.451 s (+1.801%). Phone energy is separately
+assumed: 1.800 -> 2.773 kJ at 0.875 W idle / 4.5 W active. Qwen 11/13 and Gemma
+4/4 requests used the phone; Llama 0/2. This is one successful matched pair.
+
+The supplied default-min-output trace has max output 472 and zero outputs over
+512; removing truncation did not add any tokens in this window. Long-tail
+benefit remains unverified. Attempt 1 is retained as FAIL: no energy result,
+13/17 completed streams exact, 2495/2496 FFN records parsed. The parser fix and
+79 tests passed; the retry recovers complete proof. Four earlier output
+mismatches are not explained by the parser fix; reproducibility is unresolved.
+
+Task 1 remains STOPPED/FAIL after two runs with the same strict Gemma output
+mismatches. Its experimental server policy is off by default and retains the
+known owner-handoff diagnostic failure. Task 3 / OP11 was not started under
+that stop condition. The final retry has no FAILURE or CLEANUP_FAILURE file;
+the shared rig lock is free. No commit, push, native rebuild or phone kernel
+change was performed.
+
+## 2026-09-22 05:47 UTC - Task 2 retry preflight PASS; physical run active
+
+Fresh treatment inputs passed preflight. The same 19-request trace is running
+with the proof-log parser correction; matched saving remains pending.
+
+## 2026-09-22 05:45 UTC - Task 2 proof parser fix local PASS; retry preflight running
+
+79 adapter/KV/reference tests PASS and pyflakes PASS. The two deployed files
+match local SHA-256 hashes. Saved failed log now yields 2496/2496 calls, 104
+per layer. Retry input manifests match attempt 1 after path/campaign-ID
+normalization; no native rebuild or model/transport/controller tuning. Preflight
+started 05:41:49 UTC under the rig lock. Reuse the 203.348 kJ baseline, which
+made no phone calls and is unaffected by the phone-proof parsing correction.
+
+## 2026-09-22 05:40 UTC - Task 2 treatment execution FAIL; proof parser correction
+
+The launcher exited 1 at 05:36:18 UTC, with 17 complete streams and request
+017 interrupted after 81 saved tokens. No RESULT.json or matched host saving
+exists. The primary error belongs to earlier Gemma request 002: expected 2496
+FFN rows, parsed 2495. All 2496 USB and FFNCALL records exist. At native log
+line 6333, an interleaved timestamp prefixes call 1610 / layer 1 without the
+log severity letter; the strict parser discarded it. Allowing the existing
+exact timestamp prefix with an optional severity restores all 2496 rows, 104
+per layer. Separate cleanup error: actual lease completion outside reservation.
+The rig lock is free and no desktop llama-server process remains.
+
+Of 17 complete streams, 13 match exactly. Differences: Gemma 000/token 52;
+Qwen 008/token 115, 013/token 7, 014/token 36 (zero-based). The log parser
+correction cannot resolve these numerical differences. A fresh Task 2 treatment
+retry is being prepared; Task 1 remains stopped.
+
+## 2026-09-22 05:13 UTC - Task 2 first output equality check FAIL; measurement continues
+
+The first completed Gemma request, burstgpt_longdecode_v1:000, has all 446
+output tokens but first differs from this pair's baseline at zero-based token
+52. No logits establish the cause. The unchanged treatment continues to finish
+the requested energy measurement; exact equality for the full pair cannot pass.
+
+## 2026-09-22 05:08 UTC - Task 2 treatment preflight PASS; physical run started
+
+Treatment preflight returned zero at 05:08:43 UTC. The matched treatment is
+running under the shared rig lock with server_policy_coherence disabled and
+the original split-row transport. Energy and exact output comparison pending.
+
+## 2026-09-22 05:04 UTC - Task 2 baseline PASS; treatment preflight running
+
+The default-min-output, cap-1100 trace completed 19/19 requests, zero rejected,
+3267 output tokens, in 2057.388 s. Measured host 203.348 kJ (139.943 CPU +
+63.405 GPU); phone 1.800 kJ separately assumed, zero active phone time.
+All 19 saved token streams have their expected lengths. Treatment preflight
+started at 05:04:28 UTC under the same lock; matched saving and token equality
+are pending. This particular real window has no outputs above 512.
+
+## 2026-09-22 04:29 UTC - Task 1 stopped: M4a5 FAIL despite 28.237% host saving
+
+M4a5: 24/24 completed, 1489.329 s, host 94.909 kJ versus 132.253 kJ baseline
+(-28.237%); phone 2.182 kJ assumed. Qwen 0/15 assisted, no phone windows or
+USB calls. All Qwen coalesced candidates are blocked by
+TRANSPORT_PROFILE_INCOMPLETE; their parent plans lack the dormant FFN runtime
+and no helper events occur. The local unstarted-probe handoff bug is separate,
+not a verified cause of this physical result. Gemma alone generated 25368
+phone calls, up from m4a4's 7576, with the same desktop placements.
+
+Exact outputs are again 22/24: the same Gemma 88132/token 2 and 88139/token 36
+first mismatches (zero-based). This repeated correctness failure triggers the
+stop rule; no third Task 1 run. Energy gate PASS, overall Task 1 FAIL.
+Task 2 baseline preflight started serially at 04:24:50 UTC; its treatment will
+follow under the same lock, using the independent original configuration.
+
+## 2026-09-22 04:11 UTC - M4a5 early coverage FAIL; local unstarted-probe handoff FAIL
+
+The first five Qwen requests in attempt 2 complete with zero phone calls, so
+12/15 assistance is impossible. Finish the active trace for energy and exact
+output comparison, then stop Task 1 under the repeated-failure rule. A local
+reproduction found that a long follower inheriting an unprobed short owner's
+group remains EXPLOITING despite `_can_probe=True`; it opens another host
+window. This case was absent from the 245 passing tests. Physical causality is
+not yet established; preserve the measured source rather than claim a fix.
+Task 2's independent baseline and treatment are queued serially under the rig
+lock; its rig/models/evidence/identity manifests match, with only campaign
+identity, paths and selection mode differing.
+
+## 2026-09-22 04:01 UTC - M4a5 preflight PASS; second physical attempt running
+
+Fresh coalesced inputs passed physical preflight. The deployed 16-file source
+snapshot matches, native FFN markers remain 16, and 245 targeted tests plus
+pyflakes pass. Qwen USB startup now uses coalesced-batch within N<=4; the
+first attempt's native two-row forwards had been split by split-row transport.
+Shared server probes now survive request completion and late acknowledgements
+under a bounded aggregate token budget. First-token assistance and all five
+physical criteria remain unverified. Inputs: `/home/zhihao/s42-trace-v2a-m4a5-coalesced-20260922-inputs`.
+
+## 2026-09-22 03:51 UTC - M4a4 physical attempt FAIL; transport still splits rows
+
+24/24 completed, 1340.004 s, host 109.561 kJ versus baseline 132.253 kJ
+(-17.158%); phone 1.831 kJ assumed. Qwen assistance 5/15; batch>=2 phone
+windows median 57.141 J/token. All USB calls remain one row despite 352 native
+FFN calls with two rows: dormant server startup selected `split-row`. Exact
+outputs 22/24, with Gemma 88132 differing at token 2 and 88139 at token 36
+(zero-based); 88139 used no phone, cause not established. No correctness waiver.
+Shared probe ownership/admission revision: 244 tests PASS, pyflakes clean.
+Second attempt preparation in progress, with qualified coalesced transport
+required. This is the first physical failure; stop Task 1 if the same reason
+recurs on a second run. Full report and evidence in the 20260921 trace-v2a report.
+
 # Project Log - Active Warm-Tier Multi-Model Serving
 
 > Running progress record. **Current status** is at the top and kept up to date.
@@ -8,7 +4746,7640 @@
 
 ---
 
-## Current status - `2026-07-31 EDT`
+## 2026-09-22 03:12 UTC - Server policy implementation checks PASS; headline trace build PASS
+
+Task 1: opt-in `AdaptiveDecodeConfig.server_policy_coherence` elects one policy owner per artifact, desktop
+placement, and phone layout generation/geometry. Followers inherit at decode admission and seal partial
+windows before following later controls. Compatible attachments share helper leases, renew their common
+horizon, and release only after the last member leaves. Mixed-policy windows are ineligible for comparison;
+historical energy/latency is filtered to the current batch and external-work context. Existing dormant release
+rule and native binary retained (16 FFN markers). Local checks: 240 tests PASS; changed-file pyflakes PASS.
+Physical task 1 criteria remain unverified; attempt m4a4 is being prepared.
+
+Task 2: supplied builder command PASS, `/mnt/storage/burstgpt-source/longdecode_v1`: 19 requests (13 Qwen,
+4 Gemma, 2 Llama), 10578 prompt / 3267 output tokens, 1625 s arrival span, no prompt/output clipping.
+The first eligible window has output p50/p90/max 152/446/472; raising the cap did not recover any truncated
+tokens in this particular window. Keep this default-min-output window as the headline; no energy arm yet.
+
+## 2026-09-22 15:35 UTC - Task 1 reopened: duplicate helper identity fixed and deployed; arm m4a8b running
+
+The agent's root cause holds up: the Task 1 input patch set a common `usb_batch_plan: coalesced-batch` while
+declaring both batch modes, so catalog materialization emitted two Qwen helper capabilities identical except
+for `executor_id`; the adaptive policy identity includes that id, so co-tenants picking opposite aliases could
+never share a server policy. That explains the 8 coherence follows, the 3/15 coverage and the "mixed transport
+selection". Fix deployed with the tail-accounting correction; 118 tests re-verified here, catalog tests PASS on
+the deploy. Gap found in the agent's builder: a coalesced-only declaration drops the executors the measured
+route profiles reference (`runtime route profile executor is absent`). Live arm declares both modes, qualifies
+only coalesced: catalog materializes, 35 Qwen capabilities, zero duplicate-identity groups. Best verified
+results so far stand at 19.2 % (long-decode pair, 19/19 identical outputs) and 28.2 % (m4a5-coalesced, 2/24
+outputs differ).
+
+## 2026-09-22 - handoff prompt rewritten; co-batching agent never started (rate limit)
+
+The delegated co-batching agent died on an API rate limit before its first edit, so nothing is half-applied: the
+tree holds only the server release rule, `HTP_OP_MAX_BUFS` 16 -> 64, the coherence module and its tests, plus the
+campaign fields and demand decay. Fresh handoff prompt for the next agent is in
+`FAST_PATH_UTILIZATION_PLAN.md` ("Handoff prompt for the next agent") and `research_dev/NEXT_AGENT_PROMPT.md`:
+task 1 server-level co-batching with its five PASS criteria, task 2 the untruncated long-decode trace, task 3
+OP11. Trace provenance recorded for honesty: BurstGPT gives real arrivals, model mix and token shapes, prompt
+text is synthesized to the real token count; our 512-token output cap hides 49 % of the log's output tokens
+(median 190, p90 671, p99 1,068), so raising the cap to 1,100 removes our own truncation rather than
+cherry-picking, and 2,048 + 1,100 still fits the 4,096-token per-sequence desktop context.
+
+## 2026-09-21 23:35 EDT - OP11 v73 HTP fault located: user-DMA `dmpoll` on a NULL descriptor chain in `hvx_mv_2d`
+
+Crash report (TLBMISS RW, Bad VA 0, `op_matmul+0x5818`) mapped with hexagon-addr2line/objdump to the `dmpoll` in
+`hvx_mv_2d`; `dma_queue_create` NULL is silently tolerated in `main.c:428`. Fix options recorded in the M3
+checklist (fatal check + non-DMA v73 path or signed PD). `HTP_OP_MAX_BUFS` 16 -> 64 kept. OP11 stays on the OpenCL
+worker until the v73 bring-up. Co-batching redesign agent running.
+
+## 2026-09-21 23:10 EDT - baseline rerun stopped (user: focus on optimizing ours); co-batching redesign delegated
+
+Second baseline run killed cleanly (launcher, runner, its two servers; phones untouched). Implementing agent
+started on M4a item 1 as a redesign: per-server policy + attach before the first window + verified server
+co-batching (tokens>1) + batch-composition-matched measurement; PASS bar >= 22 % on the 24-request trace with
+24/24 identical outputs. In parallel: OP11 v73 HTP bring-up (disjoint files/device).
+
+## 2026-09-21 23:00 EDT - m4a3 run 2 (coherence): -13.8 %, only 8 follows, zero multi-token phone calls -> 24-req trace stays at 14-16 %
+
+Coherence rarely applies (helper not yet available at follower start; too few windows left after the first
+recorded window); co-tenants never shared a forward (4,170 Qwen calls all tokens=1); phone windows at
+active_batch 2 still 138 J/tok vs 40 alone. All config/controller levers today land at 14-16 % on the 24-request
+trace; realistic trace -17.3 %. The fix is a redesign (attach before first window, server co-batching of
+policy-equal slots, per-server policy) -> plan M4a updated for the agent. Second baseline run launched for the
+run-to-run noise band. OP11: NPU path needs v73 kernel bring-up (dspqueue_read 0x2e after the buffer-limit fix);
+OpenCL ready; TCP first, DMA-BUF kernel port later (user agreed).
+
+## 2026-09-21 22:45 EDT - OP11 worker: v73 HTP crashes (buffer mapping / op-batch buffer limit), Adreno OpenCL READY with 4 layers
+
+HTP v73: 6 layers -> fastrpc mmap error after ~2.6 GB (3000 MiB VA cap, no rpcmem_alloc2); 4 layers -> abort in
+`ggml_hexagon_opbatch::add_buffer` (16-buffer batch limit) and other asserts with OPBATCH 0/1/4. OpenCL: ready.
+OP11 path = OpenCL over TCP; v73 HTP debugging deferred (M3 checklist section 8). m4a3 run 2 in progress
+(stream 10/31).
+
+## 2026-09-21 22:20 EDT - m4a3 run 1 FAILED (coverage gap from a mid-window follow); fixed; run 2 launched. OP11 shard on the phone
+
+Run 1 issued 37 SERVER_POLICY_COHERENCE controls but the follow fired inside `boundary()` before the open window
+was recorded -> "adaptive grouped window coverage differs" at request completion -> run abort at stream 24.
+Fix: the follow now runs in `record_window` after a baseline window is recorded (window-boundary control,
+contiguous coverage), never under a tail seal; test asserts the follower's records stay contiguous. 135 adaptive
+tests OK; run 2 launched from the same inputs.
+OP11: adb up (`adb root` works, Magisk); user authorized deleting large models -> removed
+`llamacpp_models/llama2-7b-svd.gguf` (13.9 GB) and `Llama-3.2-1B-F32.gguf` (5.0 GB) -> 19 GB free; Qwen shard
+layers 18-23 pushed to `/data/local/tmp/s42-op11-qwen-shards-20260921-v1/` (sha dd705a75 verified); binaries +
+libomp in `/data/local/tmp/s42-op11-20260921-bin/`, worker runs. Transport plan: TCP over adb forward (stock
+5.15 kernel, no dmabuf patch); two-phone rig brief in the M3 checklist section 7.
+
+## 2026-09-21 22:05 EDT - per-server policy coherence implemented; arm m4a3 launched
+
+`_internal/adaptive_decode_ops/coherence.py`: a session exploiting the baseline adopts the non-baseline policy a
+co-tenant (same artifact, same desktop parent placement) is running or has been told to run: at start (as its
+cached winner) and at its next window boundary (`SERVER_POLICY_COHERENCE` control), when >= 2 windows remain and
+the policy is not eliminated for it. Co-tenants then batch into one forward (one N-token phone call) and the
+follower's own windows judge the policy under the batched composition. 5 new tests
+(test_adaptive_coherence), 130 existing adaptive tests OK. Arm m4a3 = m4a1 inputs (both release, probe
+attempts 4, default probe economics, new server release rule) + coherence. Expect: phone windows at
+active_batch 2 to fall from 128 to ~40 J/tok and Qwen coverage to rise.
+
+## 2026-09-21 21:30 EDT - cheap-probe arm WORSE (-5.3 %); measured root cause = mixed policies serialize decode
+
+m4a2: 125.3 kJ, 6/15 Qwen probed but most rejected. Windows by active_batch: host 77/78 J/tok (1/2 slots), phone 39
+J/tok alone but 128 J/tok (1,175 ms/tok) with a host-policy co-tenant -> can_batch_with keeps mixed policies in
+separate forwards, the assisted request is serialized behind the co-tenant and charged its energy -> every probe
+under co-tenancy is rejected. Fix = server-level policy coherence (co-tenant decode slots follow the phone
+policy -> one forward, one N-token phone call = cohort) and/or compare windows only within equal batch
+composition. Release thrash and probe budget were secondary. 24/24 outputs identical in m4a2.
+
+## 2026-09-21 21:00 EDT - RESUMED; M4a run 1 = -14.3 % (thrash gone, coverage unchanged); cheap-probe arm launched
+
+M4a run 1 (`s42-trace-v2a-m4a1-20260921-inputs`: new server release rule + probe attempts 4 + demand decay + both
+release): 113.3 kJ, busy server 4 releases / 1 restore / 73 skipped-mixed (was 39/39), Qwen still 4/15
+assisted, 22/24 outputs identical. Reason codes: INSUFFICIENT_OPPORTUNITY 37 = helper + candidates present but the
+80-token four-fraction probe sweep is unaffordable for 20-45-token requests and no compatible cached winner
+exists (seed store from another bundle). New generic campaign field `adaptive_decode_overrides` (any
+AdaptiveDecodeConfig field; validated; tested) -> arm m4a2: single 100 % probe candidate, probe 16 tokens, window
+8, min remaining 8, attempts 4. Launched 21:00.
+
+## 2026-09-21 20:20 EDT - M4a-2/3 scheduler-side landed locally (agent report, verified: 55 tests OK, pyflakes clean); still PAUSED
+
+- New campaign field `adaptive_maximum_probe_attempts_per_context` (default 2, positive int) plumbed
+  campaign.json -> launch.py -> runner.py -> `AdaptiveDecodeConfig`; recorded in RESULT. Test in test_campaign_inputs.
+- Learning-demand decay in `phone_residency_ops/demand.py`: a model keeps phone-residency demand only if a phone
+  route ran or a phone control was issued within its last N=6 completed decisions (cold start counts); models
+  with `ffn_host_share_release == 1` win a contested session domain. `UnifiedScheduler(learning_demand_decision_window=6)`;
+  history is part of the runtime-transaction checkpoint. 6 new tests (test_learning_demand_decay).
+- Cohorts: report only (README section "Cohort formation on the trace"). Root cause: cohorts are keyed on
+  `selected.plan`, which on the trace is always a desktop route (phone assistance attaches later via the
+  adaptive helper), so `candidate_key` is None and no cohort is ever admitted; server-side tokens>1 would also
+  need equal (layer_mask, columns) across concurrently assisted slots. Fix is a redesign (key on the attached
+  helper plan; converge member policies) and needs the `_bind_causal_predecessors` co-dispatch item first.
+- Nothing deployed: the deploy's `research_dev/scheduler` is unchanged since the m4a1 rebuild. On resume: rsync
+  scheduler to the deploy, then preflight + run the m4a1 inputs (set `adaptive_maximum_probe_attempts_per_context: 4`
+  in its campaign.json for the M4a-2 arm).
+
+## 2026-09-21 20:00 EDT - PAUSED by user ("pause it, i will resume")
+
+State at pause:
+- Local tree: `tools/server/server-context.cpp` carries M4a-1 (dormant release only when every processing slot
+  decodes under the same phone policy; `ffn_dormant_release_skipped_mixed` counter, debug log). Uncommitted.
+- Deploy `/mnt/storage/s42-trace-v2-20260921-prep`: llama-server REBUILT with M4a-1 (BUILD_OK, marker string
+  present), transport identity RE-MATERIALIZED and copied into all six 2026-09-21 input sets; new inputs
+  `/home/zhihao/s42-trace-v2a-m4a1-20260921-inputs` (both-release + new server). Its preflight was started and
+  then stopped; NO run happened. Rig idle, OP15 in adb mode.
+- Implementing agent still working locally on M4a-2/3 (probe-budget campaign field, learning-demand decay,
+  cohort investigation) under research_dev/scheduler only; its report arrives when done.
+- Resume: `nohup /mnt/storage/s42-trace-v2-20260921-prep/rebuild_m4a1_and_run.sh` would rebuild again (no-op)
+  and preflight+run; or run preflight+run for the m4a1 inputs directly. Compare with
+  `s42-trace-v2a-baseline-20260921-inputs/run-baseline-1` (132.3 kJ). Target >= 25 % -> then OP11 (needs adb).
+
+## 2026-09-21 19:55 EDT - v2r both-release: -16.8 % (282.8 kJ), dynamic split visible, same total; starting M4a code
+
+Qwen 10/10 assisted (layers 6-16 after Gemma took HTP0), Gemma 4/8; 74 releases on the busy Qwen server = the
+thrash again. User: implement the three levers and retest; if >= 25 %, bring OP11 in. Server change started:
+`apply_dormant_host_share` releases only when every processing slot decodes under the same phone policy; under a
+policy mix the share stays local (no per-batch release/restore) while phone-policy slots keep computing on the
+phone. Controller/planner items delegated to an implementing agent on disjoint files.
+
+## 2026-09-21 18:50 EDT - variant E (min remaining 8): -15.0 %, no change -> config knobs exhausted at ~15-16 %
+
+Same 5/15 Qwen requests, 30 controls on the same requests. The binding constraints are code: per-sequence
+release (thrash), probe budget/cached winner. Realistic trace with both models releasing launched
+(`s42-trace-v2r-bothrelease-20260921-inputs`, ~1 h) to show the dynamic layout where Gemma work is large.
+
+## 2026-09-21 18:25 EDT - variant D (Gemma release ON): -15.7 %, Gemma now 90 % token coverage; the gap is Qwen coverage
+
+111.5 kJ (A 111.2, C 112.7): Gemma servers release layers 16-23 (8,064 calls, 4/6 requests) but its 8 of 25
+CPU layers are worth only a few kJ; Qwen coverage unchanged (~412 of 830 tokens, 4/15 requests). Remaining
+Qwen host-decoded tokens ~418 x 34 J = ~14 kJ = the distance to -26 %. Variant E (min remaining tokens 24 -> 8)
+launched 18:25; 23/24 outputs identical to baseline.
+
+## 2026-09-21 18:10 EDT - the controller under-uses a phone path worth 45 %/token: thrash poisons probes
+
+Variant C windows: baseline 75 J/tok median vs phone 41 J/tok (n=147 / 244). Unassisted requests end EXPLOITING
+the baseline with zero CONTROL_ISSUED: probe budget 2/context, min remaining 24 tokens, and probes measured during
+co-tenant restore thrash (88123: 116-202 J/tok) mark the pair "not improved" -> baseline cached as winner.
+Fix order confirmed: per-sequence release (server) -> truthful probes -> broad exploitation; then probe budget /
+min-remaining. OP11 shard HTP0 (layers 18-23, 3.21 GB, sha dd705a75) generated.
+
+## 2026-09-21 18:00 EDT - variant C: -14.8 % (112.7 kJ) = same as A; 24-req trace saturates at 5/15 assisted requests
+
+Layers per token 11-17 vs 12 changed nothing measurable (A 111.2 / C 112.7 kJ, ~1 % noise). Coverage is bounded
+by WHICH requests attach (5/15 in every arm) and release thrash, not by layer count. Variant D (Gemma release ON)
+preflighting next; OP11 Qwen shard generation runs in that window.
+
+## 2026-09-21 17:40 EDT - variant C running: 17 then 11 layers; Gemma STILL gets a session via "learning" demand
+
+Masks: 5 releases 0-16 (131071), then 44 releases 0-5 + 12-16 (127039). Snapshot: HTP0 Qwen 6L, HTP2 Qwen 5L
+(2.67 GB, capacity-split), HTP1 Gemma 3.19 GB (9L) -- with NO Gemma shard index. Shards are derived from the plan's
+execution contract (phone holds the full artifacts), so the shard index is not a gate. Root cause of the wasted
+session: `_learning_phone_demand` counts helper opportunities in evidence_state LEARNING whose rejections are only
+COLD_RESIDENCY_BREAK_EVEN / ROUTE_NOT_QUALIFIED / ... as residency demand -> Gemma phone routes that are never
+selected still reserve phone RAM forever. Dynamic-scheduling fix (for the agent): decay learning demand for routes
+that stay unselected (exploration budget) and weight layout by realized phone tokens; or make release a hard
+precondition for residency in dormant campaigns. Variant D (Gemma release ON) chained after C.
+
+## 2026-09-21 17:15 EDT - variant B (fixed residency) is an evaluation mode -> FAIL; variant C launched
+
+`fixed_phone_residency` preloads an assignment on the side and does not steer arrived work (`end_trace(require_phone_execution=False)`);
+the 24 requests ran desktop-only and the run ended "fixed residency assignment is infeasible". Variant C
+(Gemma without a phone shard index -> no Gemma phone demand -> planner can only place Qwen) preflighting 17:13.
+Chain-script lesson: `set -e` before the run line skips the RUN_EXIT marker on a failed launcher and stalls every
+file-based follower; wait on RESULT/FAILURE files instead. OP11 shard (Qwen 18-23) generation queued after C.
+Answer to "why all Qwen": Gemma release is off in the trace inputs, so a Gemma phone session saves nothing; the
+dynamic showcase needs Gemma release ON + a phased trace + static-vs-dynamic layout arms (see reply 17:00).
+
+## 2026-09-21 16:40 EDT - layout variant A: -15.9 % on the 24-request trace (111.2 kJ); variant B (fixed 3x6 Qwen) running
+
+Variant A (Gemma phone limit 1 byte) did NOT evict Gemma (the cap is forwarded as
+`maximum_helper_resident_weight_bytes`, unconsumed) but reordered sessions: Qwen got HTP0+HTP1 = layers 0-11
+(mask 4095), coverage ~150 -> ~413 tokens, 111.2 kJ vs baseline 132.3 = -15.9 % (treatment 4 was -11.1 %).
+Variant B pins HTP0/1/2 to Qwen via campaign `fixed_phone_residency` (resolve OK) -> 18/24 layers; running now.
+
+## 2026-09-21 16:00 EDT - v2r MATCHED PAIR: -17.3 % host energy (340.0 -> 281.2 kJ), trace 9 % faster
+
+| arm | dur s | CPU kJ | GPU kJ | host kJ | host W |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| v2r baseline 1 | 3,898 | 234.1 | 105.9 | 340.0 | 87.2 |
+| v2r treatment 3 | 3,555 | 178.9 | 102.3 | 281.2 | 79.1 |
+
+Realistic trace: 17.3 % host (16.8 % fleet) vs 11.1 % on the 24-request trace; per-model latency sums equal.
+Coverage 61 % of Qwen tokens explains the jump; layer mask (12/24) and tokens=1 calls remain -> Qwen-only layout
+run (18/24) chained next. Output-token equality: 14/20 identical; the 6 that differ diverge at token 1-323 of 349-512-token outputs and include one request with NO phone execution -> host-side batching non-determinism (slot co-tenancy), not the phone path.
+
+## 2026-09-21 14:55 EDT - v2r treatment 3 PASS: 281.2 kJ host / 3,555 s, ~61 % Qwen token coverage
+
+20/20, host 281.2 kJ (CPU 178.9, GPU 102.3) at 79.1 W. All 10 Qwen requests phone-assisted; 20,154 layer calls
+(tokens=1 each) ~= 1,680 of 2,734 Qwen tokens under release (vs 18 % on the 24-request trace) because the
+realistic window has long outputs. Layer mask still 12/24. Baseline arm chained next -> matched v2r pair.
+
+## 2026-09-21 14:15 EDT - OP11 arrived on the desktop; v73 skel built; Qwen-only layout variant staged
+
+- v2r `run-treatment-3` running (preflight-1345 PASS; 3 servers, phone releases flowing). v2r desktop-baseline
+  inputs derived (`s42-trace-v2r-baseline-20260921-inputs`) and chained file-based after the treatment.
+- **A OnePlus 11 5G is on the desktop** (`22d9:2764`, serial `832358d4`, SD 8 Gen 2 = Hexagon **v73**), but on the
+  ASM107x hub's USB 2.0 side at 480 Mbit/s and MTP-only (no adb): needs a USB 3 data cable/port and USB debugging.
+  Checklist updated (section 0). `libggml-htp-v73.so` built from the current tree (docker
+  `snapdragon-toolchain-hostgcc:v0.3`, `build-ffn-overlap-android`, 637 KB); arm64 worker/resident-workers/router
+  build started in the same container. v73 has no HMX -> HVX FFN, slower per call but still removes host CPU work.
+- Coverage lever 1 staged: `s42-trace-v2a-qwenlayout-20260921-inputs` disables Gemma's phone residency (no release
+  on Gemma, its 8-layer session only displaced Qwen) so Qwen can hold HTP0+HTP1+HTP2 = layers 0-17 (18 of 24 CPU
+  FFN layers, 1.5x per released token). Resolve/preflight deferred until the desktop is idle.
+
+## 2026-09-21 14:10 EDT - v2r treatment 2 FAILED on stale inputs (Gemma cache flags) -> manifest validator; run 3 launched
+
+`run-treatment-2` (amended manifest, preflight-3 PASS) aborted at request 012 with "qualified desktop baseline
+is not available". Chain: the v2r `models.json` was generated BEFORE the 11:30 patcher fix and still carried
+`ffn_host_share_drop_cache/populate` on Gemma (no release) -> every Gemma cold-desktop load was refused by the
+launch contract ("policy requires release") -> Qwen requests 002-006 FAILED on the shared transition -> the
+desktop route was quarantined -> no baseline. Preflight cannot see it because it never builds launch contracts.
+Fixes: v2r models.json flags removed (old copy `models.json.stale-gemma-flags`); new
+`configuration/models.validate_host_share_policy` refuses flags without `ffn_host_share_release == 1` at
+manifest parse (resolve/preflight), 3 tests. Deploy sync of that validator waits until run 3 ends (never edit a
+live deploy). `run-treatment-3` chained after preflight-4.
+
+## 2026-09-21 13:50 EDT - v2r treatment 1 died at replay: trace manifest lacked `model_inventory`
+
+`build_realistic_trace.py` never wrote `model_inventory` (execution artifact bytes + sha256 per model), which
+`runner._select_replay` pins before replay; preflight validated the trace without it, so the gap surfaced only
+at run start (KeyError). Fixed: builder takes required `--execution-artifact MODEL_ID=PATH[=KIND]` (x3) and
+writes the inventory; `validate_trace` now requires a well-formed inventory (preflight catches it); tests added
+(builder + identity). Desktop: manifest amended from the real artifacts (old copy kept as
+`TRACE_MANIFEST.no_inventory.json`), preflight-3 then `run-treatment-2` chained.
+
+## 2026-09-21 13:30 EDT - coverage killer identified: server-wide release vs 4-slot concurrency
+
+Busy Qwen server: 36 tokens decoded released (slot 0 only) vs 406 decoded local (slots 0-3). The share is
+released only when ALL active slots are release-eligible decodes; any concurrent prefill/other decode restores
+(110 ms) -> 45 one-token cycles. Quiet server: 3 releases, 98 tokens. Fix order: per-sequence release >
+admission hysteresis (M4) > cohorts (M2). v2r realistic-trace treatment launched (preflight-2 then run) to
+see the same effect under a different arrival pattern.
+
+## 2026-09-21 13:15 EDT - v2a MATCHED PAIR: -11.1 % host energy (target 25 % NOT met); coverage is the lever
+
+| arm | dur s | CPU kJ | GPU kJ | host kJ | host W |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| baseline 1 (same deploy, desktop-baseline) | 1,381 | 89.5 | 42.8 | 132.3 | 95.8 |
+| treatment 4 (energy-aware + phone) | 1,468 | 74.7 | 42.9 | 117.5 | 80.0 |
+
+Outputs bit-identical 24/24. Saving is all CPU-package (time-mean 64 -> 51 W), GPU equal, run 6 % longer.
+Why only 11 %: phone-assisted decode covered ~150 of 830 Qwen tokens (18 %); all 1,716 phone calls were
+single-token (no cohort formed); 45 release/restore cycles, some serving one token before a prefill of the
+next request pulled the FFN weights back. v16's 25.12 % pair had 76 % token coverage. The old 09-09 control
+(150.8 kJ) overstates the saving (22 %) because today's baseline is itself 12 % cheaper.
+Next lever = coverage: keep the share released across interleaved prefills (prefill FFN elsewhere or defer
+prefill admission while a released decode is running; M4 hysteresis) and make cohorts actually form.
+
+## 2026-09-21 12:35 EDT - v2a treatment run 4 PASS: 117.5 kJ host / 1,468 s (run7 125.1 kJ / 1,577 s)
+
+| run | dur s | host kJ | fleet kJ | vs 09-09 baseline (host) |
+| --- | ---: | ---: | ---: | ---: |
+| baseline 09-09 (old bundle) | 1,689 | 150.8 | 152.6 | 0 |
+| run7 | 1,577 | 125.1 | 127.0 | -17.0 % |
+| treatment 4 | 1,468 | 117.5 | 119.3 | -22.0 % |
+
+24/24 PASS, 45+ dormant releases logged, phone server confirmed (`S41SERVERFFN ready`, `dormant_policy
+drop_cache=0 populate=1`). 6 % better than run7 on both energy and time. Not yet the 25 % target against the
+old baseline; the matched desktop-baseline arm on this deploy is chained and running next
+(`s42-trace-v2a-baseline-20260921-inputs/run-baseline-1`). OP15 connected on desktop usb 2-2 at 5 Gbps, adb 5037.
+
+## 2026-09-21 12:05 EDT - ROOT CAUSE of v2a runs 1-3: the new deploy's server was built WITHOUT the FFN client
+
+Runs 1-3 never started a phone-assisted server, and the two "fixes" (10:55, 11:30) only relabelled the symptom.
+`strings libllama-server-impl.so | grep S41SERVERFFN` on the new deploy: 4 strings (server-context policy lines
+only); run7's library: 12 (ready / USB / CALL / remote_resident). Cause: `build.sh` of the new deploy configured
+cmake without `-DS41_SERVER_FFN_SPLIT=ON` (option default OFF), so `server.cpp` compiled the FFN split client out
+and the server silently ignored the whole `S41_SERVER_FFN_*` environment. The launcher's "did not confirm the
+dormant host share policy" was the ONLY thing standing between us and a host-only run mislabelled as treatment.
+
+| Step | Result |
+| --- | --- |
+| Reconfigure `-DS41_SERVER_FFN_SPLIT=ON`, rebuild llama-server | 15 S41SERVERFFN strings, `build.sh` fixed |
+| Guard: `build_transport_qualification_identity` now rejects a host stack without `S41SERVERFFN ready` | `TransportProfileError "... lacks the FFN split client (built without S41_SERVER_FFN_SPLIT)"`, negative test added, 5/5 pass |
+| Re-materialize identity (old one kept as `*.ffn_off.json`), install into v2a / baseline / v2r inputs | host sha ca975ce2…, server-impl 5d8590c7… |
+| Preflight-2 | PASS, 100/100 checks |
+| Treatment run 4 | launched 12:03 EDT, `run-treatment-4` |
+
+Lesson: a build option that silently disables the feature under test must be pinned by the identity, not by a
+README. The runtime confirmation check did its job; keep it.
+
+## 2026-09-21 11:30 EDT - v2a run 2 also failed: two more cache-policy contract cases; fixed, run 3 launched
+
+Run 2 (10:55-11:14) ended with the same no-fallback abort. Decision log: 12x "hot desktop cold: did not confirm
+the dormant host share policy" (the cold Qwen desktop parent carries a phone id but no FFN environment yet, so the
+phone_device_id-keyed default missed it) and 6x "cold desktop: policy requires release" (the input patcher had put
+the cache flags on Gemma, which has no `ffn_host_share_release`). No S41SERVERFFN server ever came up, so the run
+was host-only with churned relaunches; the phone itself was fine (gadget in Direct FFN DMA-BUF mode 10:55-11:14,
+adb absent during that time is expected). Fixes: contract defaults the flags whenever `ffn_environment` is empty
+(phone routes without release still fail closed); patcher sets the flags only where release==1. v2a and baseline
+inputs regenerated, snapshot 4, run 3 launched. Both failed input sets kept at
+`s42-trace-v2a-20260921-inputs.failed-runs-1-2`.
+
+## 2026-09-21 10:55 EDT - 24-request trace rerun (v2a): first attempt failed on a false policy check, relaunched
+
+Treatment run 1 (energy-aware, keep-cache restore, cohort fix) aborted after ~20 min: the cold Qwen desktop
+parent (`physical:hot:desktop:cold`, no phone, no FFN transport) was launched with the model's
+`ffn_host_share_drop_cache=0` and the launcher then demanded the `S41SERVERFFN dormant_policy` log line,
+which a server without the dormant host share never emits -> "llama-server did not confirm the dormant host
+share policy" -> physical transition failed without a fallback. Fix: `llama_server_launch_contract` keeps the
+default policy flags when `phone_device_id` is None (plain server), and the launcher only requires the policy
+line when the launch environment enables the dormant host share. Phone routes without release still fail
+closed. Regression test `test_plain_desktop_parent_keeps_default_cache_policy_and_needs_no_confirmation`;
+96 adapter/rig tests pass. Deploy snapshot 3; treatment run 2 launched 10:55 EDT. Baseline inputs
+(`desktop-baseline` selection) ready at `/home/zhihao/s42-trace-v2a-baseline-20260921-inputs`.
+
+## 2026-09-21 Trace rerun preparation, realistic BurstGPT trace, second-phone checklist
+
+| Item | State |
+| --- | --- |
+| New deploy `/mnt/storage/s42-trace-v2-20260921-prep` | current tree, CUDA build OK (server, probe, worker, USB bridge/close, tokenizer, token codec), git snapshot |
+| Transport identity for that build | materialized against OP15 on port 5037 (`TRANSPORT_QUALIFICATION_IDENTITY.json`, both input sets) |
+| v2a inputs = run7's 24-request trace on the new design | `/home/zhihao/s42-trace-v2a-20260921-inputs`: deploy repointed, keep-cache restore (`ffn_host_share_drop_cache=0`, `populate=1`), everything else identical to run7; `launch.py --resolve-only` and `--preflight-only` PASS. Ready to run (parallel unchanged until the cohort co-dispatch fix lands) |
+| Realistic trace builder `campaigns/burstgpt/build_realistic_trace.py` | one contiguous BurstGPT conversation-log window at its own inter-arrival times; ChatGPT -> hot (Qwen), GPT-4 -> cold (Gemma), shortest ChatGPT share -> Llama overlay; exact-token prompts via the token codec; emits source, overlay, manifest, replay schedule, provenance |
+| First build `realistic30_v1` (no overlay) | 20 requests / 1,599 s, prompt p50 390 p90 793, output p50 292 (cap 512), gaps p50 56 s max 477 s; preflight BLOCKED because the pipeline requires >= 1 overlay row (`overlay_rows[0]` in preflight.py/runner.py) -> builder now emits a small-model share (default 15 % of ChatGPT rows) |
+| Loader identity | `trace_inputs.validate_trace` now takes record and role counts from the manifest (legacy 74+10 accepted unchanged), tolerates an empty overlay file when declared; new test `test_trace_identity_manifest` |
+| `prepare_trace_inputs_v2.py` | derives campaign/rig/models/evidence for a new deploy, campaign id, restore policy, optional trace/parallel/ubatch; writes CHANGES.txt |
+| Second phone | `campaigns/burstgpt/M3_SECOND_PHONE_CHECKLIST.md`: no v75 HTP library in any deployed bin dir; OP12 root/functionfs unknown -> TCP transport fallback; layer plan OP12 18-23; rig manifest is single-phone today |
+
+Next: regenerate the realistic trace with the overlay, preflight `v2r`, then run v2a (3 pairs) once the rig is free
+of the agent's cohort work.
+
+## 2026-09-21 03:42 UTC - Cohort co-dispatch passes; capacity capped at four
+
+| Check | Before | After |
+| --- | --- | --- |
+| cold-cohort-a queue state | ACTIVE, ready True, conflict False | ACTIVE, ready True, conflict False |
+| cold-cohort-b queue state | QUEUED, ready False, conflict True | ACTIVE, ready True, conflict False |
+| Lane reservations | 16 request-owned tokens | 8 shared cohort-owned tokens |
+| Original cold cohort regression, unchanged | Hangs, bounded at 15 s | PASS, 1.212 s |
+| Four active members plus a fifth arrival | Blocker under audit | Fifth waits until the fourth releases |
+| Requested adaptive runtime, queue, controller and cohort modules | Known hang | 133 tests PASS, 18.603 s |
+| Phase/resource regressions; pyflakes | - | 41 tests PASS, 0.915 s; clean |
+
+Admission now carries the existing typed cohort binding into the queue. Identical
+phone preparation shares one reservation; different transition identities and
+unrelated lane users retain causal ordering. Longer followers extend execution
+leases only, and survivor handoff preserves released preparation lanes. The
+replan generation check remains intact. The original regression method is byte
+for byte unchanged. These are local tests; no new physical or energy result.
+M2's N<=4 envelope is enforced in cohort admission. M4 is next; M3 still waits
+for the OP12 move. [Report, commands and queue records](scheduler/campaigns/burstgpt/reports/20260921-cohort-co-dispatch/README.md).
+
+## 2026-09-21 Tree-wide check: build, lint, full scheduler suite; M2 accepted with N<=4
+
+| Check | Result |
+| --- | --- |
+| Full CUDA build, all targets | PASS, warning-free after 4 fixes (unused variable in the MoE tool, 3 pre-existing unused parameters in layersplit.cpp) |
+| pyflakes over scheduler, tests, recent report scripts | clean after 2 fixes (unused import in test_split_kv_attention, dead assignment in the MoE gate) |
+| test-backend-ops FLASH_ATTN_EXT on CUDA (split-KV LSE variants) | 2,880 / 2,880 PASS |
+| Scheduler suite, 95 modules, ~1,050 cases, from repo root | all PASS except: 5 modules that import sibling tests by bare name (pass from the tests dir; harness convention), 1 timing assertion that fails only under a load average of 40 (3/3 pass alone), and the documented 2026-09-11 hang `test_cold_phone_cohort_shares_transition_identity` |
+| Fixed by me | dormant-share rig hooks tolerate rigs built without `__init__` (2 test errors); FFN split graph no longer asserts when the row diagnostic meets a partial split (skips the shadow) |
+
+The cohort hang is real and matters for M5: `runtime_queue._bind_causal_predecessors` binds two decode-cohort
+members as predecessor/successor over shared compute lanes, so the second cannot dispatch while the first is
+ACTIVE. Handed to the M2 agent as the next item (plan updated). M2 disposition: accepted with an N<=4 envelope;
+the N=8 knee is phone compute per call 11.3 -> 27.6 ms (HMX path above 4 rows), recorded as optional M2b.
+
+## 2026-09-20 22:53 EDT - M2 correctness passes; N=8 utilization fails and the plan stops
+
+The ordered Step 3.2 pair has the same slots 1/0 and own acknowledgements 4/3:
+90/90 matched-input calls return identical payloads, agreement fraction 1.000,
+with maximum relative L2 2.896e-4 over the first five assisted steps. This sample
+shows no phone nondeterminism. Pack/unpack and acknowledgement behavior remain
+unchanged; the original event remains unexplained.
+
+| Check | Result |
+| --- | --- |
+| N=1 pair-v1 versus saved M0 ubatch-1024 outputs | PASS: 64/64 exact |
+| N=1/2/4/8 long correctness, 576 outputs each | PASS: 14 EXACT slots; one accepted N=4 near-tie |
+| No hang over 512 assisted steps | PASS: 573/572/571/567 full-cohort steps per layer |
+| Phone time per token per slot falls with N | FAIL: N=4 to N=8 compute rises 24.633%; RPC rises 15.724% |
+| Memory and cleanup | PASS: all 11 arms events.max 0 at ready/finish; all owned processes/scopes closed |
+
+| N, single pair | Phone compute ms/token/slot | Phone RPC ms/token/slot | Host-only decode W, measured | Phone-arm host decode W, measured | Request host kJ, host-only / phone arm | Phone W, assumed |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 164.651 | 194.934 | 124.304 | 66.846 | 44.457 / 20.388 | 4.5 active; 0.875 idle |
+| 2 | 82.999 | 103.113 | 124.962 | 67.197 | 45.628 / 21.623 | 4.5 active; 0.875 idle |
+| 4 | 51.488 | 67.398 | 133.308 | 66.018 | 50.662 / 26.488 | 4.5 active; 0.875 idle |
+| 8 | 64.171 | 77.996 | 145.646 | 57.087 | 60.732 / 41.735 | 4.5 active; 0.875 idle |
+
+Host energy is measured RAPL package plus NVML board, with phone assumptions
+reported separately. These are single pairs with raw-logit capture in both arms.
+The phone arm is slower end to end at N=4 and N=8 despite lower host power.
+At N=4, request 2 / slot 1 first differs at output 80: host token 19 versus
+phone token 15, host logits 25.099 and 25.099 after rounding, margin 3.891e-4,
+NMSE 8.226e-7. The existing checker records every mismatch; the 434 later
+mismatches are labeled after context divergence and do not decide acceptance.
+
+All 100 rig unittests and pyflakes pass before every arm. The typed, default-off
+raw-logit capture passes a tiny-model two-slot capture on/off reference test.
+All seven phone sessions closed normally, OP15 is restored on ADB 5037, and the
+lock is free. No other phone was used. M2 remains FAILED on the utilization gate;
+M3 and further reruns stop for the user's decision. M0's 11.97% saving remains a
+single-pair result; its three alternating pairs remain scheduled alongside M5.
+The original failed-correctness N=2 energy and Step 3 diagnostic energy rows
+retain their historical single-run labels. The local archive verifies all 317
+recorded files (10.647 GB) against desktop hashes. No commit or push was made.
+[Report, exact commands and physical records](scheduler/campaigns/burstgpt/reports/20260920-fast-path-M2/acceptance/README.md).
+
+## 2026-09-20 21:10 EDT - M2 diagnostic: distance metric added; batching rule reviewed
+
+Step 1 of the M2 row-mapping investigation could not localize a bad row because it compared SHA-256 hashes:
+the phone's f16 FFN result never equals the host's f32 shadow bit for bit, so all 180 rows "differ". Added to
+`examples/layersplit/ffn-split-client.cpp` `log_diagnostic_rows`: the local-shadow row is kept per ubatch row
+and the returned row logs `local_rel_l2`, `local_max_abs`, `local_l2` (sentinel -1 on the input/local stages).
+A wrong or swapped row shows as O(1) relative L2 against the ~1e-3 background. Tiny-model test extended
+(exact TCP worker -> 0.0, reference norm > 0); passes. Code review of the coalesced path: pack/unpack are
+identity over the ubatch (`token_offset` per USB part); member order is metadata; `can_batch_with` keeps
+prompt slots out of assisted ubatches. Consequence for M4 noted in the plan: release/populate alternates per
+batch under mixed multi-slot traffic and needs hysteresis. Step 2 matrix is running on the rig.
+
+## 2026-09-20 20:07 EDT - M2 revised Step 3: numeric/token checks pass; determinism inconclusive
+
+Two concurrent N=2 repetitions used prompts (256,257), 576 outputs per slot and
+64 shadow steps, preserving pack/unpack and acknowledgement behavior. Both match
+all 576 historical host tokens per request. No row exceeds relative L2 1e-2.
+
+| Run | Request slots | Own acks | Max local_rel_l2 | Historical exact outputs per slot | Full-cohort steps/layer | events.max ready/finish |
+| --- | --- | --- | ---: | --- | ---: | --- |
+| run1 | 1/0 | 3/3 | 3.195e-4 | 576/576, 576/576 | 573 | 0/0 |
+| run2 | 0/1 | 3/4 | 3.566e-4 | 576/576, 576/576 | 572 | 0/0 |
+
+The original [1,0] slots with [4,3] acknowledgements did not recur together.
+There are zero identical input-row hashes across 1,152 corresponding calls,
+even after aligning by request: Step 3.2 is INCONCLUSIVE, not evidence of either
+phone determinism or nondeterminism. The conditional logits NMSE amendment is
+unmet. M2's correctness rule is unchanged and the N=1/4/8 curve remains pending.
+
+| Single diagnostic run | Request host J, measured | Decode host W, measured | ms/token request 0 / 1 | Phone W, assumed |
+| --- | ---: | ---: | --- | --- |
+| run1 | 23940.106 | 73.738 | 552.844 / 552.844 | 4.5 active; 0.875 idle |
+| run2 | 24583.511 | 74.838 | 554.914 / 558.881 | 4.5 active; 0.875 idle |
+
+All 96 rig tests and pyflakes pass before each arm. Tiny tests cover both 5 and
+64 diagnostic steps with unchanged logits. Native hashes and configured request
+fixtures match across runs. Host references are historical builds; the Step 2
+host-only order effect remains documented. Diagnostic timings include shadows;
+the original 65.8/123.4 W and 21.2/45.0 kJ remain a single failed correctness pair.
+Cleanup passed: scopes inactive, owned servers gone, GPU idle, lock released and
+OP15 restored on ADB 5037. No second phone was used. No commits or pushes.
+[Report, commands and per-call/row records](scheduler/campaigns/burstgpt/reports/20260920-fast-path-M2/step3-numeric/README.md).
+
+## 2026-09-20 19:09 EDT - M2 Step 2 passes all eight matched cases; host-only order reproduces the original difference
+
+All eight N=2 cases completed with the mapping unchanged. Each row below is one
+matched diagnostic pair: 64 outputs per slot, five host-shadow FFN steps in the
+phone arm, ubatch 1024 and eight unpinned threads. Native hashes match across all
+16 arms; all 94 rig tests and pyflakes passed before each arm.
+
+| Prompt lengths, request 0 / 1 | Submission | Request slots | Own ack indices | Slot 0 exact | Slot 1 exact | Check |
+| --- | --- | --- | --- | --- | --- | --- |
+| 256 / 256 | normal | 1 / 0 | 4 / 3 | 64/64 | 64/64 | PASS |
+| 256 / 256 | reversed | 0 / 1 | 3 / 4 | 64/64 | 64/64 | PASS |
+| 257 / 257 | normal | 1 / 0 | 4 / 3 | 64/64 | 64/64 | PASS |
+| 257 / 257 | reversed | 0 / 1 | 3 / 4 | 64/64 | 64/64 | PASS |
+| 256 / 257 | normal | 1 / 0 | 4 / 3 | 64/64 | 64/64 | PASS |
+| 256 / 257 | reversed | 0 / 1 | 3 / 4 | 64/64 | 64/64 | PASS |
+| 257 / 256 | normal | 1 / 0 | 4 / 3 | 64/64 | 64/64 | PASS |
+| 257 / 256 | reversed | 0 / 1 | 3 / 4 | 64/64 | 64/64 | PASS |
+
+The two host-only (256,257) references reproduce the original discrepancy under
+identical native hashes: request 1 outputs token 271 at position 4 in normal
+order (slot 0), and 198 in reversed order (slot 1), then the same later drift.
+They match 42/64 positions. Request 0 matches 64/64 across orders. Submission,
+slot assignment and prefill history vary together, so their individual effects
+are not isolated; phone calls are unnecessary to reproduce this difference.
+Both phone arms match their own host reference exactly. Per-call logs show the
+physical payload follows ubatch order; sorted member labels are metadata.
+
+All 16 scopes recorded memory.events.max 0 at ready and finish. Cleanup passed:
+owned servers gone, scopes inactive, GPU idle, lock free and OP15 on ADB 5037.
+Measured RAPL + NVML host energy and ms/token are in the report; assumed phone
+power is separate at 4.5 W active / 0.875 W idle. These single diagnostic runs do
+not replace the original failed-pair 65.8/123.4 W and 21.2/45.0 kJ measurements.
+Step 3's requested explicit table and acknowledgement guard are next; the full
+M2 acceptance check and utilization curve remain outstanding.
+[Report, commands and records](scheduler/campaigns/burstgpt/reports/20260920-fast-path-M2/diagnostic/MATRIX.md).
+
+## 2026-09-20 16:42 EDT - M2 diagnostic coverage passes; row-hash test does not isolate the transition fault
+
+The user authorized row diagnostics, the eight-case prompt/order matrix, an
+explicit per-call mapping correction and the full M2 recheck. Step 1 completed
+on OP15 using the existing worker/kernel and a newly qualified host build.
+Pack/unpack behavior is unchanged. All 92 rig tests pass; pyflakes is clean.
+
+| Step 1 check | Result |
+| --- | --- |
+| First five assisted steps, input/local/returned hashes and physical mapping | PASS: 180 row triples across both slots and all 18 layers |
+| Identify a faulty row by phone/local hash disagreement | FAIL: 180/180 F16 hashes differ; no cross-row hash matches |
+| First disagreeing call | Call 1, layer 0: ubatch 0 -> request 0 / slot 0 -> payload 0; ubatch 1 -> request 1 / slot 1 -> payload 1 |
+| Acknowledgement boundary | 3/3, aligned; the original failed pair had 4/3 and reversed order |
+| Historical host prefix comparison, different native build | 64/64 for each slot; not a fresh matched pair |
+| memory.events.max ready / finish / delta | 0 / 0 / 0 |
+| Cleanup | PASS: scope inactive, owned server gone, GPU idle, lock free, ADB 5037 restored |
+
+| Single diagnostic run | Request host J, measured | Decode host W, measured | Decode ms/token, request 0 / 1 | Phone W, assumed |
+| --- | ---: | ---: | --- | --- |
+| N=2, five host shadow steps | 2866.335064577404 | 69.81190634552053 | 538.945203125 / 538.94071875 | 4.5 active; 0.875 idle |
+
+These diagnostic timings include host shadow work and are not performance
+acceptance. The original 65.8 vs 123.4 W and 21.2 vs 45.0 kJ remain labeled as a
+single failed correctness pair. Next is the authorized ordered matrix; no
+mapping fix has been applied. [Report and records](scheduler/campaigns/burstgpt/reports/20260920-fast-path-M2/diagnostic/README.md).
+
+## 2026-09-20 15:21 EDT - Fast-path M2 fails N=2 token equality; stopped for decision
+
+M1 passed before M2 began. The N=2 phone arm passed the hang/proof check with
+572 full-cohort decode steps on all 18 owned layers, then failed exact-token
+comparison to the matched host. No N=1/4/8 arm followed the failure; M3 remains
+unstarted and requires OP12's physical move to the desktop. These are single runs
+from a failed correctness pair; root cause is undiagnosed.
+
+Report, exact commands and raw records: [fast-path M2](scheduler/campaigns/burstgpt/reports/20260920-fast-path-M2/README.md).
+
+| Prompt tokens | Host / phone native slot | Matching output positions | First mismatch, one-based | Host / phone token ID | Check |
+| ---: | --- | --- | ---: | --- | --- |
+| 256 | 0 / 1 | 576/576 | none | - | PASS |
+| 257 | 1 / 0 | 51/576 | 4 | 198 / 271 | FAIL |
+
+| N=2 arm | Request host J, measured | Decode host W, measured | Decode ms/token, request 0 / 1 | Phone W, assumed | Request phone J, assumed |
+| --- | ---: | ---: | --- | --- | ---: |
+| Host-only | 44996.31778708077 | 123.40159995472298 | 627.572671875 / 627.5721701388889 | 0.875 idle | 322.705918892 |
+| Phone, 100% FFN split | 21178.19221500936 | 65.80098078415097 | 546.2996423611111 / 542.1073211805556 | 4.5 active; 0.875 idle | 1409.263201831375 |
+
+| Arm | memory.peak bytes | events.max ready | events.max finish | delta |
+| --- | ---: | ---: | ---: | ---: |
+| Host-only | 29870563328 | 0 | 0 | 0 |
+| Phone split | 30134321152 | 0 | 0 | 0 |
+
+Same runtime hashes, KV plan, ubatch 1024, batch 2048, eight unpinned threads,
+parallel 2, and fresh uncapped scopes. The phone uses the unchanged worker/kernel,
+ADB 5037, existing three HTP sessions and coalesced row packing. Native records
+show 10,296 two-row calls plus 18 one-row tail calls; per-request proof rows are
+exact. The N=2 curve point is 83.06296328671328 ms phone compute and
+103.55081725262238 ms RPC per token per slot. The full curve is unmeasured.
+
+Existing modules now support eight coalesced members, bounded by worker/transport
+geometry, with the default four-member split-row behavior retained. The gate
+counts shared energy once and has a 60-second watchdog that preserves the session
+when draining is unconfirmed. All 90 rig tests pass; local 90 tests pass with one
+server-binary skip; pyflakes is clean. Cleanup at 19:16:51 UTC confirmed inactive
+scopes, no owned server, GPU idle, rig lock free and OP15 back on ADB 5037.
+No worker was force-killed; nothing was committed or pushed.
+
+## 2026-09-20 14:19 EDT - Fast-path M1 passes the uncapped held-out check; proceed to M2
+
+The amended M1 check passes at both ubatches with unchanged native runtime
+hashes and fresh uncapped scopes. Predictions were frozen at 17:58:01.543261 UTC
+before held-out launches; the checker returned exit 0 at 18:15:46.730577 UTC.
+All four arms are single runs. No refit or diagnostic repeat was needed.
+
+Report and exact commands: [fast-path M1](scheduler/campaigns/burstgpt/reports/20260920-fast-path-M1/README.md).
+New evidence: `scheduler/campaigns/burstgpt/reports/20260920-fast-path-M1/physical/no-pressure/`.
+
+| ubatch | Frozen prediction s | Held-out prefill s | Error | Output equality | Check |
+| ---: | ---: | ---: | ---: | --- | --- |
+| 128 | 291.318576 | 296.522748632 | 1.7550669066738758% | 64/64 | PASS |
+| 1024 | 111.980349 | 113.784898427 | 1.5859305162167252% | 64/64 | PASS |
+
+| Held-out arm | Request host J, measured | Decode ms/token | Phone W, assumed | Request phone J, assumed |
+| --- | ---: | ---: | ---: | ---: |
+| heldout-128 | 37431.483731909655 | 778.13453125 | 0.875 idle | 303.0371492925 |
+| heldout-1024 | 23117.855078846358 | 775.8648125 | 0.875 idle | 143.01547419337498 |
+
+| Arm | memory.events.max ready | Finish | Delta | memory.peak B |
+| --- | ---: | ---: | ---: | ---: |
+| traced-128 | 0 | 0 | 0 | 30877900800 |
+| traced-1024 | 0 | 0 | 0 | 30952939520 |
+| heldout-128 | 0 | 0 | 0 | 30925471744 |
+| heldout-1024 | 0 | 0 | 0 | 31062175744 |
+
+Host energy is RAPL package plus NVML board; phone idle power is assumed and
+kept separate. No phone FFN executes in M1. Weight-copy host-call time falls
+154.782345 s, explaining 84.70185285990899% of the 182.737850205 s held-out
+difference. The inventories close traced totals within 0.5537% and 1.0896%.
+Global page scanning remains nonzero; request major faults fell to 211 / 127 /
+131 / 132 from 13,121 / 7,399 / 24,188 / 24,232 under the old 18 GiB cap.
+Full stat deltas and the original failure remain preserved.
+
+Validation: 73 local tests passed in 2.920 s; 73 rig tests passed before
+calibration in 5.373 s and before held-out runs in 5.963 s; pyflakes clean.
+Model content, request, complete launch settings apart from trace path, KV plans
+and native hashes match the original M1 arms. The model is now read from
+`/mnt/storage`; loading and warmup remain outside prefill. No native rebuild.
+At 18:16:30 UTC all four scopes were inactive, no owned server remained, the rig
+lock was free and OP15 was visible on ADB 5037.
+
+M0 remains a single-pair 11.97% saving; its three alternating repeats are
+scheduled alongside M5's baselines. Proceed to M2. M3 remains blocked on the
+physical move of OP12 to the desktop. No commit or push.
+
+## 2026-09-20 12:39 EDT - Fast-path M1 failed held-out timing acceptance; stop before M2
+
+M0 remains passed: OP15 retained an 11.9685% measured request host-energy win
+against the tuned host, with exact tokens at ubatch 1024. M1's native split/copy
+inventory and typed launch field are implemented, but its frozen prediction
+missed the held-out 1024 prefill by 24.0685%, above the 10% limit. Stop for the
+user's decision. M2-M5 have not started; no refit or repeat run followed the
+failed check. OP12's physical-move precondition for M3 is unchanged.
+
+Report, commands and records: [fast-path M1](scheduler/campaigns/burstgpt/reports/20260920-fast-path-M1/README.md).
+Acceptance: `scheduler/campaigns/burstgpt/reports/20260920-fast-path-M1/physical/CHECK_M1.json`.
+All four arms are single runs. Predictions were frozen at 16:20:59.553197 UTC
+before held-out launches; the unchanged checker returned exit 1 at 16:35:59 UTC.
+
+| ubatch | Frozen prefill prediction s | Traced prefill s | Held-out prefill s | Absolute relative error | Output equality | Check |
+| ---: | ---: | ---: | ---: | ---: | --- | --- |
+| 128 | 293.118023 | 294.798142643 | 321.684526758 | 8.880285304953539% | 64/64 | PASS |
+| 1024 | 108.788073 | 110.039417596 | 143.271303902 | 24.06848403193644% | 64/64 | FAIL |
+
+| Held-out arm | Prefill host J, measured | Request host J, measured | Decode ms/token | Phone W, assumed | Request phone J, assumed |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 128 | 31713.703344718502 | 37925.048007494195 | 779.54275 | 0.875 idle | 325.08877604087496 |
+| 1024 | 18093.66540323799 | 24334.87074173741 | 773.740265625 | 0.875 idle | 168.692844159875 |
+
+Host energy is RAPL package + NVML board. No phone FFN executes in M1. The
+inventories account for traced prefills within 0.5699% and 1.1372%. Repeated
+weight-copy traffic is 1,255,225,267,200 versus 165,161,216,000 B; its copy-call
+time, excluding preceding waits, falls 160.918028 s. That is 90.1940% of the
+178.413222856 s held-out difference, identifying the repeated streaming term.
+It does not qualify the failed absolute 1024 prediction. Single-run variation
+prevents a causal instrumentation-overhead claim; the slowdown's cause is not
+established by this check.
+
+The disabled trace path has no added timer/emitter calls, and enabled tracing
+adds no device synchronization. Existing completion waits stay separate from
+GPU enqueue time. The strict reader keeps mixed layer/family split timings
+joint and retains actual copy ranges. Intermediate Qwen prefill has valid
+zero-row output tensors; the reader correction is regression-tested before
+prediction freeze. Final checks: 73 local tests and 73 rig tests passed,
+including mixed CPU/GPU tiny-model exact logits; pyflakes clean. An earlier
+rig test failure from two omitted historical fixtures is preserved and was
+corrected before physical calibration.
+
+Complete launch settings apart from tracing, KV plans, request tokens/settings
+and runtime hashes match at each ubatch. No OOM or swap; both held-out scope
+peaks are 19,327,352,832 B. At 16:36:37 UTC all four scopes were inactive, no
+owned server remained, the lock was free and OP15 was visible on ADB 5037.
+Transport identity was rematerialized after the fresh CUDA build:
+`sha256:82ac6e66272fabbf731af1f2d14cca3eeb563a6a883933bd590dc5011641bb14`.
+No foreign process was modified. No commit or push.
+
+## 2026-09-20 11:49 EDT - Fast-path M0 passed: OP15 retains the energy win against the tuned host
+
+The user restored OP15 to desktop ADB 5037. The resumed single pair completed
+combined then control, with ubatch 1024, batch 2048, eight unpinned threads,
+keep-cache + populate and the same rebuilt runtime/KV plan. Both new 64-token
+outputs match exactly; the expected ubatch-128 token-45 difference is excluded
+from this fixed-ubatch check. All M0 checks now pass; proceed to M1. M3 still
+requires the user to move OP12 physically to the desktop; no ADB tunnel.
+
+Report and exact commands: [fast-path M0](scheduler/campaigns/burstgpt/reports/20260920-fast-path-M0/README.md).
+Raw pair: `scheduler/campaigns/burstgpt/reports/20260920-fast-path-M0/physical/tuned-pair-resume/`.
+Host energy is measured RAPL package + NVML board. Phone power is assumed.
+
+| Single-run arm/check | Measured host result | Separate phone assumption | Result |
+| --- | --- | --- | --- |
+| Tuned 0% control | 22,967.92225269669 request J; 779.72196875 ms/token; 98.32215973656352 decode J/token | 0.875 W idle; 139.164461989 request J | Reference |
+| 100% OP15 FFN layers 0-17 | 20,219.003291561952 request J; 789.379421875 ms/token; 55.27746710360097 decode J/token | 4.5 W decode, 0.875 W otherwise; 335.779260380125 request J | PASS: 11.9685% host saving |
+| Explicit host + assumed phone sum | 11.0455% request saving; 9.1014% if phone is 4.5 W for the whole request | Assumed phone energy is never folded into measured host J | Phone win retained |
+| Earlier M0 tuning checks | Ubatch 1024 minimizes prefill energy; eight unpinned threads minimize decode J/token; warm 9.63 GB restore 0.225794 s | See full sweeps in report | PASS |
+| Correctness / execution | 64/64 identical tokens; 62 assisted decode rows per layer across 18 layers; 1,116 calls; 9,625,706,496 B released | All three HTP session proofs exact | PASS |
+| Validation / cleanup | 82 rig tests passed again; pyflakes clean; no OOM; scope inactive and lock free at 15:46:41 UTC | Phone closed normally and restored on 5037 | PASS |
+
+Full-precision records and acceptance are `TUNED_PAIR_SUMMARY.json` and
+`physical/CHECK_M0.json`. The older blocked check is preserved as
+`physical/CHECK_M0_PREVIOUS_PREFLIGHT.json`. An idle foreign Gemma service was
+observed and left untouched. No other ADB server was started, no foreign process
+was changed, and no commit or push was made.
+
+## 2026-09-20 02:27 EDT - Fast-path M0 acceptance failed: OP15 unavailable for the tuned re-pair
+
+Stopped before M1 under the plan's failed-check rule. The required phone comparison could not
+start: another campaign held the rig lock, then reported an expert-service readiness failure
+with no forced cleanup. Once this gate obtained the lock, OP15 `3C15AU002CL00000` was absent
+from ADB port 5037. No phone preload or desktop pair request launched; the phone energy win
+against the tuned host remains **unassessed**, not disproved.
+
+Report and exact commands: [fast-path M0](scheduler/campaigns/burstgpt/reports/20260920-fast-path-M0/README.md).
+Raw records: `scheduler/campaigns/burstgpt/reports/20260920-fast-path-M0/physical/`.
+All timing/energy arms below are single runs. Host energy is measured RAPL package + NVML board.
+
+| M0 check | Measured result | Assumed phone contribution | Status |
+| --- | --- | --- | --- |
+| Prefill ubatch 128 -> 1024 | 289.281 -> 108.996 s; 30,889.412 -> 16,790.799 host J (-45.6422%) | 0.875 W idle: 253.121 -> 95.371 J, separate from host | PASS; no OOM in 18 GiB |
+| Decode threads | Pinned 8/12/16/24: 101.642/101.105/102.886/103.801 host J/token; unpinned step 1 reference is lower at 100.247 J/token, 783.363 ms/token | 0.875 W idle; selected reference 0.685460 J/token | PASS; select eight unpinned threads |
+| Warm restore, 9,625,706,496 B | Keep file cache + populate: 0.225794 s; argmax and logits unchanged | No phone execution | PASS, below 2 s |
+| Restore under synthetic KV pressure | Populate 20.015170 s + local replay 19.690335 s; lazy restore 0.000003 s + replay 40.755803 s | No phone execution | Measured; deferral does not remove fault cost |
+| Tuned 0% / 100% phone pair | OP15 ADB preflight failed; no request results | Planned active assumption 4.5 W; energy unavailable | FAIL / blocked |
+| Software validation | 82 local tests and 82 rig tests passed; touched Python files pass pyflakes | N/A | PASS |
+
+Ubatch 1024's greedy output differs from 128/256/512 starting at token 45; all thread-sweep
+outputs agree at the fixed ubatch. Restore correctness was checked at fixed settings. The
+restore probe uses 12 pinned threads; the selected server pair uses eight unpinned threads.
+Native defaults preserve legacy behavior; M0 opts into keeping file cache with explicit
+population. The alternative defers population until access and is reported as such.
+
+Fresh CUDA build and transport identity materialization passed; phone binaries and the six
+existing qualification receipts matched their recorded hashes. Identity:
+`sha256:4ee0362b6b7f2629e0508d36377dbee9e4b956ec4160ea4b4c8e3cf8245e69ca`.
+The first build missed a UI support script; the corrected copy and both logs are retained.
+At 02:23:35 EDT the M0 scope was inactive and no M0 server/probe remained. No foreign process
+or phone session was changed. No commit or push. M1-M5 have not started; resumption requires
+the user's decision and OP15 to be made available by its current campaign owner.
+
+## 2026-09-20 Fast-path utilization plan (handoff)
+
+Only the decode-only FFN column split with pre-positioned phone weights pays; attention, MoE experts and whole
+operators on the phone all lost. New plan `research_dev/FAST_PATH_UTILIZATION_PLAN.md` spends more of each
+request on that path and stops the waste around it: M0 retune host (ubatch, threads, page-cache-preserving
+release) and re-pair the phone split against the tuned host; M1 ggml split/transfer inventory; M2 multi-slot
+decode through one phone call; M3 two phones with disjoint layers; M4 LP planner (idle-power energy + SLO +
+residency) proposing through the existing accountant; M5 trace acceptance vs run7 (127.0 vs 152.6 kJ). Each
+milestone has a check; fail is reported, not narrowed.
+
+## 2026-09-20 - Architecture scope: transfer and residency planning first
+
+Adopted the user's three-time-scale framing in `scheduler/ARCHITECTURE.md`:
+residency, shape-specific execution planning, and dependency/resource-aware
+dispatch remain with their existing owners. USB phone operator offload stays
+FFN-only unless a full-path profile justifies expanding it; CPU/GPU/KV and memory
+tiers remain general. The existing one-axis/one-fraction contract and FFN-only
+measured column balancer are documented explicitly, not relabeled as arbitrary
+operator execution.
+
+Next milestone is per-split transfer/timing inventory at
+`ggml_backend_sched_compute_splits`, followed by held-out prefill predictions at
+ubatch 128 and 512 within 10% each. Async submission is not completion; timing
+must not introduce unaccounted synchronization. Priorities after measurement:
+repeated prefill weight transfers, tuned desktop decode, and release/restore
+costs. The MoE screen is correctly labeled measured host/VRAM plus estimated
+phone performance, not a physical phone-expert result.
+
+Documentation-only change. No runtime/contract changes, experiment launch,
+golden regeneration, commit or push. Prior logs and physical artifacts preserved.
+
+## 2026-09-19 20:30 EDT - MoE edge-energy screen: phone expert tier cannot beat RAM, and free VRAM beats both
+
+Question: is there still an energy opportunity for edge devices with MoE models? Screen on Qwen3-30B-A3B Q4_K_M
+(16.35 GiB expert bank, 1,046 MiB of experts per token), RTX 4060 Ti + i9-12900K, experts on the host, no phone
+executed. Report: `scheduler/campaigns/burstgpt/reports/20260919-moe-edge-energy/README.md`.
+
+| Arm (1,024-token prompt, 128 output tokens) | Decode | Host J/tok | Host W in decode | Expert reads / tok |
+| --- | ---: | ---: | ---: | ---: |
+| All experts in host RAM (reference) | 44 ms | 6.28 | 142 | 0 |
+| Host capped 10 GiB (paging) | 145 ms | 5.95 | 41 | 48 MiB (4.6 % miss) |
+| Host capped 6 GiB | 325 ms | 12.24 | 38 | 221 MiB (21 %) |
+| Host capped 4 GiB | 458 ms | 17.37 | 38 | 419 MiB (40 %) |
+| Experts of 24 layers in VRAM, no cap | 29 ms | 3.56 | 125 | 0 |
+| Experts of 24 layers in VRAM, host capped 6 GiB | 56 ms | 2.91 | 52 | 5.6 MiB |
+
+Routing skew is strong (3.75 GiB of most-selected experts covers 68 % of selections vs 23 % uniform; effective
+experts/layer 60 of 128), so coverage is not the limit. The paging penalty is idle-floor power x disk wait; a
+phone tier swaps disk wait for USB wait at the same floor. Realistic bound for a 3.75 GiB phone tier: negative at
+the 10 GiB cap, +6..23 % of the paging arm at 6 GiB, +22..34 % at 4 GiB, never below the reference's 6.28 J/tok.
+Half the bank in free VRAM under the same 6 GiB cap: 2.91 J/tok, 4.2x better than paging and better than the
+reference. Conclusion: no phone expert tier while VRAM or RAM is available; new tool `llama-moe-routing-histogram`.
+
+## 2026-09-19 Progress check after split-KV: where the remaining time and energy go
+
+Split-KV Steps 1-4 are in (other agent, 2026-09-18): split at 8,192 device cells costs +1.4 % prefill, +3 % decode,
++2.5 % energy vs all-device KV and saves 27 % energy vs whole-host KV; the 18 GiB occupancy gate shows the released
+FFN room absorbing 3.28 GiB of host KV with zero weight eviction. Re-reading the power samples of those arms and the
+run7 trace proof lines points at three bottlenecks that are cheaper than any further attention work:
+
+| Phase (Qwen3-14B F16, -ngl 16, 9,737-token prompt) | Time | GPU power / util | CPU package | Reading |
+| --- | ---: | ---: | ---: | --- |
+| Prefill, ubatch 128 | 201 s (48 tok/s) | 45 W / 88 % | 29 W | Neither device is working: CPU-layer weights are re-streamed to the GPU every ubatch (77 ubatches x ~16 GB ~ 6 GB/s, pageable PCIe rate). Transfer-bound. |
+| Decode, 8 threads | 740 ms/tok | 31 W | 93 W | 25 CPU layers read ~16 GB/token -> ~20 GB/s effective on DDR5 that can do 3x that. Thread/bandwidth-bound baseline. |
+| Trace run7 restore holds | 27 populates, 152 s total (mean 5.6 s, max 15.8 s) of 1,577 s | idle | idle | Release drops the page cache (`POSIX_FADV_DONTNEED`), so every restore re-reads 6-9.6 GB from disk before the next prompt. |
+
+Next levers, in order: (1) prefill ubatch 128 -> 512 (the trace parent already runs 2048/512; phone transport is
+decode-only, max 4 tokens, so it does not bind prefill), (2) decode thread sweep 8/12/16/24 and re-baseline the phone
+split against the tuned CPU, (3) keep the page cache on release and let memory pressure evict it (restore from cache
+~1 s uncontended), (4) the integrated phone + release + host-overflow-KV long request. Split-KV overlap (Step 5) is
+bounded by the 3 % decode gap and is not worth doing now.
+
+## 2026-09-18 01:30 EDT - Split-KV Steps 1-4 pass bounded hardware gates
+
+| Area | Evidence / status |
+| --- | --- |
+| Native path | GPU prefix + lazy-backed host overflow; LSE partial merge, CPU decode / GPU-streamed prefill; CLI and exact KV-plan hash |
+| Qwen real request | 9,737 prompt + 64 output tokens, all three modes exact; decoder layers 25-39 on GPU with -ngl 16 |
+| Prefill | All-device 201.028 s; split 203.808 s (+1.38%, passes 5% gate); whole-host 243.249 s |
+| Decode | All-device 740.302, split 762.659, whole-host 819.495 ms/token |
+| Request CPU+GPU energy | All-device 21.056, split 21.591, whole-host 29.555 kJ; split -26.95% vs whole-host but +2.54% vs all-device; single runs, loading excluded, no phone |
+| 18 GiB occupancy gate | 24,576 cells touched; 3.281 GiB host + 0.469 GiB device; control evicts 1.043 GiB model pages, release arm evicts zero |
+| Release / restoration | 9,625,706,496 B released in 259.8 ms; restore 34.098 s under cap, cannot retain all weights plus KV; not a served 24k prompt |
+| Staging | A6000 and 4060: one/four split layers reserve 20.50/20.76 MiB CUDA compute, not one 12 MiB copy per added layer |
+| Validation | 20 FA cases per CPU/A6000/4060; six CUDA backend comparisons; 21 local KV tests; native CUDA five-test gate; 68 scheduler/adapter tests; both replay goldens unchanged |
+| Additional repair | State restore clears once before all streams, not per stream; two-stream roundtrip bit-exact |
+| Preserved failures | Initial fixture included CPU-only layer 24 and missed prefill target; corrected GPU-layer mapping, old records unchanged |
+| Limits | F16 dense/non-shared/non-SWA; no overlap, automated route qualification or phone integration; full harness not rerun |
+| Artifacts | scheduler/campaigns/burstgpt/reports/20260918-split-kv-attention/; remote /mnt/storage/s42-split-kv-20260918-WwiIPY |
+| Handoff | Re-materialize transport identity before any scheduler trace. No phone changes, long trace, commit or push |
+
+## 2026-09-18 00:40 EDT - Split-KV implementation in progress
+
+| Area | Evidence / status |
+| --- | --- |
+| LSE and two-slice merge | 19 cases pass on CPU, A6000 and RTX 4060 Ti; K=256/4096/24576, Q=1/8/512, tiny and Qwen head geometry |
+| Unflagged CPU output | Saved 64-step logits SHA-256 unchanged: ba257f0f2902f9a3278214fc8d16cdd407371ebb7fbf374c1a2f996258a8f89d |
+| KV storage | Device prefix plus lazy-backed CPU overflow; per-token scratch rows prevent scatter races; logical state serialization preserved |
+| Local native tests | Unsplit extremes bit-exact; boundary/straddling, clear/reuse, touch, invalid contracts pass on CPU and CUDA |
+| Numerical caveat | One near-tied CPU argmax differs for the synthetic 256-token prompt under identical decode inputs; no CUDA differences; logits NMSE below FA tolerance |
+| Scheduler identity | Prefixes and scratch memory included in KV-plan digest and launch contract; incompatible endpoint reuse rejected |
+| Limits | F16 dense non-shared/non-SWA contexts; no context shifting or wavefront copying; CUDA flagged FA uses vector/tile, not stream-K MMA |
+| Physical work | Fresh desktop bundle /mnt/storage/s42-split-kv-20260918-WwiIPY; real-request and budget gates pending; no phone, trace, commit or push |
+
+## 2026-09-18 00:20 Split-KV attention handoff plan
+
+Next design after the direct KV-headroom proof: GPU-resident layers keep cells `[0, C_dev)` in VRAM and the
+overflow in the freed host RAM; attention runs per slice, merged with `O = O_dev*sigmoid(LSE_dev-LSE_host) +
+O_host*sigmoid(LSE_host-LSE_dev)`. Needs an LSE-emitting FA flag (CPU has S/M; CUDA via the combine path),
+two-tensor KV slices with trash-row `set_rows`, phase-dependent host-slice placement (CPU for decode, PCIe
+stream for prefill). Scheduler serializes the two slices (full CUDA sync before host copies), overlap is a
+separate last step. Plan for the implementing agent: `research_dev/SPLIT_KV_ATTENTION_PLAN.md`.
+
+## 2026-09-17 17:45 EDT - Decode-only relocation redone the right way: prefill local, phone split at the first token, KV backed page by page
+
+Verdict on the 12:37 stage: its "phone FFNs" arm ran in remote-prefill mode (weights omitted before
+context allocation), so the phones served prefill (424 s vs 281 s) and energy rose 6.8 %. That mode was
+already ruled out. Redo with prefill unchanged and the FFN share released only while decoding:
+
+```
+prefill (desktop, all weights resident)  -->  token 1..2 local  -->  control applied
+  --> FFN of layers 0-17: host prefix columns | phone suffix columns
+  --> desktop releases the phone share (MADV_DONTNEED + page-cache drop)   <- KV grows into it
+  --> next prompt: populate the share again
+```
+
+New enabler in `src/llama-kv-cache.cpp`: plain host KV buffers are zeroed lazily (`MADV_DONTNEED`), so a
+4 GiB CPU KV allocation is no longer resident from launch; the footprint tracks written cells and
+`clear(true)` returns pages. Verified with the native probe on a tiny model (eager - lazy RSS = the
+128 MiB KV allocation, argmax identical). Kill switch `LLAMA_KV_CACHE_EAGER_CLEAR=1`.
+
+Qwen3-14B split sweep on the 4060 Ti + OP15 (three sessions, layers 0-17, 1.2k prompt, 96 tokens):
+
+| phone share | decode ms/tok | decode-phase host W | request host J | released during decode |
+| ---: | ---: | ---: | ---: | ---: |
+| 0 % | 618 | 121 | 9,246 | - |
+| 25 % | 542 | 122 | 8,340 | 1.93 GiB |
+| 50 % | **465** | 122 | 7,636 | 4.13 GiB |
+| 75 % | 525 | 85 | 6,833 | 6.42 GiB |
+| 100 % | 533 | **68** | **5,743** | **8.97 GiB** |
+
+Two optima: 50 % is fastest (host and phone finish together), 100 % is cheapest and frees the most
+(host CPU idles through 18 FFNs). Release proofs page-exact, share residency 1.0 -> 0.0 within 20 s of
+the first token, 564 phone calls per session per request.
+
+Matched uncapped pair (9,737-token prompt, 1,024 tokens, 50 % split, one run each):
+
+| Metric | Desktop control | Combined |
+| --- | ---: | ---: |
+| Prefill | 306.7 s | 286.7 s |
+| Decode | 817.4 ms/token | 650.5 ms/token (-20.4 %) |
+| Request host energy | 138.2 kJ | 115.6 kJ (-16.3 %) |
+| Paid host + phone @4.5 W | 141.3 kJ | 121.8 kJ (-13.9 %) |
+| RSS while decoding | 16.8-18.1 GiB | 13.45-13.58 GiB (4.44 GB released in 114 ms) |
+
+Prefill unchanged (local), decode 20 % faster at equal host power, 4.1 GiB freed at the first token
+= ~33k more CPU-tier KV tokens at any fixed budget.
+
+100 % arm (whole FFN of layers 0-17 on the phone during decode, same prompt/tokens): prefill 289.8 s,
+decode 819.3 ms/token (= control at this context; attention and phone FFN serialize), request host energy
+90.7 kJ (-34.4 %), decode-phase host power 70.8 W vs 126.8 W (-44 % decode energy), paid host + phone
+@4.5 W -30.9 %, RSS while decoding 9.24-9.37 GiB vs 16.8-18.1 (9.63 GB released in 86 ms; memory-equivalent of ~63k
+CPU-tier KV tokens, not a usable-context figure: 32,768 configured cells, 40,960 model limit, GPU KV,
+workspace and next-prompt restoration still bound it). Two operating points: 50 % for latency, 100 % for energy + memory.
+Budget-capped pair (MemoryMax = control prefill peak 18.06 GiB, 2,048 tokens, 100 %): equal service,
+not a control failure — the kernel reclaims the unmapped GPU-layer page cache first, so the control's
+256 MiB KV growth still fits; control load 130 s with 1.25 M major faults vs 81 s; decode 824.6 vs 838.0
+ms/token; request host energy 247.4 -> 152.7 kJ (-38 %); charged memory pinned at 18.06 vs 12.0 GiB;
+RSS 17.2-17.4 vs 8.3-8.5 GiB.
+
+capped-v2 (17.06 GiB, 1 GiB below the control's prompt footprint): combined arm prefill 479.5 s (both
+arms' prefill thrashes at this budget), release 9.63 GB in 316 ms, decode 842.9 ms/token with flat
+faults, charged 11.1 GiB. Control arm: prefill 406.8 s (+33 %), then decode 1.7 -> 8.2 s/token as the KV grows (avg 2.5 s/token,
+23 M major faults, 176.6 J per generated token vs 60.0 for the combined arm); stopped deliberately at
+1,254 of 2,048 tokens after 62 min (projected finish > 2 h; partial record kept). Combined arm under the
+same budget: all 2,048 tokens at 843 ms/token. => longer context under a fixed host budget demonstrated;
+prefill unchanged; energy -16 % (50 %) / -34 % (100 %) per request. Report README has the full tables.
+
+Review follow-ups (17:45-18:40): "63k tokens" recast as a memory equivalent (32,768 configured cells,
+40,960 model limit, GPU KV, workspace, restoration bound it). New `_internal/decode_split_selection.py`:
+atlas-based split choice (latency -> 50 %, energy -> 100 %, memory -> largest release under bounds,
+fail-closed) + `DecodeReleaseAccountant` (share as its own ledger owner: reserved at prompt, released on
+the decode proof, re-reserved before the next prompt or the prompt waits). Gate `--select`. Probe
+`--clear-reuse` / `--dormant-consume` with tests: lazy clear returns the touched KV pages, reuse and
+restore-after-consume are logits-identical. 12 + 3 tests. Rig smoke of the automatic path
+(`--select energy`, short prompt): selector -> 100 %, decode 538 ms/token (atlas 533), 9.63 GB released in 172 ms,
+proof exact, host 65.7 W while decoding.
+
+Second review (18:45-): two accounting bugs fixed in `decode_split_selection.py` — (1) a failed restore
+dropped the retained shortfall reservation (19 -> 18 GiB with no physical release): restore is now one
+ledger transaction (checkpoint/restore), failure leaves every reservation as it was; (2) proofs were not
+bound to their allocation (one proof credited two owners): shares are booked with a `ShareBinding`
+(endpoint, artifact, layer mask, host columns, bytes), a proof credits only from that endpoint for those
+layers/columns, once per release generation, never replayed. Selector no longer extrapolates: rows carry
+an exact environment (artifact, placement, KV plan, context cells, batch shape, quantum, sessions, runtime
+digest) and validated request shapes (prompt within 25 % of measured, total <= measured); 1M-token /
+5k-token / longer-output requests fail closed. Gate `admission` arm connects the accountant to the real
+prefill/restore path (two requests on one server under MemoryMax). 13 tests.
+
+Physical two-request admission gate (`admission-v1`, 18.06 GiB scope, 100 % split, 64 tokens each):
+share booked (ledger 16.84 GiB) -> generation-1 proof credited 9.63 GB (ledger 7.88, charged 12.0 GiB)
+-> tenant 8.55 GB admitted (charged 18.05 = cap) -> prompt 2 REFUSED by the ledger (restore would exceed
+the cap by 9.6 GB), replay refused, held 20 s unchanged -> tenant leaves -> share re-reserved -> prompt 2
+runs: server populates 9.63 GB in 23.4 s, prefill 48.6 s, decode 533 ms/token, generation-2 release
+credited. Decision and kernel accounting agree at every step. 294 s total.
+
+Trace integration (evening, in progress): server acks now carry the dormant release state
+(`dormant_release_generation/_released_bytes/...`); backend hooks `on_control_ack`/`before_prompt`;
+rig-level `DormantShareCoordinator` (host budget ledger: every server booked non-strictly, dormant share booked
+with a `ShareBinding`, one credit per generation, prompt gate holds until the share fits again); campaign
+`host_memory_budget_bytes`; `ffn_host_share_release` whitelisted in the dormant runtime contract so Qwen's
+`phone_adapter_parameters` switch the release on. Inputs `s42-dormant-trace-20260917-v1` (reduced-24 trace,
+new bundle, 28 GiB budget, transport identity re-materialized for the bundle), resolve + preflight PASS.
+
+Trace runs 1-4 failed on integration details (stats whitelist; identity after rebuild; subset-layer proof
+refused inside the ack path; state fields treated as monotonic counters) - each fixed. **Run 5 PASS**: 24/24
+requests, 0 rejected, 1,651 s (baseline 09-09: 1,689 s); fleet energy 129.4 kJ vs 152.6 kJ (-15.2 %; CPU
+package 77.0 vs 98.8 kJ), sum latency 1,473 vs 1,626 s; 19 releases (3.2/4.6/6.4 GB, controller-chosen
+layer subsets + fractions) and 19 populates on the Qwen parent across 3 launches; 7 bookings / 6 retirements,
+none over budget; 3 restorations admitted without waiting (budget never bound). Credits 3/19 (acks precede the
+release they trigger; relaunch restarted generations) -> credits now taken from every stats read + consumed
+events reset on forget. Run 6 PASS (1,678 s, 132.4 kJ) exposed mid-request re-releases (controller changes the
+fraction -> new generation while released) -> accountant re-sizes the shortfall. **Run 7 PASS with zero refused
+credits**: 1,577 s, 127.0 kJ (baseline 152.6), 27 releases/27 populates, 9 observed generations credited once,
+0 holds, 7 bookings/6 retirements, budget never bound. Checker rule B is observation-based (coverage 0.33: a
+4-slot server releases+populates between stats reads); full coverage needs server-published release events.
+Caveat: single runs, different bundles, assumed phone power; route not yet `scheduler_qualified`.
+
+Direct proof that the freed memory backs KV (23:40): probe fills 24,576 KV cells (3 GiB host tier) under an
+18 GiB cap. Control: weights resident 8.95 -> 5.93 GiB (3 GiB evicted to fit the KV). Combined (share
+released first, 8.97 GiB): weights 6.42 -> 6.42 GiB, KV +3.0 GiB anon, 0 major faults, identical decode. New
+hook `llama_kv_touch_cells`; `kv_headroom_probe.sh`.
+Report: `research_dev/scheduler/campaigns/burstgpt/reports/20260917-decode-relocation-kv-headroom/`.
+
+---
+
+## 2026-09-17 12:37 EDT - Per-layer CPU KV and phone FFNs pass the first matched physical memory gate
+
+Implemented the approved first stage, not within-layer CPU/GPU attention merging:
+`--kv-cpu-layers` places selected caches and attention on CPU while leaving GPU
+projection weights in place. The scheduler-local planner derives F16 KV bytes,
+preserves sliding-window placement and uses the existing memory ledger with
+explicit phase peaks. Future decode release cannot fund prefill allocation;
+remote-prefill credit needs verified omission and teardown recovery. Automatic
+route admission and live KV growth remain pending. Native callers must rebuild
+for the new context-parameter fields.
+
+RTX 4060 Ti + OP15, identical binaries/libraries, dequantized-F16 Qwen artifact,
+9,722 real document tokens + 32 output tokens, 32,768 allocated context, 22 GiB
+host cap and no swap. Both arms used CPU KV 4 GiB and GPU KV 1 GiB. Phone owned
+full FFNs of CPU-parent layers 0-17 across three sessions, including prefill.
+
+| Metric | Desktop | Phone FFNs |
+| --- | ---: | ---: |
+| Completed / token identity | 1/1 | 1/1, identical 32-token output |
+| End-of-request RSS | 21.800 GB | 12.380 GB |
+| Desktop load | 58.373 s | 58.634 s |
+| Phone preload | None | 50.359 s |
+| Prefill | 281.234 s | 424.382 s |
+| Decode | 765.039 ms/token | 765.984 ms/token |
+| Paid preparation + request | 364.310 s | 591.789 s |
+| Paid CPU + GPU + assumed phone energy | 35.403 kJ | 37.818 kJ |
+
+Memory result: 9.420 GB lower process RSS, 9,625,706,496 bytes page-exact
+unmapping. Both cgroups remain near their cap due to file cache; this is not
+9.42 GB less total charged system memory. No OOM. All three session/generation
+proofs passed, 4,734 physical subrequests including warm-up, zero USB resets,
+5 Gbit/s Android restoration. GDM untouched and no gate processes remain.
+
+No speed or energy win: remote prefill is 50.90% slower, decode essentially
+unchanged, paid energy 6.82% higher at assumed 4.5 W phone active power. Savings
+at assumed 3/4.5/6 W are -4.32/-6.82/-9.33%. This is one diagnostic pair, not
+maximum-context extension, full-trace or energy qualification. Actual prompt
+length is 9,722, not the allocated 32k.
+
+88 focused tests passed. Native mixed CPU/GPU logits passed on A6000 and RTX,
+flash on/off, with identical greedy decisions and F16 tolerance. Early failures
+remain preserved: HTP partition-buffer limit, FFN-disabled host build, colored
+omission-proof parsing, and a missing native request-proof registration in the
+new harness. Fixes retained strict terminal and ownership checks. No full suite,
+long trace, commit or push.
+
+Report and exact changes: `scheduler/campaigns/burstgpt/reports/20260917-layer-kv-placement/`.
+Physical root: `/mnt/storage/s42-layer-kv-20260917-MrfN48/pair-r3`.
+Desktop / phone RESULT hashes: `1da2366d90cc8a179f7fdd8376ba3ac20cfdb9716c16d5aec69921472dfc0baf` /
+`6d26796c59ec870298c8d81122a343c028688e00c3e7795d41c8c5dba6b50a8d`.
+
+## 2026-09-17 02:30 EDT - Decode-only FFN relocation: 75 % phone split measured, dormant host share built and physically proven at 24 layers
+
+User decision: full relocation loses at prefill (phone path 2x slower, USB-bound), so first pin the
+phone/server decode split ratio, then relocate weights for decode only, then spend the freed memory
+on longer context.
+
+```
+prefill (all weights resident, PCIe-streamed to the GPU as before)   decode (phone executes 75 % of the FFN columns of 24 layers)
+desktop: gate/up/down of every CPU layer mapped + resident         desktop: releases the pages of the phone share while every slot decodes
+                                                                    -> model-file RSS 13.81 GB -> 7.86 GB, system Cached -4.8 GB, MemFree +4.8 GB
+next prompt: populate the share again (7.5-8.3 s for 5.95 GB before the readahead change)
+```
+
+| Step | Result |
+|---|---|
+| Split-ratio sweep (one HTP0 session, 8 of 24 layers, 5,261-token doc, 96 tokens, 2 reps) | decode ms/token at phone share 0/25/50/75/100 % = 459/439/416/412/434; 75 % chosen (50 % within 1 %); host energy per request falls monotonically with the share |
+| Mechanism | `llama_mmap::release_fragments` (MADV_DONTNEED on inward page-aligned pieces + POSIX_FADV_DONTNEED over the tensor; MADV_PAGEOUT rejected: folio-granular) / `populate_fragments`; loader records `dense_ffn_weights`; `llama_model::ffn_host_share_release/restore` (gate/up suffix rows, down per-row suffix); server `S41_SERVER_FFN_DORMANT_HOST_SHARE=1` releases when every slot generates under a split policy, populates before any prompt; proof lines `S41SERVERFFN dormant_host_share phase=decode|local`; scheduler `ffn_host_share_release=1`, `RuntimeHostShareReleaseProof`, `host_share_release_lower_bound_bytes` |
+| Tests | native 13/13 (new: page-exact geometry vs GGUF, kernel RSS drop, bit-identical re-execution), `test_host_share_release.py` 7/7, canonical suite 1,490/0/0/1 skip, pyflakes 0 |
+| Gate v4, one session (layers 0-7) | release 1,981,743,104 B = geometry; RSS 13.81 -> 11.83 GB during decode and idle; pagemap 0/483,824 share pages resident during decode, all during prefill; decode 417-419 ms/token = split, desktop-only 468; release 28 ms, populate 31 ms (pages still cached: descriptor bug, fixed) |
+| Gate 3s, three canonical sessions (layers 0-23) | release 5,945,229,312 B over 92,208 ranges in 169-187 ms; RSS 13.81 -> 7.86 GB; decode 339 ms/token vs 468 (-27.5 %), unchanged by the release; prefill 23.1 s, 31 s when the previous request left the share released (populate 7.5-8.3 s, now preceded by a whole-tensor readahead) |
+| Gate pitfalls | the direct worker completes when its host disconnects (one session per server); the FFN stats endpoint answers only while the slot is active; adb over USB is gone in FunctionFS mode, so mid-session owner loss cannot be induced from the host and was deliberately not forced (DMA-BUF cancellation qualification) |
+| 64k context, uncapped | 57,871-token prompt, ubatch 2,048: desktop-only prefill 102.9 s / decode 698 ms/token; dormant (3 sessions) 103.4 s / 564 ms/token, populate 7.7 s before the next prompt |
+| 64k context, 12.5 GiB host cap (`systemd-run --user --scope -p MemoryMax`, model evicted from the page cache first so the scope is charged) | desktop-only: prefill 812 s, decode 5,791 ms/token, scope pinned at the limit, +760k major faults; dormant: prefill 797/771 s, decode 718/714 ms/token (8.1x faster), share 5 % resident, +27k/31k faults; populate 21.7 s under the cap. Both arms pay the same prefill penalty (weights needed); the freed memory carries decode of the long context |
+| Not shown | a larger `n_ctx` by itself (KV allocated at launch, Gemma's SWA KV small), any VRAM saving, owner loss mid-decode (no host control channel in FunctionFS mode; in-flight kill needs the DMA-BUF cancellation qualification) |
+
+Gate pitfalls added: a cgroup cap does not bind on mmap pages already charged to another cgroup
+(evict the file first); the runtime-control call at the first token needs a long HTTP timeout when
+the server is under memory pressure.
+
+Reports: `scheduler/campaigns/burstgpt/reports/20260916-decode-split-ratio/`, `.../20260916-decode-only-relocation/`.
+Remote: `/mnt/storage/s42-decode-split-ratio-20260916-v1-ae3a24/`, `/mnt/storage/s42-decode-only-relocation-20260916-v1-5c3bb8/`.
+No commit or push.
+
+## 2026-09-16 - FP16 HMX gate/up/GLU fusion, bounded physical validation
+
+Implemented the user's narrow prefill fusion design after profiling the
+deployed worker and reviewing upstream PR 28202. Reused existing HMX tiled
+matmul/conversion and exact HVX GELU/SiLU math. A 137-line fused orchestration
+module pipelines projections and GLU in VTCM, writes only h, and leaves down
+projection and rows <= 4 unchanged. Strict host matcher and shared host/DSP
+scratch validation retain unsupported graphs. No resident weight duplication,
+USB protocol, shard, scheduler, generation or lease changes. Thirteen native
+and test files changed; exact task-local before/after hashes and patch are in
+the report, preserving the pre-existing dirty tree.
+
+Final Android worker/backend and DSP v81 deployed together in a fresh path.
+Physical HTP0 backend tests passed 28/28 with fusion on and 28/28 off, including
+GELU/SiLU, rows 1/4/137/512, partial widths and fallback cases. Scratch bounds
+passed. Ninety-six real-shard test calls had identical F16 wire outputs across
+modes; a separate diagnostic proves all 12 fused operations executed. Initial
+scalar-copy/pipeline regressions and one missing-execute-bit preflight failure
+are preserved. No broad scheduler suite or long trace was run.
+
+Matched 5261-input/64-output request, unchanged graphs, 23 GPU layers, context,
+affinity, transport, weights and fractions:
+
+| Metric | Fusion off | Fusion on |
+| --- | ---: | ---: |
+| Real-request 512-row worker compute | 32.045 ms | 29.663 ms |
+| Complete 512-row FunctionFS RPC | 89.426 ms | 87.063 ms |
+| Prefill | 36.156 s | 35.704 s |
+| Decode | 25.501 s | 25.768 s |
+| Request plus desktop launch host energy | 3.532 kJ | 3.535 kJ |
+
+The kernel gain is real (7.4% in the request, 9.9% in the matched isolated
+worker), but prefill improves only 1.25%; no energy saving is demonstrated by
+this pair. Transport/checksum/staging remains most of the RPC. Both gates
+passed correctness and actual 8,493,465,600-byte FFN omission proof, with 1800
+request calls, 600/session, one load/session, generations 1/1/1, no fallback
+or reset, valid terminal proofs and same-boot cleanup. Fusion modes produce
+identical 64-token sequences. Existing CPU/phone token divergence is preserved
+and disclosed. Phone preload (43.725/42.130 s) is separate, not treated as free.
+
+Report: `scheduler/campaigns/burstgpt/reports/20260916-fp16-ffn-fusion/`.
+Remote: `/mnt/storage/s42-fp16-ffn-fusion-20260916-v1-yNEEYR/`.
+Phone bundle: `/data/local/tmp/s42-fp16-fusion-20260916-v4/`.
+Result hashes off/on:
+`a9fb38620f369851c33fb12aa8902e26adf689c1824a935629223191a80b0620` /
+`8c5e29d3088eda65135df0d0d4e4e394b94b90a9f05a06e6df516ae3b6846e64`.
+No kernel change, unrelated process intervention, commit, push or PR.
+
+## 2026-09-16 - Prefill overhead reduced; bounded 32k relocation execution completed
+
+User authorized prefill diagnosis and larger real prompts, then explicitly
+bounded testing at 32k. Stopped there. No trace, worker/shard rebuild, kernel
+change, unrelated process intervention, commit or push.
+
+Added resident-router stage timing without changing payload hashes or protocol.
+Its TCP worker `compute_us` includes graph construction and tensor staging, not
+just NPU arithmetic. The diagnostic default run exposed about 81 ms of router
+checksum time per 512-row call. Exact-hash loop unrolling did not help and was
+not shipped. A scoped phone high-capacity-core affinity reduced the checksum
+cost to about 16 ms, with no global governor/affinity changes. Added optional
+`cpu_affinity` / `--phone-cpu-affinity`, exact identity matching and launch
+receipt recording. Default remains unset. The explicit mask c0 was derived
+from the live capacity map and applied only to this gate's phone process tree.
+
+Production files: examples/layersplit/ffn-split-resident-router.cpp;
+research_dev/scheduler/adapters/phone_session_contracts/configuration.py and
+receipts.py; adapters/phone_session_ops/launch.py; campaigns/burstgpt/arguments.py
+and runner.py. Added tests/test_phone_cpu_affinity.py. Exact before/after hashes
+and preserved before-images are in the report's CHANGES.json and before/.
+All six production hashes match the deployed manifest. 31 focused tests and
+both replay tests PASS, goldens unchanged. No full suite.
+
+Same model, 23 GPU layers, shards, default graphs, batch 2048, ubatch 512 and
+64 output tokens. Fresh cold/hot qualification for larger contexts. Native
+desktop/relocated timings in seconds:
+
+| Context / input | Prefill desktop / phone | Decode desktop / phone |
+| --- | ---: | ---: |
+| 8192 / 5261 | 22.802 / 36.008 | 29.524 / 25.586 |
+| 16384 / 15589 | 64.672 / 105.219 | 30.617 / 27.306 |
+| 32768 / 31081 | 129.559 / 210.481 | 36.258 / 31.013 |
+
+Earlier 8k phone prefill was 46.435 s; the preserved timed-default attempt was
+78.264 s, not substituted as the sole baseline. Prefill remains slower and
+total speedup is not established. At 32k, process RSS is 15.409 -> 7.115 GB,
+high-water RSS 24.278 -> 15.785 GB. Omitted tensor bytes 8,493,465,600;
+complete unmapped pages 8,493,170,688; zero VMA overlap. VRAM is effectively
+unchanged. Both allocate 520 MiB CPU KV and 472 MiB GPU KV and fit all tested
+contexts, so no maximum-context advantage is established.
+
+Important final-review finding: at 32k BOTH arms emit repetitive channel
+markers/arrows and omit the required archive key. The existing semantic-sanity
+validator accepts this mixed degeneration; physical gate PASS is not useful
+output correctness. 8k/16k retrieve the key but explanations are incomplete.
+No validator/prompt change or rerun. SUMMARY-v2 records the explicit failed
+32k retrieval checks; initial SUMMARY.json and raw outputs remain preserved.
+Useful 32k long-document inference is NOT demonstrated. Cause remains open.
+
+32k physical proof: 3000 request calls (1000/session), generation 1, one load
+per session, no within-request reload/fallback/reset, terminal status 0. Phone
+load-to-READY 8.873/11.625/12.479 s. First host post-verification 17.577 s, all
+42.338 s, outer preparation 42.352 s. USB restored at 5 Gbps; same boot and
+idle postflight PASS. The 16k calibration's initial 2% GPU postflight failure
+is preserved; a later unchanged idle check passed, without recalibration or
+threshold relaxation.
+
+32k server energy: desktop request 15.926 kJ; relocated request 13.857 kJ;
+phone preparation separately 0.619 kJ. CPU/GPU measured, phone assumed. The
+full request excludes desktop loading while reduced includes it; cleanup is
+excluded. Therefore no matched savings claim. At assumed phone 3/4.5/6 W,
+reduced request is 14.598/14.968/15.339 kJ plus separate preparation
+0.746/0.810/0.873 kJ. Detailed limits and all-context sensitivity are recorded.
+
+Report: scheduler/campaigns/burstgpt/reports/20260916-prefill-frontier/.
+Remote attempts: /mnt/storage/s42-prefill-frontier-20260916-v1-LRKTEg/,
+/mnt/storage/s42-prefill-affinity-20260916-v2-nuxeVS/,
+/mnt/storage/s42-context16384-20260916-v3-86SDY3/,
+/mnt/storage/s42-context32768-20260916-v4-9bEpE6/.
+32k gate SHA-256: 9eae2f33dff1638f2764179440d9d30fb7a971d9d083e023dfa1e2b6d6aa6e71.
+Final summary SHA-256: 50a9cfc91ea451fcaa5a26fc44aaf1589a2ab039550e9e61c82ac087288fb6b3.
+Remaining: long-document output validity and serialized prefill RPC/staging
+costs. No physical run beyond 32k or further implementation started.
+
+## 2026-09-16 - Native microbatch attribution fixed; real long-document relocation PASS
+
+User authorized the narrow native repair, desktop rebuild/requalification and
+the same bounded long-context test. Preserved the V3 failure. No trace, phone
+worker/shard rebuild, kernel change, foreign process stop, commit or push.
+
+Moved FFN request attribution from server logical batches to the actual
+`process_ubatch` execution boundary, including graph reuse. The server still
+checks live requests, slots and policy identity; the existing FFN client still
+requires exact tensor-row equality. Native regressions cover split prefill,
+interleaved request sequences, original mismatch rejection and callback failure
+before physical calls. Production files: src/llama-ext.h, src/llama-context.h,
+src/llama-context.cpp, tools/server/server-context.cpp. Test files:
+examples/layersplit/ffn-remote-resident-probe.cpp and
+research_dev/scheduler/tests/test_remote_resident_native.py. Scheduler policy,
+session lifecycle, phone protocol and graph mode are unchanged.
+
+10 native tests, 67 focused scheduler tests and both replay tests PASS; goldens
+unchanged. Local CPU server and fresh desktop CUDA server builds PASS. Nine
+fresh USB qualification cases and exact-parent cold/hot calibration PASS.
+Setup/link/deployment failures remain in their logs; no checks were weakened.
+
+Physical attempt: /mnt/storage/s42-ffn-microbatch-20260916-v4-arwuw3/.
+Both full and remote parents completed 5261 prompt plus 64 output tokens at
+context 8192, batch 2048, ubatch 512, unchanged 23 GPU layers, without truncation.
+The remote request made 1800 proved calls: 600 per session, all generation 1,
+one load per session. Actual prefill shapes 512, 137 and 4 rows match their
+attribution exactly. The 96 startup/validation calls are excluded using proof
+boundaries. Terminal status 0, zero reset recoveries/fallback, unchanged owners,
+Android USB restored and same-boot idle postflight PASS.
+
+8,493,465,600 FFN tensor bytes omitted, 8,493,170,688 complete-page bytes unmapped,
+zero remaining VMA overlap. Host process RSS 15,190,450,176 -> 6,898,577,408 bytes
+(8.292 GB lower); GPU allocation essentially unchanged at 12.81 GB. First
+scheduler-verified session at 19.778 s, all at 39.236 s, outer preload 39.242 s.
+Both parents allocate 328 MiB CPU KV plus 280 MiB GPU KV: this proves real long
+document execution with relocated weights, not a larger maximum-context frontier.
+
+Native decode 29.505 -> 26.113 s (11.50% less time); prefill 22.710 -> 46.435 s
+(2.045x). Overall speedup is not demonstrated. Full request measures 5.436 kJ
+server energy; reduced request including desktop launch 3.892 kJ. Phone
+preparation separately measures 580.491 J server energy, or 757.082 J fleet
+at assumed 4.5 W. Request/preparation boundaries are not an end-to-end matched
+comparison. Raw power samples and 3/4.5/6 W sensitivity are in the report.
+Both outputs retrieve ORCHID-731 but have incomplete explanations/thought markers;
+semantic-sanity PASS is not task-accuracy qualification. First 40 tokens agree.
+
+Report: scheduler/campaigns/burstgpt/reports/20260916-ffn-microbatch-attribution/.
+Gate SHA-256: 7cce57c00acc88ee61b3d855400c31a9cbb383501e446c38a0db0e84471f2eb0.
+Audit v2 SHA-256: 2f0a4b861c0e96729ea5555e5ca97e4cec52c23f62663d919f40f92333b0bed5.
+Calibration SHA-256: dda241207d70917b31ad7756064bd48c1dca1996351686cff1e388bd4b42436d.
+Remaining: optimize/measure long-prefill cost and separately test the usable KV
+capacity frontier under matched boundaries. No further physical run launched.
+
+## 2026-09-16 - Long-context relocation reaches READY, exposes native microbatch attribution defect
+
+Resumed after the phone became idle. Current boot is
+a3fea180-44e8-4564-9c82-522876ad07e6; kernel notes/BTF hashes match the qualified
+candidate. No reboot, foreign worker stop, USB reset, driver or native build.
+Preserved attempts v1-5ARAnu, v2-QHjpyd and v3-HUdlD0 under
+/mnt/storage/s42-remote-resident-long-context-20260916-*/.
+
+Fresh canonical desktop cold/hot calibration passes at context 8192, same
+23 GPU layers and graph-enabled native binaries. Calibration SHA-256:
+be862453b4a2feec4d3ef97184b5fe9cd0f1ebf3a71f898ed347018071e3d31c.
+The real document contains 5261 prompt tokens plus 64 output tokens. The full
+desktop completes without truncation: native prefill 22.654 s, decode 29.475 s,
+wall 52.132 s, measured server energy 5.405 kJ. Output retrieves the archive
+key, but this short raw completion is not task-accuracy qualification.
+
+Fixed the wrapper's missing calibration confirmation. Then fixed only the gate's
+preload configuration: use the existing qualified phone-load contract while the
+new-context execution remains unqualified/calibration-only. Strict compatibility
+checks cover layer placement, launch configuration, helper contracts, devices,
+memory and transport. One scheduler preserves its READY state and resource
+ledger through the catalog change. No production selection/lifecycle or native
+wire-format changes. Added one integrated regression; 67 focused tests and both
+replays pass, goldens unchanged; no broad suite.
+
+V3 loads each existing Gemma F16 shard once, 2,831,155,200 tensor bytes each,
+generation 1. First post-verification at 19.402 s; all verified at 39.195 s;
+outer preparation 39.204 s. Server preparation energy 556.983 J, estimated
+fleet 733.399 J at assumed 4.5 W. Native warmup records 32 calls per session.
+These 96 calls are not long-document execution. Phone terminal status 0,
+zero reset recoveries, Android USB restored, same-boot idle postflight PASS.
+
+The long phone request aborts before output: native error is
+FFN split runtime context differs from tensor rows. Server context attribution
+uses the 2048-row batch_view; llama_decode subdivides into 512-row microbatches,
+so the strict FFN tensor-row check rejects it. Prior prompts fit one microbatch.
+The native equality check is correct and was not weakened. Next work needs actual
+microbatch-scoped request attribution, then a rebuilt/requalified desktop binary
+and the same bounded test. No native rebuild in this frozen attempt. No new
+long-context phone completion, maximum-context or energy-saving claim.
+
+Changed: campaigns/burstgpt/remote_resident_gate.py,
+tests/test_remote_resident_reuse.py, report/configuration/audit, and this log.
+Report: scheduler/campaigns/burstgpt/reports/20260916-remote-resident-long-context/.
+Failed gate SHA-256: 5e49096424bd6ede6820763e6fa8bbf700aa6732fe835d51c8bbb0aa1a392b6c.
+Audit SHA-256: 9ab3c7057d2011bc09ad53b3c83043e07ceecc9a8ffaa96a9f40e18aeefbc4e3.
+
+## 2026-09-14 23:46 EDT - Long-context continuation blocked by another campaign's NPU worker
+
+The desktop execution lock was free, GPU idle with 299 MiB used and 15,649 MiB
+free, and host MemAvailable about 29,987 MiB. Acquired the shared lock and ran
+the existing idle preflight before calibration. It rejected phone PID 16124,
+direct_phone_service in gemma_direct_v4_latency_compact_burst1_1789443588116058455,
+holding /dev/fastrpc-nsp1000. Its parent is session.sh PID 16042; the parent is
+reparented to init. The worker's CPU ticks increased 23,813 -> 30,738 across
+the observations, so it is not safe to assume the session is inactive.
+
+Phone boot ID remains fa74f551-fb1b-465e-b5a2-053b9869b1bb. No inference from
+our test started, no worker was stopped, and no USB reset or boot occurred.
+The lock was released on failure. Existing source and test hashes are unchanged;
+the 66 focused tests and both replay passes remain the latest software checks.
+No repeated tests or new feature work while physically blocked.
+
+Preserved preflight snapshot and PREFLIGHT_WORKER_BLOCKED.json in the existing
+long-context report/deployment. Need the other campaign to release its phone
+session or explicit user authorization for its normal shutdown, then a fresh
+artifact attempt. The 8192-context result is still pending.
+
+## 2026-09-14 23:10 EDT - Long-context gate prepared; exclusive rig lock blocks calibration
+
+Prepared a bounded 8192-context document test using the existing three-session
+remote-resident gate, with the same 23-layer GPU parent and unchanged F16
+phone shards. Document tokens are frozen once for both arms, with 64 output
+tokens and no truncation. The gate now persists terminal counts, host RSS
+high-water, native KV allocations and raw host samples, and performs explicit
+host admission without premature omission credit. Context qualification must
+first come from the canonical cold/hot desktop calibration at the new size;
+no prior context or assisted energy qualification is copied.
+
+66 focused tests and both replay tests pass, goldens unchanged. Source changes
+are limited to remote_resident_gate.py and test_remote_resident_gate.py, plus
+the experiment wrapper, prompt, report and this log. No native or scheduler
+lifecycle changes. Fresh remote directory:
+/mnt/storage/s42-remote-resident-long-context-20260914-v1-OUqyHs/.
+
+Calibration could not acquire the shared .recent_moe_execution.lock. At
+23:07:52 EDT its owner was PID 338414, src.run_gemma_phone_latency, qualification
+reference smoke02. An earlier smoke01 and native build were also observed.
+No test inference, USB mode change or worker stop was performed by this task.
+Do not overlap or bypass the other job. The long-context result remains pending;
+8.49 GB of prior host reclamation is not yet a larger-context capacity proof.
+
+Report: research_dev/scheduler/campaigns/burstgpt/reports/20260914-remote-resident-long-context/.
+
+## 2026-09-14 21:57 EDT - Three-session relocation frees 8.49 GB of server model mappings
+
+Extended only the existing remote-resident gate's configuration and accounting
+to consume the existing fixed-residency assignment. No new scheduler or native
+loader/worker change. All three existing Gemma FFN shard files cover layers
+0-23 at full width. The scheduler preserves exact CPU-parent, artifact,
+geometry, session, generation, workspace and lease admission. Six focused
+regressions cover the three-session configuration, legacy single-session
+behavior, missing/incompatible shards, packed identity and per-session memory.
+
+One fresh locked preflight and one bounded physical gate PASS. Requests 42,
+46 and 50 complete on both full and remote parents. Each session loads once,
+keeps generation 1, and produces 552 request-attributed calls; 1,656 total,
+1,752 including native warm-up. Distinct tickets and fresh lease tokens,
+generation-keyed execution proofs, terminal status 0, zero reset recoveries,
+no fallback or reuse reload, normal Android USB restoration and same-boot
+idle postflight PASS. Explicit semantic-sanity mode records the same kind of
+token-37 divergence; old exact-token failures remain untouched.
+
+72 FFN tensors omit 8,493,465,600 bytes; page-exact unmapping removes
+8,493,170,688 bytes with zero remaining VMA overlap. Model mappings fall
+13.811 -> 5.318 GB; process RSS 15.269 -> 6.983 GB. GPU memory stays
+12.654 GB. Phone weight payload plus declared workspace is 9.299 GB under
+the unchanged 10 GB limit. This is a real memory relocation, not yet a
+larger-context proof or measured phone high-water allocation.
+
+Outer phone preload 41.024811 s. Native per-session authorization-to-READY:
+10.881/9.431/9.884 s. Host post-verification offsets from first stage start:
+20.339/30.661/41.015 s. Physical READY, host receipt-ready and later scheduler
+verification timestamps are distinct. SUMMARY_V2 labels them separately;
+the original summary and gate data remain preserved. The reduced parent
+starts after its whole declared owner set is READY; concurrent serving during
+load and owner-loss cancellation are not claimed by this gate.
+
+Diagnostic warm requests 46/50: desktop fleet 3.351 kJ versus remote
+1.714 kJ at assumed 4.5 W (48.87% lower; 3/6 W: 50.33%/47.40%).
+Preparation/cleanup excluded, measured server package/board, conservative
+whole-request phone activity, same 0.875 W idle treatment. Warm wall time
+29.017 -> 32.690 s, 12.66% slower. Native decode time falls 12.42%, but
+prefill takes 2.25x. Whole phone-preparation server energy is 589.035 J,
+or 773.646 J including assumed 4.5 W throughout the 41.025 s interval.
+The full control load was cold (62.115 s), warming file cache for the later
+remote arm. No end-to-end savings or break-even claim follows from this gate.
+
+Changed existing files: campaigns/burstgpt/remote_resident_gate.py and
+tests/test_remote_resident_gate.py, plus this log. Documentation, frozen
+configuration, launch wrapper and audit are under
+`scheduler/campaigns/burstgpt/reports/20260914-remote-resident-three-session/`.
+63 focused tests PASS (21.159 s), both replays PASS (77.693 s), goldens
+unchanged. Deployment copied the prior working source and overlaid only
+the two files. No broad suite, native rebuild, shard regeneration, reboot,
+flash, GDM intervention, unrelated process control, long trace, commit or push.
+
+Remote: `/mnt/storage/s42-remote-resident-three-session-20260914-v1-2C2ipE/`.
+Result SHA-256: `3cc6c3bab98beeb13cec70c9ad09d212ca2fe8b4a9a8819584678011ca3afe6e`.
+Source archive: `81ea20b45d0d0231394b52159fa2c93b8888d660036ee2fc5861e68250984a9f`.
+Summary V2: `34164a42af434eb76e16f4e97857e0386d265350ea94dcbbf29aed9d38917b2a`.
+Next: per-pool admitted real long-context execution; prefill and fully matched
+end-to-end energy are remaining performance work. No additional run launched.
+
+## 2026-09-14 20:58 EDT - Accept observed wording variation; focus relocation performance
+
+User accepts the coherent cross-hardware output variation and directs effort to
+energy, server memory, longer contexts and speed. Pause numerical-root-cause
+work. Preserve the old exact-token FAIL artifacts; this decision is not a
+claim of universally harmless rounding or a new task-accuracy qualification.
+
+The existing relocation gate now has an explicit `--output-comparison
+semantic-sanity` mode. Completion and existing output-sanity checks stay strict,
+while token differences remain recorded and non-blocking. Default exact mode
+reproduces the old verdict. Runtime identity, memory, leases, generations,
+terminal proofs and cleanup are unchanged. Fifteen focused gate tests PASS;
+saved v4 rows pass the prospective mode with their difference still recorded.
+No old result is overwritten or relabelled.
+
+Reused non-instrumented v4 data for a diagnostic of its two warm requests,
+excluding the first phone request because it includes desktop loading. At 4.5 W
+assumed phone active power, the estimate is 3.328 kJ desktop versus 2.826 kJ
+phone path (15.10% lower), but duration is 28.985 versus 30.617 s (5.63% slower).
+Sensitivity at 3/6 W is 16.48%/13.72%. This is not a new matched A/B: two short
+requests, one observation, preparation/cleanup excluded, conservative whole-
+request phone activity and 0.875 W idle phone in the desktop arm. No savings
+qualification or break-even claim follows from it.
+
+Proven memory remains 2.831 GB host mappings removed, not VRAM. The current
+capacity helper only tests launch and phone mode rejects it; do not claim usable
+longer context from that. Next: matched warm and end-to-end measurement, then
+per-pool admitted long-prompt/decode capacity tests. No GPU memory credit from
+host RAM, no OOM probing, no broad KV redesign, no trace or new physical run yet.
+
+Changed code: campaigns/burstgpt/remote_resident_gate.py and
+tests/test_remote_resident_gate.py. Plan, diagnostic analyzer and inputs are in
+`scheduler/campaigns/burstgpt/reports/20260914-relocation-performance/`.
+No deployment, native rebuild, commit, push or PR. Replay goldens untouched;
+no broad suite repeated for this gate-only configuration change.
+
+## 2026-09-14 20:14 EDT - Relocation token divergence reproduced with same-prefix probabilities
+
+Added bounded opt-in pre-sampling log-probability observations to the existing
+HTTP payload and relocation gate, with default request bodies unchanged. No
+scheduler policy, session transaction, native binary or shard change. Deployed
+the exact v4 source archive into a new directory and overlaid only the two
+diagnostic code files. The three requests, seeds, model, native libraries, CUDA
+mode, placement, shard and batching are unchanged. Preflight used the exclusive
+device lock and verified the same candidate kernel and idle system.
+
+All three full and all three reduced executions completed. Each arm exactly
+reproduced its own v4 tokens. At output token 37 of request 50, both histories
+are still identical (271 prompt + 36 output tokens). Desktop probabilities:
+communication 37.4209%, hardware 35.0206%. Phone path: communication 34.9117%,
+hardware 35.5523%. The pair's log-odds margin changes +0.066294 to -0.018183;
+that ranking reversal explains the greedy-token difference. Probabilities
+already differ on the first prediction, after prefill. Subsequent predictions
+after the first divergent token are excluded because the histories differ.
+
+This localizes the visible failure to reproducible numerical differences, not
+an observed lease/generation/transport failure. It does not identify the first
+incorrect or rounded operation. F16 wire conversion, HTP arithmetic/activation,
+reduction order and accumulated KV differences are not yet separated. Top-32
+normalized logits are not per-layer tensor error or a quality acceptance bound.
+The next diagnostic needs identical FFN inputs and per-layer outputs. Exact
+output remains FAIL; overall relocation gate remains PARTIAL. No weakened test.
+
+One HTP0 load, generation 1 unchanged, fresh ticket/lease tokens, 96/120/336
+phone calls (552 request-attributed, 584 native including warm-up). Exact proofs
+and native hashes verified against v4. Memory gate PASS with 2,831,056,896
+unmapped bytes, zero omitted-page overlap and unchanged GPU VRAM. Phone
+preparation 21.372611 s, native authorization-to-READY 10.847870 s. Normal
+cleanup and same-boot postflight PASS; no reload, fallback or reset. No trace,
+in-flight cancellation, new kernel, GDM/process intervention or savings claim.
+
+60 focused tests PASS (13.526 s), both replay goldens unchanged (79.154 s),
+three probability-analyzer tests PASS. No broad suite. Source/test changes and
+before/after hashes are in CHANGES.json. Previous v4 physical result unchanged.
+No commit, push or PR.
+
+Report: `scheduler/campaigns/burstgpt/reports/20260914-remote-resident-numerics/`.
+Remote: `/mnt/storage/s42-remote-resident-numeric-20260914-v1-sdDNJN/`.
+Probability analysis SHA-256:
+`764b7a9955eb6d0820a72f6fc5f724f9b5e67351642e33b3c7219231ec1b7274`.
+Gate result SHA-256:
+`8c365c8ae3d4d1b48368515ed8b1c918c1342b182d0484f333a6dd7c9d8a6ad3`.
+Source archive SHA-256:
+`f035b68c951a9706800af721c2d54de5b7a42a326f8421cd695170b5d01d1cf6`.
+
+## 2026-09-14 17:57 EDT - Real OP15 FFN relocation: memory PASS, exact output PARTIAL
+
+Continued only the bounded relocation gate on the temporary candidate boot,
+using existing native binaries and the existing Gemma FFN shard. Canonical
+preparation, READY owner binding, per-request leases, transport admission and
+terminal proofs now work for the reduced desktop parent. Snapshot observations,
+not stale catalog residency, authorize each remote owner. The phone is a real
+resource participant even when the desktop operator rows are otherwise local.
+Strict reuse checks include shard/index/parent hashes, geometry, columns,
+operator plan, physical generation and prefill transport capacity.
+
+Fresh transport measurements passed all nine payload/direction cases on this
+kernel. Earlier attempts are preserved: v3a transport encountered Android gadget
+rebinding; gate v1 lacked resource declarations for the new measured USB links;
+v2 lacked remote-owner transport binding and cleanup obscured the error; v3
+lacked the existing required decode-phase launch declaration. Repairs reuse the
+canonical transport/launch paths, and arm/failure evidence is saved before cleanup.
+No native worker or shard generator was rebuilt or changed.
+
+Gate v4 finished three full-parent and three reduced-parent requests (indices
+42/46/50, outputs 11/14/41). Exactly one HTP0 shard load; physical generation 1
+retained; fresh request tickets/lease tokens; 96/120/336 request-attributed phone
+calls (552 total, 584 including warm-up). Terminal status 0, zero reset
+recoveries, no fallback or between-request reload. Normal shutdown restored
+5-Gbps Android USB. A separate read-only postflight confirmed the same candidate
+boot and idle desktop GPU. No in-flight HTP cancellation was attempted.
+
+The reduced parent omits 24 FFN tensors, 2,831,155,200 bytes, for layers 0-7 at
+full 15,360-column width. Complete omitted pages unmapped: 2,831,056,896 bytes,
+with zero VMA overlap. Model mappings fall from 13,811,417,088 to 10,980,360,192
+bytes; process RSS from 15,255,138,304 to 12,504,985,600. GPU VRAM is unchanged
+at 12,654,215,168 bytes. This proves host RAM relocation, not more usable KV
+capacity or an energy improvement.
+
+Phone read/init/upload were 9.803470/0.096590/0.755491 s; native authorization
+to READY 10.726816 s; complete canonical preparation 19.873230 s. The separate
+19.650504 s transition receipt reports 369.755183 J fleet energy, including
+88.426175 J assumed phone energy at 4.5 W. Receipt attribution is diagnostic;
+server package/board energy is measured. Preparation boundaries differ and must
+not be mixed into an invented savings total.
+
+Exact-output gate A remains FAIL: requests 42/46 are identical, but request 50
+changes wording at token 37 after a common 36-token prefix. F16 wire rounding
+is plausible, not established by the saved outputs. A same-prefix logits/error
+diagnostic is needed before accepting numerical correctness. Memory gate B is
+PASS; overall verdict is PARTIAL. No longer trace or weakened acceptance.
+
+Final focused owner/launch/gate run: 29 PASS; both replay tests PASS with unchanged
+goldens. Earlier 66-test focused and 54-test offline/controller runs also passed;
+these overlapping counts are not additive. No broad suite. Exact code files and
+before/after hashes are in CHANGES.json, checks in TESTS.json. No commit or push.
+
+Report: `scheduler/campaigns/burstgpt/reports/20260914-remote-resident-phone/`.
+Remote: `/mnt/storage/s42-remote-resident-phone-20260914-v3b-r9Rdsh/`.
+Result SHA-256: `9ca16f45a21e4015831f01e772211313e1eacd48b81c2862f4675f05846e25c5`.
+Summary SHA-256: `706204f1fbbbc76d7963f0896e04e70b142c5ee7622b6e127a4e61433c32ff6c`.
+Source archive SHA-256: `0dc7afffcaa6a7161e264f1bc629a25825532970b78c8ac3a8af48ab1b505f22`.
+
+## 2026-09-14 16:04 EDT - Candidate RAM boot and bounded idle-RX cancellation PASS
+
+With explicit user authorization and an idle-device shared-lock preflight,
+RAM-booted the already built fence-owned-lock kernel. Actual notes, BTF and
+configuration match candidate boot-image SHA-256
+`f13c7c033ce74f32ea4aa6349cb531704407708f5fb35756a6c361ffb48322a3`.
+New boot ID: `fa74f551-fb1b-465e-b5a2-053b9869b1bb`. No flashing, wipe,
+desktop/GDM/driver changes, unrelated process signals or old artifact overwrite.
+
+An isolated USB probe ran three fresh sessions: normal full-payload transfer,
+four cooperative STOP acknowledgements, and forced cancellation of four pending
+4096-byte receives with no host bulk submission, model or HTP work. All passed.
+Cancellation exported and settled eight fences, received four `-104` RX statuses,
+then acknowledged USB restoration and released all eight tracked allocations.
+Drain was 25.411 ms; drain through buffer release was 2.668 s. Each test had over
+61 seconds of same-boot observation and no newly detected kernel fault. Android
+USB restored at 5,000 Mbps. The previous kernel-crash FAIL remains preserved.
+
+Five Python test methods, 18 native cancellation-order/failure cases and existing
+native direct-USB/lifecycle mocks pass. Only isolated probe/controller copies
+were changed and the Android USB probe rebuilt, not the FFN worker or generator.
+The sibling's live code, old-kernel guards and abort quarantine are unchanged.
+The slow smoke log comparison was corrected in a separately preserved validator
+version without changing acceptance. An unprivileged final hash check failed
+permission checks; the corrected rooted health check is separately recorded.
+
+This establishes bounded idle-USB cancellation, not HTP-compute cancellation or
+physical FFN relocation. The active relocation gate still requires canonical
+offline READY preparation and request leases; the archived empty-lease draft
+remains invalid. Canonical transport measurements must also be fresh on the new
+image. No inference, trace, baseline, production scheduler change or golden
+update in this step. The new kernel remains temporary, not installed.
+
+Report: `scheduler/campaigns/burstgpt/reports/20260914-dmabuf-cancellation-qualification/`.
+Remote: `/mnt/storage/s42-dmabuf-cancel-20260914-v1-gBJdFx/`.
+SUMMARY SHA-256:
+`0bbb65b1c90461e256c3dee68d93c213cfab186219760e16923e6a648163b6b8`.
+No commit, push or PR.
+
+## 2026-09-13 21:27 EDT - DMA-BUF fence repair built; physical test blocked by device owner
+
+Reused the sibling project's existing fence-lifetime candidate, without
+rewriting its transport or FFN shard implementation. In an isolated copy of
+the original OP15 vendor kernel inputs, the fence now owns its spinlock and
+pre-initialization error branches free the raw allocation correctly. The
+previous direction, cancellation-serialization and reference fixes remain.
+This repairs a concrete source lifetime hazard; no panic stack establishes it
+as the exact faulting instruction in the 18:46 crash.
+
+ARM64 kernel/GKI build succeeded in 628.872 s with bounded CPU/I/O priority.
+Configuration, exported module ABI, release string, built-in module list,
+boot header and ramdisk match the original. Candidate image SHA-256:
+`f13c7c033ce74f32ea4aa6349cb531704407708f5fb35756a6c361ffb48322a3`.
+76 focused direct-USB/lifecycle tests pass; one optional CPU-graph test skips.
+Original sources, boot images and crash FAIL are unchanged. The initial
+verification-script pathname error is preserved alongside the corrected PASS.
+
+No new image was booted, flashed or qualified. Forced abort stays quarantined;
+the current userspace wait-before-detach mitigation is not cancellation proof.
+At 21:26 EDT another process (PID 270652, `run_gemma_direct_energy`) held the
+shared phone execution lock. No interference with that experiment. OP15 still
+has boot ID `d03a2ef4-6392-4de3-a8a7-1f2376eb9b00`, expected restored kernel
+and 5,000 Mbps USB. A coordinated idle window and temporary new-image boot
+approval are needed for bounded cancellation validation. No scheduler code,
+phone-owner wiring, inference gate, baseline or trace changed or ran here.
+
+Report: `scheduler/campaigns/burstgpt/reports/20260913-dmabuf-cancellation-repair/`.
+Isolated build: `/home/myid/zs89458/Documents/op15-cancel-kernel-20260913-QEC2Bo/`.
+Only this task's isolated Bazel server was shut down. No commit, push or PR.
+
+## 2026-09-13 18:59 EDT - OP15 restored after vendor-recorded kernel crash
+
+The supplied `KERNEL_CRASH_EVIDENCE.txt` was found in the sibling
+`moe-resident-routing-a6000/results/direct_usb_fast_retest_20260913/` tree.
+It records `kernel crash Minidump [2026-09-13 18:46:40]`; file SHA-256:
+`2f0310138578e182872e2d27b8d8e7249e90ff815d803174b111b618bd355f9a`.
+This corrects the earlier unknown-trigger diagnosis based on generic bootreason
+and empty pstore. Those checks did not exclude the vendor minidump. The user
+reports a crash during cancellation after detaching four pending USB receives;
+the DMA-BUF cancellation path remains the likely trigger, not a fixed defect.
+
+At the user's direction, restored only OP15 with the same hash-verified RAM-only
+boot image. Kernel is `6.12.23-android16-5-o-g227664cbe007-4k`, BTF matches the
+saved image, new boot ID `d03a2ef4-6392-4de3-a8a7-1f2376eb9b00`. Android boot
+complete, slot `_b`, ADB 5037 and 5,000 Mbps USB verified. Restoration took
+60.183 s; fastboot command 1.941 s. No workers were active before or after.
+No partition flash, wipe, unlock, GDM change, desktop reboot, or other device
+operation. A normal reboot still returns to stock. No cancellation retest,
+inference, trace, production changes, commit, or push.
+
+Report: `scheduler/campaigns/burstgpt/reports/20260913-phone-kernel-restore-v2/`.
+Remote: `/mnt/storage/s42-phone-kernel-restore-20260913-v2-p8tJSH/`.
+RESTORE_RESULT SHA-256:
+`99b272779b91a904e942599ef79cf7b06726558c8088431e69bc50cf9248924f`.
+Original failures are preserved, with a byte-identical crash-evidence copy.
+
+## 2026-09-13 18:38 EDT - Authorized OP15 kernel restoration, RAM-only
+
+Restored the exact verified image on OP15 serial `3C15AU002CL00000` using the
+existing temporary `fastboot boot` recorder. Image SHA-256:
+`26e8d41808b10b70264d958582bb6f6c9fba634c34275e0bc28fc820a6d3fb8d`.
+No partition flash, wipe, unlock, slot change, desktop process stop, or other
+phone operation. No workers or inference jobs were active before restoration.
+
+Kernel is again `6.12.23-android16-5-o-g227664cbe007-4k`, with matching qualified
+BTF SHA-256 `f3afcf985b24de3eb5a1d5453bf4ffd95963b806ce99a59430c5a8bf7d201d17`.
+Boot completed, slot remains `_b`, ADB 5037 and 5,000 Mbps USB are verified.
+New boot ID: `03bc9013-c7d5-4c34-84cf-c6cc358a8613`. Restoration through
+verification took 59.452 s; fastboot command wall time was 1.927 s. Root pstore
+check is empty. Maintenance energy was not measured.
+
+This is a temporary RAM boot; normal reboot restores the installed stock
+kernel. No inference, FFN preload, trace, or test suite was started. The earlier
+failed preflight and the unfinished gate-wiring draft remain preserved; this
+restoration does not establish physical FFN relocation or owner-loss proof.
+
+Report: `scheduler/campaigns/burstgpt/reports/20260913-phone-kernel-restore/`.
+Remote: `/mnt/storage/s42-phone-kernel-restore-20260913-v1-QGNw0k/`.
+RESTORE_RESULT SHA-256:
+`f1c6d90f9710b2ed88e2469e87fdf140d8f62237f5a9f806e6a1c10107533f9a`.
+No production code changes, commit, or push.
+
+## 2026-09-13 18:27 EDT - Fresh USB qualification; prefill capacity fix; OP15 reboot blocks inference
+
+Report: `scheduler/campaigns/burstgpt/reports/20260913-remote-resident-phone-v2/`.
+Fresh artifact root: `/mnt/storage/s42-remote-resident-phone-20260913-v2-WTUd4V/`.
+
+Nine bounded USB measurements passed on the expected restored kernel, including
+the 3,932,160-byte Gemma prefill payload. All have zero reset recoveries and
+successful worker/USB terminal checks. Rebuilt only the transport probe against
+the current USB client source; no FFN worker, shard generator or inference
+binary rebuild. New measured identity canonical hash:
+`sha256:e9005ae70b264d6e759c7b079fc4d9f318d0c978b837a14b68f8043bc9eea733`.
+Preserved the first case whose host cleanup wait timed out: the extra ADB 5038
+daemon accidentally started in the earlier diagnostic claimed the restored
+phone. Closed that task-created daemon only; original ADB 5037 resumed normally.
+
+Kept a narrow, tested route-generation fix: preserve explicitly provisioned
+`ffn_max_tokens` instead of overwriting it with decode batch 1, validate its
+bounds and account for its workspace. Default behavior is unchanged. Active
+files changed: `costing_parameters.py`, `feasibility.py`, and five regressions
+in `test_remote_resident_gate.py`. 81 focused tests and two replay tests pass;
+both goldens unchanged. Before-images reproduce the capacity overwrite. The
+unvalidated phone gate-wiring draft is archived, not active; it still needs
+canonical execution leases/payload and owner-loss/terminal handling. Active
+gate and physical rig were restored byte-for-byte to their before-images.
+
+At about 18:14, after the transport cases ended at 18:07, OP15 rebooted into
+`6.12.23-android16-5-gb3b66ace21e0-ab14672634-4k`, not expected
+`6.12.23-android16-5-o-g227664cbe007-4k`. New boot ID
+`649a2d68-ef7b-4ced-9a79-27b5bcb3f5bd`; boot reason `reboot`; empty pstore.
+No reboot or flash was issued by this agent. Initiator is not established.
+The 18:19 preflight correctly rejects the kernel with no software-hash mismatch.
+Preflight file SHA-256:
+`12a6d7df109f36edceca7ff4e4758a95d8082970709cb6819289a12e6d33039c`.
+
+Physical inference/relocation/recovery remain unproven on OP15. Do not execute
+the archived draft deployment's saved AB command. Resolve the kernel and device
+ownership, finish/review canonical gate wiring, re-sync to a fresh deployment,
+then run only the short relocation/recovery gate. No long trace, baseline rerun,
+memory-check relaxation, commit, push or PR. Phone is responsive on ADB 5037;
+GPU idle; no task inference/FFN processes left running.
+
+## 2026-09-13 17:52 EDT - OP15 reconnected; remote-resident proof repairs; phone preflight blocked
+
+Report: `scheduler/campaigns/burstgpt/reports/20260913-remote-resident-phone/`.
+The phone is on desktop ADB 5037, USB 2-2 at 5000 Mbps, kernel
+`6.12.23-android16-5-o-g227664cbe007-4k`. NVML reports 16,409,165,824 bytes
+free; the existing 23-GPU-layer Gemma parent is feasible. No GDM or other
+process was stopped and no USB mode change, reset, weight load or inference
+was performed.
+
+The canonical preflight failed with `phone transport qualification software
+identity differs`: the saved identity pins the old server and all seven old
+host libraries. Phone worker and session-script hashes still match.
+Fresh artifacts: `/mnt/storage/s42-remote-resident-phone-20260913-v1-Zo12Rb/`.
+`preflight-v1/PHONE_OWNER_PREFLIGHT.json` SHA-256:
+`94045ee05e05c8f73d969977b144146a3b99538ec868f79202aa9a9113c09459`.
+The old qualification was not rewritten or bypassed.
+
+Found and repaired two software defects with failing-before regressions:
+
+- A remote-resident parent is a `desktop` execution contract, so its request
+  marker expected no phone work. The canonical verifier now validates its
+  complete remote FFN geometry and phone-call coverage. Binding carries the
+  loaded session's operator plan, separate from the desktop plan; the marker
+  pins shard, generation and other owner identities through completion.
+- Session maximum width was treated as an exact execution width. The real
+  17,408-column capacity incorrectly rejected Gemma's 15,360-column complete
+  shard. Capacity comparison is now an upper bound; actual READY shard
+  width and endpoint remain exact.
+
+The gate's advertised `--owner phone` was not implemented, contrary to the
+earlier report's implication. Added a canonical, persisted `--preflight-only`
+path and early failure artifacts; its successful result is explicitly only
+`PREFLIGHT_PASS`. Actual phone preparation/close wiring is still pending.
+
+Validation: 76 focused tests pass, with separate replay validation preserving
+the two saved goldens. Compile, pyflakes and whitespace checks pass. Exact
+files and hashes are in the report. No broad suite, native rebuild, baseline,
+long trace, commit or push in this step. Next: valid qualification for the
+current runtime, finish existing phone-owner gate callbacks, then the bounded
+physical relocation/recovery gates. The stand-in is not real-phone evidence.
+
+## 2026-09-13 12:50 EDT — Structural pass: shared FFN graph helper, five giants split, gate-v2 on the refactored build
+
+```
+before                                   after (owner keeps its name, re-exports the moved code)
+gemma4 / qwen3 / llama builders          llm_graph_context::build_dense_ffn_split (one copy, 3 one-line calls)
+  3 copies of the split/remote branch
+heterogeneous_rig.py      3,693 lines  → 1,856 + heterogeneous_rig_ops/{common,residency,transitions,lifecycle,observations}
+costing.py                3,178        →   588 + costing_{demands,parameters,estimates,rough}
+llama_server.py           2,752        →   883 + llama_server_contracts + llama_server_ops/proofs
+policy.py                 2,816        → 1,772 + policy_common + resource_timeline
+test_automated_runtime.py 14,736       →   767 + test_automated_runtime_{residency,routes,runtime,admission,phone}
+```
+
+| Item | Result |
+|---|---|
+| Suite | 1,429 tests, 0 failures, 0 errors, 1 skip (265.6 s); module-boundary tests cover the new splits |
+| Lint | pyflakes 245 → 0 over 400 files (`__all__` on the facades, last stale imports removed) |
+| v12 stale-replan test | retired via skip with the root cause in the test: fixture cannot express a replacement, the desktop-baseline raise is intended policy |
+| gate-v2 (BUILD-v4, TCP stand-in) | A PASS tokens identical to gate-v1 (11/14/41); B PASS proof mask 255, omitted 2,831,155,200 B, RSS 15.26 → 12.51 GB, VRAM unchanged, VMA overlap 0; C RECORDED (corrected label, freed memory is host RAM); D PASS victim 3.94 s, full parent relaunched 4.16 s; parameter fit now succeeds |
+| Binary identity | `runtime_binary_sha256` hashed the 18 KB launcher (unchanged across builds); code identity is `libllama.so.0.0.0` → `RUNTIME_LIBRARIES.sha256` sidecar, both drivers now record `runtime_libraries_sha256` (verified on the desktop) |
+| Still open | OP15 absent → phone-owned relocation and phone KV numbers; 6.1 GB untracked artifacts + untracked sources await the owner's commit decision |
+
+## 2026-09-13 00:45 EDT — Cleanup pass while the phone is absent
+
+| Item | Result |
+|---|---|
+| Dead imports | 196 removed across 20 scheduler modules (facade re-exports kept); pyflakes 451 → 245, remainder intentional re-exports |
+| Dead locals / latent bugs | 9 unused locals removed; undefined `token` in a decode test fixed; two test fakes repaired |
+| Known suite errors | 2 → 1 (cold-executor fake fixed; `test_v12_stale_replan` root cause documented: replacement conflict in desktop-baseline mode with a fixture lacking eviction-capable residency) |
+| Loader | metadata-only estimation loads ignore the remote mask → server parameter fit no longer errors |
+| Gate driver | capacity gate PASS only when the reduced parent serves a context the full parent cannot; recovery gate relaunches the full parent |
+| Docs | ARCHITECTURE / README / ACCEPTANCE_TESTS describe the remote-resident contract and gates |
+| Repo | temporary `build-cpu-server/` (797 MB) removed; 6.1 GB of untracked run artifacts under `campaigns/` and `baselines/` left for the owner to decide |
+
+## 2026-09-12 22:20 EDT — Remote-resident FFN weights: first milestone, software + native gates done, phone absent
+
+Goal (spec of 2026-09-12): prove real FFN memory relocation — the desktop never allocates the gate/up/down
+weights of phone-owned layers; reclaimed memory must buy KV capacity; explicit recovery contract.
+
+```
+desktop llama-server (reduced)                    phone session (owner)
+┌──────────────────────────────┐   activations    ┌──────────────────────┐
+│ attn/norm/embd  all layers   │ ── ffn_norm-il ─▶│ complete gate/up/down │
+│ FFN layers ∉ mask  (local)   │                  │ layers ∈ mask (n_ff)  │
+│ FFN layers ∈ mask: METADATA  │ ◀─ ffn_phone_ ───│ f16 shard, verified   │
+│   ONLY (no buffer, no load,  │    partial-il    └──────────────────────┘
+│   file pages unmapped)       │
+└──────────────────────────────┘
+```
+
+| Layer | What changed | Proof |
+|---|---|---|
+| loader (`llama-model-loader`, `llama-mmap`) | `LLAMA_FFN_REMOTE_RESIDENT_LAYER_MASK`: metadata-only ctx, no backend buffer, no load, no whole-file prefetch, page-exact `munmap` of the omitted ranges; mlock/no_mmap/no_alloc refused | `load_tensors: REMOTE_RESIDENT_FFN ...` line |
+| graph (gemma4/qwen3/llama) | remote layers always full-phone; context refuses to exist without an eval-callback owner | no-owner context → error |
+| client/server | remote layers pinned at n_ff, complete-shard check, controls on remote layers rejected, eager connect before warm-up, `S41SERVERFFN remote_resident ...` proof | native + real-model runs |
+| scheduler | `RuntimeRemoteResidentFfn` contract (placement identity, execution contract, ticket validation, launch env), route mixin (owner binding, omitted demands, `REMOTE_RESIDENT_OWNER_NOT_READY`), ledger accounting (credit after proof; teardown vs alongside fallback; reclaimed split reserve/KV) | 28 new tests; goldens unchanged |
+
+Measured so far (desktop 4060 Ti build `s42-remote-resident-ffn-20260912-v1-Kq7rT2`):
+
+| Run | omitted | unmapped (page-exact) | file mapping | VMA/RSS on omitted pages | logits vs full |
+|---|---|---|---|---|---|
+| tiny llama, CPU | 196,608 B | 172,032 B | 532,480 → 360,448 B | 0 / 0 | bit-identical |
+| tiny llama, CUDA (5 layers) | 196,608 B | 172,032 B | CUDA0 buffer 0.49 → 0.30 MiB (= omitted) | 0 / 0 | max abs 1.4e-4 |
+| Gemma 4 12B f16, layers 0-7 via desktop TCP worker | 2,831,155,200 B | 2,831,056,896 B | 13.81 → 10.98 GB | 0 / 0 | argmax 9/9, rel-L2 0.3–1.6 % |
+
+Gate driver `campaigns/burstgpt/remote_resident_gate.py` run with the desktop-hosted TCP owner as stand-in
+(report `campaigns/burstgpt/reports/20260912-remote-resident-ffn/`):
+
+| Gate | Result |
+|---|---|
+| A correctness | 3/3 requests, generated tokens identical to the full parent |
+| B memory | proof matches plan; model-file mapping 13.81 → 10.98 GB, process RSS 15.26 → 12.50 GB, VRAM unchanged, 0 VMA overlap |
+| C KV capacity | 2,560 and 6,144 context launch in both arms (Gemma SWA KV is small); freed memory is host RAM |
+| D recovery | owner killed mid-decode → visible failure in 3.9 s, server refuses, fallback feasible (teardown) |
+
+Blocker: OP15 not attached (adb 5037/5038 empty, no USB device) → the phone-owned relocation and phone KV
+numbers are still open; the same driver runs with `--owner phone:` once the phone is back.
+
+Honest caveats: omitted Gemma layers 0-23 are CPU layers → frees host RAM, not VRAM; GPU KV stays the
+context bottleneck. CPU_Mapped buffer span does not shrink (host-pointer buffer) — the kernel mapping
+and the CUDA buffer are the allocation records.
+
+## Log - `2026-09-12 05:00 EDT` - Prior under monitoring: Qwen 47% -> 76% assisted, matched saving 25.1% on the 24-request trace
+
+Only scheduler/controller code changed, nothing assumed about arrivals.
+v15's per-window decisions showed why short requests stayed at 0%:
+the operational verification of an already-measured winner demands a
+complete paired block the request cannot afford (COMPLETE_PAIR_BUDGET)
+and then falls back to the desktop; and the operational seed only looked
+in the exact power-of-two prompt-length bucket. Two changes in
+`adaptive_decode_ops`: (1) when the pair is unaffordable but the winner
+can still be measured, start at it under per-window monitoring
+(`VERIFICATION_MONITORING`): each measured window must beat the historical
+baseline by the saving margin with uncertainty and stay within the
+latency limit, else `PRIOR_MONITOR_REJECTED` eliminates it; never promoted
+to incumbent; (2) the seed searches the nearest buckets with evidence.
+
+```
+request start, seeded winner W, pair unaffordable:
+  before: 0% ... 0% (VERIFICATION_INCOMPLETE)          after: W (warm-up) -> W measured -> hold? W : desktop + eliminate
+```
+
+| matched pair (same catalog d8f9397e) | control | adaptive | saving | p95 latency ratio |
+| --- | ---: | ---: | ---: | ---: |
+| v15 / v15c (before) | 143.85 kJ / 1421 s | 120.89 kJ / 1510 s | 15.96% | 1.05 |
+| v16 / v16c (prior monitor) | 146.35 kJ / 1499 s | 109.59 kJ / 1419 s | 25.12% | 1.01 |
+
+Qwen decode 74.6 -> 48.5 J/token, Gemma 57.9 -> 44.9; 8 requests ran the
+prior under monitoring, none rejected; still unassisted: the first request
+on each new layout (no prior anywhere) and 3-14-token requests whose
+helper attached too late. Remaining levers need phone RAM re-layout per
+observed demand (Gemma back to 24 layers) - not started. 1,394 tests
+(two pre-existing errors, one timing flake), replays unchanged.
+research_dev/scheduler/campaigns/burstgpt/reports/20260912-admission-context-watcher/ (section 6)
+
+---
+
+## Log - `2026-09-12 03:17 EDT` - 24/24 on the long trace: admission safety, 2,560 Gemma context, event-driven watcher; matched saving 16.0%
+
+Followed the plan: (1) permanently unsupported shapes are rejected at
+submission with an exact reason (`REQUEST_EXCEEDS_CONTEXT_CAPACITY` /
+`REQUEST_EXCEEDS_DESKTOP_CONTROL_CONTEXT`), recorded per request
+(`RESULT.rejected_requests`, status PARTIAL), unrelated requests keep
+running, contention still queues; every trace request is screened before
+the paid interval and preflight's new `request-shapes` check blocks on any
+unsupported shape. (2) Request 49 (1,884 + 491 tokens) became executable
+by qualifying the Gemma desktop at 2,560 tokens (smallest 512-quantum
+context holding it) with the capacity-aware calibration; the first attempt
+drifted to 29 GPU layers on the emptier GPU, so it was pinned to the
+qualified 23-layer placement (a87d0996) and re-measured (12.70 GB peak).
+No context shifting. (3) The per-request helper watcher re-plans only when
+a helper-state generation moves or a 1 s fallback elapses.
+
+```
+arrival -> shape check (static, catalog capacity) -> REJECTED w/ reason | -> plan -> queue/calendar
+watcher: [ticket read every 50 ms] --generation moved or 1 s--> snapshot + envelope projection
+```
+
+| | v14 attempt (aborted 875 s) | v15 adaptive | v15c desktop control |
+| --- | ---: | ---: | ---: |
+| completed | 10 / 24 | 24 / 24 | 24 / 24 |
+| watcher CPU per queued s | 0.045 | 0.006 | - |
+| snapshot files | 18,631 | 3,498 | 82 |
+| renewals / expiries | 236 / 0 | 347 / 0 | 0 / 0 |
+| fleet kJ @4.5 W | - | 120.892 | 143.847 |
+| duration | - | 1,510 s | 1,421 s |
+
+Matched comparison (same catalog d8f9397e, deploy, binaries, stores):
+saving 15.96%, latency ratio p95 1.05 / max 1.09 (limit 1.25), target 25%
+not met; CPU package -24.7 kJ, GPU +1.0, phone +0.7 (assumed power).
+compare_ab now accepts two launch manifests that pin identical source
+files (it had refused on per-launch manifest digests). 1,389 tests (two
+pre-existing errors, one timing flake), replays unchanged.
+research_dev/scheduler/campaigns/burstgpt/reports/20260912-admission-context-watcher/
+
+---
+
+## Log - `2026-09-11 23:57 EDT` - Helper-horizon renewal hole closed; 24-request trace aborts on a 2,375-token request
+
+Review reproduced a second hot loop in the v13 coordinator: 40,307 renewals
+in 0.161 s with healthy base leases and a stale attached-helper horizon
+(helper leases are only renewed while the fraction is above zero, and the
+post-renewal check looked at the base leases alone). Fix in
+`RuntimeLeaseRenewalCoordinator`: one effective horizon (live base leases +
+scheduler helper horizon) for wake-up and post-renewal check; no advance =
+stall, retried at most once per guard while still valid; expired = the new
+`_expire_request_helper_authorization` releases idle helper leases (0%) or
+detaches active assistance, otherwise the coordinator surfaces failure;
+sleeping never extends a lease. 5 regressions; 93 focused tests, replays
+unchanged, 1,370-test suite (two pre-existing errors).
+
+```
+v13:  wait = min(live base, helper) ... renew ... check(live base only) -> helper stale -> wait 0 -> spin
+v14:  wait = min(live base, helper) ... renew ... check(min(live base, helper)):
+        advanced -> sleep to horizon-guard | stalled & valid -> pause <= guard | expired -> detach or fail
+```
+
+24-request trace (sparse_locality24, unchanged Qwen policy, host diagnostics
+on): aborted at trace time 876 s, arrival 49 = Gemma request of 1,884+491 =
+2,375 tokens = 5 context slots of 512 against a 4-slot (2,048-token) desktop
+context; every Gemma route RESOURCE_CALENDAR_INFEASIBLE -> desktop control
+not generated -> runner FAILURE (the only oversize request in the trace).
+
+| 875 s before the abort | |
+| --- | ---: |
+| arrivals / large requests completed | 16 / 10 |
+| LEASES_RENEWED (6 requests) | 236, 0.41-0.70 per s of attachment |
+| authorization expiries | 0 |
+| renewal-thread CPU, whole run | 0.73 s over 16 threads |
+| package mean W (177 valid 5 s bins) | 48.8 |
+
+New host item seen now that the spin is gone: `request-helper-<request>`
+watcher threads (50 ms poll) cost 1.3-2.0 CPU-s per 5 s per queued request
+(0.6-0.9 cores with three queued). Remedies for the abort need a decision:
+23-request variant / graceful REJECTED at submission (recommended) / 4,096
+context catalog with recalibration.
+research_dev/scheduler/campaigns/burstgpt/reports/20260911-host-power-step/ (sections 8-9)
+
+---
+
+## Log - `2026-09-11 22:38 EDT` - The 55 W host step was our lease-renewal thread spinning; fixed, 18.6 kJ
+
+Attribution by instrumentation, not inference. Existing samples ruled out
+sampling artifacts (steady 230 ms intervals, no RAPL wraps, one-sample rise).
+The host sampler now records per-process CPU ticks and RSS, aggregate
+jiffies and CPU frequency (v11), then per-thread ticks with creation times
+for the runner (v12). v11: the runner process itself goes from 0.03 to 0.7-0.95
+CPU-s per second at 73 s while package power 14 -> 72 W and frequency 1.1 ->
+3.3 GHz; Gemma's server CPU time unchanged. v12: the thread is
+`runtime-lease-renewal-<gemma>`, created when Gemma's helper leases attached,
+consuming ~1 core from 72.9 s to Gemma's completion; 178,319 renewals.
+
+Root cause: `RuntimeLeaseRenewalCoordinator` took its horizon as the minimum
+over all ticket leases, including completed preparation-phase leases whose
+predicted end (73.35 s in v11) never advances; once past it, the wait was
+zero. Fix: horizon over live leases only, plus guard-paced stalls with a
+diagnostics counter. Stub before/after: 203,668 vs 0 renewals in 0.5 s.
+
+| | v12 (before) | v13 (after) |
+| --- | ---: | ---: |
+| Gemma renewals | 178,319 | 79 |
+| Package W, Gemma 24L decode after 73 s | 65-71 | 19-22 |
+| Gemma 24L J/token before/after 73 s | 19.2 / 38.8 | 20.6 / 22.9 |
+| Fleet kJ @4.5 W | 21.835 | 18.644 |
+
+Every earlier physical total (v4 onward) carried this spin from its own
+preparation-phase end; relative comparisons stand, absolutes need re-measuring.
+Qwen: paired windows show the 6-layer shard costs 120-270 ms of phone path per
+token to save ~60 ms of CPU; rejection correct, selection untouched. Load
+labels fixed (tensor load, not disk read); full-model overlap still unsafe on
+30 GB. 1,365 tests (two pre-existing errors), replays unchanged.
+research_dev/scheduler/campaigns/burstgpt/reports/20260911-host-power-step/
+
+---
+
+## Log - `2026-09-11 17:35 EDT` - Expansion is not eviction; bounded prior on layout growth; stale proposals rejected
+
+Followed the reviewed order: items 1+2 together, then stale-proposal
+revalidation, tails measured in the analyzer. Safe Qwen load overlap was
+assessed and not built: the cost is a 28 GB file read (60 s in v9, 38 s in
+v10) on a 30 GB host where Gemma's 24 GB are mapped, so the memory check
+would refuse a prefetch every time.
+
+- `select_phone_layout_candidate` (learning branch): when demand is already
+  covered, only layouts that keep every resident shard byte-identical and fill
+  empty sessions remain candidates; they pass the normal single-session,
+  revalidation and positive-gain checks and are selected as
+  PHONE_RESIDENCY_LEARNING_EXPANSION. Offline replay on v9's real layouts:
+  before-image RETAINED both expansions, patched selects both.
+- `helper_rebound` (LEARNING, changed contract): probe list is now only the
+  expanded form of the running fraction plus the measured leader's; no sweep
+  restart, `probe_tokens`/`verification_attempts` untouched; the prior must be
+  measured against the same baseline before it becomes incumbent.
+- `begin_request_helper_preparation`: a PROPOSED layout whose new shards have
+  no arrived or running demand above the minimum-remaining-tokens knob is
+  rejected (PHONE_RESIDENCY_PROPOSAL_STALE) and the portfolio recomputed.
+
+| Run | Duration | Fleet kJ @4.5 W | Gemma assisted / weighted | 24L READY | Qwen assisted |
+| --- | ---: | ---: | --- | --- | ---: |
+| v9 | 267.2 s | 22.689 | 91.1% / 84.5% | never (deferred to 136 s) | 0 |
+| v10 | 236.0 s | 19.756 | 90.8% / 87.8% | 46.5 s (212 tokens) | 17 |
+
+Gemma decode phase 10.57 kJ vs 13.10 kJ; Qwen decode 5.57 vs 6.04; the rest
+within 0.2 kJ. Cautions: Qwen's file was partially cached (38 s read), and the
+unattributed +55 W host CPU step at ~73 s recurs (v7, v9, v10): Gemma's
+per-token fleet energy jumps 18-21 -> 37-39 J at unchanged latency, so
+per-token comparisons after 73 s are not valid; totals are measured. Full
+suite 1,358 tests (two pre-existing errors), replay goldens unchanged.
+research_dev/scheduler/campaigns/burstgpt/reports/20260911-expansion-reuse-stale-proposals/
+
+---
+
+## Log - `2026-09-11 16:45 EDT` - Gemma detects other desktop work, recovers after it; CPU start now refused on incremental energy
+
+Root cause of v6's 138-token unassisted tail, read from its own window
+records: the adaptive controller's evidence context ignored other desktop
+work, so pre-co-run baseline evidence was compared with co-run assisted
+evidence, and eliminations were only ever cleared by a batch change. The
+runtime now stamps every decode window with a measurement-context identity
+(other acquired tickets holding server leases), a change is a compatible
+context change (crossing window non-comparable, evidence reset, incumbent
+into the bounded monitor, previous winner re-probed after), and request-wide
+probe/verification budgets are not refilled. Helper events are lossless:
+monotonic indices, coalesced renewals, renewals evicted first.
+
+| Run | Llama | Duration | Fleet kJ @4.5 W | Gemma assisted / weighted |
+| --- | --- | ---: | ---: | --- |
+| v4 | GPU after Gemma | 266.9 s | 22.562 | 93.5% / 86.9% |
+| v6 | CPU concurrent | 250.0 s | 25.394 | 43.8% / 35.4% |
+| v7 (cold cache) | GPU after Gemma | 355.2 s | 28.412 | 21.6% / 15.0% |
+| v8 (warm cache) | CPU concurrent | 243.8 s | 23.686 | 72.3% / 65.7% |
+| v9 (+admission) | GPU after Gemma | 267.2 s | 22.689 | 91.1% / 84.5% |
+
+v8 shows the mechanism physically: Gemma at HTTP batch 1 saw the peer start
+at token 102 and finish at token 153, spent the 47 co-run tokens at 0%
+(CONTEXT_MONITOR_UNAFFORDABLE, 14 probe tokens left), then re-probed and
+exploited 100% over 24 layers for the last 126 tokens. v7 is a confound: the
+30 GB desktop had evicted Gemma's 24 GB weights after the preflight, the load
+took 43 s, Llama arrived during a phone-layout load and went to the GPU.
+
+Section 6: the GPU-wait alternative had been charged 5.3 kJ of idle-domain
+energy for a 426 s predicted wait during which Gemma runs anyway, and lost
+assistance was no term. Costing now exports the common idle and incremental
+route energies; the budget compares incremental energies plus an upper bound
+on assistance other active requests would lose (unknown = refused). On v8's
+numbers the CPU start is refused before the loss term; v9 ran it physically.
+1,348 tests (two pre-existing errors reproduced on before-images), replay
+goldens unchanged. Not deployed anywhere but the gate deploy; no commit.
+Open: objective rejection strings absent from the decision log, an
+unattributed +38 W host CPU step at ~74 s in v7/v9, Qwen got no layout in v9.
+research_dev/scheduler/campaigns/burstgpt/reports/20260911-concurrency-context-recovery/
+
+---
+
+## Log - `2026-09-11 14:52 EDT` - READY CPU concurrency passes; fleet energy still regresses
+
+Completed the narrow epoch/helper-admission corrections and real unchanged
+Gemma 36, Llama 37, Qwen 50 retest. Live READY dispatch and epoch authorization
+now use the same queue-aware latency basis. Helper costing excludes only its
+own parent from protected peers and normalizes qualified USB aliases to the
+declared physical transport, without changing leases or inventing measurements.
+
+Fresh physical retries exposed three telemetry races. v3 misclassified an older
+cached HTTP power sample as a phone reboot because its validated capture time
+was discarded; preserving that time fixes ordering without weakening reboot
+checks. v4 completed 3/3 but rejected CPU admission because a newer background
+power sample crossed the snapshot boundary despite valid earlier coverage;
+filtering to capture time fixes that race. v5 aborted when a snapshot expired
+during assembly. The rig now retries up to three real captures, never extending
+an expired observation. Both failed artifacts and all before-images are kept.
+
+Final v6 completed 3/3 with semantic output and terminal proofs. The exact
+qualified CPU parent was READY at 3.627282 s and reused without reloading.
+Llama started 0.265470 s after arrival and overlapped Gemma for its entire
+21.410539 s execution. Gemma made 1,840 phone calls and Qwen 162. HTP0/HTP1
+stayed at generation 1; only HTP2 changed Gemma/gen1 to Qwen/gen2. Four loads
+have individual LOADING/VERIFIED/READY proof and none failed. Zero fallback
+recoveries; no baseline rerun, long trace, forced placement, commit or push.
+
+This is not yet an energy improvement. Paid duration decreased from v4's
+266.853539 s to 250.013227 s, but fleet energy at assumed phone 4.5 W rose
+from 22.561699 kJ to 25.394045 kJ, a diagnostic 12.55% increase across revisions.
+CPU/GPU energy is measured; phone remains assumed with the same idle treatment.
+Gemma fraction-weighted coverage fell from 86.90% to 35.36% of all decode
+tokens. It returned to 0% at token 152 during the CPU co-run and did not recover
+afterward. Windows crossing CPU activity changes remained batch 1 and eligible;
+concurrency-context comparability and incumbent recovery need investigation,
+not forced positive assistance. Calls on retained sessions ended before the
+replacement, so uninterrupted retained serving is not claimed from this gate.
+
+184 focused tests pass, including both unchanged replay goldens. The existing
+cold-cohort queue wait is separately reproduced and excluded, not labelled
+passing. A 4,096-event export is dominated by 4,085 lease-renewal entries and
+lost Gemma's older lifecycle/zero-reason events. This logging limitation and
+the remaining concurrency/energy issue are recorded rather than hidden by a
+longer run. Nine source/test files changed; exact before/deployed hashes,
+results, journals, power samples, timelines and failure records are in:
+research_dev/scheduler/campaigns/burstgpt/reports/20260911-epoch-helper-admission/.
+
+## Log - `2026-09-11 14:09 EDT` - Fix READY dispatch authorization and helper interference scope
+
+Continuing the exact-parent startup result, without changing session replacement,
+leases, physical identities or terminal proofs. READY desktop dispatch now uses
+the same queue-aware request latency bound in epoch publication as live selection.
+Helper snapshots exclude only their own request from protected peer work; unknown
+or unrelated peers remain conservative. Qualified generated FFN USB links resolve
+to the catalog's declared shared physical transport for interference costing,
+without changing lease resources or inventing measured costs.
+
+The slower READY CPU regression fails before and passes after the correction;
+idle GPU still wins. Own/peer snapshot and physical transport tests pass. The
+broader focused group exposes a pre-existing cold-cohort queue wait, reproduced
+with the before-image publication code too. A verified load receipt alone does
+not release that peer. It is documented, not counted as passing or bypassed.
+Replays and a single unchanged dev3 physical retest are pending; no baseline,
+long trace, commit or push. Before-images, exact scope and diagnostics:
+research_dev/scheduler/campaigns/burstgpt/reports/20260911-epoch-helper-admission/.
+
+## Log - `2026-09-11 13:11 EDT` - Exact CPU startup verified; dev3 exposes epoch and helper-admission blockers
+
+The authorized exact-parent preload passed physically on the fresh v2 run.
+The independently qualified Llama CPU parent c1ccad2708f4... remains a distinct
+managed endpoint at port 18684, generation 2; the legacy fallback is retained.
+Its physical load took 0.688205 s and complete invocation-to-READY preparation
+took 1.590346 s. The full interval consumed 47.691581 J: measured RAPL CPU
+34.557771 J, measured NVML GPU 11.742257 J and explicitly assumed idle phone
+1.391553 J. Load/verification receipts, exact native proof and READY map match.
+Preparation cost stays in the paid boundary; there was no CPU-parent reload.
+
+Only unchanged dev3 ran: Gemma 36, Llama 37, Qwen 50. All three inference
+requests completed, but the overall gate FAILED: the prepared phone session
+had no ticket-bound execution proof. The failed artifact, rather than a
+manufactured successful RESULT, preserves the full journal, helper events,
+host power and recovered native phone logs. No execution overlap occurred.
+
+Llama's live decision admitted and preferred the READY CPU parent with zero
+incremental memory. Both placement-resolution passes instead proposed GPU and
+returned EPOCH_COMPONENT_MISMATCH. DESKTOP_FALLBACK_AFTER_NONCONVERGENCE sent it
+to the GPU queue, yielding 90.635 s arrival-to-execution wait. This is now an
+epoch/live-selection reconciliation problem, not missing CPU qualification.
+
+Phone preparations reached READY at paid times 24.912 s and 159.992 s, but
+rematerialization found no admissible helper. Recorded reasons include
+MARGINAL_SYSTEM_COST_UNKNOWN, COLD_RESIDENCY_BREAK_EVEN and ROUTE_NOT_QUALIFIED.
+There were 23 rematerialization failures, no attachment, and 90 zero-assistance
+decisions. Native router records confirm zero inference calls. HTP0 and HTP1
+each loaded once at independent generation 1; HTP0 was not reloaded when HTP1
+was added. Worker-only load-to-READY times were 10.483 s and 9.485 s.
+Neither admission nor the missing-execution terminal-proof check was relaxed.
+
+Worker terminal status is 0, Android is back on ptp,adb, and host inference
+processes released their resources. GDM remains untouched (299 MiB GPU used).
+An inactive-marker-guarded sleep watchdog remains until its original timeout;
+no signal or extra USB restoration was used. A root-owned descriptor file was
+unreadable during log recovery; readable worker/router logs were preserved.
+
+56 unique focused/startup tests passed, including both unchanged replay goldens.
+The physical decision journal also validates (startup plus three COMPLETED
+workload tickets). STARTUP_CHANGES.json lists the 13 changed startup files and
+their before-images; STARTUP_ARTIFACTS.json records deployed source identities,
+24 evidence hashes, native timings and the cleanup observation. No shared
+baseline comparison or protected-slowdown claim is made from this failed gate.
+No additional physical run, long trace, commit, push or overwritten result.
+
+Remote artifact: /mnt/storage/s42-phase-concurrency-20260911-v1-nEEi6I/dev3-ready-parent-v2.
+[Report, timings, failures and hashes](scheduler/campaigns/burstgpt/reports/20260911-concurrency-calibration/README.md).
+
+## Log - `2026-09-11 12:52 EDT` - Qualified CPU/GPU calibration and authorized exact-parent startup
+
+The user restored the RAPL counter to root:zhihao 0440. NVIDIA/NVML and RAPL
+are physically sampled again; GDM and unrelated processes remain untouched.
+Preflight-v4 passed after preserving the already-qualified desktop placements
+when validating newly free VRAM. Existing physical qualification and memory
+checks were not weakened. Two NCM calibration failures exposed falsely ready
+standalone control/links before FunctionFS bootstrap; explicit availability
+now prevents selecting that unprepared connection without changing USB modes.
+
+Nine canonical isolated Llama requests then completed: four CPU and five GPU.
+Actual observation-store execution and transition estimates are QUALIFIED for
+both parents. All 18 receipts have isolated server energy attribution; assumed
+phone power remains labelled. The observed CPU/GPU execution means are 10.828 s
+and 1.390 s. These differently configured parents are not a matched energy A/B.
+The transition state counter's stricter per-sample error test disagreed with
+the public mean-error qualification estimate at four GPU samples; this finding
+is recorded, not fixed by modifying evidence or dropping a slow sample.
+
+User approved extending startup to the exact qualified CPU parent, not relabelling
+the legacy fallback. Added explicit startup_desktop_parents configuration and
+a bounded scheduler-owned verification ticket through the existing phase leases,
+memory, physical transition and terminal-proof paths. No execution placement
+epoch is frozen by startup; normal dev3 energy-aware selection is unchanged.
+Verified residency and startup receipts are separate results inside the paid
+interval. The fallback remains loaded. Replan/substitution/eviction fails closed.
+
+54 focused/replay tests passed; two additional startup-boundary/proof cases also
+pass. Both replay hashes are unchanged. dev3-ready-parent-v1 failed before any
+trace arrival because the client quality label was used in a scheduler request;
+the exact/client-accounting distinction is fixed and regression-tested. V2 is
+the fresh three-request retry. Native binaries, models and phone shards reused;
+no baseline rerun, long trace, commit, push or overwritten physical artifact.
+
+[Calibration, failures and startup artifacts](scheduler/campaigns/burstgpt/reports/20260911-concurrency-calibration/README.md).
+
+## Log - `2026-09-11 11:44 EDT` - NVIDIA restored; calibration blocked by post-reboot CPU energy permissions
+
+User rebooted the 4060 Ti. Verified kernel 7.0.0-31-generic and matching NVIDIA
+kernel/NVML 595.91.07; live VRAM and board power work. OP15 is reachable on the
+expected kernel. New isolated deployment and canonical CPU-parent configuration
+are under /mnt/storage/s42-phase-concurrency-20260911-v1-nEEi6I. Native binaries,
+models and shards are unchanged. The old single-point CPU energy profile is not
+copied into qualification.
+
+Fixed a catalog CLI relative-import failure in _register_overlay_whole_phone;
+the launcher invokes catalog.py as a script. Added the direct-script regression
+to test_campaign_inputs.py; all six focused tests pass. No scheduling policy,
+session lifecycle, replay golden, baseline or physical result changed.
+
+Preflight-v1 preserves the import failure. V2 materializes the catalog, but its
+single-model calibration schedule hits the existing three-model preflight guard.
+Prepared a separate unchanged dev3 preflight configuration. Independent physical
+probe and the preflight diagnostic both show energy_uj is now root:root 0400;
+the campaign user gets PermissionError reading RAPL. No assumed CPU substitute,
+sudo, GDM stop, driver change, process kill or USB reset. Administrator read
+permission is required before calibration; no physical inference started.
+Canonical calibration and exact READY CPU-parent startup remain to be verified.
+
+[Report and preserved preflights](scheduler/campaigns/burstgpt/reports/20260911-concurrency-calibration/README.md).
+
+## Log - `2026-09-11 11:22 EDT` - Sequential preparation and protected CPU/GPU costs; physical concurrency still blocked
+
+Corrected phase reservations to match the adapter's sequential transition order.
+Renewal extends only the active load and shifts dependent phases atomically.
+Each verified receipt is published before the next load; only that preparation's
+tokens are released. Verified prefixes remain PENDING until all required loads
+finish, preserve exact identities, and cannot be rewritten. Resident memory and
+execution capacity remain reserved. Queue conflicts use actual phase windows;
+projections recognize individually completed transitions. The existing scheduler
+transaction restores ticket, calendar, queue and memory after an injected
+post-release failure. Phone-session transactions and native protocols unchanged.
+
+Protected extension cost now includes both RAPL CPU package and NVML GPU board
+power from a fresh common interval. Samples overlapping another charged ticket,
+including historical overlap, remain unknown rather than double-counting that
+alternative's work. Missing/stale/mixed-phase samples and missing horizons remain
+unknown with reasons. Strict stays default; energy-budgeted remains explicit;
+calibration, receipt attribution and assumed phone-power labels are preserved.
+
+New synthetic adapter-to-snapshot-to-scheduler case admits a qualified READY CPU
+parent while a large request remains acquired, under normal energy-aware and
+explicit budgeted protected-work selection. It has no load and no GPU claim.
+Strengthening the test to hold both CPU and GPU exposed a rough-ranking bug:
+one occupied CPU lane was costed as a full-resource wait, pruning the READY CPU
+parent despite spare slots. Rough ranking now uses the existing next-free-slot
+lower bound; exact phase admission and cold capacity checks remain unchanged.
+No route forcing, search-budget increase or qualification relaxation.
+Cold CPU preparation still claims capacity-wide slots. This is software-only
+evidence, not measured Llama/Gemma overlap or qualified concurrent cold loading.
+
+Initial affected set: 454 tests passed in 104.462 s. After the ranking repair,
+457 unique affected tests passed in four batches (296 + 29 + 130 + 2), including
+seven new regressions and both byte-identical replay goldens over 40 requests. Goldens unchanged:
+v3 5d52e867...7caf4; v8 24192446...2b917. Compile and whitespace checks pass.
+The pre-existing Python 3.13 multi-threaded fork warning remains.
+
+Read-only rig check at 15:05:33 UTC still reports NVML driver/library mismatch:
+kernel 595.84 versus NVML 595.91.07. No GDM, driver, reboot, process or USB
+intervention; no deployment or physical inference. Canonical calibration must
+first establish actual QUALIFIED execution and loading evidence separately.
+Then record the exact managed CPU READY residency and run only unchanged dev3
+to measure overlap, waits, phone help and protected slowdown. No savings claim
+against the different frozen catalog, no long trace, baseline rerun or commit.
+
+Report, 14-file before/after hash inventory and before-images, validation commands
+and blocker evidence:
+[20260911-sequential-preparation](scheduler/campaigns/burstgpt/reports/20260911-sequential-preparation/README.md).
+
+## Log - `2026-09-11 10:34 EDT` - Receipt attribution and phase-scoped leases; rig blocked before calibration
+
+Implemented receipt-level energy labels using the runtime acquisition ledger,
+including completed overlapping tickets, and phone activity intervals. Solo
+non-phone receipts can now be isolated independently of the campaign label;
+concurrent or unknown ownership stays diagnostic with an explicit reason.
+Assumed phone energy and mandatory server measurement coverage are unchanged.
+
+Both resource previews separate capacity-wide preparation from execution slots.
+Validated transition receipts release preparation capacity atomically; early and
+overrun loads retime execution without changing token identity. Renewal and
+completion coverage exclude preparation tokens. Queue lane-token sets replace
+one-lease-per-resource overwrites. Cold-plan cohort compatibility is retained,
+but pending request-owned preparation does not borrow shared decode leases;
+READY cohort admission and native shared-transition protocols remain intact.
+
+Normal models.json CPU-parent configuration is wired into the existing
+materializer without a copied GPU or single-point CPU energy profile. Physical
+calibration must still collect the required attributable samples and publish
+QUALIFIED learned evidence. Historical calibration scripts/results are preserved,
+not used as the new qualification path. Active protected-work predictions now
+come from runtime tickets; missing/expired active forecasts remain unknown.
+Added explicit opt-in protected_work_policy=energy-budgeted, applying the same
+measured extension-energy/margin gate to all routes. Strict remains default and
+calibration remains strict. Idle-epoch reselection is deferred as requested.
+
+Validation: 447 affected tests passed in 103.676 s, including both repeated
+byte-identical replay tests over 40 requests. Compile/whitespace checks passed.
+Goldens deliberately re-frozen after independently reproducing both old hashes:
+v3 ea5b30c9...ca27d -> 5d52e867...7caf4; v8 965f218b...868d ->
+24192446...2b917. Route IDs and arrival helper events are unchanged; preparation
+operator-plan references change with phase slots. V8 exposes the same phone
+geometry at arrived request 88135 instead of 88139. Full decoded diff preserved.
+
+Physical calibration and the energy-aware three-request retest were NOT run.
+At 14:27:18 UTC the rig's nvidia-smi failed with driver/library mismatch: loaded
+kernel driver 595.84, NVML userspace 595.91.07. Live VRAM and GPU energy cannot
+be trusted until the user/admin aligns the stack. No GDM/GPU process interference,
+sudo, driver replacement, reboot, phone reset or deployment change. No new energy
+claim; the catalog differs from the frozen desktop control regardless.
+
+Report, exact 32-file change/hash inventory, test command, decoded replay output
+and blocker evidence:
+[20260911-phase-scoped-dev3](scheduler/campaigns/burstgpt/reports/20260911-phase-scoped-dev3/README.md).
+No commit, push, baseline rerun, or 24/84-request trace.
+
+## Log - `2026-09-11 01:12 EDT` - CPU parent registration and the first work-conserving dev3 test
+
+Implemented the bounded first step toward early CPU execution: independently
+measured CPU parent capabilities and CPU/NPU helper families alongside the GPU
+control, plus existing Llama FFN index wiring through campaign configuration,
+preflight and runtime. CPU-only subprocesses now receive `--device none`,
+`--no-kv-offload`, and an empty child `CUDA_VISIBLE_DEVICES`; GPU subprocesses
+and graph mode are unchanged. Fixed an all-session storage-registration
+assumption: one model may have a verified subset of stored session shards,
+while uncovered/unknown assignments still fail closed. No session lifecycle,
+adaptive controller, native transport, shard generator, or phone worker rebuild.
+
+Fresh CUDA build includes the already-proven packed-prefix fix. Native tests:
+296 numerical cases plus two invalid-view checks. Scheduler validation: 297
+focused tests, then 17 shard/config/preflight checks and a 24-test
+storage/offline/replay group. Both replay goldens unchanged. CPU calibration
+v1 completed but exposed an unintended 120 MiB GPU allocation; preserved.
+After child CUDA isolation, v2 completed two 292-token requests in 10.850/10.805 s,
+with no PID entry in NVML, peak CPU RSS 1,733,230,592 bytes. This is isolated
+calibration, not a measured concurrent-work qualification.
+
+Final preflight passed (103 checks, two existing cost-evidence WARNs). The only
+paid experiment was unchanged burstgpt_dev3_long_v1: Gemma 36, Llama 37, Qwen 50.
+3/3 completed, full 292/292/71 output, semantic-sanity and terminal proofs valid,
+zero execution recoveries or cleanup failures. Duration 311.667160 s including
+runtime preparation/cleanup. Phone calls: Gemma 6,720; Llama 0; Qwen 354.
+Weighted all-token coverage: 90.24%, 0%, 83.10%. First Gemma session READY
+23.623 s, all three 54.122 s. Physical loads 1/1/2; only HTP2 replaced by Qwen,
+generation 2, with retained HTP0/1 generation 1. No fraction-triggered reload.
+557 helper events exported. This workload replaced after Gemma completed, so
+it does not newly prove retained active calls during replacement or rollback.
+
+Start-early objective NOT demonstrated. Llama still waited for the GPU and
+completed 131.349 s after arrival. Its CPU candidate passed admission but
+selection returned BASELINE_ENERGY_EVIDENCE_NOT_QUALIFIED. Also, Gemma's cold
+load merges all four CPU lanes into a full-request claim, retaining them after
+the 44.354 s preparation receipt through 179.712 s completion. Both Llama
+candidates therefore forecast the same blocked start. Later epoch decisions
+mark CPU MODEL_EPOCH_AUDIT_ONLY. CPU/NPU additionally lacks exact transport
+profile coverage. These are documented follow-ups, not bypassed checks. Need
+phase-scoped preparation/execution leases, refreshed alternative costs, exact
+comparison/transport qualification and bounded concurrent-interference proof.
+Live KV/sampler migration is not implemented; requests remain on their parent.
+
+Measured CPU/GPU energy: 8.477833/9.055545 kJ. Fleet at assumed phone 3/4.5/6 W:
+18.052/18.225/18.398 kJ. Nominal is 18.65% below the previous adaptive run, but
+source, native binaries and catalog differ; CPU early-start did not execute,
+so this is historical diagnostic data, not attribution or matched A/B savings.
+Strict comparison with the frozen desktop rejects catalog identity. No baseline,
+24/84-request trace, commit, push, GDM stop or unrelated process interference.
+
+Production files: scheduler.py; adapters/{catalog_materialization,__init__,
+llama_server}.py; configuration/models.py; campaigns/burstgpt/{arguments,launch,
+runner,preflight}.py. Seven focused test files updated/added, including a stale
+snapshot mock repair; complete list and before-images are in the report.
+Remote root: /mnt/storage/s42-work-conserving-dev3-20260911-v1-NrWH4c.
+Local report: research_dev/scheduler/campaigns/burstgpt/reports/
+20260911-work-conserving-dev3/README.md and SUMMARY-final.json.
+RESULT SHA: 7f08fc4fdd7e53ed20627c3672fee404b7bdffcc20ed6502f6e988d9f20696ec.
+Server SHA: c1c1613611e34ac6c96c5552bf5f0f3ee07e01be4e22ff96b921f1c212e2b6cb.
+Post-audit: all 381 deployed source files match, experiment workers stopped by
+normal cleanup, phone ptp,adb restored, GDM PID 6871 untouched at 3,178 MiB.
+
+## Log - `2026-09-10 23:23 EDT` - Packed CPU FFN prefixes repaired and physically measured
+
+User approved the narrow native follow-up to the Llama CPU/NPU calibration.
+Found and reproduced a packed down-projection prefix defect: the view keeps
+the full parent row stride, but the SIMD kernel advanced as if shortened K
+were contiguous. Initial regression: 56 numerical failures plus unsupported
+view acceptance, preserved in CPU_VIEWS_BEFORE.log. Fixed packed row-group
+traversal and fail-closed view validation in ggml/src/ggml-cpu/repack.cpp.
+The existing view-safe loader in src/llama-model-loader.cpp now chooses
+CPU_REPACK for Q4_0 only when full and prefix support checks pass. No prefix
+cache, new mode, shard/worker changes, or scheduler policy. Existing fenced
+loader and other dirty changes are preserved. Tests added in
+tests/test-cpu-repack-views.cpp and tests/CMakeLists.txt.
+
+296 numerical cases plus two unsupported-view checks pass locally, under
+ASAN/UBSAN, and on the desktop. Standard supported Q4_0 CPU MUL_MAT checks:
+46/46 pass. Focused CTest, loader build and whitespace pass. No broad suite.
+Built a fresh CPU-only runtime from a copy of the deployed source, with the
+same new binary/library hashes in both CPU and assisted arms. No existing
+source deployment, desktop reference or phone binary was overwritten.
+
+Bounded physical packed-v1: 8/8 complete; 50% improves time about 5% and
+request energy 3.88%. Default verbosity omitted the loader-buffer log, so its
+packing-log evidence remains unavailable rather than retroactively supplied.
+Final packed-v2: verbosity 4 in both arms, 25/50/75/100% sweep, 10/10 complete.
+Both arms report 522 MiB CPU_REPACK weights; assisted loader explicitly
+confirms view-safe CPU_REPACK. CPU: 10.683 s, 1,005.03 J; 50%: 9.947 s,
+980.68 J (6.88% less time, 2.42% less energy at assumed phone 4.5 W).
+75%: 10.789 s, 931.38 J; 100% FFNs: 11.748 s, 835.72 J. 25% is faster but
+energy-negative. Two repetitions per fraction are diagnostics, not qualified
+confidence bounds, global optimality, or scheduler ticket/lease qualification.
+
+The old extra prefill cost disappears: CPU 1.659 s versus 50% 1.644 s.
+Remaining per-call bottleneck at 50%: CPU prefix 0.524 ms, NPU compute
+0.413 ms, RPC 0.853 ms, exposed wait 0.328 ms. Full-FFN offload has nearly
+1.176 ms exposed wait per layer and is about 10% slower despite saving
+16.85% energy. This is not whole-model NPU-only inference.
+
+Final sweep: 37,120 phone calls, one shard load, no reload/restart between
+fractions, HTP0 generation 1 unchanged. Each positive request has ACK at
+token 2, 4,640 calls, 99.315% token-position coverage; weighted coverage is
+24.829/49.658/74.486/99.315%. All semantic-sanity, native terminal, identity,
+token count and cleanup checks pass. 54/54 phone health observations valid;
+547 host-power samples with no sampler errors. Final USB ptp,adb, original
+kernel, no owned workers remain; GDM still uses 3,178 MiB, untouched.
+
+Measured phone worker/transport startup: 9.713489 s, 168.75 J at 4.5 W;
+weight reads 1.869618 s, HTP init 0.049751 s, upload 0.257491 s. Preparation
+is separate from request energy. At 50%, saving is 3.66/2.42/1.18% for
+3/4.5/6 W, giving 5/7/16 requests to repay only measured phone startup.
+Initial staging, pre-launch hash checks and cleanup are outside these totals;
+no complete cold/end-to-end saving claim. Peak RSS: CPU 1,553,428,480 bytes,
+assisted 1,561,964,544 bytes. No extra per-fraction weight allocation.
+
+Report: research_dev/scheduler/campaigns/burstgpt/reports/20260910-llama-packed-prefix/.
+Remote: /mnt/storage/s42-llama-packed-prefix-20260911-v1-JcmCWJ.
+Final RESULT SHA256: c3cfbe22da45db9ff712a4f7ab29c5c910c835a39dbc8ddc954c11f4c8833c02.
+SUMMARY SHA256: 5f3c2babdf7c0e863a779c227a194841ad25b872491f3bf847b589c01637ad3f.
+Server SHA256: 4ac94a721ccd681486b0fa6540d7f63836737913a6a0bed2252febaa6403dc3e.
+Old physical results preserved. No mixed/long trace, commit, push or PR.
+
+## Log - `2026-09-10 22:43 EDT` - Llama CPU/NPU FFN split works; no joint efficiency win
+
+Ran a bounded Llama-only calibration using the existing worker and real Q4_0
+FFN shard: 452,988,576 bytes, layers 0-15, 8,192 columns, HTP0 generation 1.
+No native build or production scheduler change. All successful configurations
+share model, desktop/phone binaries and libraries. Across them, 54 full-length
+915-input/292-output requests plus six 32-output smoke checks completed.
+Three failed startup/debug attempts remain preserved, not relabelled PASS.
+
+Fixed the report-local launch contract, changed the diagnostic from legacy
+static shape gating to the existing acknowledged runtime-control path, used
+supported direct FunctionFS instead of slow ADB/TCP, and removed an identity
+read/cleanup race during USB changeover. TCP smoke RPC mean 18.391 ms became
+1.149 ms with direct USB. The legacy last-prefill-row static-policy mismatch
+remains documented, not silently patched in native code. Coarse-v6 required
+the existing artifact-specific graceful close after initial cleanup failed;
+the original FAIL and recovery evidence are retained.
+
+Tested worker partition widths, CPU polling and CPU thread counts. CPU-only
+launches were also creating CUDA contexts; final paired arms exclude CUDA for
+their own subprocesses only. GDM and other processes remain untouched. Earlier
+small fleet-energy differences with GPU clock settling are not savings proof.
+
+Final balanced-v12: four decode/eight prefill threads, same parent in both arms.
+CPU: 33.14 tokens/s, 10.44 s, 994.17 J. 50% FFN split: 37.18 tokens/s, 10.46 s,
+1,162.70 J. 75%: 33.86 tokens/s, 11.31 s, 1,124.18 J. 100%: 31.26 tokens/s,
+11.88 s, 1,024.48 J. Energy is physical CPU package plus GPU board plus assumed
+phone 4.5 W, including prefill/decode but with preparation separately reported.
+The partial split improves decode 12.20% but increases request energy 16.95%.
+View-safe FFN storage has slower prefill (2.604 versus 1.623 s); preserving
+optimized CPU buffers and reducing per-RPC cost need further profiling and
+safe native design, not a forced fraction or relaxed checks.
+
+Eight-thread 100%-FFN offload did save 36.23% against its own CPU control, but
+took 15.31 versus 10.14 s and must not be confused with the lower-energy CPU
+configuration above. "100%" is FFNs only, not whole-model NPU execution.
+Final staged preparation was 9.299414 s and 145.96/159.91/173.86 fleet J at
+3/4.5/6 W phone power; initial file staging energy was not measured. Final gate
+8/8 complete, 27,840 HTP0 calls, one load, no reload between requests/fractions.
+Fraction-weighted all-token coverage: 49.658/74.486/99.315%. Native terminal,
+control-hash, token-count, shard identity and cleanup checks pass. No scheduler
+lease/ticket qualification or whole-model NPU comparison is claimed.
+
+Report: research_dev/scheduler/campaigns/burstgpt/reports/20260910-llama-htp-split/.
+Remote: /mnt/storage/s42-llama-htp-split-20260911-v1-tMRgjn.
+Final RESULT SHA256: 31a3a6a907424534a743d7b5dd2bcbed9415982471bc238b39f8d8d787236521.
+SUMMARY SHA256: f3178f2483ee0c7607841d3a85f539b8ec126ee8dc17b4903db424a64b996c1d.
+Only report-local diagnostics/evidence/docs and this log changed. No broad
+suite, trace, commit or push. Final USB ptp,adb, kernel unchanged, no owned
+inference workers left, GDM retains its 3,178 MiB allocation.
+
+## Log - `2026-09-10 21:10 EDT` - Llama-only retest finds full-GPU launch defect
+
+Five standalone phone requests completed with the same Llama 37 prompt (915
+input/292 output), Q4_0 artifact, deployed libraries, context 4096, batch 1024,
+ubatch 256, parallel 1, seed 42 and uncached prompts. Existing launch setting
+16 GPU layers reproduced 4.630/4.648 tokens/s and 64.592/64.311 s service time.
+Changing only GPU layers to 17 with Flash Attention still off produced 48.933
+tokens/s and 6.964 s. Full GPU with Flash Attention on produced 45.821/45.841
+tokens/s and 7.418/7.333 s. Startup times were 14.250/13.935/15.558 s, separate
+from request times. This is not an energy qualification or mixed-trace saving.
+
+The current Android launch validation equates GPU layer count to block_count
+(16), but this runtime counts the output layer in full offload. Native evidence:
+16/17 total offload with 8 MiB CPU KV versus 17/17 with all 128 MiB KV on OpenCL.
+Both use Adreno optimized kernels. The retained CPU block is a major placement
+bottleneck; exact synchronization/governor contributions remain unprofiled.
+The adapter's 16-layer restriction remains unchanged pending a narrow production
+fix and new exact-identity memory/latency/energy qualification. Normal scheduling
+is not bypassed or changed by these explicitly labelled standalone diagnostics.
+
+All five requests passed semantic sanity, all 90 health samples were valid and
+thermally qualified, and each configuration loaded once with no repeat reload.
+Only owned endpoints/forwards were stopped; USB stayed ptp,adb, GDM and existing
+idle wrappers were untouched. Raw KGSL reset_count advanced during the overall
+diagnostic; no GPU/page faults were reported, but no zero-GPU-reset claim is made.
+
+Two pre-launch harness failures (immutable-contract serialization and a port
+check matching TIME_WAIT) were fixed locally and preserved, with no inference
+in those attempts. Remote roots: /mnt/storage/s42-llama-speed-20260911-v1 through
+v3. Report and exact commands/results are under
+research_dev/scheduler/campaigns/burstgpt/reports/20260910-llama-opencl-speed/.
+Result SHA-256 values: original 0c0e7e96131f199e479359e22d64f84b0b6d5d6f10d678b02124f67cd7190602;
+full/off 48cfcb7a8146f84d3f7d3dc52edfddc568216353a0a2a3d9bf454f15910e2a31;
+full/on fef2269fe0e05c8f4d2220e220ef23e445c9a0a8374039d17cc0f22d7c929659.
+Only a report-local probe, new evidence/docs and this log changed. No production
+refactor, native build, broad tests, baseline rerun, trace, commit or push.
+
+## Log - `2026-09-10 20:06 EDT` - Measured phone memory budget, latency blocker retained
+
+Measured the unchanged Llama 37 prompt (915 input, 292 output tokens) on the
+current GPUOpenCL endpoint through NCM, with one Gemma HTP shard retained.
+108 process-lifetime-checked samples show RSS high-water 1,105,862,656 bytes and
+KGSL kernel allocation high-water 1,430,216,704 bytes, with zero imported memory
+and swap. Their conservative sum is 2,536,079,360 bytes, not just the 763 MB
+weights. A provisional tested-shape reservation with 10% headroom rounded up to
+16 MiB is 2,801,795,072 bytes (198,204,928 less than the old configured 3 GB).
+This is not qualified for arbitrary shapes or repeated phone reuse.
+
+Added a separate identity-fenced peak probe without replacing PSS residency
+credit. Exposed the existing scheduler HTP cap through typed campaign/launch
+configuration. Capped static budgets now preserve the larger catalog/live
+reserve against the declared pool. Memory admission for an unqualified cold
+service now uses complete peak plus real retained/live capacity, not energy
+maturity as a substitute for memory proof; route qualification stays strict.
+The decision-only planner produced three nonempty Gemma sessions (2/8/8 layers),
+6,370,099,200 weight bytes. With workspace, provisional Llama peak and unchanged
+805,306,368 reserve, total is 9,982,152,192 bytes inside the declared 10 GB pool.
+No layout was physically published from this decision-only result.
+
+The bounded physical attempt is NOT a passing reuse/three-request gate. The
+first request completed on phone in 65.547653 s with valid lease coverage but a
+46.262139 s latency-upper overrun, so the existing controller quarantined it.
+Calibration selected desktop for the second identical request (1.534981 s).
+No route was forced and no latency rejection was bypassed. Diagnostic execution
+energies were 1,024.358 J phone and 191.100 J desktop at assumed phone 4.5 W;
+these are instrumented windows, not a matched mixed-trace savings comparison.
+Normal scheduling also still lacks qualified cold-route energy. Requested
+user direction before changing the three-request retest to capacity calibration.
+No three-request or longer trace was launched in this turn.
+
+87 focused tests passed, including both unchanged replay goldens; no full
+harness. Physical failure, executions, snapshots, samples and cleanup preserved
+under `/mnt/storage/s42-phone-memory-20260910-v1` and the local report's physical
+directory. Post-cleanup USB is ptp,adb, no owned inference workers remain, GDM
+and 3,178 MiB GPU allocation are unchanged. No native rebuild, commit or push.
+Report, complete file list and hashes:
+`research_dev/scheduler/campaigns/burstgpt/reports/20260910-phone-memory-budget/README.md`.
+
+## Log - `2026-09-10 18:45 EDT` - Whole-phone ownership and evidence recovery repair
+
+Corrected the previous diagnosis: Llama's first v1 decision at 61.136337 s was
+excluded by BASELINE_ENERGY_EVIDENCE_NOT_QUALIFIED. MODEL_EPOCH_AUDIT_ONLY was
+the later consequence of selecting a desktop epoch. The frozen initial automated
+store is empty, and v1's energy receipts are diagnostic rather than qualified
+cold-start evidence. No qualification, route or fraction is fabricated here.
+
+Recovered exact route/transition observations independently of adaptive helper
+contracts, with unchanged identity checks and immediate cost rematerialization.
+Separated whole-phone residency ownership from the HTP group; eviction planning
+and queued projection now preserve other owners and do not credit retained HTP
+bytes as freed. Compute/transport exclusion and one shared memory pool remain.
+Observed unqualified endpoints retain their peak reservation. Whole-model
+admission also enforces the declared pool plus HTP workspace and the larger
+catalog/runtime reserve when no optional resizing cap is configured. Android's
+larger physical MemTotal is not permission to exceed the declared 10 GB budget.
+
+221 focused/related tests passed after the final ledger repair. Both replay
+goldens are unchanged. No complete harness, baseline, long trace,
+native rebuild, commit or push. The qualified kernel and GDM remain untouched.
+Two v2 preflight artifacts passed and are retained separately. The v2 attempt
+failed at Qwen submission: associated eviction lacks an exact exclusive anchor.
+The memory ledger still assumed one owner per device after catalog separation.
+Exact executor/device anchors now reach generation, preview, commit and helper
+preparation; stale and cross-owner eviction checks remain strict. Preserved the
+failed artifact and cleanup evidence. The fresh unchanged Gemma 36 / Llama 37 /
+Qwen 50 adaptive retest passed preflight and completed under normal scheduling in
+`/mnt/storage/s42-whole-residency-dev3-20260910-v3`; deployment adds `-deploy`.
+The code was frozen during inference. Initial evidence, requests, artifacts,
+binaries, desktop parents and paid preparation/cleanup boundaries are unchanged.
+
+Physical v3 PASS: 3/3 requests, 655/655 tokens, accepted output/terminal proofs,
+zero execution recoveries and USB reset recoveries, clean shutdown. Duration
+276.056278 s including preparation/cleanup. Gemma made 6,488 phone calls,
+95.89% assisted tokens and 88.10% fraction-weighted/all-token coverage; Qwen
+made 66 calls, 15.49% coverage. Four session loads reached READY with retained
+generations 1/1 and replaced HTP2 gen2. There were 26 retained-session calls
+during initial HTP2 loading. Model replacement was after Gemma completion, so
+this does not claim a new active-replacement continuity/rollback proof.
+
+Llama remained desktop: PHONE_SERVICE_MEMORY_REBALANCE_PENDING at arrival.
+The three Gemma shards, HTP workspace, configured 3 GB whole-service peak and
+reserve require 12,303,723,520 bytes against the declared 10 GB pool. Exact
+source eviction credit is now zero for retained HTP. Verified shrinking and
+current-mode cold-energy qualification remain needed; no fabricated evidence.
+Qwen's BOUND_RESOLUTION_UNAFFORDABLE result with 51 tokens left also remains.
+
+Measured CPU/GPU energy: 12.325001/8.330818 kJ. Fleet at assumed phone active
+3/4.5/6 W: 21.108330/21.257244/21.406159 kJ. At 4.5 W, 32.94% below frozen
+modified desktop and 5.49% below frozen fixed GGG, historical comparisons only.
+Strict matched validation still rejects catalog_sha256; no baseline rerun.
+Desktop load times also changed substantially, especially Gemma 40.876 to
+11.480 s, so the reduction is not an isolated causal claim about this repair.
+Both timeline analyses and decoded comparison differences are preserved.
+All 386 deployed source files and 787 copied artifact hashes verified.
+RESULT SHA-256: d7c80fb71a7cd00502d7b2e40ca8e6381452d73ee7ddb09d156988f948774c24.
+
+Exact files, measurements and physical artifacts:
+[repair and retest report](scheduler/campaigns/burstgpt/reports/20260910-whole-residency-dev3/README.md).
+Automatic whole-phone selection remains subject to qualified energy and a
+verified capacity-valid portfolio. This repair does not claim either from
+diagnostic measurements or proposed shard resizing.
+
+## Log - `2026-09-10 18:02 EDT` - Three-request retest after NCM control recovery
+
+Ran only the unchanged Gemma 36 / Llama 37 / Qwen 50 adaptive workload, with
+normal energy-aware scheduling and the existing FFN shard files. Registered the
+whole-phone service through the canonical catalog materializer with explicit
+NCM control and a conservative 3 GB peak declaration; no route/fraction/session
+was forced and no new qualification was invented. Production scheduler code
+was unchanged. Preflight and all 3 terminal/output validations passed.
+
+Paid duration, including runtime preparation and cleanup: 316.882832 s. At the
+4.5 W active phone assumption, fleet energy was 22.402257 kJ: measured CPU
+12.599853 kJ, measured GPU 9.134781 kJ, assumed phone 0.667623 kJ. Historical
+differences against the final frozen source-v7 references are 29.70% below clean
+upstream desktop, 29.33% below matched modified desktop, and 0.40% below fixed
+GGG. GGG was 4.69 s faster. This tiny energy difference is not proof of adaptive
+superiority. The unchanged strict matched-A/B validator rejects the catalog
+identity difference; decoded differences and invariant checks are preserved.
+No baseline or larger trace was rerun.
+
+Gemma: 6,720 calls, 280/292 assisted tokens (95.89%), 90.24% fraction-weighted
+all-token coverage, sustained 100% winner through its tail. Qwen: 66 HTP2 calls,
+11/71 assisted tokens (15.49%), then INCONCLUSIVE at token 20 with 51 tokens left,
+reason BOUND_RESOLUTION_UNAFFORDABLE. This is still a verification-budget limit,
+not a measured negative-energy rejection. Llama completed on desktop; its
+whole-phone candidate remained MODEL_EPOCH_AUDIT_ONLY in the selected desktop
+epoch. Endpoint registration alone does not establish safe epoch authorization
+or actual Adreno/HTP concurrency.
+
+Initial sessions published READY independently at 24.408, 34.784 and 46.725 s.
+Four loads succeeded: initial Gemma HTP0/1/2 and one Qwen replacement on HTP2.
+Only HTP2 advanced generation 1 -> 2; HTP0/HTP1 retained their identities and
+generation 1. Replacement began after Gemma completed, so this is not a new
+retained-active-call interruption, reverse or rollback test. No failed/abandoned
+layouts, stale execution, execution fallback, request restart or USB reset.
+
+All 404 saved phone observations were VALID, maximum age 2.569265 s. CUDA trace
+shows 2,388 graph launches and 28 recaptures by the existing metric. Cleanup
+restored ptp,adb and left no owned phone workers; GDM PID 6871 and qualified
+kernel were unchanged. VRAM returned to 3,178 MiB used. The run was 26.862 s
+slower than the prior telemetry/Qwen run despite using less energy; Gemma desktop
+preparation alone measured 40.876 s versus 13.562 s before. No cache policy was
+changed, and no overlapping duration was subtracted to claim savings.
+
+Artifacts: `/mnt/storage/s42-ncm-dev3-20260910-v1/`; deployment is the same path
+with `-deploy`. All 857 copied physical files and 383 executed source files
+verified. RESULT SHA-256:
+`ef89cf3412e2bf87e28f6e6f817f6fd862b85651567d9f4ce4490135f71624f7`.
+Changed only the new report's configuration/measurement, analysis and audit
+scripts, generated evidence, README, and this log. The preceding 229 distinct
+focused/related tests were reused; no broad suite or replay-golden edit.
+[Full report and comparisons](scheduler/campaigns/burstgpt/reports/20260910-ncm-dev3/README.md).
+
+## Log - `2026-09-10 17:20 EDT` - FunctionFS/NCM control and whole-phone device gate
+
+Restored the exact qualified OP15 kernel with the existing RAM-only fastboot
+boot procedure. Image SHA-256 remains
+`26e8d41808b10b70264d958582bb6f6c9fba634c34275e0bc28fc820a6d3fb8d`;
+kernel BTF is `f3afcf985b24de3eb5a1d5453bf4ffd95963b806ce99a59430c5a8bf7d201d17`.
+No flash, wipe, bootloader unlock, GDM change or unrelated process termination.
+This is a temporary boot, so future preflight must still verify the kernel.
+
+Physically reproduced the coexistence blocker: one FFN shard became READY, but
+TCP ADB refused connections because Android init stopped adbd when FunctionFS
+disabled the normal gadget. The existing Android launcher now offers explicit
+`adb-ncm` control. A verified bounded bootstrap starts only the already configured
+authenticated TCP service after that changeover. Process control, logs, inference
+forwarding and generation-bound allocation probes all use the same verified phone
+and boot identity. The existing HTTP health/power fallback can also use it.
+Unknown/stale observations remain conservative; USB is not toggled for refresh.
+NCM transport costs remain estimated rather than inheriting USB qualification.
+
+The final bounded calibration request passed: 915 prompt tokens and 32/32 output
+tokens entirely on the phone, 9.428042 s service time, valid native terminal proof,
+no fallback, no USB reset recovery, and clean verified process shutdown. One
+Gemma FFN shard remained READY at generation 1, with a single load and no reload;
+whole-endpoint allocation observations were independently fenced at generation 3.
+First session READY was 17.367658 s from the preload epoch; physical read/init took
+8.761313 s. Thirty-two valid monitor observations represented 24 distinct source
+samples across 15.107116 s, maximum age 0.859082 s. Observed PSS was
+366,210,048-441,638,912 bytes, not a measured OpenCL allocation peak.
+
+Preserved failures include a root-directory staging permission error, a diagnostic
+ticket attribute error, conservative desktop selection on stale USB telemetry,
+and premature diagnostic NCM disconnect before cleanup. That last attempt's
+execution-only PASS is explicitly superseded by its overall FAIL audit; only
+its exact PID 28178 was later signalled after identity/hash checks. Remote stop
+now requires transport success, fences the process lifetime and confirms exit.
+Failed stops retain the physical record and control connection for recovery.
+Final PASS publication follows cleanup. The final run left no owned phone workers,
+with desktop VRAM back at 3,178 MiB used and GDM PID 6871 unchanged.
+
+Validation: 228 focused/related tests passed in 105.282 s, including both unchanged
+replay goldens. A final failure-only shutdown guard added one regression; the
+16-test NCM subset passed afterward (229 distinct tests across these runs).
+Its three production lines and test were added after the physical gate started
+and tested in software, not physically fault-injected; the exact source delta
+is preserved. No full harness, trace, baseline, native rebuild, commit or push.
+
+Changed production files: `adapters/android_llama_server.py`,
+`adapters/heterogeneous_rig.py`, `adapters/probes.py`,
+`adapters/catalog_materialization.py`, new
+`adapters/native/android_ncm_adb_control.sh`, `configuration/rig.py`, and
+`campaigns/burstgpt/{arguments,catalog,launch,runner}.py`, all under
+`research_dev/scheduler/`. Added `tests/test_android_ncm_control.py` and the
+bounded diagnostic/audit report; updated the architecture guide. The existing
+power-annotation memory-reuse repair remained green. HTP transactions, shards,
+workers, wire formats, replay inputs and frozen baselines were not changed.
+
+Artifacts: `/mnt/storage/s42-whole-phone-coexistence-20260910-v1`, passing
+`whole-attempt-4`. Local copies, full attempt history, measurements and source
+hashes are in
+[the report](scheduler/campaigns/burstgpt/reports/20260910-whole-phone-coexistence/README.md).
+All 763 archived files verified against the artifact manifest, SHA-256
+`0162d70e044b84ef72fb434993b82dc825d571c8628664fd3dc1f1562ff28f38`.
+Final RESULT SHA-256:
+`340faf1c99e0114024bdae635854b39c1200b99fc0b4210c7ea55cc27ce095a2`.
+
+Remaining limits, not hidden as passes: the retained shard received no FFN calls
+in this control/co-residency diagnostic; simultaneous HTP/Adreno compute is not
+proved. The whole endpoint's current capability still reserves `op15-htp`.
+OpenCL/KV/workspace high-water qualification, independent NCM lifetime without an
+FFN owner, and idle-only shard resizing remain separate work. No Llama energy
+benefit or comparison savings is claimed by this gate.
+
+## Log - `2026-09-10 16:03 EDT` - Power-enabled resident reuse and whole-phone integration repairs
+
+Reproduced the reported ASSUMED_4P5W defect through generated plans and the real
+snapshot builder. Initial admission succeeded, but round-tripping the resident
+endpoint added exactly 9,999,232 bytes and failed MEMORY_CAPACITY. The six
+generated phone_power_* accounting annotations are now excluded from the
+whole-phone launch/cache/share identity, alongside the existing finite transport
+annotation set. They remain in the physical-plan snapshot, subsequent execution
+plan and route cost. The regression now requires zero additional allocation,
+unchanged cost, preserved annotations and stable launch-cache identity. Unknown
+phone_power_* names still behave as launch options and fail exact matching.
+
+Also reproduced and fixed the three preceding whole-phone integration findings:
+
+- Whole-model plans use the generic execution contract with no helper
+  phone_device_id. The rig now resolves their phone device from the exact
+  Android executor, endpoint and launch parameters for pre-load safety and
+  energy accounting. It checks live memory, battery and thermal state before
+  mutation, includes the declared peak or larger plan demand, and waits for
+  fresh observations conservatively. It does not enter the HTP bridge/session
+  preparation path or bind these tickets to HTP generations.
+- ManagedAndroidLlamaServer.finish_execution now forwards static_control_ack
+  and helper_envelopes to the existing terminal-proof validator. Previously
+  the real rig callback raised TypeError before validation. Native proof formats
+  and validation are unchanged; proof failures still propagate.
+- Preparation and whole-model execution now record phone-active intervals.
+  A valid whole-model proof with zero HTP calls no longer discards execution
+  activity. Deterministic two-second fixtures at assumed 4.5 W account for
+  9,000,000 uJ of active energy, rather than zero active time. These are software
+  accounting regressions, not physical energy measurements.
+
+Validation: 192 focused and related tests passed in 100.851 s:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=research_dev/scheduler/tests:. python3 -m unittest test_phone_allocation_snapshot test_phone_memory_cap test_phone_power_probe test_telemetry_recovery test_physical_residency test_llama_server_adapter test_runtime_resources test_catalog_materialization test_replay_determinism
+```
+
+Both replay goldens are unchanged; each replay is evaluated twice:
+
+- v3: `sha256:ea5b30c9e4a3f705c194188d6e5788c64990953aad73ff3c4b7573bc69eca27d`
+- v8: `sha256:965f218bb5f81a57dbb51167624798f02eb79354b6cc042683b2b1ed9b1a868d`
+
+The five edited Python files pass parse/compile and trailing-whitespace checks;
+git diff --check passes. The existing Python 3.13 multithreaded-fork warning in
+the sampler tests remains. No full scheduler harness or physical run was made.
+
+Changed files in this repair (paths relative to research_dev/scheduler unless
+otherwise noted):
+
+- `_internal/capability_contracts/executors.py`
+- `adapters/android_llama_server.py`
+- `adapters/heterogeneous_rig.py`
+- `tests/test_phone_memory_cap.py`
+- `tests/test_phone_allocation_snapshot.py`
+- `ARCHITECTURE.md`
+- `research_dev/talks.md`
+
+Remaining requested coexistence work is NOT implemented or physically proven.
+The production direct-FFN script already supports FunctionFS plus NCM, but the
+NCM HTTP diagnostic service serves static files only. Android whole-model
+control, process-memory sampling, native log collection and the forwarded HTTP
+inference connection still depend on ADB, which disappears during the gadget
+changeover. Extending only the sampler would leave inference and terminal
+proof collection broken. This is a known coexistence limitation, not a newly
+observed hardware failure. An authenticated, allowlisted extension to the
+existing NCM service for control and logs, with inference over NCM, was proposed
+for user approval as required by AGENTS.md for larger new patterns. No such
+extension was implemented without that approval. No USB modes were toggled,
+processes restarted, deployments changed, artifacts overwritten, commits made
+or pushes performed. Idle-only resizing remains separate unfinished work.
+
+## Log - `2026-09-10 15:35 EDT` - Whole-phone launch identity and measured runtime footprint
+
+Fixed the two follow-up whole-phone admission defects without changing HTP
+lifecycle or the memory-cap selection policy. The previous direct observation
+fixture omitted the generated request_transport_* metadata added by the real
+snapshot builder. Comparing that physical plan verbatim against the catalog
+incorrectly denied an otherwise exact resident endpoint's runtime-memory credit.
+Launch comparison and its cache/share identity now exclude only the enumerated
+generated RPC accounting fields. Artifact, endpoint, launch configuration,
+memory declarations and unknown launch options remain strict. The complete
+transport fields remain in execution plans; transport admission and physical
+proof checks are not normalized or weakened.
+
+The Android launcher seals the managed process identity after existing artifact
+verification and endpoint readiness. The existing background monitor now probes
+the process's dumpsys meminfo total PSS, with PID, boot ID, start ticks,
+executable and managed PID file checked before and after sampling. The rig
+binds the result to the current executor, artifact, endpoint, launch hash and
+positive residency generation, rejecting replacement races or mismatched cached
+observations. Snapshot construction reads the cache without blocking on ADB.
+Missing, timed-out, malformed, expired or incompatible observations receive no
+runtime-memory credit and request background refresh. Valid observations carry
+sample start/end times, byte count, raw-output hash, age and validity in the
+snapshot's phone resident_allocations telemetry; snapshot validity cannot outlive
+the allocation observation. Only measured bytes beyond weights receive credit.
+Configured peak, KV/workspace and OpenCL prepack declarations are not substituted
+for measurement; unobserved peak bytes remain reserved.
+
+The adapter-to-snapshot-to-admission regression mocks only the remote probe's
+raw output, then exercises the managed Android adapter, real rig snapshot,
+snapshot builder and scheduler compiler. Its observed 10,000,384-byte process
+footprint allows reuse of the 10,000,000-byte peak without a second allocation.
+A smaller 9,994,240-byte observation leaves exactly 5,760 bytes uncredited and
+is rejected when no additional memory is available. Tests also cover generated
+transport metadata, strict configuration mismatch, cached identity, PID/boot
+reuse, generation change during probing, stale cached generations, malformed
+measurements, timeouts and snapshot expiry. No measured footprint is injected
+directly into the new adapter regression.
+
+Final validation: 184 focused and related tests passed in 96.465 s:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=research_dev/scheduler/tests:. python3 -m unittest test_phone_allocation_snapshot test_phone_memory_cap test_phone_power_probe test_telemetry_recovery test_physical_residency test_llama_server_adapter test_runtime_resources test_catalog_materialization test_replay_determinism
+```
+
+Both replay cases remain byte-identical across repeated execution, with no
+fixture, decoded replay output or golden changed:
+
+- session_cow_gate_v3: sha256:ea5b30c9e4a3f705c194188d6e5788c64990953aad73ff3c4b7573bc69eca27d
+- sparse_locality24_v8: sha256:965f218bb5f81a57dbb51167624798f02eb79354b6cc042683b2b1ed9b1a868d
+
+Exact files changed, relative to research_dev/scheduler/:
+
+- _internal/capability_contracts/executors.py
+- _internal/route_generation/costing.py
+- _internal/route_generation/templates.py
+- adapters/probes.py
+- adapters/android_llama_server.py
+- adapters/heterogeneous_rig.py
+- tests/test_phone_memory_cap.py
+- tests/test_phone_allocation_snapshot.py (new)
+- ARCHITECTURE.md
+
+Also updated this log. Whitespace checks passed, including the untracked files.
+The existing host-sampler test emitted Python 3.13's multithreaded-fork deprecation
+warning; no sampler redesign was attempted. No physical run, deployment, native
+change, complete harness, baseline overwrite, commit, push or PR. Existing dirty
+worktree changes and physical artifacts were preserved.
+
+Remaining: validate the new process-memory observation on the real Android/OpenCL
+service and qualify its complete peak; software tests are not that measurement.
+Idle-only HTP resizing still safely defers with
+PHONE_RESIDENCY_MEMORY_CAP_CONTEXT_UNAVAILABLE. Model-owned idle preparation and
+concurrent Adreno/FunctionFS qualification remain separate follow-up work.
+
+## Log - `2026-09-10 14:22 EDT` - Hot whole-phone reuse and reversible memory-cap resizing
+
+Fixed two follow-up review findings in the existing memory and residency paths.
+The hot whole-service compiler previously requested another 9,999,232 workspace
+bytes even when the exact endpoint's observed 10,000,000-byte peak was already
+resident. Its non-weight peak is now a shared resident ledger demand. Credit
+requires matching model/tensors, executor, positive generation, a healthy READY
+endpoint and compatible observed launch parameters. Only observed bytes count;
+unobserved footprint and request growth beyond the peak remain new allocations.
+Exact-template reuse includes the relevant observed launch/tensor identities.
+
+The cap generator previously shrank 768 bytes to 640, but could not offer growth
+after the budget returned to 768, even with positive measured demand. The opt-in
+resizing path now offers one-session same-artifact supersets using the existing
+packing search. It preserves source layers and every retained session, enforces
+global/per-session limits, CPU-parent allowed operators, stored layer/column
+coverage and source geometry/operator identity. Normal transition economics and
+confirmation still apply. A fresh observation reconsiders a larger budget without
+a new arrival, with repeated unchanged budget/layout evaluations coalesced.
+
+Regressions first reproduced absent growth candidates and duplicate hot runtime
+allocation. Added compiler-level hot/cold/partial/wrong-identity/cache checks,
+request-growth accounting, and cap growth, source immutability, invalid-retained-
+session, coverage, negative-net-gain and reevaluation checks. Final validation:
+104 focused tests passed in 91.510 s, including 34 memory-cap tests, multi-session
+phone, layout confirmation, runtime memory ledger, replay determinism and seven
+automated-runtime cache/epoch/allocator tests. Both replay cases remain byte-
+identical on repeated execution, with their existing golden hashes unchanged:
+
+- session_cow_gate_v3: sha256:ea5b30c9e4a3f705c194188d6e5788c64990953aad73ff3c4b7573bc69eca27d
+- sparse_locality24_v8: sha256:965f218bb5f81a57dbb51167624798f02eb79354b6cc042683b2b1ed9b1a868d
+
+Whitespace checks passed. No replay fixture, decoded result or golden was edited.
+
+Exact files changed, relative to research_dev/scheduler/:
+
+- _internal/phone_shards.py
+- _internal/route_generation/costing.py
+- _internal/route_generation/templates.py
+- _unified/phone_residency_ops/economics.py
+- tests/test_phone_memory_cap.py
+- ARCHITECTURE.md
+
+Also updated this log. No lifecycle, shard format, native loader, qualification,
+physical result or baseline was changed. No deployment, physical run, broad
+harness, commit, push or PR. Idle-only resizing still safely defers with
+PHONE_RESIDENCY_MEMORY_CAP_CONTEXT_UNAVAILABLE: online preparation needs an
+active/arriving artifact context, while the existing offline path requires an
+idle queue. Completing model-owned online maintenance is not implemented here.
+Concurrent Adreno/FunctionFS execution and the whole-service peak still require
+physical qualification; software admission does not establish either property.
+
+## Log - `2026-09-10 13:42 EDT` - Memory-cap review regressions fixed and focused tests green
+
+Reproduced the seven TypeErrors in the original 15 memory-cap tests. Resident
+dtype validation now uses frozenset.difference with the capability tuple, keeping
+unsupported types rejected. Cached submission, cached replan and epoch
+rematerialization now forward their current snapshot and observation time to
+the existing whole-service admission check; no telemetry check is bypassed.
+
+Fixed duplicate HTP workspace accounting: live free memory already excludes the
+verified READY workspace, so the live bound reserves only incremental workspace
+growth. The static pool/cap bound still subtracts the full workspace. The exact
+768 shard + 32 workspace + 192 whole-service example now fits the 1,000-byte
+pool and retains all 768 shard bytes, both before and after whole-service load.
+Proposed workspace receives no credit, and unrelated occupied memory remains
+counted. No source layout, generation or lease is mutated by the budget check.
+
+Added eight focused regression methods (23 total in test_phone_memory_cap),
+including fresh/missing/stale observations through each cached path, workspace
+growth, unverified workspace, other occupants and unsupported dtypes. The new
+workspace and cached-path regressions were observed failing before the fixes.
+Afterward, 76 focused tests passed in 87.362 s: memory caps, multi-session phone,
+layout confirmation, replay determinism and five relevant automated-runtime
+cache/epoch tests. Both saved replay goldens and repeat-run byte identity pass;
+no golden was changed. No complete harness or physical run was launched.
+
+Exact files changed, relative to research_dev/scheduler/:
+
+- _internal/phone_shards.py
+- _unified/phone_residency_ops/economics.py
+- _unified/automated_requests_ops/selection.py
+- _unified/automated_requests_ops/replan_selection.py
+- _unified/automated_selection_ops/materialization.py
+- tests/test_phone_memory_cap.py
+- ARCHITECTURE.md
+
+Also updated this log. The separate idle-only preparation-context limitation
+and unvalidated Adreno/FunctionFS concurrency remain as previously documented.
+No deployment, artifact overwrite, native change, commit, push or PR. Existing
+user changes, failed evidence and frozen physical references are preserved.
+
+## Log - `2026-09-10 13:10 EDT` - Shared phone memory cap and partial resident resizing, not yet tested
+
+Implemented the user-designed memory-cap policy in the existing scheduler.
+An explicit per-phone HTP cap includes HTP workspace and is further bounded by
+shared phone capacity after persistent whole-model peak reservations. Whole-model
+peak metadata covers weights, KV, runtime workspace and OpenCL prepack growth;
+it does not synthesize measurement or qualification. Unknown peaks or missing/
+stale observations defer admission. Runtime ledger demands and physical load
+admission enforce the declared peak, not only the model file size.
+
+The existing mixed-layout generator now has opt-in resident shrinking. It keeps
+nonempty same-artifact session subsets, with disjoint layer masks, unchanged
+column widths and existing storage coverage. Existing progressive replacement
+publishes one changed session at a time. The old READY map remains authoritative;
+proposed savings are never credited as freed RAM. Whole-model loading stays
+blocked until actual READY residency and a fresh memory observation fit. No
+new lifecycle controller, shard format, fraction policy or transport was added.
+Capacity maintenance can override a profitability veto, not safety or drain ACKs.
+
+Remaining integration limitation found during inspection: the preparation path
+requires a live/arriving request context for the resized artifact. If only idle
+artifacts could be shrunk, planning records
+PHONE_RESIDENCY_MEMORY_CAP_CONTEXT_UNAVAILABLE and preserves current residency.
+This is not yet autonomous idle-artifact shrinking. Persistent reservations do
+not disappear merely because a request completes. Concurrent Adreno/FunctionFS
+execution and the complete whole-service peak still need physical qualification.
+
+Exact code files changed in this step, relative to research_dev/scheduler/:
+
+- scheduler.py
+- _internal/phone_shards.py
+- _internal/route_generation/feasibility.py
+- _unified/phone_residency.py
+- _unified/phone_residency_ops/common.py
+- _unified/phone_residency_ops/economics.py
+- _unified/phone_residency_ops/portfolio.py
+- _unified/phone_residency_ops/publication.py
+- _unified/placement_epochs.py
+- _unified/placement_epochs_ops/frontier.py
+- _unified/automated_candidates_ops/generation.py
+- adapters/catalog_materialization.py
+- adapters/heterogeneous_rig.py
+- campaigns/burstgpt/catalog.py (metadata pass-through only)
+- tests/test_phone_memory_cap.py (new)
+
+Documentation: scheduler/ARCHITECTURE.md and this log. Added 15 focused
+regressions for nonempty resizing, one-session stages, unchanged source maps,
+peak and workspace accounting, observed-footprint credit, deferred admission,
+telemetry validity, default opt-out, and transactional cap updates. Tests are
+not run yet, as requested; only static syntax/whitespace checks are performed.
+Replay golden files are untouched, not revalidated. No deployment, physical
+run, baseline, artifact overwrite, native change, commit, push, or PR. Existing
+dirty-worktree changes and saved physical results remain intact.
+
+## Log - `2026-09-10 11:17 EDT` - Telemetry/Qwen fixes deployed; dev3 completed, Qwen remains inconclusive
+
+One unchanged normal-scheduling Gemma36/Llama37/Qwen50 run completed 3/3 in
+290.020564 s including runtime preparation and cleanup. Strict hardware and
+direct-phone preflights passed; assumed-power startup no longer waits for phone
+measurements. Valid same-phone-clock HTTP health observations continue during
+FunctionFS serving: 946/947 saved snapshots VALID, zero STALE clock rejections.
+One normal USB handoff sample was unavailable; the next saved valid sample was
+3.971021 s later. No USB reset or worker restart was used for telemetry recovery.
+
+Measured CPU/GPU plus assumed 4.5 W active phone energy is 23.327105 kJ:
+26.41% below the frozen matched desktop and 26.80% below clean upstream, but
+3.71% above fixed GGG. These are source-v7 historical-reference comparisons,
+not a fresh matched A/B. The unchanged strict comparator still rejects source
+identity equality. Phone-power sensitivity gives 25.89-26.93% below matched
+desktop at 6-3 W. No baseline or longer trace was run.
+
+Gemma: 280/292 assisted tokens, 90.24% fraction-weighted all-token coverage,
+6,632 calls, no unassisted tail. Qwen: 11/71 tokens and 66 HTP2 calls; its valid
+paired window is diagnostically 14.78% lower J/token, but further comparable
+verification is unaffordable. It reports INCONCLUSIVE at token 20 with 51 tokens
+left, not measured negative evidence. ACK costs of 2.163505/3.133769 s and warmup
+cost are now exported and budgeted. Sustained qualified Qwen assistance is still
+not established; do not force a winner or relax qualification to hide this.
+
+All four physical loads passed. HTP0/HTP1 remain generation 1; only HTP2 changes
+to Qwen generation 2. A READY retained subset serves during the third initial
+load, with call observations on both retained sessions inside that load interval.
+The later replacement follows Gemma completion, so this is not a new active
+replacement interruption or injected rollback test. Generation-keyed terminal
+proofs and semantic checks pass; zero fallback/stale execution/reset is recorded.
+CUDA graphs execute: 77 captures, 2,387 launches, 25 recaptures by the existing
+definition. GDM remains untouched, GPU usage returns to 3,178 MiB, and USB is
+ptp,adb after cleanup. No compiler processes were observed during the run.
+
+260 focused tests passed; the tightened same-membership recovery assertion was
+then checked with 210 affected tests and both replay tests again, all green.
+No replay golden changed. Source lists and exact hashes are in
+scheduler/campaigns/burstgpt/reports/20260910-telemetry-qwen/.
+Remote run: /mnt/storage/s42-telemetry-qwen-20260910-v1/.
+RESULT SHA-256: 8ce2a096aed9a4a56d9ee3c34a6150159c235a7da59c13b06145ae4b54e972f3.
+All 1,943 archived physical files hash-match the remote tree; the previous
+failed artifacts remain intact. No commit, push, baseline rerun, or long trace.
+
+## Log - `2026-09-10 10:54 EDT` - Clock-domain freshness and bounded Qwen measurement recovery
+
+Fixed health/power HTTP freshness using the existing phone server's same-clock
+Date header, conservative timestamp quantization plus full RPC time, and the
+unchanged five-second expiration. Invalid clocks and genuinely old samples still
+fail closed. The qualified kernel remains running; neither clock was adjusted.
+The earlier assumed-phone-power readiness fix is included in this deployment;
+physical CPU/GPU measurement and independent phone health remain mandatory.
+
+Qwen now skips unaffordable coarse candidates before considering a promising
+leader's existing multi-window verification. Complete-pair admission incorporates
+ACK cost immediately and warmup latency separately. Late ACKs can yield
+INCOMPLETE, never fabricated rejection or extra exploration budget. Failed live
+slot observations no longer assert a batch change; they preserve compatible
+evidence and attempt identities, exclude affected windows from qualification,
+and allow bounded recovery. Actual member changes still trigger revalidation.
+Adaptive timing events are exported on success and failure for direct diagnosis.
+
+Focused tests: 260 passed in 96.506 s, including both unchanged replay goldens.
+Changed-file list and exact before/after hashes are in
+scheduler/campaigns/burstgpt/reports/20260910-telemetry-qwen/SOURCE_DELTA.json.
+Fresh deployment: /mnt/storage/s42-telemetry-qwen-20260910-v1-deploy.
+Only the unchanged three-request adaptive dev3 gate is scheduled after preflight.
+No baseline, long trace, qualification/memory relaxation, binary rebuild, commit,
+or push. All previous results and unrelated worktree changes are preserved.
+
+## Log - `2026-09-10 10:19 EDT` - Assumed-power readiness no longer waits for phone power samples
+
+Fixed the user-reproduced inconsistency in adapters/energy.py: prepare() now
+waits for fresh phone-power samples only in measured-phone-power mode, matching
+the existing measure() branch. Assumed mode retains its activity-union accounting,
+active/idle energy and diagnostic label without requiring measured phone power.
+Fresh CPU/GPU readiness, server coverage/gap checks, measured-phone coverage and
+independent memory/thermal/battery/session/lease admission remain unchanged.
+
+Six new tests in tests/test_phone_power_probe.py reproduce two assumed-mode
+preparation failures before the fix and pass afterward. The focused energy,
+telemetry-recovery and assumed-power admission/low-battery selection run passes
+46 tests in 13.288 s. No broad suite, golden regeneration, adaptive-controller
+change, deployment, baseline or inference run in this step.
+
+The three-request retest still needs valid FunctionFS-mode health telemetry.
+Read-only live checks show normal ADB health is VALID, with 11,899,387,904 bytes
+available, 33.3 C and full battery, but the phone clock remains at least 10.235 s
+ahead. FunctionFS removes ADB and the unchanged HTTP health check rejects over
+five seconds of clock disagreement, as the preserved v3 snapshots establish.
+The assumed-power fix must not bypass that independent safety requirement.
+No clock adjustment or new physical attempt was made. Resolve clock-domain
+health freshness, deploy into a new namespace, pass preflight, then rerun only
+Gemma36/Llama37/Qwen50. Qwen coarse-probe, ACK/warmup affordability and batch-1-to-1
+context classification remain separate follow-ups.
+
+Evidence: scheduler/campaigns/burstgpt/reports/20260910-assumed-power-readiness/
+README.md, CODE_CHANGES.json, TESTS.txt and LIVE_CHECK.json. energy.py SHA-256
+changes from f88dbcc7939a2ca37899a4251a641988bcfcb51f53a06fce6f2ae90794615cc0
+to d1f38813732dd003a32e16e4f1fef922de777929309b5fc300c8280968ebcbd5.
+Previous physical results, logs and hashes are preserved. No commit or push.
+
+## Log - `2026-09-10 10:12 EDT` - Qualified kernel restored; retest blocked by telemetry clock skew
+
+The user authorized restoring the previously qualified phone kernel. Verified
+the documented boot image SHA-256
+26e8d41808b10b70264d958582bb6f6c9fba634c34275e0bc28fc820a6d3fb8d,
+phone serial and existing slot, then used temporary fastboot boot from RAM.
+No partition flash, unlock, wipe, slot change, sudo or desktop process action.
+Post-boot kernel is 6.12.23-android16-5-o-g227664cbe007-4k; BTF SHA-256
+f3afcf985b24de3eb5a1d5453bf4ffd95963b806ce99a59430c5a8bf7d201d17
+matches the saved qualification. Boot transfer/command took 1.946 s; reboot
+request through verification took 59.586 s. This is temporary: normal reboot
+returns to the installed stock kernel. Maintenance energy was not measured.
+
+Resumed only the authorized unchanged adaptive dev3 retest in a fresh namespace.
+All 378 deployment source/test hashes match the prior tested run. Immediate
+host check: 0.072 busy CPU cores, no compilers, GPU 0%, 12,770 MiB free VRAM.
+The profiler capture also contains no compiler processes. GDM was untouched.
+Direct-phone kernel/shard preflight now passes. One Gemma HTP0 generation-1
+shard load completed, with a physical receipt spanning 7.022249 to 24.765145 s.
+
+The requested workload then failed before measurement readiness with
+physical_execution_control_failed, caused by phone power sampler is not ready.
+HTTP telemetry snapshots during FunctionFS operation have phone wall-clock
+timestamps about ten seconds ahead of the desktop: 210 explicit STALE clock
+rejections from 25.918 to 255.664 s, with ages -10.519 to -8.959 s. ADB is
+unavailable in that execution mode. Runtime and power probes both use a
+five-second cross-clock freshness check; the power diagnostics record 791
+NO_SAMPLE events without per-response cause detail. A separate post-cleanup
+ADB check confirms clock disagreement despite automatic time/NTP being enabled.
+No requested decode windows or completions, and no new valid savings result.
+Warmup execution and the one shard load are preserved, not described as zero
+physical work. The 33 rematerialization failures include unavailable telemetry,
+not the former opportunity-is-not-exact bug.
+
+Cleanup restored ptp,adb with no remaining research phone workers. The qualified
+kernel remains active. No reset/reboot during the gate, no clock adjustment,
+threshold relaxation or scheduling change. The next issue is clock-domain-aware
+telemetry freshness and measurement readiness, not another placement redesign.
+No further attempt, baseline, longer trace, test suite, commit or push. Prior
+303 focused/replay PASS and replay goldens remain the unchanged code's evidence.
+
+Reports and new files are under scheduler/campaigns/burstgpt/reports/
+20260910-phone-kernel-restore (README.md, restore.py, ARTIFACTS.json and 59
+physical files) and 20260910-layout-economics-restored-host (README.md,
+experiment.py, DIAGNOSIS.json, ARTIFACTS.json and 470 physical files).
+Remote artifacts: /mnt/storage/s42-phone-kernel-restore-20260910-v1/ and
+/mnt/storage/s42-layout-economics-20260910-v3-restored-host/.
+RESTORE_RESULT.json SHA-256
+1f4f127dc237311977317de970dd27b08e4785274dff8efc49acd7690cd95eff;
+run/FAILURE.json
+b8f900021de59e969163625736b49bf4e36e22cced30afbdfa78e3badc89b793;
+execution source manifest
+2127aef65da96831e56b75ed6e8f38a3981a49ff14ee9ab05301ef9bd14abd64.
+Previous successful and failed artifacts are unchanged.
+
+## Log - `2026-09-10 09:40 EDT` - Quiet-host retest blocked by changed phone kernel
+
+Attempted only the requested unchanged adaptive Gemma36/Llama37/Qwen50 dev3
+retest. All 378 deployment source/test hashes match the previous tested code;
+no production code, runtime binary, model, shard, placement, initial evidence,
+arrival, token count or accounting change. Added only fresh artifact/session
+namespaces and read-only host CPU/process observation. The immediate pre-run
+five-second check showed 0.080 busy CPU-core equivalents, no compiler process,
+0% GPU utilization, and the same 3,179 MiB used / 12,770 MiB free VRAM. GDM and
+unrelated processes were not touched.
+
+Hardware/catalog preflight PASS is not direct-phone readiness: its persisted
+phone_assistance_ready is false. At launch, the strict direct DMA-BUF preflight
+rejected the phone kernel before rig.start or a paid interval. Frozen expected
+kernel: 6.12.23-android16-5-o-g227664cbe007-4k. Actual, independently confirmed
+with adb uname: 6.12.23-android16-5-gb3b66ace21e0-ab14672634-4k. Phone uptime
+was about 20 minutes, indicating changed boot state since the last successful
+run. No qualified boot-image identity was fabricated for this different kernel.
+Zero requests and shard loads began; there is no new energy measurement.
+
+Kept the exact kernel/transport checks intact. No phone reboot, image write,
+USB reset, worker restart or process termination was attempted. USB remains
+normal ptp,adb at 5 Gbps; GPU state is unchanged. Restoring the previously
+qualified phone kernel requires user direction; a different kernel would need
+separate qualification, outside this unchanged retest. Also documented the
+earlier setup-only host-recorder JSON float serialization error and its narrow
+correction; both setup and launch scripts are preserved.
+
+No suites rerun or baselines repeated. The unchanged code retains its prior
+303 focused/replay PASS and unchanged goldens. No longer trace, commit or push.
+Artifacts: /mnt/storage/s42-layout-economics-20260910-v2-clean-host/ and the
+26-file copy under scheduler/campaigns/burstgpt/reports/
+20260910-layout-economics-clean-host/physical. Report files include README.md,
+experiment.py, summarize.py, RETEST_SUMMARY.json and ARTIFACTS.json. FAILURE.json
+SHA-256 64ec9ec3cf9ccfb019fc0f68f8d8a37b1ebc324043b81ad56cecc852a06351c4;
+RUN.log 043dde10d49685df5c020488cf2bf46ceb7d73cc79871eab6cc47248afe4228b;
+execution source manifest
+ebe029e79f8106a56eee9e264644ad1b43affdb581510bf037d3334c8f411e49.
+Manifest file paths/configuration differ for the fresh namespace; its 378 code
+file hashes do not. Previous results and failed launch evidence are immutable.
+
+## Log - `2026-09-10 09:08 EDT` - Layout-wide economics and one dev3 measurement
+
+Extended the existing replacement objective to preview the impact on all
+affected running requests, including retained-session helper verification.
+Exact-compatible evidence is reused. Genuine contract changes must afford a
+complete verification pair after observed-cadence load opportunity, with room
+to exploit it. Removed-session incumbent benefit is not counted again as
+retained revalidation cost. Unknown rough-compute benefit is not converted to
+joules. Running remaining work still contributes demand when the waiting queue
+is empty; already-issued maintenance drain/ACK transactions are preserved.
+
+Promising-candidate selection now checks qualification before refinement and
+budgets useful integer-square uncertainty steps with normal comparable windows.
+Four baseline plus four candidate windows are covered directly by tests. If
+resolution and exploitation cannot fit, report INCONCLUSIVE, not an energy
+rejection. Incomplete pairs remain INCOMPLETE; actual negative evidence and
+request-wide probe limits remain binding. Bounds are unchanged heuristics, not
+calibrated statistical confidence intervals.
+
+303 focused adaptive/helper/placement/COW/replay tests pass in 87.849 s; no full
+harness was run. Both replay goldens remain unchanged: v3
+ea5b30c9e4a3f705c194188d6e5788c64990953aad73ff3c4b7573bc69eca27d;
+v8 965f218bb5f81a57dbb51167624798f02eb79354b6cc042683b2b1ed9b1a868d.
+Production changes are in model_placement_contracts/layout.py,
+model_placement_controller.py, model_placement_ops/economics.py,
+adaptive_decode.py, adaptive_decode_state.py,
+adaptive_decode_ops/{budgeting,promotion,reporting,sequencing}.py,
+_unified/phone_residency.py, phone_residency_ops/{common,economics,portfolio}.py,
+and helper_preparation_ops/start.py. Four focused test files changed; the exact
+18-file source/test list and before/after hashes are in CODE_CHANGES.json.
+No native, adapter, wire-format, shard-generator or route-generation changes.
+
+One unchanged Gemma36/Llama37/Qwen50 adaptive dev3 run completed 3/3. Gemma's
+fraction-weighted all-token coverage increased from 81.34% to 90.24%, matching
+the historical fixed-GGG token/fraction pattern: 280/292 assisted tokens,
+6,720 calls, 24 CPU-resident FFN layers throughout. Its previous last-26-token
+unassisted tail is gone. Qwen increased to 18/71 assisted tokens and 108 calls
+on six layers, but still has no qualified incumbent. Llama remains desktop-only.
+
+Initial sessions publish READY individually at 25.831, 42.920 and 54.304 s.
+Gemma attaches to the first two at 50.504 s and starts desktop execution at
+50.987 s, before the third is READY. GGG is retained until Gemma completes at
+185.074 s. The dynamically selected HTP2 replacement begins at 186.378 s and
+publishes Qwen generation 2 at 203.646 s; HTP0/HTP1 remain Gemma generation 1.
+Four loads succeed, one being a replacement, zero failed or unprepared
+proposals. This run does not newly test calls during replacement, reverse or
+rollback: the active Gemma demand has already drained. Prior proofs and focused
+tests are preserved, not relabeled as new measurements.
+
+Execution PASS, performance FAIL_CONFOUNDED. Duration is 345.347 s versus the
+previous adaptive 391.702 s, but raw fleet energy increased from 27.292 to
+42.900 kJ. CPU package energy increased from 16.549 to 32.318 kJ; GPU and phone
+energy were 9.875 and 0.707 kJ. The current Nsight capture contains 255 cc1plus,
+128 nvcc, 125 cicc, six cmake and 18 gmake processes from concurrent compiler
+activity; previous adaptive and fixed-GGG captures contain none. A separate
+desktop build was visible after the gate. No unrelated process or GDM was
+stopped. Its exact joules/latency impact are not isolated, so no energy is
+subtracted and the entire regression is not assigned to that build.
+
+Raw savings versus historical matched desktop are -34.81/-35.33/-35.86% at
+3/4.5/6 W assumed phone active power; against fixed GGG they are
+-91.18/-90.74/-90.30%. No reference was beaten on energy. Existing source-v7
+baselines were reused without modification, and strict comparison still rejects
+the shared-source mismatch. The report is historical-reference, not a fresh
+matched A/B or a proof of dynamic-placement superiority. CUDA graphs execute:
+90 captures, 66 instantiations and 2,374 launches. Preparation and cleanup remain
+paid. Zero fallback, USB reset, stale-generation failure or request recovery;
+terminal/semantic sanity checks and cleanup pass.
+
+Loading was measured with read-only own-process I/O sampling, native markers
+and CUDA H2D intervals. Gemma spends 39.745 s in tensor read/repack/transfer;
+Qwen 47.140 s, plus 8.292 s native warmup-to-READY. GPU H2D active unions are
+7.384/8.020 s and overlap those spans. Total desktop transitions are 106.459 s
+versus 167.094 s previously. Storage activity is not blocked-I/O duration, and
+the earlier 70.411 s difference still does not establish a scheduler regression.
+No cache flushing, prefetching or preload-policy change was made.
+
+Remaining Qwen issue: a coarse-budget exit occurs before the new comparable-
+measurement block, then a retry's ACK/warmup outlasts its allowance. Membership
+changes with batch 1 -> 1 also clear current evidence. These are incomplete or
+insufficient measurements, not energy-negative evidence. This bounded gate does
+not physically validate the new multi-window resolution path; focused tests do.
+The next diagnosis should cover that earlier exit and membership identities,
+and any further energy measurement needs a non-interfering quiet-host check.
+No longer trace, baseline rerun, commit or push. Do not promote this candidate
+or blindly undo correctness fixes based on a confounded package measurement.
+
+Artifacts: /mnt/storage/s42-layout-economics-20260910-v1/ and the 761-file local
+copy at scheduler/campaigns/burstgpt/reports/20260910-layout-economics/physical.
+The report directory contains README.md, COMPARISON.json,
+LOADING_DIAGNOSTICS.json, GATE_DECISION.json, ARTIFACTS.json, CODE_CHANGES.json,
+and configuration/measurement/persistence scripts experiment.py, loading.py,
+finalize_report.py. Pre-change backup: /tmp/s42-layout-economics.BEN85g/.
+RESULT SHA-256:
+de15b1a7507997f4d7563066565a35a794954a9d1b3abb6be0e383a4b86db324;
+execution source manifest
+2a007a2883b9caa48e5c86a043ec6f6fa79b68070353cf8424ce489c1635940e;
+comparison 6a61f914c8f9945cf50a03da50559d74e5fcaf0c233e242c99ebc3e7c9c8d6dd.
+Original preflight inputs are preserved alongside separately named final
+execution manifests. Archived results and unrelated dirty-worktree edits remain.
+
+## Log - `2026-09-10 01:46 EDT` - Compatible batch monitoring and dev3 stop gate
+
+Implemented the narrow controller separation on top of the existing atomic
+refresh and helper-loss fixes. Physical maintenance masks and optimization
+refreshes use separate pending slots, so a context change cannot discard a
+replacement ACK transaction. An exact-compatible, supported batch change can
+keep its acknowledged incumbent for one bounded monitoring pair. Old costs are
+exported as PRIOR_ONLY, not new-context qualification; request-wide exploration
+limits remain. Window exploration/exploitation role is captured when opened
+and preserved through delayed controls and close-time state changes. No
+residency-selection, queue-demand, hysteresis, native binary, model or shard
+generation policy changed.
+
+Production paths under research_dev/scheduler: _internal/adaptive_decode.py,
+adaptive_decode_state.py, adaptive_decode_contracts.py,
+adaptive_decode_ops/{helpers,windows,sequencing,reporting,completion}.py, and
+_unified/adaptive_decode_control.py. Tests: test_sustained_assistance.py and
+test_adaptive_decode.py. Ten new regressions cover compatible batch changes,
+bounded/repeated/exhausted monitoring, mask ACKs, window roles and helper loss.
+213 focused helper/adaptive/COW/replay tests pass in 85.321 s. Both goldens and
+repeated replay bytes are unchanged: v3
+ea5b30c9e4a3f705c194188d6e5788c64990953aad73ff3c4b7573bc69eca27d;
+v8 965f218bb5f81a57dbb51167624798f02eb79354b6cc042683b2b1ed9b1a868d.
+
+One normal-scheduling adaptive dev3 experiment completed 3/3, with the original
+Gemma36/Llama37/Qwen50 requests and arrivals. Preflight, semantic sanity and
+terminal checks pass; zero fallback/USB reset/recovery. Existing GDM and other
+users' processes were untouched. The fresh deployment uses frozen source-v7
+artifacts, binaries, initial evidence, exact desktop parents and CUDA graph
+mode. Actual graph evidence: 78 captures and 2,386 launches. Four individual
+shard loads reach READY; only the dynamically selected HTP2 reloads from
+Gemma generation 1 to Qwen generation 2. Retained HTP0/HTP1 stay at generation
+1 and make 341/340 native calls during the scheduler replacement interval.
+Drain requested at 180.909051 s, safe boundary/control intent at 181.642945 s,
+applied ACK/quiescence at 182.850355 s, load starts 182.900591 s, READY at
+201.120984 s. Physical load-to-READY is 17.786 s. No reverse or rollback was
+injected in this three-request workload; focused COW tests still cover them.
+
+Performance gate FAIL, although physical execution PASS: adaptive takes
+391.702 s and 27.292 kJ at 4.5 W assumed active phone power. Historical
+matched desktop is 355.145 s / 31.699 kJ (13.90% saving); fixed GGG is
+312.197 s / 22.492 kJ (adaptive uses 21.34% more). Saving versus matched
+desktop is 14.38/13.90/13.43% at 3/4.5/6 W. Gemma has 254/292 assisted tokens
+(81.34% fraction-weighted all-token coverage), Qwen 11/71 (15.49%), Llama
+0/292 on its unsupported-helper desktop route. Preparation and cleanup are
+included. No older baseline was rerun or relabeled matched: the strict
+validator rejects the shared-source mismatch and the decoded differences
+are saved.
+
+Remaining limits are recorded, not hidden: Gemma has no prior qualified
+16-layer winner in this run, so its genuine 24-to-16-layer change cannot
+reuse full-mask qualification; unaffordable revalidation leaves its last 26
+tokens at 0%. Qwen's paired mean energy improves by 14.42%, but its uncertainty
+bound does not qualify an incumbent and another probe is unaffordable. Its
+last 44 tokens are desktop-only, not measured energy-negative. The desktop
+transitions total 167.094 s versus fixed GGG's 96.682 s, a 70.411 s difference
+within the overall 79.505 s span increase. Storage/page-cache conditions are
+not controlled; overlap does not establish causal interference. The new
+compatible-batch monitor is not exercised physically by this one-request-per-
+model workload; its live context events are startup/terminal membership changes.
+
+Stopped physical expansion; no 24-request trace, baseline rerun, commit or push.
+The adaptive candidate is not promoted over fixed GGG. Correctness repairs
+remain uncommitted rather than restoring unsafe ACK handling or incorrect
+accounting from an unmatched performance comparison. The scoped pre-change
+backup is /tmp/s42-context-continuity.1kM7lq. No source changed during the run.
+
+Artifacts: /mnt/storage/s42-context-continuity-20260910-v1/ and its immutable
+local copy under campaigns/burstgpt/reports/20260910-context-continuity/physical.
+Additional report files are README.md, configuration/persistence-only
+experiment.py, COMPARISON.json and GATE_DECISION.json in that report directory.
+The gate decision explicitly denies the 24-request expansion; raw execution
+PASS does not imply performance PASS. RESULT SHA-256:
+c782a44bfe4901908f881a1c3bc55bf20667a71f4cb12a9f61be221084384641;
+source manifest 3f4a55171380bdd573c8be45d33737fd58bb14c31dfc360dbe056b3f21b07907;
+comparison ac8692df7b30856aa0a6a41e2bec24f3f564abf4bafa7987bb70f211a99b51b0.
+The report contains all six references, power sensitivity, timings, exact
+source/shard identities, zero-assistance reasons, and further artifact hashes.
+
+## Log - `2026-09-10 00:49 EDT` - Atomic refresh and queued-control invalidation
+
+Fixed the three follow-up review findings without changing session replacement,
+physical proofs, lease validation, or the fraction/energy selection policy.
+
+helper_rebound now uses the controller's existing session clone and publishes
+only after every compatibility and pending-control check succeeds. Successive
+unsent refreshes coalesce only with exact-compatible policy remapping. A
+conflicting refresh leaves the complete previous checkpoint unchanged, including
+evidence aliases, counters, candidates, and pending controls. A real maintenance
+mask cannot be replaced by a refresh. Already-issued controls retain their
+original identity until acknowledgement.
+
+Batch/membership changes cancel queued refreshed winners and deferred challengers
+alongside the existing context invalidation. Baseline acknowledgement cannot
+resume that old selection. The next probe needs a fresh complete-pair reservation;
+an exhausted request stays on desktop. Request-wide attempts, spent probe tokens,
+and accounting are preserved.
+
+Helper loss cancels unsent positive intent, not already-issued controls or
+receipts. Acknowledgement and final control issuance both check availability.
+A delayed positive acknowledgement is recorded and followed directly by a zero
+control; its transition calls, energy and original acknowledgement are retained
+as non-qualifying accounting.
+
+Added 13 focused regressions. Final validation: 203 adaptive/helper/COW/replay
+tests passed in 86.269 s. Both replay goldens and repeated canonical replay
+bytes are unchanged. The previous deferred-policy, zero-fraction rejection,
+Gemma retained-tail, session-generation and lease tests still pass.
+
+Changed production files: adaptive_decode_ops/helpers.py, windows.py, and
+sequencing.py. Tests: tests/test_sustained_assistance.py. Documentation:
+this log, the retained-helper report index, and REFRESH_RACE_FIXES.md in that
+report directory. No deployment, physical run, baseline rerun, broad harness,
+commit, push, or artifact overwrite. Details:
+research_dev/scheduler/campaigns/burstgpt/reports/20260910-retained-helper-continuity/REFRESH_RACE_FIXES.md.
+
+## Log - `2026-09-10 00:23 EDT` - Deferred-policy and zero-fraction continuity corrections
+
+Confirmed both review findings in the retained-helper fix. A deferred challenger
+kept its old operator plan after the other policy references were remapped. At
+zero assistance, refresh skipped evidence retention and cleared measured
+rejection, changing the context/policy retry key as well.
+
+In adaptive_decode_ops/helpers.py, exact compatibility now remaps deferred_policy
+alongside the incumbent/challenger. Missing or incompatible mappings discard the
+deferred policy and reason. Applicable evidence retention is independent of the
+currently executing fraction; compatible baseline refreshes retain rejection,
+original receipts, context identity and attempt counters. Genuinely changed
+contracts still follow bounded revalidation.
+
+In adaptive_decode_ops/sequencing.py, deferred retry checks membership in the
+current candidate set before issuing control. An out-of-date candidate is
+discarded and the best valid policy continues. A deferred challenger also
+re-enters PROBING before control, so restoring the winner to EXPLOITING cannot
+bypass complete-pair admission or stop measuring the challenger as an experiment.
+
+Added eight regressions in tests/test_sustained_assistance.py. Seven reproduced
+the defects before the fix; the genuine-change revalidation control already
+passed. Final validation: 190 focused adaptive/helper/COW/replay tests pass in
+85.709 s. Both replay goldens and repeated replay bytes remain unchanged.
+The Gemma retained-tail, identity, lease and generation regressions still pass.
+
+Only those two production files, the focused test file, and review documentation
+changed in this follow-up. No broad suite, physical run, deployment, baseline,
+commit or push. The earlier failed preflight and deployed source are preserved;
+the deployment does not yet include these review corrections. Details:
+research_dev/scheduler/campaigns/burstgpt/reports/20260910-retained-helper-continuity/REVIEW_FIXES.md.
+
+## Log - `2026-09-09 23:31 EDT` - Retained-helper continuity, focused validation
+
+An unchanged retained execution contract no longer loses its incumbent solely
+because READY publication gives the envelope a new route, plan or component ID.
+The existing request envelope history proves compatibility per source plan:
+artifact, parent, dtype, endpoint/protocol, batch contract, shard geometry,
+resident bytes, shard operator plan and session generation remain exact.
+Applicable policy evidence is aliased without rewriting any original receipt.
+Acknowledgements and leases are still request-bound; no physical authorization
+or generation checks were relaxed. Exploration tokens, attempts and sunk energy
+remain accounted. Real shape/context changes still require bounded validation.
+
+The temporary drain mask's non-qualifying samples stay non-qualifying. The
+Gemma 36 regression exercises a smaller shard set, expansion, retained-mask
+drain, then return to the original verified set at token 251. Earlier valid
+evidence for that exact retained set sustains the remaining 41 tokens without
+another probe or a zero-assistance tail. Full-mask evidence is not substituted.
+
+Validation: 180 focused adaptive/helper/COW tests and 2 replay tests pass.
+Both replay outputs are byte-identical on repeated runs; goldens unchanged:
+v3 ea5b30c9e4a3f705c194188d6e5788c64990953aad73ff3c4b7573bc69eca27d;
+v8 965f218bb5f81a57dbb51167624798f02eb79354b6cc042683b2b1ed9b1a868d.
+The complete harness and baselines were not rerun. Changed production paths:
+adaptive_decode.py, adaptive_decode_state.py, adaptive_decode_ops/{helpers,
+budgeting,bounds,promotion}.py, helper_envelopes_ops/{refresh,materialization}.py.
+Tests are in test_sustained_assistance.py. No session replacement, native format,
+fraction selection, qualification threshold or memory-admission policy changed.
+
+One adaptive dev3 experiment is staged at
+/mnt/storage/s42-retained-helper-20260910-v1 on the desktop, with a fresh sibling
+deployment. It uses frozen source-v7 catalog, evidence, binaries and desktop
+parents with graphs enabled. Preflight failed closed when another project's
+Gemma-26B native benchmark took 11,636 MiB of VRAM, leaving only 1,126 MiB free.
+The qualified Qwen control was rejected for MEMORY_CAPACITY. No adaptive
+inference was launched. The unrelated benchmark and GDM are untouched. Failed
+preflight and commands are preserved in the report's physical/ directory; a
+fresh preflight is required after the GPU becomes available. No savings claim.
+The later comparison is historical-reference, not fresh matched A/B: the source
+manifest includes the completed cleanup and this shared-controller fix. Command
+persistence is under campaigns/burstgpt/reports/20260910-retained-helper-continuity.
+No baseline artifacts, user processes or GDM were modified; no commit or push.
+
+## Log - `2026-09-09 20:53 EDT` - Frozen CUDA desktop and fixed-phone reference set complete
+
+All six final source-v7 arms complete the unchanged dev3-long workload:
+Gemma 36/Llama 37/Qwen 50, original 1/61/91 s arrivals, 292/292/71 output
+tokens. Real Nsight capture/replay, semantic-sanity output, exact parent and
+terminal-proof checks pass. No fallback, USB reset, failed session load or
+reload in the final set. Three initial FFN-file loads per fixed arm; all
+sessions remain generation 1 with their assignment frozen. No long trace,
+commit, push, GDM stop or unrelated process termination.
+
+Nominal preparation-inclusive fleet energy and duration: clean upstream
+31.866138 kJ / 371.198260 s; matched modified desktop 31.699301 kJ /
+355.144805 s; GGG 22.491847 kJ / 312.197367 s; QQQ 33.324739 kJ /
+384.839886 s; GGQ 25.337229 kJ / 315.719209 s; GQQ 31.962669 kJ /
+331.499663 s. Best fixed GGG saves 29.42% versus upstream and 29.05% versus
+matched at assumed phone power 4.5 W. At 3/6 W it saves 29.49%/28.61%
+versus matched, with identical 0.875 W idle treatment. CPU/GPU measured,
+phone assumed. This is one run per arm, not a steady-state, replicated or
+adaptive-residency claim. Unfavorable QQQ/GQQ outcomes are retained.
+
+GGG Gemma executes 280/292 tokens with phone work (95.89%), fraction-weighted
+90.24%, 6,720 calls on 24 CPU-resident FFN layers. GGQ Gemma is 279/292,
+weighted 89.90%, with 4,464 calls on 16 layers; its short Qwen uses 11/71
+tokens, then logs INSUFFICIENT_OPPORTUNITY. GQQ Gemma returns to zero at
+token 60 with INCUMBENT_NO_LONGER_BENEFICIAL. QQQ/GQQ Qwen use 59/71
+tokens. All actual column masks, fractions, per-session calls, native phases,
+request latencies and preparation intervals are in the machine summary.
+
+Scoped implementation reused fixed configuration, the existing offline
+preloader/session controller and adaptive attachment. Bounded attempts found
+capture-time ordering and post-cleanup evidence export defects, now corrected.
+The first mixed source-v6 attempt found whole-router eviction being checked
+before an authorized empty-session add. The source-v7 fix in
+adapters/heterogeneous_rig.py removes only that retained aggregate router from
+the whole-endpoint stop set after exact partial validation. Unmocked mixed
+addition and existing fail-closed eviction tests pass. All six final arms were
+then run on the same new source. Earlier completed source-v6 arms and failures
+remain immutable and are not combined with this set.
+
+Validation: final 74 physical-residency/COW/fixed tests pass in 16.617 s,
+then both v3/v8 replay goldens pass unchanged in 71.670 s. Earlier focused
+default-launch, preflight and comparison checks are listed separately, not
+summed into a full-suite count. Final comparison validates all frozen
+contracts and reproduces byte-identically using the archived source. All 218
+deployed/archive source files match the manifest; upstream remains clean.
+Later concurrent local runner-extraction edits were preserved, not deployed.
+
+Artifacts: `scheduler/baselines/cuda_graph_v1/`, final arms under
+`references-source-v7/`; desktop originals under
+`/mnt/storage/s42-cuda-graph-v1-20260909/attempts/`. README, CHANGES,
+COMPARISON.json, MEASUREMENT_DETAILS.json, frozen spec, source/native archives,
+qualifications, commands, journals, snapshots, native proofs and raw power
+samples are retained. Exact task file list is in CHANGES.md.
+
+SHA-256: comparison
+`83054fdc4179b4c64939a1ed07ce0891e833a3f642218464c47e62eaf27ba022`;
+source-manifest file v7
+`813c5e084f08572d7b3debe6d5fcb2845f7451b05849e234d5a2e032791016ef`;
+frozen specification v6
+`9d9bffdee2920c3bb0ea9285c5cd85ff8d60b80491a66ea7c0129108b707df7b`.
+Upstream revision `4f31eedb0ccf546b7e8d6bb243b170f12522f54d` is never
+confused with the modified matched runtime. GPU memory returns to 3,178 MiB
+with only the original GNOME process visible. No larger run follows this task.
+
+## Log - `2026-09-09 19:14 EDT` - Frozen CUDA references: qualifications and bounded retry
+
+New experiment scope is only unchanged `burstgpt_dev3_long_v1.json`, with two
+desktop controls and four explicit fixed phone assignments. No long trace,
+commit, GDM shutdown, or unrelated process change. Clean upstream source is
+`4f31eedb0ccf546b7e8d6bb243b170f12522f54d`; the modified runtime is a separate
+matched control, never called default llama.cpp. Both binaries have fresh
+graph-enabled Qwen/Gemma cold/hot qualifications at identical live-VRAM
+placements (16 and 23 GPU layers). Nsight records actual capture and replay.
+
+Artifact root: `/mnt/storage/s42-cuda-graph-v1-20260909` on the desktop, mirrored
+under `research_dev/scheduler/baselines/cuda_graph_v1/`. Qualifications and the
+failed preflight/compatibility attempts are immutable. Runtime defaults use
+context 2048 and parallel 1 for capacity, batch 2048, ubatch 512 and automatic
+threads; graph-disable environment variables are absent. Initial online
+observation stores are empty and shared identically, not inherited across arms.
+
+Bounded compatibility attempt 1 failed after HTP0 reached READY: the progressive
+preloader passed the time from before snapshot capture to its next stage.
+`validate_at` correctly rejected that earlier time. The fix in
+`adapters/offline_phone_residency.py` uses the actual capture time as its lower
+bound, as the existing deferred path already does. It does not extend expiry.
+`tests/test_offline_phone_residency.py` now covers late capture through all three
+stages and genuine expiry rejecting before any physical command. The offline,
+fixed-residency, CUDA-reference and matched-comparison modules pass 45 tests in
+57.163 s. A fresh bounded attempt 2 is running; no reference is claimed complete.
+
+Source v2 is preserved as `reference-source-v2.tar.gz`, SHA-256
+`f5c8fed19858c21600731f3d1fbb2ba3f984163e5ec672be354d16711474f59c`.
+Frozen specification v2 changes only the harness source hash in all six arms:
+`2f54218ba427301fd30e55eccade0b432b7b24718356456a6a97afc18f75be3b`
+to `27875fd2413f10b82371cbad7af5120e787936b5f8e43abd5a394b2e34ad56e6`.
+This includes the capture-time fix, focused tests, and strict postprocessing of
+native call/fraction coverage and phone active/idle energy sensitivity. Workload,
+placements, binaries, assignments, evidence and accounting are unchanged.
+
+## Log - `2026-09-09 17:24 EDT` - Sustained assistance: matched dev3 pair complete
+
+Resumed on user instruction without changing the frozen scheduler. Kept the
+interrupted desktop control untouched; ran a fresh control at
+`/home/zhihao/s42-sustained-assistance-20260909-v1-desktop-resume1/run`.
+Adaptive and desktop both complete Gemma 36/Llama 37/Qwen 50, unchanged arrivals
+and all 655 output tokens. Canonical comparison passes exact source, binaries,
+artifacts, phone shard indexes, parent placement/qualification, graph mode,
+request and accounting-boundary checks. Both controls are explicitly graph-
+disabled for Gemma/Qwen, not default llama.cpp. No active campaign remains.
+
+Paid duration including runtime preparation: desktop 346.132091 s, adaptive
+301.452163 s. Fleet energy at assumed phone active powers 3/4.5/6 W is adaptive
+19.924717/20.067684/20.210652 kJ versus desktop 28.040510 kJ, savings
+28.94%/28.43%/27.92%, with identical 0.875 W phone idle treatment. CPU/GPU are
+measured: desktop 18.380867/9.356777 kJ, adaptive 10.607024/8.851384 kJ.
+This is one matched diagnostic end-to-end pair, not steady-state or an isolated
+effect of the patch. Gemma acquisition-to-execution differs 75.353/18.294 s;
+Qwen differs 50.260/76.638 s, desktop/adaptive. Do not attribute all startup
+variation to assistance or subtract preparation to manufacture a warm result.
+
+Adaptive evidence remains 5,352 Gemma and 354 Qwen calls. Fraction-weighted
+eligible coverage is 76.89%/84.29%; assisted output tokens 243/292 and 59/71.
+Gemma retains 100% after measured 50%/25% rejection. Selected HTP2 replaces
+Gemma with Qwen in 14.227 s, generation 1 -> 2; retained HTP0/1 remain gen1
+and each make 264 calls during loading. Four phone loads, zero failed
+transition/fallback/USB reset. Final 38 Gemma tokens remain unassisted after
+rebind refresh, with 41 output tokens but 14 probe tokens left at admission.
+That retained-mask revalidation limit is still open, not negative evidence.
+
+Comparison: `-resume1-inputs/COMPARISON.json`, SHA-256
+`505aab2697d077b53387ac19eab769603802931eb771f9bcb5d912b7e26a2f5f`.
+Desktop RESULT: `87d030b9a2a078143f2ab135baac2678e0dad0f80e03997e6bca68d2251543a7`.
+Adaptive RESULT: `4728ddd2262c867929cf5ad36edd2e98506271d80cf385904d8d97a3a07f2eff`.
+Source manifest: `2809b31b9d6ef13c2df59b93049354532df7bc3229aefa40e3d9b3c10cae27ca`.
+257 focused tests PASS before freezing; v3/v8 goldens unchanged; no redundant
+suite rerun, production edit, trace expansion, commit or push on resume.
+Detailed results, zero-policy reasons, timelines and limitations are in
+`scheduler/campaigns/burstgpt/reports/20260909-sustained-assistance/README.md`.
+
+## Log - `2026-09-09 16:45 EDT` - User pause; sustained-assistance adaptive 3/3 preserved
+
+Adaptive completed the unchanged Gemma 36/Llama 37/Qwen 50 workload in
+301.452163 s including runtime preparation. Native audit: Gemma 5,352 calls,
+76.89% fraction-weighted eligible coverage; Qwen 354 calls, 84.29%; Llama
+desktop. HTP2 replacement took 14.227 s while HTP0/1 each made 264 calls with
+generation 1 retained. Zero recorded fallback or USB reset. Gemma retained
+100% after rejecting 50%/25%, but post-replacement context refresh exhausted
+revalidation admission: 41 output tokens and 14 probe tokens remained; its
+final 38 tokens ran desktop. This remaining limit is not negative evidence.
+
+On the user's pause, sent SIGINT only to desktop runner PID 2840410. Its
+existing failure-artifact and cleanup path completed; driver/runner exited,
+no CLEANUP_FAILURE.json. Gemma/Llama finished; Qwen stopped at 36/71 tokens.
+No matching savings claim is valid. All artifacts remain under
+`/home/zhihao/s42-sustained-assistance-20260909-v1-{inputs,adaptive,desktop}`.
+Adaptive RESULT SHA-256:
+`4728ddd2262c867929cf5ad36edd2e98506271d80cf385904d8d97a3a07f2eff`.
+Stopped control FAILURE SHA-256:
+`e2f2593c4ebebaf7a89edaa359e021d0aef8316dc97ec45d69a32d9d07e2af6d`.
+257 focused tests PASS, replay goldens unchanged; no broad harness, 24/84
+trace, commit, push, or unrelated process change. Work is paused.
+
+## Log - `2026-09-09 16:26 EDT` - Sustained-assistance implementation and focused gate
+
+257 focused tests PASS in 87.740 s; both v3/v8 replay goldens are unchanged.
+The adaptive controller now separates incumbent, challenger and acknowledged
+policy; uses complete-pair admission for fresh/cached/retry paths; preserves
+request-wide exploration limits; and retains a valid incumbent on challenger
+rejection, incomplete evidence or exhausted exploration budget. Continuation
+uses future energy and new switching costs, not sunk probe payback. LEARNING
+now honors the configured latency allowance (25% here), not a hidden strict
+speedup requirement. All spent energy remains in the original receipts/totals.
+
+Saved windows reproduce Gemma 44's missing baseline, Gemma 49's rejected 25%
+challenger with retained 100% winner, and Qwen 43's post-batch-change decision.
+Qwen 100%/75% now qualify under the requested future-energy/latency policy;
+50%/25% remain unqualified. These are diagnostic decision replays, not new
+energy measurements. ASSISTANCE_DECISION exports intent, context, incumbent,
+challenger, acknowledged policy, budgets and evidence; physical acknowledgement
+and native proofs remain authoritative.
+
+Production changes only in `_internal/adaptive_decode.py`, its contracts, and
+`_unified/adaptive_decode_control.py`; focused tests in test_adaptive_decode,
+test_adaptive_runtime and new test_sustained_assistance. Working session COW,
+attachment, leases, terminal proofs and cleanup were not rebuilt or relaxed.
+Fresh physical prefix: `/home/zhihao/s42-sustained-assistance-20260909-v1`.
+Preflight precedes only the unchanged Gemma 36/Llama 37/Qwen 50 small workload
+and a newly frozen matched Desktop-CUDA-B0 control. No 24/84 trace. No savings
+claimed yet. See `scheduler/campaigns/burstgpt/reports/20260909-sustained-assistance/README.md`.
+
+## Log - `2026-09-09 15:22 EDT` - Bounded probe-recovery v2 PASS, 3/3 physical requests
+
+Stopped after the bounded Qwen 43/Gemma 44/49 retest. All 1097 requested output
+tokens complete with exact native, ticket, artifact, parent, session-generation,
+and terminal proofs; semantic checks pass. Phone calls: 3912/2000/3808.
+Fraction-weighted eligible decode coverage: 95.88%/94.70%/97.14%. These fractions
+apply to the current CPU-resident FFN layer masks (Qwen 12 layers, Gemma eight),
+not the whole model. Normal policy selects 100% after its current paired
+verification; no fractions or routes were forced. All three pairs report
+CURRENT_PAIR_IMPROVES at token 23, keeping DIAGNOSTIC evidence status.
+
+Qwen and Gemma 44 physically exercise the repaired released-slot tail path;
+three tail tokens per request remain unmeasured cost evidence, but all their
+native calls are counted and generation-validated. Gemma 49's last two tokens
+use the existing released-control path. No invalid window, fallback, USB reset,
+stale execution, or execution recovery is accepted. The separate cancellation
+cleanup regression also passes. Total distinct focused tests: 198; both replay
+goldens unchanged after the final correction. No broad harness was run.
+
+Four physical loads: HTP0/1/2 Qwen generation 1, then dynamically selected HTP1
+Gemma generation 2 in 11.767 s. HTP0/2 retain generation 1 and make 1956 calls
+each; HTP1 makes 5808 Gemma calls. Gemma 49 reuses its shard without a reload.
+First/all Qwen READY at 21.687/59.449 s, mixed READY at 86.552 s. Replacement
+finishes before Qwen's first phone call, so this fixture does NOT prove calls
+during loading or an interference bound. One startup telemetry deferral recovers
+after 39.279 s. One early helper-refresh rejection recovers before decoding.
+Raw adapter timing-hook events are not exported by the generic runner; grouped
+observations do persist the exact unmeasured tail counts and reasons.
+
+Paid span: 745.589 s. Measured CPU/GPU energy: 37.5469/22.2718 kJ. Fleet energy
+at phone-active assumptions 3/4.5/6 W: 60.8020/61.0357/61.2693 kJ, retaining
+0.875 W idle treatment. No new matched baseline exists, so no savings percentage
+is claimed. The user-stopped reduced24 control remains stopped and preserved.
+
+RESULT: `/home/zhihao/s42-probe-recovery-20260909-v2-gate/run/RESULT.json`, SHA-256
+`36e78df08a6572bc14860709dc9970affab9d99ab2499705a9a597f392765604`.
+Final source manifest hash:
+`e16bf94c7db6443613718c41d1649fd644561e031c89d1ac534f18ea2e182023`.
+Native audit hash:
+`2ff1455194866bc49573cf12e15197b46ab4a4f1f4dba0d4ffe5ce2690d8ff71`.
+Exact files, additional hashes, timelines, and limitations are in
+`research_dev/scheduler/campaigns/burstgpt/reports/20260909-probe-recovery/README.md`.
+No physical run remains active; no commit, push, or PR.
+
+## Log - `2026-09-09 15:00 EDT` - Secondary cancellation defect reproduced and repaired
+
+Follow-up to the 14:53 entry: reproduced the exact terminal-memory cleanup error
+with an injected terminal-proof failure after capacity release. The existing
+abort handler could not construct its CANCELLED ticket because memory still
+carried the intermediate RELEASED status. Matched the existing fail path's
+terminal cancellation bookkeeping only; memory and leases are not released a
+second time, the original proof failure remains an error, no execution receipt
+is invented, and cleanup retries are idempotent. Strict ticket validation is
+unchanged. Files: `_internal/runtime_controller.py`,
+`tests/test_physical_adapter.py`. All 41 focused adapter/controller tests pass
+in 1.277 s, in addition to the preceding 157 focused tests. Both replay goldens
+are being rechecked after this final correction.
+
+v2 preflight PASS, SHA-256
+`d9e96acf893f68546308d8ac16abe25b375bce96cb78ae1724b843ea67f2d84d`.
+The cancellation-only deployment delta and both source manifests are preserved;
+the fresh bounded run uses SOURCE_MANIFEST_FINAL.json. No physical request has
+started yet, and the stopped reduced24 run remains stopped.
+
+## Log - `2026-09-09 14:53 EDT` - Bounded v1 terminal race preserved; v2 focused tests pass
+
+The recovery retest at `/home/zhihao/s42-probe-recovery-20260909-v1-gate/run`
+FAILED after Qwen 43 generated 341 tokens/1206 calls and Gemma 44 generated
+265 tokens/2000 calls. Gemma 49 did not run. Final Gemma stats arrived after
+slot release and created an invalid positive-policy window 66; the exact
+terminal validator correctly rejected it. All artifact/parent/ticket identities
+matched. FAILURE.json hash is
+`69525a60dc9e6df306d68c4bb50b561db80bf9219d214976fb05cfcce7c2a8f1`.
+The accompanying terminal-memory cleanup error is preserved and not repaired
+in this patch. No failed result is relabeled PASS.
+
+Extended the existing released-tail transaction: exact terminal confirmation
+can preserve the last valid measured prefix under the unchanged acknowledged
+exploitation policy. Missing counters are not made into a measured window.
+The explicitly unmeasured tail still requires exact native call counts and
+generation-scoped terminal proof; that validator is unchanged. Added adapter
+and controller regressions, including wrong terminal identity, missing/extra
+native calls, and wrong generation. No qualification or budget was weakened.
+
+157 focused tests PASS in 88.030 s; v3/v8 replay goldens unchanged. Incremental
+terminal-repair files: `_internal/adaptive_decode.py`, `adapters/http_backend.py`,
+`tests/test_adaptive_decode.py`, `tests/test_llama_server_adapter.py`. Full details
+are in `reports/20260909-probe-recovery/README.md`. Fresh v2 preflight is running
+with the same Qwen 43/Gemma 44/49 fixture, native binaries, GPU16/GPU22 parents,
+and FFN indexes. No baseline or full trace resumes.
+
+## Log - `2026-09-09 14:25 EDT` - User stopped control; probe-recovery fixes pass focused tests
+
+Stopped only the exact reduced24 desktop campaign PID 2785134 with SIGINT on
+the user's instruction. Canonical KeyboardInterrupt failure artifacts remain
+intact, with 10/24 completed streams. Cleanup finished. The partial control is
+not a valid matched savings comparison. No remaining arrivals, baseline rerun,
+or full trace is authorized in this follow-up; retest the fixes in a small case.
+
+Added three failing-then-passing adaptive regressions and repaired their causes:
+initial budget deferral now retries after current baseline evidence when the
+same full-pair affordability check passes; historical probe-first startup now
+collects its missing current baseline before qualification; eliminating a
+dominated warmup candidate advances the existing search or keeps the qualified
+winner, with PROBE_CANDIDATE_REJECTED evidence instead of a false incomplete
+whole-request stop. Existing measured-rejection and verification cleanup tests
+remain unchanged and pass. No exploration cap or qualification was weakened.
+
+155 focused helper/adaptive/adapter/replay tests PASS in 86.617 s. Both v3/v8
+goldens are unchanged. Saved Gemma 49 at token 67 selects its still-qualified
+100% policy after rejecting only the dominated quarter candidate. No new phone
+measurements are synthesized by this diagnostic replay.
+
+Incremental files: `_internal/adaptive_decode.py`,
+`_unified/adaptive_decode_control.py`, `tests/test_adaptive_decode.py`, this log,
+and reports `20260909-probe-continuity` / `20260909-probe-recovery`. Fresh prefix
+`/home/zhihao/s42-probe-recovery-20260909-v1` has a normal-scheduling fixture of
+Qwen 43 and Gemma 44/49 with unchanged prompts and 341/265/491 output tokens.
+Only fixture arrivals are shortened to 1/21/41 seconds; no route, fraction,
+session, or future-demand hint is supplied to policy. Preflight is running.
+Native binaries, graph mode, GPU16/GPU22 parents, FFN shard indexes, and safety
+checks are unchanged. No full harness, commit, push, or unrelated process change.
+
+## Log - `2026-09-09 14:11 EDT` - Reduced execution PASS, coverage FAIL; matched control running
+
+The frozen probe-continuity build completed 24/24 adaptive requests with exact
+terminal/native proofs, accepted outputs, four READY layouts, zero failed or
+unprepared layouts, and no fallback, USB reset, or execution recovery. Coverage
+regressed to 4/24 phone-assisted requests: Qwen 6.03% fraction-weighted eligible
+coverage (828 calls), Gemma 29.91% (2968 calls). The bounded v3 concurrency PASS
+does not establish a complete coverage fix. The fresh identical-source desktop
+control is running; no energy claim uses the old baseline.
+
+Read-only saved-window reconstruction identifies two further lifecycle defects.
+Gemma 44 skips a current baseline using historical evidence, but qualification
+then requires that missing current pair. Gemma 49's 25% candidate is eliminated
+as ENERGY_DOMINATED during warmup. The controller mislabels loss of admission
+as PROBE_INCOMPLETE and returns the request to 0%, despite its measured 100%
+candidate still passing the unchanged checks with 424 tokens remaining. The
+reservation has not expired. Initial affordability deferral also enters an
+EXPLOITING state that does not retry when baseline measurements arrive; exact
+zero-call candidate budgets still need reconstruction. Qwen 43's post-context
+probes now work, but no candidate passes all current latency/payback checks.
+Do not bypass those checks or call all these cases measured energy rejection.
+
+Production remains frozen during the matched pair. New artifacts only:
+`/home/zhihao/s42-normal-reduced24-20260909-v1-inputs/diagnose_coverage.py`,
+`COVERAGE_DIAGNOSTIC.json`, `NATIVE_AUDIT.json`, `WAIT_TIMELINE.json`, and
+`PRIOR_WAIT_TIMELINE.json`. Adaptive RESULT:
+`/home/zhihao/s42-normal-reduced24-20260909-v1-gate/run/RESULT.json`, SHA256
+`5d97d6ae4ad92c324aa8e76b7aada21d83c18926aca3c62cbab937d6b1b6673e`.
+This entry changes only talks.md and the 20260909-probe-continuity report.
+152 focused tests and the two unchanged replay hashes are the last tested build.
+No new test harness, native change, qualification, commit, or push.
+
+## Log - `2026-09-09 13:17 EDT` - Probe continuity physical PASS; reduced comparison preflight
+
+The v3 bounded Qwen concurrency gate and native audit PASS. Setup request 41
+and tested requests 42/43 complete 3/3 with accepted semantic outputs and exact
+terminal proofs. Qwen 43 sees batch 2-to-1 at token 64, completes valid singleton
+100/75/50% probes, then retains measured-positive assistance. Its physical calls
+increase from v2's 180 to 5,436; native-verified fraction-weighted eligible-token
+coverage is 82.43%, versus 2.94% in the failed v2 mechanism gate. The request-wide
+probe count remains bounded (65 at the final context event, cap 80). No forced
+route, fraction, session, or qualification was added.
+
+All three phone sessions load once and remain generation 1; zero subsequent
+reload, fallback, reset, or execution recovery. v3 RESULT SHA256:
+`3d7189771658cedbb3d3a7ca02dccdb67bd531e009bad5bf95d335382069d39e`.
+Artifacts: `/home/zhihao/s42-probe-continuity-20260909-v3-{gate/run,inputs}`.
+Report: `scheduler/campaigns/burstgpt/reports/20260909-probe-continuity/README.md`.
+The 152 focused tests and both unchanged replay goldens remain green. No further
+production edits followed that test/deployment freeze.
+
+This is not a matched savings claim. The authorized reduced 24-request adaptive
+run is next, then a fresh matched desktop baseline only if it completes cleanly.
+Fresh prefix: `/home/zhihao/s42-normal-reduced24-20260909-v1`; preflight is running.
+The original arrival schedule spans 1161 s; nothing is truncated or subtracted.
+Source, graph mode, native binaries, artifacts, placements, and energy boundaries
+must match across both arms. No 84-request trace, commit, or push.
+
+## Log - `2026-09-09 13:02 EDT` - Live concurrency observed; deferred probe reservation repaired
+
+v2 completed 3/3 requests with accepted semantic outputs and exact terminal
+proofs, but the separate concurrency acceptance audit is FAIL. Request 41 is
+the explicitly labeled 24-token setup, not a third tested concurrency request.
+Qwen 42/43 executed concurrently. Their phone calls were 162/180, respectively.
+Request 43 observed the live batch 2-to-1 change at token 59 and excluded the
+crossing window from comparison. It never measured a phone window afterward;
+its 2.94% fraction-weighted coverage is not an improved coverage result.
+No reduced trace or matched energy comparison has started.
+
+The remaining controller defects have focused failing-then-passing regressions:
+
+- A deferred fresh probe retained its old reservation while baseline tokens
+  elapsed. A retry now reserves the complete pair at its actual control boundary.
+- Control-cost estimation included records before the current membership epoch.
+  A 9.434196-second delayed control could pollute a later singleton budget.
+  Current samples are now epoch-scoped; samples crossing membership changes are
+  also excluded from historical control-cost estimates, not from accounting.
+- If a deferred retry becomes unaffordable, its pending policy must be cleared.
+  Otherwise a later EXPLOITING-state retry could bypass fresh probe admission.
+
+This does not increase the request-wide probe-token cap, erase measured negative
+evidence, relax helper leases or generations, or change fractions/routes in the
+runner. Cached verification keeps its separate bounded reservation and retry
+limit. Incremental files: `_internal/adaptive_decode.py`,
+`tests/test_adaptive_decode.py`, and this log. All 152 focused adaptive/helper,
+adapter, and replay tests PASS in 85.902 seconds, including three new regressions.
+Both v3/v8 replay goldens remain unchanged; no golden was regenerated.
+
+v2 physical artifacts: `/home/zhihao/s42-probe-continuity-20260909-v2-gate/run`.
+RESULT.json SHA256:
+`1357642b5a6a44a69d45ec7f62c388479e014577d35c1e3ba29aa25e5ed3be49`.
+Separate failed acceptance audit:
+`/home/zhihao/s42-probe-continuity-20260909-v2-inputs/CONCURRENCY_AUDIT.json`.
+Source manifest SHA256:
+`4cb0c154e6e149c89c7fb63952105d731c53381c5e1ccfef673e411c0efa1c54`.
+Fresh v3 prefix: `/home/zhihao/s42-probe-continuity-20260909-v3`.
+It uses the same warmup and overlapping requests, normal scheduling, qualified
+desktop placement, native binaries, graph mode, shard indexes, and power policy.
+Live GPU memory before preflight remains 3178 MiB used, 12770 MiB free. No GPU
+process, GDM service, native worker, or physical session transaction was changed.
+
+## Log - `2026-09-09 12:34 EDT` - Bounded probe gate failed terminal proof; counter-read race regression
+
+The v1 Qwen 42/43 gate is FAIL, preserved without overwriting its artifacts.
+The native streams generated all 60 and 341 requested tokens, but request 43
+failed `adaptive observation differs from the execution ticket` during terminal
+validation. This is not a successful physical completion or a savings result.
+Its last recorded helper counters reached 5,796 calls; native terminal counters
+continued afterward. The failed run did not persist the rejected terminal
+preview, so its exact failed predicate cannot be recovered from FAILURE.json.
+
+The new membership query preceded the request's FFN stats query. Both are
+serviced by the server decode loop; near completion, that extra query can let
+the slot release before its final counters are captured. A focused positive-
+phone terminal regression fails on this ordering and passes when counters are
+read first. The membership check still runs before the next policy decision;
+crossing or unknown-context windows remain non-comparable. No proof, identity,
+generation, energy, or lease check is weakened. The existing terminal validator
+now includes mismatched identity values and invalid-window reasons in its error
+so a repeat failure is diagnosable directly.
+
+Incremental files: `adapters/http_backend.py`, `adapters/llama_server.py`,
+`tests/test_llama_server_adapter.py`, and this log. 174 focused helper/adaptive/
+replay tests PASS (plus the previous 53 session/catalog tests: 227 distinct
+focused tests). The 37 adapter tests pass after adding error details. Both
+v3/v8 replay goldens remain unchanged.
+
+The cold request 42 held all GPU execution lanes, so request 43 acquired only
+after request 42 completed. This v1 fixture did NOT prove a live 2-to-1 context
+change. The original reduced run used request 41 as the cold-load owner and
+42/43 on separate warm execution lanes. Fresh v2 configuration includes the
+original 24-token request 41 as an explicitly labeled warm-up, followed by
+unmodified 42/43 at 21.0/21.3 s. Normal scheduling chooses every route, session,
+and fraction. All setup time and energy remain in the records; no matched
+energy claim is made for this mechanism gate.
+
+v1 artifacts: `/home/zhihao/s42-probe-continuity-20260909-v1-gate/run`.
+FAILURE.json SHA256:
+`fc28c8f031ff37a1866ddcca3c4ea7ffde273770ad55250c1f61fc1174acb7aa`.
+FAILURE_REQUEST_HELPER_EVENTS.json SHA256:
+`792580fcb63725318769d01911877b2a66164eabd092302f0b9f5cfe0d2e4ba0`.
+Native Qwen stderr SHA256:
+`eae373da30355a6668794381067025d23b305216a445cf9633136272c155031d`.
+v2 prefix: `/home/zhihao/s42-probe-continuity-20260909-v2`.
+Preflight is running. No reduced trace has started. No native, qualification,
+placement, session-transaction, or memory-policy changes were made.
+
+## Log - `2026-09-09 10:10 EDT` - Probe continuity and live context; bounded gate in progress
+
+Implemented the user-designed corrections in the existing adaptive controller.
+Fresh and cached learning probes use the same complete-pair budget calculation;
+an admitted policy retains bounded permission after acknowledgement and warmup.
+Live HTTP slot membership is refreshed at measurement boundaries. Crossing
+windows retain their energy/call accounting but are not comparable. A changed
+context invalidates current comparison samples without resetting request-wide
+probe tokens. New helper attachment uses the controller's affordability check
+before acquiring leases. Insufficient opportunity is not an energy rejection.
+The final campaign catalog now preserves its explicitly configured 1% energy
+margin instead of inheriting the overlay's 5%. Qualification is not fabricated.
+
+Files: `_internal/adaptive_decode.py`, `adaptive_decode_contracts.py`,
+`_unified/adaptive_decode_control.py`, `helper_preparation.py`,
+`adapters/http_backend.py`, `campaigns/burstgpt/catalog.py`,
+`tests/test_adaptive_decode.py`, and `test_llama_server_adapter.py`.
+Existing dirty changes and all physical artifacts preserved; no native changes.
+Before-copies: `/tmp/s42-probe-continuity-20260909-1L84KE/research_dev/`.
+226 focused tests pass, including both unchanged v3/v8 replay goldens.
+Two old budget assertions now check shared admission semantics. The fraction
+ordering fixture has enough remaining tokens; the 24-token-window warmup fixture
+now explicitly budgets 120 probe tokens instead of silently exceeding 80.
+Separate regressions enforce insufficient-opportunity rejection and a cumulative
+cap across membership changes, including same-count membership replacement.
+
+Saved Qwen 43 suffix diagnostic: correcting membership after request 42 ends
+makes token 58-62 non-comparable, then a fresh baseline admits a 100% probe at
+token 70 with 271 tokens remaining. This is a control replay, not new measured
+phone energy or a counterfactual savings claim.
+
+Fresh artifacts: `/home/zhihao/s42-probe-continuity-20260909-v1-{deploy,inputs,gate}`.
+Preflight PASS; effective minimum saving 10000 ppm; qualified parents and native
+binaries unchanged. Source manifest file SHA256:
+`8ddb26702fcc7afb86d3dbcbec24871053ec28e5d068e39d913838a8835145bb`.
+Preflight file SHA256:
+`36916c6b501bbc42455f12a38b8e2bbd1eb11487a9f227d975688b4995c9c48f`.
+The Qwen 42/43 physical overlap gate has started with original output lengths
+and 20-second relative arrival spacing. No reduced trace has been launched.
+
+Separate old preparation diagnosis: Gemma tensor-setup-to-buffer-publication
+intervals are about 54-55 s adaptive versus 29 s desktop in both model loads;
+one Qwen warmup interval is also longer. The native source places mmap prefetch
+and backend buffer creation in the former interval, before load_all_data.
+These observations narrow the extra 78.51 s but do not isolate its root cause
+or establish an additive wall-time decomposition. No unrelated fix was made.
+
+## Log - `2026-09-08 23:38 EDT` - Reduced 24 completes matched; modest saving, target missed
+
+After the normal mixed3 gate passed, ran the exact reduced24 adaptive trace
+first, then a fresh matched desktop baseline. Both 24/24 PASS, semantic output
+and canonical exact ticket/artifact/parent/geometry/generation/operator/terminal
+checks PASS. Same graph-disabled binaries, source, shard indexes, calibrated
+GPU22 Gemma / GPU16 Qwen parents, requests, arrivals and cold paid boundaries.
+No forced fraction, route, session assignment, future demand or shortened output.
+
+Adaptive fleet 144.269407 kJ versus desktop 150.102750 kJ at assumed phone 4.5 W:
+3.8862% saving. At 3 / 6 W, 4.0306% / 3.7419%; phone idle 0.875 W both arms.
+CPU/GPU measured, phone assumed. Paid durations 1698.306303 / 1616.432981 s,
+adaptive 5.0651% slower. Strict comparison valid, 25% target NOT MET. Matched
+request latency p95 1.316x, max 1.469x; requests 35/42/54/55 exceed 1.25x.
+No old baseline was reused, and no preparation was subtracted.
+
+Phone 9,734 calls: Gemma 7,592 (4/6 requests), Qwen 2,142 (10/15), Llama
+0/3 desktop-only. Native per-request/control counters reproduce eligible
+positive-token / fraction-weighted coverage: Gemma 87.47% / 82.53%, Qwen
+19.39% / 18.53%. Gemma 44 attaches before execution and applies 100% about
+one second after first token, but control churn limits weighted coverage to
+53.79%. No rematerialization, generation, fallback, reset or request-restart
+failure. All four phone preparations publish READY; none fail or die proposed.
+
+Initial Qwen HTP0/1/2 READY at 21.786 / 37.250 / 55.174 s, generations 1/1/1.
+Phone preparation starts 1.630 s, overlapping desktop load 2.464-66.489 s.
+Normal policy selects HTP1 only for Gemma: PREPARING 243.121, READY 255.028,
+generation 2; HTP0/HTP2 remain gen1. Native load times 11.369 / 14.865 /
+17.459 s initially, 11.330 s replacement. Physical load counts 1/2/1. No Qwen
+request is active during this replacement; retained calls are 318 each before,
+594 after, zero during. Do not claim a new overlapping interruption pass here;
+that proof remains the preceding mixed3 gate's 247/248 during-load calls and
+unchanged equivalent-class gap ratios 1.578x / 1.440x.
+
+Remaining measured gaps, not fixed mid-comparison:
+
+- Qwen 43's 75% probe loses admission after warmup with no valid sample; its
+  learning bid requires an outstanding control even though the control was
+  already applied. It has 77 denied windows with no competing winner: first
+  predicted, then 76 conservative measured 100% bids. Last 308 tokens at zero.
+- Request-scoped active batch is sampled at first token. All 88 Qwen 43 windows
+  retain batch=2 after request 42 ends, preventing a context-change reset.
+- Requests 41/46 attach with 24/26 outputs, but expired-deadline 15% probe
+  budgets allow 3.45/3.75 token-equivalents after first token, below the required
+  four. Their zero calls are insufficient measurement, not negative energy.
+- Effective catalog margin remains 5%, despite campaign 1%; unchanged both arms.
+- Desktop transition durations sum to 333.316379 s versus 254.802543 s control,
+  +78.513836 s. This nearly matches the +81.873322 s span but is not a causal
+  decomposition because preparation and execution overlap. Queue acquisition
+  median/max 276.47/501.68 s versus 229.23/432.77 s; no phone wait was added.
+- Exact zero-interval controller reasons are not all exported. The native audit
+  indexes every zero-policy interval, marking derived explanations explicitly.
+
+Telemetry timeout recovered within 1.077 s. A per-request recovery logged
+15.506 s later is a planning revisit, not continuous outage. Stale HTTP/failed
+ADB fallback at 729.041 s is followed by valid HTTP at 729.460 s (0.419 s);
+the latter lacks a request-level recovery event. Retained READY state remains.
+Analyzer now: 0 failed/never-prepared, 20.8 s no layout, 2.5 s executing without
+model residency (Llama), first Gemma/Qwen 14.0/20.8 s after arrival. Historical
+v6 had 115.6 s first Gemma, 42.9 s executing uncovered and 12 assisted requests;
+now 14 assisted. This is diagnostic, not the matched energy baseline.
+
+Prefix `/home/zhihao/s42-normal-reduced24-20260908-v1`: `-gate/run`,
+`-desktop/run`, `-inputs`, `-deploy`. Adaptive RESULT SHA
+`5a7c1a74a78a6093713f16f728e70b39385f5d1b506bffd3205949fadcf97d5e`;
+desktop `e641a39846cb8fae78c6270114c700477a72d76286fb506f948e6ace06be044d`.
+Comparison `eebfa9bd7623e100d4610427a5202461746b45c9fc0c66926a80aa1af17d3967`.
+Run inventory `7c03412217a9df30f7cb21e030364708cdad4a56633a9085939b2f9bf0176cca`
+covers 35,648 files / 2,686,398,945 bytes. Full report, coverage, timelines,
+power sensitivity, code diagnosis and hashes:
+`scheduler/campaigns/burstgpt/reports/20260908-normal-reduced24/README.md`.
+Input inventory `c94dfd2ffb18eac4c9363c437ce402738c2e0f95451b869c26fb96101f7acae9`
+covers 45 input/report/audit files, including the complete run inventory.
+
+No production code changed this measurement turn. Three trace tests PASS;
+all 215 deployed source hashes still match the prior 204-test deployment,
+with unchanged v3/v8 goldens. Repo edits are only the two new normal-mixed /
+normal-reduced24 report directories (README, comparison, matched summary and
+decoded diagnosis JSON in each) and this log. Inputs/audit scripts/results
+are saved in fresh physical directories. No deleted artifacts or user changes.
+Final ADB healthy; GPU 3178 MiB used / 12770 MiB free. No GDM stop, unrelated
+process interference, native rebuild, broad suite loop, longer trace, commit,
+push or PR. Stop physical runs with the measured target failure preserved.
+
+## Log - `2026-09-08 22:30 EDT` - Normal mixed gate passes; reduced trace follows unchanged
+
+Ran Gemma 36 / Llama 37 / Qwen 50 at 1 / 61 / 91 s with their original
+292 / 292 / 71 outputs. Normal energy-aware scheduling, no prescribed route,
+fraction, assignment or future demand. Adaptive and fresh matched desktop both
+3/3 PASS. Paid cold durations 316.756797 / 364.601696 s; adaptive includes
+preparation and shutdown. Fleet 19.599088 / 29.045673 kJ at assumed phone
+4.5 W, saving 32.5232%; at 3/6 W, 32.9884% / 32.0580%. CPU/GPU physical;
+phone idle 0.875 W in both arms. Strict same-source/binary/artifact/parent/
+request/arrival/accounting comparison PASS. No broad test or policy change.
+
+Gemma 6,016 calls, 94.50% positive-token coverage, 88.66% fraction-weighted;
+Qwen 228 calls, 54.29% / 42.86%. Llama desktop-only. Four session preparations
+all READY; dynamically selected HTP2 alone changes Gemma/gen1 to Qwen/gen2.
+HTP0/HTP1 remain gen1 and make 247/248 calls during the 12.509 s native load.
+The unchanged equivalent-call 2x gate passes all 30 classes, maxima 1.578x /
+1.440x. Desktop starts before all phone sessions finish preparing. Exact
+generation-keyed terminal counters match 6,244 calls, zero fallback/reset/
+stale execution/restart. No reverse transition was forced in this normal run.
+
+Remaining findings, not hidden or changed: Qwen's measured pair has favorable
+means but misses the conservative 5% margin (62.814719 J/token upper versus
+62.351190 allowed), with 21 tokens left below the 24-token further-probe guard.
+This is not negative mean energy or the old cached-pair 1.98 s cutoff. Overlay
+catalog merging raises the campaign's declared 1% margin to 5%; both arms keep
+that effective policy. Brief 75% warmup yields use predicted shared-window bids
+with no winner, not measured rejection. Unassisted interval annotations are
+derived from exported records/events, not a new direct reason field. Qwen's
+first residency delay of 66.724 s still misses a one-load-time arrival target.
+
+Prefix `/home/zhihao/s42-normal-mixed3-20260908-v1`: `-gate/run`, `-desktop/run`,
+`-inputs`, `-deploy`. Adaptive RESULT SHA
+`2bdbce3c04fdf706c6baa29c5b7e81b9a9bb5f200c6d31a5f910a6e495dae568`;
+desktop `bccd14332da3213f327f2d4b39c9964c002ac635653d4046ce926daeefba06e5`.
+Inventory SHA `512fbe2fb9d7ac55e470239a652242991a23bbfa0d55296a284fb7820b376bc7`
+covers 198 files / 47,949,608 bytes. All 215 source-file hashes match the prior
+204-test deployment, with unchanged v3/v8 goldens; 3 trace tests passed now.
+Only configuration, audit/result files, this log and the report were added.
+Full report: `scheduler/campaigns/burstgpt/reports/20260908-normal-mixed/README.md`.
+
+After this gate passed, started preflight for the reduced 24-request trace at
+`/home/zhihao/s42-normal-reduced24-20260908-v1`, adaptive first, unchanged code,
+initial observations and policy. A fresh matched baseline is conditional on
+clean adaptive completion. No savings claim for the 24-request trace yet.
+GNOME, unrelated processes, prior physical artifacts and dirty changes remain
+untouched. No commit, push or PR.
+
+## Log - `2026-09-08 16:32 EDT` - Complete-pair verification and shutdown fixes pass matched Qwen retest
+
+Fixed the diagnosed incomplete-verification path, not qualification or route
+policy. Diagnostic winner reuse now reserves both measurement halves, warmup,
+control/acknowledgement overhead, uncertainty margin and exploitation room.
+The reservation stays fixed across its halves. Unfinished evidence is INCOMPLETE
+with at most one feasible retry; valid negative evidence stays REJECTED. Fresh
+current pairs, exact parent/layout/generation/leases and session-mask draining
+remain enforced. Existing helper events export RESERVED/INCOMPLETE/VERIFIED/
+REJECTED diagnostics. A separate shutdown correction probes normal USB once
+before exact close, removing the initial 15 s wait; the final 90 s restoration
+and terminal proof checks remain intact.
+
+Changed code/tests under `scheduler/`: `_internal/adaptive_decode.py`,
+`_unified/adaptive_decode_control.py`, `adapters/bridge.py`,
+`adapters/phone_session.py`, `tests/test_adaptive_decode.py`,
+`tests/test_adaptive_runtime.py`, `tests/test_bridge_lifecycle.py`.
+204 focused tests PASS in 122.908 s; both replay goldens unchanged:
+v3 `ea5b30c9e4a3f705c194188d6e5788c64990953aad73ff3c4b7573bc69eca27d`,
+v8 `965f218bb5f81a57dbb51167624798f02eb79354b6cc042683b2b1ed9b1a868d`.
+Exact saved token-11 replay now stays PROBING and verifies at token 21. Its two
+outputs are byte-identical, file SHA
+`eab1df5f5bb9033773f84f57e30d9623e366258f164dbffa8b5fdf50e3ff7dc9`.
+
+Fresh physical prefix `/home/zhihao/s42-paired-verification-20260908-v1`:
+preflight PASS, adaptive `-gate/run` and fresh `-desktop/run` both 2/2 PASS,
+canonical comparison and native reuse audit PASS. Qwen 43/67 retain identical
+source, graph-disabled binaries, GPU16 qualified parent, F16 shard indexes,
+catalog, prompts, token counts, arrivals and paid boundaries in both arms.
+No model route or fraction is forced. Request 67 reserves at token 1, applies
+100% at token 3, verifies its current pair at 21 and exploits 100% from 23.
+Its coverage rises from the previous 7.58% to 90.91%, calls from 180 to 2,160;
+request 43 retains 91.62% coverage / 5,886 calls. One load per HTP0/1/2, physical
+generations 1/1/1, fresh disjoint lease sets, no between-request reload, fallback,
+reset, stale execution, request restart or semantic failure. Total calls 8,046.
+
+Fresh desktop/adaptive fleet energy 39.598078 / 22.618635 kJ at assumed 4.5 W
+phone active power: 42.8795% saving. At 3/6 W: 43.4049% / 42.3540%; same
+0.875 W idle treatment. CPU/GPU physical, phone assumed. Paid durations
+442.553186 / 438.322065 s, adaptive 0.9561% shorter. Execution times
+219.351 / 188.838 s for 43 and 91.002 / 82.261 s for 67. Adaptive cleanup
+interval falls from previous 18.728762 s to 4.960444 s, versus 0.799006 s in
+the fresh desktop arm. These are Qwen-only bounded results, not a mixed-trace
+claim, isolated old/new ablation or measured preload break-even.
+
+Adaptive RESULT SHA `3b8e420623b675785d11cc738fe2dedbadd4d4be4e381c7695e1b3b75532a82f`;
+desktop `2f30088052871ed8b69fd7cb5514fd7cd01db6fcc2cad15c7b674086a3a3a62c`;
+source manifest file `e40bd822cc3c0bddf18c010199108ef94a56c4a6aef6e4c32aaa58a40a481ac9`.
+Inventory `acfda8f0e595e8b67937d989ae96e540b7d63b04c39ae122b0bf51f275c41da0`
+covers 1,978 files / 150,760,384 bytes. All 215 tested source files still match
+the deployment. Full timing, identity, files, hashes and limitations are in
+`scheduler/campaigns/burstgpt/reports/20260908-paired-verification/README.md`.
+Cold preparation remains: first/all publication at 20.852 / 59.932 s; desktop
+execution starts while HTP2 loads. Cold start is still later than desktop
+control and shutdown remains nonzero. Old results and unrelated work preserved.
+No long trace, full-harness loop, native rebuild, GDM stop, commit or push.
+Final ADB/GPU health checks pass; GPU returns to 3,178 MiB used / 12,770 MiB free.
+
+## Log - `2026-09-08 15:41 EDT` - Newest fix measured: 30.95% Qwen pair saving, reuse budget gap exposed
+
+Measurement only, no production edits. Ran canonical energy-aware Qwen requests
+43/67 sequentially and a fresh desktop-baseline arm, using the exact same
+frozen current source, native binaries, FFN shard indexes, catalog, GPU16
+qualified parent, graph-disabled mode, prompts, token counts and paid boundary.
+Both arms complete 2/2 and the strict comparator accepts their identities.
+Physical prefix `/home/zhihao/s42-winner-reuse-matched-20260908-v1`: `-gate/run`
+is adaptive, `-desktop/run` is baseline, `-inputs` preserves commands/config,
+preflight, source manifest and audits; `-deploy` remains frozen. All 215
+source files match the current tree before and after measurement.
+
+Desktop/adaptive fleet energy: 39.747358 / 27.446465 kJ at assumed phone active
+power 4.5 W, saving 12.300893 kJ / 30.9477%. Sensitivity at 3/6 W is
+31.3742% / 30.5212%, with the same 0.875 W idle treatment. CPU/GPU are physical;
+phone energy is assumed. Paid duration is 442.937636 / 462.473307 s, 4.41%
+slower adaptive, including 0.760 / 18.729 s after the last execution receipt.
+This Qwen-only workload is not comparable to the earlier mixed 23.81% as an
+incremental fix saving. No mixed or long trace ran.
+
+Request 43: 5,886 calls, 91.62% fraction-weighted eligible coverage, execution
+190.890 s versus desktop 222.881 s. Request 67: 180 calls, 7.58% coverage,
+93.158 s versus 91.425 s. Native counters reconcile at 6,066 calls. Exactly
+one load per HTP0/1/2, generation 1/1/1 unchanged, no reload for request 67;
+fresh first leases 11-17 versus 31-37. Native load-to-READY times are
+11.002 / 16.395 / 12.431 s. Preparation begins 0.623 s after proposal;
+request 43 starts desktop execution while the third phone session loads.
+No fallback, rejected helper, stale generation, reset or request restart.
+
+Newly exposed cause, NOT fixed: request 67 correctly seeds cached 100% and
+applies it at token 3, but `_can_probe()` aborts at token 11. The source SLO
+leaves a positive 13.174 s deadline remainder; its 15% exploration allowance
+is 1.976 s, below a four-token baseline window's estimated 2.449 s. There
+are still 122 tokens remaining and only 10/80 probe tokens used. The generic
+budget exit runs before the cached paired-baseline stage, enters EXPLOITING
+at 0%, and does not revisit the later valid baseline. It is an incomplete
+pair, not negative phone economics: the valid phone sample is 34.97 J/token
+and 0.525 s/token, later desktop 74.98 J/token and 0.626 s/token. These are
+diagnostic short windows, not qualification. A saved-boundary reconstruction
+reproduces the branch; two outputs are byte-identical. Suggested next review:
+budget the complete fresh pair, distinguish incomplete from rejected evidence,
+and permit safe retry without weakening existing correctness or qualification.
+
+Result hashes: adaptive `7ead8acbe5ae58fd726f86f29180b1b75fffa96986bd77ce6b711490d2dec6d2`;
+desktop `efe0c0eacf046cb75248558f8d29b18122ec80ec50ad7b83b3bab1c94ec2a4a4`.
+Source manifest `174b088e5b91bdf0a3d0ac51f7a835f666b632508e6e07f06f7ef11907167ae1`;
+run inventory `6cb823b8860bee381611803beff7a9b501c80d8867a7d3a3f66e5bf5df5b1d31`
+covers 2,274 files / 167,397,450 bytes. Exact timing, energy, proof, configuration
+and hash tables are in
+`scheduler/campaigns/burstgpt/reports/20260908-winner-reuse-measured/README.md`.
+Only that report directory and this log are changed locally. No suites or
+qualification repeated: current source already passed 172 focused tests and
+both unchanged replay goldens. No commit/push; cleanup leaves ADB healthy,
+VRAM 3,178 MiB used and GDM untouched. Coverage target remains unmet on reuse.
+
+## Log - `2026-09-08 15:00 EDT` - Bounded winner reuse and mixed-session gate PASS
+
+Implemented only the next bounded optimizations: reuse a compatible positive
+diagnostic fraction as one fresh paired verification candidate, and repair the
+matched comparator's observation scope, terminal counters and phone identities.
+Artifact, desktop parent, component capability, geometry, batch, context,
+generation and lease checks stay strict. The fresh pair must pass without old
+energy masking a regression; negative evidence returns assistance to baseline.
+Assumed-phone energy remains diagnostic, never qualified. No lifecycle, native,
+shard format, graph-mode, placement, gate threshold or calibration policy change.
+
+Changed code under `scheduler/`: `_internal/adaptive_decode.py`,
+`campaigns/burstgpt/compare_ab.py`, `tests/test_adaptive_decode.py`, and
+`tests/test_matched_comparison.py`. 172 focused helper/adaptive/COW/offline/
+comparison/replay tests PASS; the final reporting-only adjustment also passes
+all 10 comparison tests. Both v3/v8 replay goldens are byte-identical. Exact
+hashes, timing tables, limitations and test commands/modules are documented in
+`scheduler/campaigns/burstgpt/reports/20260908-winner-reuse/README.md`.
+
+Fresh prefix `/home/zhihao/s42-winner-reuse-20260908-v1`: preflight PASS; the
+unchanged bounded calibration lifecycle gate completes 5/5 requests with
+23,498 calls and terminal status 0. Cold Qwen: 4,734 calls; online Qwen: 3,774;
+Gemma: 6,416; reverse-fault Qwen: 3,648; reverse-retry Qwen: 4,926. Online
+Qwen/Gemma weighted eligible coverage is 75.00%/89.68%. Both subsequent Qwen
+requests select only the prior 100% candidate, first apply it at token 3,
+finish fresh paired verification at token 69 and apply exploitation at token 71.
+Fresh helper lease sets are 33-39 and 53-59. The retry re-probes only after
+its actual shard geometry expands; it does not copy qualification across masks.
+
+Dynamic selected session HTP2 follows Qwen1 -> Gemma2 -> Qwen3 -> restored
+Gemma4 -> Qwen5. HTP0/HTP1 remain Qwen1 and load once each; only HTP2 reloads.
+All 66 matched call classes pass the unchanged 2x interruption bound. Worst
+ratios: forward 1.256x, fault+restoration 1.196x, retry 1.214x. Retained calls
+during those intervals: 108/108, 240/242 and 132/132. Native forward loading
+takes 9.532 s; reverse target+rollback 21.336 s; clean retry 11.502 s.
+Acknowledged forward draining takes 1.346 s and preserves the shortened
+window's accounting without qualifying it. No fallback, USB reset, stale
+execution, global phone restart, or request wait for phone preparation.
+
+Cold native first-session READY is 13.045 s after authorization. The scheduler
+preload ledger reports first publication after 23.005 s and all three READY
+after 65.887 s; host and phone clocks are kept separate. Its preparation
+windows include concurrent desktop work, so the 6.039 kJ fleet attribution is
+not claimed as isolated phone load energy. This is a lifecycle gate, not a new
+matched savings result. Re-analysis of the previous matched pair corrects the
+histogram from 8,309 historical/current positions to 826 current positions and
+calls from the wrong flat-field zero to 7,500 native-proven calls; its 23.8139%
+saving at 4.5 W is unchanged (24.1214% at 3 W, 23.5064% at 6 W).
+
+RESULT SHA256 `b5d1f17ce5d4feab3a73814ce4f6f33a96ec25bbe5f3869672be9ddc5bb8aa64`;
+source manifest `28c1266692bbf7795e521f5c96da422492596ffc51d599798e16043e9148fae0`.
+`-inputs/RUN_ARTIFACT_HASHES.json` covers 10,282 files / 455,687,255 bytes,
+SHA256 `4e296f007aca06b5a86830a5dceae72a27ea056e60dcece3e6082777805ba9dd`.
+Derived audit V2 fixes its own native phase-name load counter; the initial
+audit and all raw evidence are preserved. All four changed source/test files
+match the frozen deploy. Phone cleanup is complete; GDM remains running and
+VRAM returned to 3,178 MiB used. No trace, baseline rerun, broad harness,
+commit or push. Incremental savings and overlapping shared-cohort comparison
+attribution remain unvalidated; desktop loading/queueing was not changed.
+
+## Log - `2026-09-08 12:43 EDT` - Late-helper energy binding fixed; bounded matched A/B saves 23.81%
+
+Qwen's low assistance was not established physical unprofitability. A desktop
+request starting without a helper kept assumed-phone operational selection
+disabled after its exact helper became READY. Diagnostic windows were ignored
+and its bids remained prediction-only. Bind the existing explicit phone-profile
+permission on late READY publication/attachment; retain caller overrides and
+all identity, lease, generation, qualification and cost thresholds. Assumed
+phone energy remains diagnostic, never qualified energy evidence.
+
+Production changes only: `_internal/adaptive_decode.py`,
+`_unified/adaptive_decode_control.py`, `_unified/helper_envelopes.py` under
+`research_dev/scheduler`. New `tests/test_late_helper_energy_policy.py` and
+contract-field additions to two `tests/test_session_cow_transaction.py` mocks.
+Documentation: this entry and
+`scheduler/campaigns/burstgpt/reports/20260908-late-helper-energy/README.md`.
+The valid-counter reproducer fails twice before the fix and passes after it.
+138 focused helper/adaptive/COW/replay tests pass. Both v3/v8 replay hashes are
+unchanged; no golden regeneration or broad harness run.
+
+Fresh physical prefix `/home/zhihao/s42-late-helper-energy-20260908-v1`:
+`-gate/run/RESULT.json` passes Qwen 43 and Gemma 49, 341/491 output tokens,
+3,732/3,768 phone calls, and semantic-sanity output checks. Weighted eligible
+coverage is 86.91%/92.96%, versus 9.56%/92.96% in the previous gate. Qwen binds
+the operational permission once at 108.533716 s and records 67 conservative
+measurement-backed bids. Both models finish on scheduler-selected 100%.
+Four physical FFN-shard loads: initial HTP0/1/2 gen1 and selected HTP1 to Gemma
+gen2. HTP0/HTP2 retain Qwen gen1 with 1,866 calls each. Native, request and
+generation-keyed terminal totals agree at 7,500. No fallback, request recovery,
+stale execution or USB reset. A sampled 1.157355 s initial telemetry outage
+recovers over HTTP while one session is READY; all load admissions are fresh.
+
+`-desktop/run/RESULT.json` is a fresh matched desktop-only arm, also 2/2 PASS.
+Same exact source manifest, catalog, artifacts, prompts, 341/491 output tokens,
+GPU16/GPU22 physically qualified parents, graph-disabled binaries and paid
+boundary. Canonical comparison accepts it; an extra read-only audit matches
+all physical phone worker/router/script and shard identities across preflights.
+Measured CPU/GPU plus assumed phone energy: desktop 63.824308 kJ, adaptive
+48.625255 kJ at 4.5 W. Saving 23.8139%; at 3/6 W, 24.1214%/23.5064%. The
+same phone idle power is 0.875 W. Paid duration 683.952979/628.690589 s, down
+8.0799%. Online preparation and normal shutdown are included. The 25% energy
+target is not met. One two-request pair is not a statistical, pre-resident
+steady-state, break-even or long-trace result.
+
+Limitations retained: replacement finishes before the first Qwen phone call,
+so retained call-gap evidence is INSUFFICIENT, not PASS; reverse and rollback
+are not exercised here. Generic `compare_ab.py` aggregates historical fraction
+windows, its flat transport count is not the native terminal count, and its
+execution identity omits phone binary fields. These reporting/checker gaps are
+not changed in this scoped fix. Exact current-group and terminal audits supply
+the coverage/call evidence; preflight equality supplies phone binary matching.
+
+Result SHA256s: adaptive
+`40b682a6d51dd62953998b119d5fe7b5c26757ec987b932c7e09756a755ca7c1`;
+desktop `2abbd1be0639940c9ce3ab784e8d4f473ba094d43bba0e0ddc469c49cda6c641`.
+Source manifest SHA256
+`8e39a22225e66a69ac5030ad76f57878740718e16e21a9e95a7b5fcfd8ca1857`.
+`-inputs/RUN_ARTIFACT_HASHES.json` covers 10,854 files / 744,340,366 bytes,
+SHA256 `ef1c9e40174b0f544ff0acf13a074c8b760a925668924f17e2811e5e219c7b7d`.
+Inputs preserve commands, source-before copies, tests, preflight and audits.
+All prior physical results and unrelated user changes are preserved. No long
+trace, native rebuild, qualification rerun, GDM interference, commit or push.
+
+## Log - `2026-09-07 10:46 EDT` - Confirmation retest PASS 2/2; retained-call overlap not exercised
+
+The fresh bounded V2 run completes Qwen 43 (341 tokens, 576 calls) and Gemma 49
+(491 tokens, 3,768 calls), both with exact terminal identities and accepted
+semantic-sanity output. RESULT:
+`/home/zhihao/s42-confirmation-liveness-20260907-v2-gate/run/RESULT.json`, SHA256
+`8c93cf2262526928e3befae24a27e74a5148b36b22444991b624527a383e9feb`.
+Source manifest file SHA256:
+`e723644b9f1cd6df3a3aabbdaae717208a758c7637ece1592e662d531ec25132`.
+
+Three distinct fresh samples confirm the same target at 95.111169 s, 4.111169 s
+after Gemma arrival. Only selected HTP1 changes Qwen/gen1 to Gemma/gen2;
+HTP0/HTP2 retain exact Qwen identities and gen1. Native replacement load takes
+13.804886 s; host READY publishes at 109.670722 s, 18.670722 s after arrival.
+Four loads total, all FFN shards; no request recoveries or phone reset recoveries.
+5,640 planning telemetry snapshots are VALID, max age 2.599079 s.
+
+Qwen first token at 99.906840 s proves desktop decode progresses during the
+replacement. Its first positive phone fraction arrives only at 111.021423 s:
+there are no retained calls before/during this replacement. The unchanged
+matched-class interruption metric is INSUFFICIENT, not PASS or an observed
+violation. The run therefore does not re-prove serving-through-load bounds or
+reverse/physical rollback. Retained sessions make 288 calls each afterward.
+
+Weighted eligible coverage: Qwen 9.56%, Gemma 92.96%; positive-token coverage
+14.12% / 96.12%. Existing adaptive policy selects baseline for Qwen and 100%
+for Gemma. Low Qwen useful coverage remains unresolved; no fraction tuning or
+new energy claim. The V1 failure and its exact READY-poll regression are
+preserved. Tests: 267 distinct focused PASS (269 executions); v3/v8 goldens
+unchanged. The report lists eight changed repository files, replay hashes,
+timelines and audit hashes. Artifact inventory covers 11,298 files / 758,728,791
+bytes. No further trace, baseline, broad suite, commit, push or GDM interference.
+
+## Log - `2026-09-07 10:25 EDT` - Stable-demand confirmation fixed; bounded gate exposes READY-poll bug
+
+Fresh phone observation identities now advance the existing three-confirmation
+counter even when decision contents are unchanged. The existing preparation
+watcher can refresh a pending candidate while its desktop request is queued.
+Cached/stale observations cannot advance it, and minimum-residency deferral
+keeps the confirmed candidate pending. Objective, memory, authorization,
+per-session lifecycle and qualification checks remain unchanged.
+
+The saved-v8 decision replay formerly stayed at confirmation 1; it now proposes
+the same one-session replacement at +2 s without another arrival or decode
+update. READY and desktop ticket remain unchanged. Repeat output is byte-identical;
+both existing v3/v8 goldens remain unchanged. Tests: 132 controller/COW/telemetry,
+47 confirmation/offline/adapter/replay, then 90 adaptive/runtime/replay PASS.
+
+Physical V1: `/home/zhihao/s42-confirmation-liveness-20260907-v1-gate/run`.
+Qwen 43 completed with 4,284 native calls. Gemma 49 arrived at 91 s, drained
+only selected HTP1 at 92.836471 s, confirmed the mask at 94.181185 s, began
+loading at 94.328536 s and reached READY at 135.711488 s. Retained sessions
+stay Qwen/gen1; HTP1 becomes Gemma/gen2. Gemma made 480 native calls but failed
+at received token 84: `adaptive verification candidate differs`. FAILURE.json
+SHA256: `f35a3ba0012d0a8858a94a5d55ce35032efc67ea278832f83287a4f082c829ce`.
+
+The additional synthetic regression reproduces an unchanged READY poll
+reopening a completed, rejected verification. A one-condition fix makes that
+poll idempotent; it does not weaken verification or change fraction policy.
+The identical two-request retest is being prepared in fresh V2 paths. Full
+details and exact changed files: scheduler campaign report
+`reports/20260907-confirmation-liveness/README.md`. No longer trace, baseline,
+native rebuild, GDM stop, commit or push.
+
+## Log - `2026-09-07 06:59 EDT` - V6 matched pair complete: 5.39% less energy, 8.57% longer
+
+Both V6 arms PASS 24/24 with the strict comparator accepting the exact source,
+artifacts, binaries, requests, catalog, qualified desktop parents, graph mode
+and accounting boundary. Desktop RESULT SHA256:
+`22ca631ef88e12792df98e13844b7ff0287b2b00bc617048bbae4ea9cfd2f7e5`.
+Adaptive RESULT SHA256:
+`990718518f65172f548e26bae20edb4a8436c9529b10634be7eb6049481cc7d1`.
+
+Desktop fleet energy is 150.337933861 kJ; adaptive is 142.239106428 kJ at
+4.5 W assumed phone active power: 5.387% lower. Savings at 3 W and 6 W are
+5.529% and 5.245%, using 0.875 W idle in both arms. CPU/GPU are physically
+measured: desktop 98.859164753 / 50.101087081 kJ, adaptive
+89.576359395 / 50.651073405 kJ. Paid duration grows from 1,574.493745 to
+1,709.418224 s, or 8.569%. Maximum per-request execution latency ratio is
+1.621, exceeding 1.25. This is one diagnostic matched trace, not isolated
+steady state or a 25% claim; preparation overlaps other work, so no isolated
+fleet preparation energy or break-even count is fabricated.
+
+All 17,973 saved adaptive planning snapshots are VALID, maximum age 2.908706 s;
+17,971 use HTTP and two ADB. No sampled outage is observed in this trace.
+The preceding bounded gate separately proves recovery while sessions serve.
+Current-run preparation remains four successful loads, zero layout failures,
+and zero reset recoveries. Coverage gaps and the confirmation delay remain
+as documented in the previous entry; they are not hidden by terminal PASS.
+
+Final reports under `research_dev/scheduler/campaigns/burstgpt/reports/20260907-mixed-host-stall/`:
+
+- `V6_MATCHED_COMPARISON.json`: `0a556a6d85dbbbf026132ad40024bef66d9fc3a6770b96d62afa92ba92845dff`.
+- `V6_MATCHED_EXACT_AUDIT.json`: `9b5a313507873f7b12fe1c3b6ed85a5b7071f746cc3334ddc9c4e2f35a34ecc6`.
+- `V6_RUNTIME_EVIDENCE_AUDIT.json`: `93bafb590608b987e74eb4df8f593273fcbc3e28c4edbed6ec0fd7003e89ab82`.
+- `V6_TELEMETRY_AUDIT.json`: `29db6bf7ea679ddc90da3e2f76c338817f86bde90392d9bc10952510c24a09df`.
+
+The same reports and analysis scripts are preserved under
+`/home/zhihao/s42-mixed-matched24-20260907-v6-inputs`.
+`RUN_ARTIFACT_HASHES.json` covers every file in both final run directories:
+36,110 files and 2,649,930,542 bytes; SHA256
+`a4c0d1b59f87d45943a88aebdc589e778dd40021da6be352ee969af8f5448df2`.
+Final tests are 111 focused and 1,038 canonical PASS. Both replay hashes remain
+unchanged after the documented hot-reuse decoded diff. No source changed during
+the pair, no older baseline was substituted, and no route was forced. No
+further trace, native build, qualification, reset, commit or push is launched.
+
+## Log - `2026-09-07 06:33 EDT` - V6 adaptive completes all terminal proofs and four loads
+
+V6 adaptive PASS: 24/24 requests, accepted output quality, 8,414 calls on 12
+requests, four READY preparations, zero failed/unprepared layouts, zero request
+recovery actions and zero phone reset recoveries. Qwen 54 completes with 60
+calls; its zero acknowledgement remains at token 7. The released-slot race
+ordering is covered by the focused regression, not claimed newly reproduced
+in this successful run. Final tests remain 111 focused and 1,038 canonical PASS.
+
+Artifact: `/home/zhihao/s42-mixed-matched24-20260907-v6-adaptive/run`.
+RESULT SHA256: `990718518f65172f548e26bae20edb4a8436c9529b10634be7eb6049481cc7d1`.
+Source SHA256: `35db998b7025b4c5c6252a2286374378f0b327ad9b068bc1454cc24b128d8048`.
+Native load-to-READY times: Qwen HTP0/1/2 11.330 / 18.539 / 13.743 s;
+selected HTP1 to Gemma generation 2: 21.558 s. Retained HTP0/HTP2 remain
+generation 1. Four admissions are VALID, max age 1.978076 s; the three later
+loads use the HTTP snapshot path during FunctionFS. All loads use FFN shards.
+
+Coverage is incomplete: first Gemma READY is 115.6 s after arrival because
+confirmation snapshots occur at 241, 271 and 334 s. Only 22.6 s is loading.
+Executing without model residency falls from historical v8's 414.7 s to
+42.9 s (2.54%); no-layout time falls from 124.1 to 19.7 s. These are diagnostic
+cross-revision comparisons, with old/new short-request thresholds 32/24 tokens.
+Eligible weighted coverage is Gemma 75.0% and Qwen 16.14%. Four attached Qwen
+requests never probe, three without an exported terminal reason. Qwen 43 has
+early contention followed by negative-gain/latency bids; its weighted coverage
+is only 3.75%. Do not force assistance to make the coverage target pass.
+
+Two report limitations are recorded without changing the frozen source: the
+generation-4 PREPARING observation timestamp precedes proposal by 11.043 ms,
+although event/publication order is correct; and Qwen 38's auxiliary attempt
+list omits its exact, correctly proved attempt-1 execution ticket. The read-only
+audit checks receipt/terminal/proof/observation identities directly and flags
+that omission. Full details are in the mixed-host-stall report.
+
+The fresh matching desktop arm is running from the same V6 manifest, catalog,
+requests, parents, binaries and accounting boundary. No V6 energy saving is
+claimed yet. No scheduler source, qualification, threshold or runtime changes
+are made during the matched pair. No commit, push, reset or unrelated process
+interference was used.
+
+## Log - `2026-09-07 05:40 EDT` - V5 publication fixed; final historical-ack recovery fails
+
+V5 has four preparation starts and four READY completions, zero preparation
+failures. Qwen sessions published at 22.315415 / 46.471317 / 60.804637 s,
+all generation 1. The selected HTP1 changed to Gemma generation 2 and published
+at 317.162970 s; HTP0/HTP2 retained generation 1. Preparation owner re-admission
+no longer discards a completed load. Both early Gemma requests used nonzero
+controls and completed. First Gemma residency still took 76.163 s after arrival,
+so the one-load-time coverage target is not yet met; do not conflate fixing
+publication with fixing every planning/preparation delay.
+
+The run completed 23 request proofs but failed Qwen 54's final recovery with
+`adaptive boundary acknowledgement differs`. Its zero-mask control was applied
+at token 7. The released-slot path copied that historical acknowledgement into
+a later baseline window, violating the existing requirement that a window's
+applied ack must name that window's start token. This is a defect in the new
+recovery accounting, not a reason to relax the boundary validator. Preserve
+the earlier acknowledgement in its original window, and validate continued
+baseline execution against that history instead of relocating it.
+
+Preserved FAIL: `/home/zhihao/s42-mixed-matched24-20260907-v5-adaptive/run`.
+FAILURE SHA256:
+`cdb598b562939f4929db7dfd565a5d2279a20ad201c1fc8c0992e3c05c67d2bb`.
+Helper events: `d3355ffde3e446480155a5de81a0fd6c34a4384ef90c73d0570e7befd05712d6`.
+Adaptive store: `b4572df067ff0ae52f932f071bb069a67ffdcc3fdb608d6144935e21c27b1712`.
+No V5 baseline was launched and no V5 matched saving is valid.
+Backups for the correction:
+`/dev/shm/s42-historical-zero-ack-20260907-sEmHMe`.
+
+The correction removes acknowledgement relocation in `_internal/adaptive_decode.py`.
+`adapters/llama_server.py` validates a continued released baseline against the
+latest historical zero acknowledgement and requires every following window to
+retain that exact baseline policy. The boundary validator itself is unchanged.
+Regressions in `tests/test_adaptive_decode.py` and `tests/test_llama_server_adapter.py`
+reproduced both the constructor failure and the terminal-history rejection.
+They now retain earlier physical calls, reject a missing/reused-generation zero
+ack, and keep the diagnostic tail excluded from qualification.
+Focused adaptive/server/cohort/replay: 111 PASS in 78.038 s; both goldens unchanged.
+V6 is staged in new inputs/deploy directories; preflight is running. No V5
+baseline or unchanged desktop requalification is run. V5's third preparation
+completed before its owner actually replanned in that run; the injected software
+regression, not that timing coincidence, proves completion across re-admission.
+
+V6 preflight passed, SHA256
+`309be009373daaa8fe974ae8b0795b03182fd3f6e2e3ca43efd587b79a23a573`.
+Source manifest SHA256:
+`35db998b7025b4c5c6252a2286374378f0b327ad9b068bc1454cc24b128d8048`.
+The same 24-request adaptive arm is running, with the initial five Qwen
+requests complete and all sessions READY at generation 1. A new baseline is
+conditional on its successful request proofs and transition audit.
+Final canonical suite: 1,038 PASS in 186.825 s, both replay goldens unchanged.
+Full log SHA256: `6f8e23c9646fd29cdafa362f0e72651878391b4577c49380f2719cc5e61e992e`.
+The full and focused logs are preserved in the V6 inputs directory. The live
+physical map subsequently published only HTP1 as Gemma generation 2; retained
+Qwen HTP0/HTP2 stayed generation 1. Both first Gemma requests completed.
+
+## Log - `2026-09-07 05:06 EDT` - V4 matched comparison complete; V5 ownership fix tested
+
+V4 baseline PASS 24/24 in 1,610.563762 s; adaptive PASS 24/24 in 1,715.112270 s.
+Baseline RESULT SHA256:
+`9e9c63e465ed3fa9bae163fdafac99864e011c5983becf28b0c9badeb91523b3`.
+The strict comparison passed same-source/binary/artifact/parent/boundary checks.
+At 4.5 W assumed phone active power, fleet energy is 147.177912555 kJ desktop
+versus 142.621778440 kJ adaptive: 3.095664% lower, with a 6.491423% longer span.
+Savings are 3.257017% at 3 W and 2.934311% at 6 W, same 0.875 W idle treatment.
+CPU/GPU energy is physically measured; phone energy is assumed. This includes
+online preparation, not isolated steady state. The 25% target is not met.
+Maximum per-request latency ratio is 1.498, exceeding 1.25. The 95 failed
+layout transitions remain an acceptance failure, not hidden by request PASS.
+
+Reports under `research_dev/scheduler/campaigns/burstgpt/reports/20260907-mixed-host-stall/`:
+`V4_MATCHED_COMPARISON.json` SHA256
+`bb8a55a384497d421779428a6bb7994347a7a1896d42f93318e88df7e247060b`;
+`V4_MATCHED_AUDIT.json`
+`ce18f0560e602290c86b28057cae6fd1447bbf291cd48d9c1db05e3ddac76cf9`;
+`V4_ADAPTIVE_TIMELINE.json`
+`84ae08519db529a48cde304244fec84af6e4d42237219abdcd735cbf78f30a92`.
+The same reports are preserved in the V4 remote inputs directory. The audit
+filters adaptive groups by exact current-run hashes; the comparator's auxiliary
+histogram includes imported history and its flat transport summary misses nested
+terminal counters. Those fields are not used as current coverage/call evidence.
+Physical request/session proofs total 11,016 calls; only 10/24 requests used them.
+
+The minimal preparation-identity correction is staged for V5. Final local suite
+is 1,037 PASS in 191.516 s; focused set is 78 PASS, both replay goldens unchanged.
+Preflight is running after normal owned teardown, with 12,770 MiB free VRAM and
+GNOME still using 3,178 MiB. No new qualification, binary, placement, graph mode,
+memory threshold, fraction policy, reset, commit or push was introduced.
+
+V5 preflight passed at 05:08 EDT, SHA256
+`0ae8fc2dc50370adf7ed73f7092ccadc6869c3d1fb2923f1a1ea9f2cf0369abe`.
+Source manifest SHA256:
+`1a8530752fb1fb490864e7541bed113c7725759148af4a1a9e8c7bb286fd6b72`.
+Catalog and workload hashes remain `667499be...1f75d` / `78b7582e...92ce9`.
+The adaptive arm has started; its transition audit will precede a fresh V5
+baseline. V4 deployment/results remain frozen and untouched.
+
+## Log - `2026-09-07 04:48 EDT` - Matched V4 completes requests but fails residency acceptance
+
+V4 adaptive completed 24/24 requests in 1,715.112270 s, with 10 requests
+reporting phone calls. RESULT SHA256 is
+`5de568fbeee3cb711d7ea0fc7da41271b262dff92c2e72e219bb07bc736cb885` at
+`/home/zhihao/s42-mixed-matched24-20260907-v4-adaptive/run/RESULT.json`.
+Source manifest:
+`8dc08e269e72058cf1b0b02c8f3599d6a2de9fd543eed2aa4117369d25360e5a`.
+Preflight:
+`6d18d2421a914abfd5e8680566f732a60f70d4ce95c133cf2666d82223b8af8c`.
+The fresh matching baseline is still running; no savings claim is made yet.
+
+The request PASS is not residency acceptance. The direct lifecycle audit has
+99 proposals, four READY layouts and 95 failures. Initial phone absence was
+20.7 s, but execution without model residency was 320.1 / 1,694.0 s (18.9%).
+First Gemma residency was 651.8 s after arrival. The canonical analyzer output
+is preserved at the V4 inputs path in `ADAPTIVE_TIMELINE.json`.
+
+The first failure is generation 3, adding Qwen HTP2. Preparation began at
+40.343618 s using request 35 (`burstgpt-v2:88119:attempt:0`). At 55.095104 s,
+after physical loading, completion raised `runtime ticket is unknown`.
+Request re-admission replaces that old nonterminal ticket; physical completion
+still looked it up to obtain model and desktop executor identity. The load
+transaction is layout-scoped but its completion check was still request-ticket
+scoped. Subsequent attempts failed `exclusive residency replacement lacks an
+exact eviction` because physical occupancy and the unpublished logical view
+disagreed. Neither check should be weakened. The correction will retain the
+authorized immutable preparation identity independently of live request lookup,
+and re-evaluate only current nonterminal demand after publishing READY.
+
+The correction in `_unified/common.py` and `_unified/helper_preparation.py`
+stores the authorized model and desktop executor in the preparation record.
+Completion uses that immutable identity, the existing helper contract, exact
+receipt and current physical snapshot, without looking up the old request
+ticket or retaining request leases. Post-publication planning uses current
+nonterminal demand, not a completed/cancelled preparation owner.
+`tests/test_replay_determinism.py` reproduces the old unknown-ticket failure
+after re-admission and cancellation; both now publish READY. A tampered physical
+generation still rejects publication and preserves the source READY view.
+Focused preload/COW/telemetry/replay: 78 PASS in 125.448 s, both golden hashes
+unchanged. Final canonical verification: 1,037 PASS in 191.516 s, including both
+unchanged goldens. Backups/log: `/dev/shm/s42-preparation-owner-recovery-20260907-6tKFSM`.
+V5 inputs/deploy are staged under `/home/zhihao/s42-mixed-matched24-20260907-v5`;
+no V5 physical run begins until the V4 baseline and owned teardown complete.
+The local filesystem filled during result-copying. Only this turn's duplicate
+V2/V3 baseline analysis copies were moved to RAM-backed storage with symlinks
+and matching hashes; all primary remote physical artifacts remain intact.
+
+## Log - `2026-09-07 04:00 EDT` - Matched V3 reaches 23/24; released-slot baseline recovery
+
+V3 desktop is PASS 24/24 in 1,682.063140 s. RESULT:
+`/home/zhihao/s42-mixed-matched24-20260907-v3-baseline/run/RESULT.json`, SHA256
+`d9e98b13cac0023a76c42c4fbf60b12732ac8e8577308941330fad15dc89265f`.
+CPU/GPU energy is 98.239388357 / 50.045830083 kJ; assumed idle phone energy is
+1.471805248 kJ, fleet 149.757023688 kJ. Source manifest SHA256 is
+`1ac82ff14c129a2f8bb63164e397615dba9842c118929673050fb17c30f57e94`.
+Preflight SHA256 is
+`60fbf26fbc9f67e8523071371852c2455b459cf3f0b321b1178b1ce0b87b6072`.
+Full canonical tests before deployment were 1,035 PASS; replay goldens unchanged.
+
+The adaptive arm completed Qwen 39, Qwen 45 and Gemma 44, including their
+terminal proofs, so the preceding timeout and final-ack failures did not recur.
+It ultimately failed on Qwen 54 (31 output tokens), with 23 other successful
+requests. Qwen 55 (12 tokens) completed; the last completion order is not arrival
+order. Preserved artifact:
+`/home/zhihao/s42-mixed-matched24-20260907-v3-adaptive/run`.
+FAILURE SHA256:
+`e72c2fe0b5c21c1dc58cace48a1899709b2f94701c133583bd27d05584567b84`.
+Failure helper-events SHA256:
+`1f655f8c8fa3f2fc4f4c1524e0167842cb4111fe8e7a0ac1a75dcc130102f9df`.
+Failure adaptive-store SHA256:
+`6ed055114825c7c86f9f31893bd72d61047835d26827c85b7a27ff0cb953ff6d`.
+No matched energy saving can be reported from this incomplete adaptive arm.
+
+Qwen 54 applied a zero-mask control (generation 2, token 7), then completed
+31 tokens and released slot 3 at native 4:41.066484. A later statistics task at
+4:45.284557 correctly rejected the released slot. The adapter tried to discard
+an ordinary pending baseline window through the tail-only recovery path;
+`tail_seal_token` did not identify that boundary, producing
+`adaptive stale window transaction differs`. This is neither a telemetry outage
+nor a phone session-generation failure. Earlier phone calls remain real.
+
+The existing recovery path now defers a released baseline window until matching
+terminal progress, without issuing further controls or statistics requests.
+It closes the pending interval as diagnostic/unqualified, using the latest
+exact acknowledged zero policy when phone work preceded it. Terminal validation
+continues to check those historical phone calls; it does not erase them through
+the legacy all-baseline stale-tail exception. Wrong terminal slot/count, missing
+zero acknowledgement, and unexpected calls under the zero generation fail.
+
+Changed for this correction: `adapters/http_backend.py`,
+`_internal/adaptive_decode.py`, `_unified/adaptive_decode_control.py`,
+`adapters/llama_server.py`, `tests/test_adaptive_decode.py`, and
+`tests/test_llama_server_adapter.py`. No native binary, session lifecycle,
+qualification, memory threshold or interruption threshold changed. Focused
+adaptive/server/cohort: 108 PASS in 1.603 s. Canonical verification: 1,036 PASS
+in 184.825 s, including both replay goldens unchanged. Three focused release
+and proof tests also pass after adding the current-policy equality guard.
+Backups and logs: `/tmp/s42-released-slot-recovery-20260907-PYvzXW/`.
+Normal owned teardown restored ADB; no reset or unrelated process kill was used.
+V4 will run adaptive first, then a fresh same-source baseline only if it passes.
+
+## Log - `2026-09-07 02:32 EDT` - Matched V2 control passes; adaptive control-channel and final-tail defects
+
+The fresh 24-request desktop control passed all 24 terminal and semantic-sanity
+checks in 1,623.450079 s. Artifact:
+`/home/zhihao/s42-mixed-matched24-20260907-v2-baseline/run/RESULT.json`, SHA256
+`c447d2915dd48ce24a577db76ec6747d3541824a7f4f0877d9e631374fdefab9`.
+Paid energy was CPU 98.341924190 kJ, GPU 49.564182555 kJ and assumed idle phone
+1.420518820 kJ, total 149.326625565 kJ. Qwen used the qualified GPU16 parent;
+Gemma used GPU22. GDM and unrelated processes were untouched.
+
+The matching adaptive run is preserved as FAIL at
+`/home/zhihao/s42-mixed-matched24-20260907-v2-adaptive/run`. Its final journal has
+14 COMPLETED, two FAILED, seven CANCELLED and one acquired request whose terminal
+proof did not complete. Live dispatch-queue `COMPLETED` records mean capacity
+release, not successful request proof; the earlier live counts were not PASS
+counts. The first failure was Qwen 39 at 151.453234 s, not the later Gemma 49
+request cancelled when `drain()` surfaced the earlier failure.
+
+The native log shows a statistics control queued at server 144.191452 s while
+another slot's 178-token prefill ran from 144.190768 to 154.479767 s. The fixed
+five-second HTTP control timeout closed the request before that non-preemptible
+prefill finished. Qwen 45 later timed out applying its initial control behind
+another prefill. This is desktop control-channel delay, not missing phone health
+telemetry. Phone calls were real: Qwen 34/38/40 made 450/162/594 calls, and both
+Gemma requests 36/44 used the retained mixed layout. These partial results do not
+support a matched energy saving.
+
+Gemma 44's native final control was generation 61 at token 264 of 265, followed
+by eight FFN calls under that generation. The grouped observation did not carry
+an acknowledgement applied after its last measured window. A focused regression
+reproduced the strict terminal failure: expected zero tail calls, observed one
+call per layer. The correction carries an optional exact final-policy ack in
+`_internal/adaptive_decode_contracts.py` / `_internal/adaptive_decode.py` and uses
+it in `adapters/llama_server.py` for tail counts and generation fencing. An
+otherwise identical call under the wrong generation remains rejected. Historical
+groups with no final ack keep their existing canonical representation.
+
+`adapters/http_backend.py` now gives adaptive control/statistics requests the
+existing bounded execution-service budget, capped by the request's HTTP timeout,
+instead of an unrelated five-second deadline. Native execution and independent
+lease renewal continue during that read. No native binary, fraction policy,
+memory threshold, session transaction or interruption threshold changed.
+Regressions extend `tests/test_adaptive_decode.py` and
+`tests/test_llama_server_adapter.py`; both defects reproduced before their fixes.
+The focused adaptive/server/cohort/replay set exercised both corrections; its
+one legacy SimpleNamespace fixture now explicitly supplies the optional absent
+final ack. The final canonical suite is 1,035 PASS in 184.062 s, including both
+twice-replayed goldens unchanged from the hot-reuse update. The preceding full
+run had only the existing 10 ms timing test at 10.435 ms; it passed unchanged in
+isolation and in the verification run. Both logs are preserved under
+`/tmp/s42-control-prefill-recovery-20260907-MCUMF7/`. No timing threshold changed.
+No source change has been copied into the preserved V2 deployment. Fresh V3
+preflight uses separate inputs and deploy directories with the same qualified
+binaries, artifacts, FFN shards, desktop parents and workload.
+
+V2 common source-manifest SHA256:
+`ca5d7749885c2103158c62c1aeb4de199564122e5cf565742408f8a40c0a4b6b`.
+Adaptive FAILURE SHA256:
+`972b99d1fa851f7e74ccfff5b7af0ecd9286db86674f36aba0e37b47ec564535`.
+Failure decision log:
+`41d6164e57826559ba230c8a4b2e4075447a7c1cc38fb7f14f403458e2ae4b00`.
+Failure helper events:
+`85dd60acc77f68d46408a17336ee0fc3183734553097f3c7cf11b4828a072dc3`.
+Failure adaptive observations:
+`3e4f8cca7f0891929dc4e62ca416a81d4095bd87df7757aff161b6d8e9a1492a`.
+Owned host servers exited and ADB was restored. No manual reset, process kill,
+commit, push or result overwrite was performed.
+
+## Log - `2026-09-07 01:14 EDT` - Reduced control admission replay isolates hot-reuse projection
+
+The first reduced 24-request matched desktop control stopped at arrival index
+41 (431 s), while Gemma was still running, with `frozen desktop control is not
+currently feasible`. The failed run and frozen deployment remain untouched:
+`/home/zhihao/s42-mixed-matched24-20260907-v1-baseline/run`. FAILURE SHA256 is
+`8b9297b791f11b48146205107e635696860fbed59f7a7b120f7113ab64b5b800`;
+decision-log SHA256 is
+`7c15701373c0bcc59bd966e791f8716a7f7817cb7d658fcf077da86a0749eb13`.
+No adaptive arm ran and no savings comparison is valid from this partial run.
+
+A decision-only replay of saved submissions 36/44 and the failing snapshot
+reproduced the failure. The queued Gemma hot-to-hot transition had no evictions
+but overwrote its already-observed endpoint allocation during projection:
+12,662,603,776 measured reclaimable GPU bytes became 12,419,124,020 modelled
+bytes. With no currently free VRAM, losing that exact eviction credit falsely
+rejected the later Qwen load. `_internal/runtime_residency_projection.py` now
+preserves the observed record for exact hot reuse (artifact, executor, resident
+bytes, geometry and tensor coverage). A real replacement still requires its
+existing eviction proofs and memory checks. The saved replay now queues Qwen.
+`tests/test_automated_runtime.py` reproduces both overwritten measured bytes and
+fabricated reclaimable bytes when the observation was absent; both subcases
+fail with the old function and pass with the correction.
+
+The full suite also exposed two helper-path causes, without assertion changes.
+`_unified/automated_selection.py` now recognizes the existing exact profitable
+queue authorization for a warm helper template targeting a PROPOSED layout.
+`_internal/adaptive_decode_planning.py` excludes non-desktop and unadmitted rows
+from alternate-parent probe derivation; previously one such row discarded all
+valid desktop contracts. The original multi-session helper regression now
+passes. `tests/test_telemetry_recovery.py` uses a package import that also works
+under unittest discovery. No native code, qualification, fraction selection,
+phone lifecycle, VRAM threshold or interruption threshold changed. Full-suite
+and replay verification is in progress before a fresh V2 matched experiment.
+
+The decoded v3 replay diff removes exactly two duplicate `EVALUATED` events
+with `NO_FEASIBLE_PHONE_RESIDENCY` for the same overlay arrival (old indices
+26/27). Selected routes, helper events and complete/fail lifecycle payloads
+are unchanged. Both old hashes were reproduced from the immutable V1 deploy.
+The checked-in full decoded diff is
+`scheduler/tests/data/replay/20260907-hot-reuse-decoded-diff.json`.
+v3 is re-pinned from `f78d2b2c...1829` to `ea5b30c9...ca27d`; v8 remains
+`965f218b...868d`. The first 1,034-test run had this expected golden failure
+and a 10.301 ms result on the existing 10 ms timing test; that timing test
+passed unchanged in isolation. No timing limit was relaxed. A clean full
+verification follows the decoded golden update.
+
+Final canonical unittest discovery: 1,034 tests PASS in 183.116 seconds,
+including both twice-replayed goldens. Focused telemetry recovery: 13 PASS.
+The original multi-session helper test passes unchanged; the hot-reuse
+regression passes both subcases. V2 preflight is running from a fresh shared
+baseline/adaptive deploy with unchanged qualified binaries, artifacts and
+live-VRAM parents. No second physical trace has started yet.
+
+## Log - `2026-09-07 00:24 EDT` - Bounded mixed-session V3 passes all phases
+
+`/home/zhihao/s42-mixed-host-stall-20260907-v3-gate/run/RESULT.json` is PASS.
+All five requests completed: cold Qwen 4,812 calls, online Qwen 3,726,
+Gemma 6,416, reverse-fault Qwen 3,648, reverse-retry Qwen 4,230. Online
+weighted coverage is Qwen 75.000%, Gemma 89.683%. Dynamically selected HTP2
+followed Qwen 1 -> Gemma 2 -> Qwen 3 -> restored Gemma 4 -> Qwen 5, while
+HTP0/HTP1 stayed Qwen 1 and were never reloaded. The generation-4 source now
+authorizes the clean generation-5 retry physically, not only in a fake.
+
+All retained-session equivalent-call classes passed the unchanged 2x bound
+during forward loading, injected reverse failure/restoration, and retry.
+Worst ratios were 1.708x, 1.706x, and 1.359x. Retained HTP0/HTP1 calls in
+those intervals were 214/210, 552/558, and 199/198. Native load-to-READY was
+19.605 s forward, 15.043 s reverse target, 36.697 s physical restoration,
+and 17.956 s retry. First cold session READY took 11.087 s; all three took
+55.717 s. Forward drain was 1.418 s, not a full measurement-window wait.
+
+Terminal status 0, 22,832 calls, no USB reset, fallback or stale execution.
+Six physical admissions used valid observations no older than 3.062 s;
+sampled FunctionFS outages recovered, longest 6.096 s. These are planning
+observation intervals, not continuous wire measurements. No native binary,
+graph mode, placement qualification, fraction policy or gap threshold changed.
+The original 243.966 ms host pre-submit outlier did not recur; causality is
+still unproven and is not attributed to the uploader or claimed repaired.
+
+Exact phase timestamps, proof identities, hashes, timing and telemetry are
+in `scheduler/campaigns/burstgpt/reports/20260907-mixed-host-stall/V3_AUDIT.json`
+and `V3_TELEMETRY_AUDIT.json`. RESULT SHA256:
+`27ba3e17f7f7313d4be77799681518e09d823b16364c0430e5238f7f21d45b2b`.
+Source manifest SHA256:
+`4992afcba2879143b0f8de1b8246de3056eb7a0b6dfef0cb9d77903ea5594b77`.
+Focused test sets remain 82 and 139 PASS (overlapping), replay hashes unchanged.
+No reduced trace or matched saving is claimed yet. Next: same-revision,
+same-binary/parent reduced 24 comparison with explicit completeness checks.
+
+## Log - `2026-09-06 23:53 EDT` - Physical rollback succeeds; stale forward source blocks retry
+
+The profiled V2 bounded gate is preserved as FAIL at
+`/home/zhihao/s42-mixed-host-stall-20260907-v2-gate/run`. All four executed
+requests completed with exact terminal proofs: cold Qwen 4,866 calls,
+online Qwen 2,292, Gemma 6,416, reverse-fault Qwen 1,632. HTP2 was selected
+dynamically. Forward replacement passed the unchanged equivalent-class 2x
+interruption test; Gemma reused its READY shard without loading again.
+An injected post-load failure physically restored Gemma at HTP2 generation 4
+after loading Qwen generation 3. HTP0/HTP1 remained generation 1 throughout.
+Terminal status is 0 with 15,206 calls and no USB resets.
+
+The clean retry failed in candidate discovery with
+`phone transition session generation differs`. The compensated READY view
+correctly carried generation 4 but still included the original forward
+replacement's generation-1 source identity. The strict compiler refused that
+stale source-to-target relationship. `_internal/model_placement_controller.py`
+now retires only that obsolete source-authorization metadata when publishing
+the epoch-bumped restored view. It preserves geometry, costs, retained sessions,
+historical layout/proof objects, and the compiler's strict epoch validator.
+`tests/test_offline_phone_residency.py` extends the existing model-generic
+forward/fault/rollback regression through clean retry. It reproduced the exact
+physical error before the fix, then proved a new generation-4 source authorizes
+only the selected session at generation 5. The focused placement/COW/offline/
+replay set passes 139 tests in 109.023 s. Both replay goldens are unchanged.
+
+V2 still does not prove reverse interference or the coverage target: Qwen
+selected zero after its learning probes and finished before reverse loading.
+These are insufficient serving evidence, not successful interruption checks.
+No >=40 ms native same-token host pre-submit gap was found in this profiled
+run; the prior 243.966 ms stall is not claimed fixed. The observer sampled
+65,390 times and used 434.538 CPU seconds over 1,322.162 wall seconds. A fresh
+V3 bounded run will validate the retry fix without the optional /proc observer;
+native timing, call, telemetry, energy and terminal logging remain enabled.
+No trace or new matched energy claim has run. Exact phases and hashes are in
+`scheduler/campaigns/burstgpt/reports/20260907-mixed-host-stall/V2_AUDIT.json`.
+
+## Log - `2026-09-06 23:13 EDT` - Short-lived control generation lost its applied proof
+
+The profiled bounded run is preserved as FAIL at
+`/home/zhihao/s42-mixed-host-stall-20260907-v1-gate/run`.
+Qwen produced 341 tokens and 4,728 physical phone calls, but terminal
+validation rejected before the mixed phase. Expected and actual call totals
+and every layer/width count are equal. Twelve calls used control generation
+4 during the one-token interval 114-115. A newly READY session triggered
+another control before generation 4 opened a measurement window, and
+`acknowledge()` recorded its intervening window with `applied_ack=None`.
+The strict terminal validator correctly refused an unbound call generation.
+This failure does not establish the cause of V4's desktop submission stall.
+
+`_internal/adaptive_decode.py` now retains the existing applied acknowledgement
+in the pending transition only when it begins at that acknowledgement's token
+boundary. It publishes that exact acknowledgement in the shortened receipt,
+preserves it if the next control is deferred, and clears it on terminal/reset
+paths. Shortened windows remain ineligible for measurement/qualification.
+No native binary, session generation, shard, lease, fraction policy or proof
+validator changed. `tests/test_adaptive_decode.py` reproduces the race, exercises
+the deferred path, and proves the existing validator accepts the bound calls
+but still rejects a changed generation. The regression failed before the fix.
+Focused adaptive/server-proof/replay: 82 PASS (69.909 s); the added deferred
+subcase also passes. Both replay goldens are unchanged.
+
+FAILURE SHA256: `c57f31d6b4dab6a1ba601717854ad8d69b07469247cc8c440ef5457f9b08735c`.
+Terminal SHA256: `860fdb750d46699a38c244904231c9e41ed0793370f6e8fdaf1673c37eac9061`.
+Read-only host samples and observer CPU cost are preserved in the adjacent
+`-v1-host-proc` directory. A fresh v2 bounded gate will test this fix and
+continue the original stall investigation. No reduced or full trace has run.
+
+## Log - `2026-09-06 22:52 EDT` - Scoped host-stall investigation before mixed trace
+
+The user authorized fixing the remaining stall and physical mixed validation.
+V1-V4 failures remain immutable. Before changing working native/session paths,
+the next bounded gate adds read-only `/proc` sampling of its own descendant
+servers: CPU runtime, run-queue delay, state/wait channel, faults, and memory/IO
+pressure with monotonic timestamps. This needs no root, perf permission,
+binary rebuild, graph-mode change, process-affinity change, or requalification
+of unchanged desktop routes. Sampling overhead is recorded separately.
+The 2x equivalent-call interruption limit remains unchanged. A full bounded
+forward/Gemma/reverse/fault/retry PASS is required before the reduced trace.
+The new measurement inputs will be kept under
+`/home/zhihao/s42-mixed-host-stall-20260907-v1-inputs`.
+
+## Log - `2026-09-06 14:22 EDT` - V4 telemetry recovery proved; mixed gate blocked by desktop pre-submission stall
+
+V4 is preserved as FAIL at
+`/home/zhihao/s42-telemetry-recovery-20260906-v4-gate/run`.
+The cold and online Qwen requests completed with 4,836 and 3,720 phone
+calls. Online Qwen achieved 75% fraction-weighted coverage. HTP2 alone
+loaded Gemma/gen2 in 10.660 s while HTP0/HTP1 stayed Qwen/gen1 and each
+made 108 calls. Drain-to-safe-boundary took 31.465 ms; total acknowledged
+drain took 1.314 s. Terminal proof reports status 0, 8,556 calls, zero reset
+recoveries. Initial native first/all READY times were 11.310/57.964 s;
+controller offline preload took 59.488 s. There were four loads total,
+three initial plus one replacement, with no retained-session reload.
+
+All four physical admissions used fresh telemetry (0.637-2.907 s old).
+The continuous read-only serving capture saw two HTTP timeout outages
+recover in 3.012/3.380 s without USB cleanup or worker restart. Its valid
+sample age never exceeded 2.096 s. Four final timeouts were during failure
+teardown, not counted as serving outages. No stale planning snapshot was
+recorded. Snapshot gaps alone are not continuous outage measurements.
+
+The unchanged equivalent-call interruption check failed on an observed
+HTP1 260.311 ms gap, versus a 16.785 ms matched median and 33.570 ms bound.
+This is not insufficient evidence. Native timestamps locate 243.966 ms
+before the next desktop USB submission; that RPC then took 16.503 ms
+(14.944 ms HTP compute). Neighboring stderr observation lag was normal,
+and CUDA capture count was zero. CPU scheduling, compute or locking in
+the desktop pre-submission path needs profiling; overlap with phone weight
+upload is correlation, not an established cause. Unprivileged profiling
+is blocked by `perf_event_paranoid=4`. No native transaction or threshold
+was changed speculatively and no unchanged gate was rerun to evade the outlier.
+Gemma execution, reverse replacement and rollback/retry were not reached
+in V4. The reduced comparison remains blocked; no new energy saving is claimed.
+
+Detailed report, exact files changed, tests and hashes:
+`research_dev/scheduler/campaigns/burstgpt/reports/20260906-telemetry-recovery/README.md`.
+Final focused set: 108 PASS; replay goldens unchanged. V4 FAILURE SHA256:
+`93ec3effb2422fb55cfbb5d6ea0bdc80ad0e0142b4e3c75bb7a69ff39665622e`.
+Terminal receipts SHA256:
+`f13f023b7710cf30f88f2ed2ccae291dda34cdcacdc6188cfb73d0d0da39c16f`.
+
+## Log - `2026-09-06 13:55 EDT` - V4 fresh-observation producer and outage-safe desktop startup
+
+The V3 snapshot audit found 1,040 invalid observations among 2,184
+snapshots with READY sessions. Intermittent recovery was real, but not
+reliable enough: the serial sysfs scan consumed the five-second freshness
+budget. The canonical `adapters/native/direct_phone_ffn_session.sh` now
+uses current Android HAL physical-temperature types and sensor throttling
+status, matching `adapters/probes.py`'s existing supported ADB fallback.
+Sysfs remains fallback when HAL temperatures are absent. Missing thermal
+status and expired samples still reject admission. Sample timestamps stay
+at the start of observation; they are not restamped after a slow read.
+The worker, router, USB gadget, wire format and session lifecycle are unchanged.
+`adapters/probes.py` now retains the underlying temperature source too.
+
+`_unified/automated_selection.py` derives dormant zero-assistance launch
+metadata from exact-parent generated FFN candidates independently of live
+phone admission. It does not acquire leases or authorize phone execution.
+This supplies a CPU desktop's own adaptive baseline contract even during
+an outage. `_unified/helper_envelopes.py` classifies a missing immutable
+baseline contract for the existing once-per-configuration rejection path.
+`_internal/route_generation/feasibility.py` labels missing/stale observations
+as `PHONE_TELEMETRY_UNAVAILABLE` instead of interpreting conservative battery,
+thermal or live-memory sentinels as measurements. Known static overcapacity
+and genuinely measured limits still fail closed.
+
+New regressions in `tests/test_adaptive_runtime.py` and
+`tests/test_telemetry_recovery.py` cover these causes, HAL sensor throttling,
+missing HAL status, and unknown versus measured memory exhaustion. The
+focused adaptive/recovery/probe/monitor/replay set passes 108 tests in
+84.459 s; both replay goldens are unchanged. The added static-overcapacity
+subcase also passes. No broad suite or unchanged desktop qualification ran.
+
+Fresh V4 artifacts use
+`/home/zhihao/s42-telemetry-recovery-20260906-v4-{inputs,deploy,gate}`.
+The diagnostic script is staged at
+`/data/local/tmp/s42-hal-runtime-probe-20260906-v4/direct_phone_ffn_session.sh`,
+SHA256 `1118eb90cf341805c2d253566ce16a5abc044d6b984ff027124471a3c73d10e6`.
+Three idle reads including ADB overhead took 117.506, 124.327 and 111.657 ms.
+Serving recovery remains to be proven by the bounded gate. Exact runtime
+transport provenance is derived separately from the unchanged diagnostic
+USB measurements; it is not a new transport or desktop qualification.
+The first deployment helper transferred and verified the script but failed
+on immutable identity serialization. The continuation verifies the same
+staged hash without overwriting the file and persists that failure history.
+No healthy process was stopped and no USB reset was used for recovery.
+
+## Log - `2026-09-06 13:40 EDT` - Telemetry V3 preserved; CPU-parent startup contract missing during an outage
+
+V3 remains FAIL at
+`/home/zhihao/s42-telemetry-recovery-20260906-v3-gate/run`.
+Cold Qwen and online Qwen completed with 4,830 and 3,756 phone calls.
+Forward replacement of HTP2 with Gemma passed the retained-session
+interruption check. Gemma then selected CPU, not because GPU admission
+failed: both parents were feasible, and calibration selected the CPU
+candidate's shorter estimated service time. The submission and candidate
+decisions are saved in `SUBMISSION-offline-gate-online-gemma.json`.
+
+During transient phone telemetry loss, the CPU desktop was launched
+without dormant FFN metadata or a CPU baseline adaptive contract. Later
+READY-helper regeneration used the actual CPU parent, but rejected the
+original ticket with `adaptive ticket lacks one desktop baseline policy`
+62 times. Gemma remained desktop-only until the bounded attachment timeout.
+No reverse transition or trace ran. The next fix must supply the existing
+zero-assistance startup contract without granting phone authorization from
+missing telemetry, and deduplicate an unchanged incompatible-parent failure.
+It must not force GPU selection, copy GPU qualification, or restart the server.
+
+V3 changes relative to V2 were confined to `_internal/adaptive_decode.py`,
+`tests/test_adaptive_decode.py`, `campaigns/burstgpt/offline_residency_gate.py`,
+`tests/test_burstgpt_replay.py`, and this log. They preserve diagnostic-only
+history eligibility and persist insufficient-reference and terminal evidence.
+The focused 57-test adaptive/recovery/replay and 24-test campaign sets passed;
+both replay goldens were unchanged.
+
+- FAILURE SHA256: `cfdbebf97b89129d2792c809324b288558d4e61447fc5586a158bf3dabb62b8d`.
+- Terminal receipts: `bf9d40ebf0e806c56d83c271661e2048e47efe21f9b469959f4c7441a17c34c3`.
+- Adaptive observations: `69f446554d8702bfcbf9da748148eb885c552a33936c5898a2723c4c70b0cb8d`.
+- Gemma submission: `bd5507b92401b4e453110a59251a17c81c96a93968430e201905f49aca953c46`.
+- Execution source manifest: `f9456ad711efa8337702d622c4f57fd74567ae6a070bdfd9ab890334934e5d52`.
+
+## Log - `2026-09-06 13:13 EDT` - Telemetry V2 recovery and isolated rollback; diagnostic-history filter fixed
+
+V2 artifacts remain FAIL at
+`/home/zhihao/s42-telemetry-recovery-20260906-v2-gate/run`.
+Cold Qwen made 5,064 calls. Online Qwen/Gemma made 3,720/6,416 calls.
+HTP2 alone changed from Qwen/gen1 to Gemma/gen2 (9.669 s), then Qwen/gen3
+(10.976 s), then physically restored Gemma/gen4 (9.311 s) after the
+injected verification fault. HTP0/HTP1 stayed Qwen/gen1 throughout.
+Each retained session made 114 calls during forward loading. Drain took
+1.233 s. The phone terminal reports status 0 and zero reset recoveries.
+The physical and logical post-rollback maps match. Clean reverse retry
+was not reached because the interruption measurement had no calls during
+the fault interval; this is insufficient evidence, not an observed 2x
+violation. No trace was started.
+
+New provenance proves recovery with READY sessions present: HTTP/ADB
+unavailability or a stale sample lasted 3.498, 0.166, 5.262 and 0.153 s
+in observed planning snapshots. Recovery used FunctionFS HTTP without
+USB cleanup. All five physical load admissions used valid samples aged
+2.154-2.644 s. The per-probe background refresh and conservative admission
+therefore exercised the actual execution mode, not just post-cleanup ADB.
+
+The reverse-fault request probed all four fractions, then selected zero
+with `LEARNING_NO_PAIRED_IMPROVEMENT`. The cause is inconsistent historical
+evidence filtering in `_internal/adaptive_decode.py`: immediate probing
+accepted an existing diagnostic baseline, while `_valid_records` rejected
+that same baseline even with the existing operational assumed-power flag.
+The exact saved baseline was 71.568 J/token at 589.106 ms; the full-width
+probe was 45.701 J/token at 549.950 ms. These are diagnostic paired-window
+values, not a matched campaign-saving claim.
+
+The minimal fix applies the existing operational-eligibility predicate to
+both current and historical records and checks eligible records before
+skipping the initial baseline. Qualified history still excludes diagnostic
+or assumed-power samples. The new public-flow regression in
+`tests/test_adaptive_decode.py` failed before the fix and now passes,
+including the disabled-permission case. Focused adaptive/recovery/replay:
+57 PASS in 73.104 s; both replay goldens unchanged. Campaign measurement:
+24 PASS in 0.064 s. No broad suite or desktop requalification was run.
+
+`offline_residency_gate.py` now persists adaptive observations on failure
+and explicitly records absent transition call intervals as INSUFFICIENT.
+Final acceptance still fails without those intervals; observed stalls are
+never deferred. `tests/test_burstgpt_replay.py` verifies both conditions.
+Fresh V3 inputs/deploy/gate use the same binaries, parents, graph mode,
+shards, and thresholds. V2 hashes:
+
+- FAILURE: `d5c1f00c13a2bbcb517fd991e052f4d6798fe13bdc7ab205bc20d1014d385226`.
+- Fault result: `0898384244892d76b6a87e6a087b56a34ca1a3e450e8fb1eb516bf05240ac5c4`.
+- Terminal receipts: `f82c1199fc66a3a9df516927308fcdaee1051f5285b45a6042e91914a2ee0185`.
+
+## Log - `2026-09-06 12:40 EDT` - Telemetry V1 forward proof; V2 bounded retry
+
+V1 remains FAIL at
+`/home/zhihao/s42-telemetry-recovery-20260906-v1-gate/run`.
+Cold Qwen, online Qwen and Gemma completed with 4,632, 3,720 and 6,416
+phone calls. HTP0/HTP1 stayed Qwen/gen1 while selected HTP2 loaded
+Gemma/gen2 in 9.722 s; both retained sessions made 114 calls during that
+load. Forward interruption passes all 22 equivalent-call classes, with
+worst ratios 1.348x/1.172x. Drain-to-quiescence was 1.110 s. Gemma did
+not reload its READY shard. Reverse planning used a valid FunctionFS HTTP
+sample aged 2.004 s and correctly proposed Qwen/gen3.
+
+The gate then queried the adaptive session after ATTACHED-at-0%, before
+adaptive registration. This measurement startup race raised
+`adaptive request is not active`; it was not a reverse-transition or
+telemetry failure. No reverse load or fault injection occurred. The
+V2 change in `campaigns/burstgpt/offline_residency_gate.py` waits for the
+existing FRACTION_APPLIED event before querying adaptive state. It still
+waits for scheduler-selected exploitation and the unchanged 30 matching
+reference intervals; no fraction, threshold or production lifecycle was
+changed. Failure and cleanup receipts are now persisted too.
+`tests/test_telemetry_recovery.py` adds the ATTACHED-before-registration
+regression. All 11 focused recovery tests pass in 12.429 s.
+
+V1 FAILURE SHA256:
+`f088ece36884dbb0814647f7e9d1ca185cd1b9cd322e4062963402b591eb6aad`.
+V1 execution manifest SHA256:
+`925f7bea5e17eefbe0f43f0fb7d1a6ebca6e27481eb95a6f40f0b07620eec10b`.
+V2 preflight passes with the same qualified desktop parents and binaries.
+Its SHA256 is
+`be26b4de10599541722063783871e29242a87b6fb7e75832a7e7de52e5f354f4`.
+Fresh V2 artifact prefix:
+`/home/zhihao/s42-telemetry-recovery-20260906-v2-{inputs,deploy,gate}`.
+No reduced trace is authorized by these partial results.
+
+## Log - `2026-09-06 11:58 EDT` - Telemetry recovery ready for bounded physical validation
+
+The failed V5/V6 mixed-gate artifacts remain unchanged. V6 lost its
+phone-runtime observation before reverse planning; its zero available bytes
+and 100 C were admission sentinels, not measurements. The phone's preserved
+final snapshot is valid and its session log has a normal worker exit.
+A read-only timing check found the 96-zone sysfs scan takes 2.592/2.649 s;
+the existing Android HAL fallback takes 0.087/0.074 s. The HTTP producer
+timestamps before that scan, consuming much of the unchanged five-second
+freshness budget. The old runtime monitor also serialized phone refresh
+behind endpoint probes. FunctionFS removes normal USB ADB, so ADB recovery
+after cleanup did not prove recovery while serving.
+
+Changes: `adapters/probes.py` records source, sample clock, age, missing,
+stale, timed-out and malformed observations and both fallback attempts;
+`_internal/runtime_queue.py` independently refreshes each probe;
+`_internal/runtime_capabilities.py` persists observation provenance;
+`adapters/heterogeneous_rig.py` labels unknown telemetry and revalidates
+fresh memory/safety before physical mutation. `_unified/phone_residency.py`,
+`_unified/helper_preparation.py`, `_internal/lifecycle.py`, `scheduler.py`
+and `adapters/offline_phone_residency.py` defer new admission and retry
+fresh snapshots without withdrawing READY sessions. No native binary,
+shard format, graph mode, assignment, mask/drain or rollback path changed.
+
+`tests/test_telemetry_recovery.py` and the monitor regression in
+`tests/test_runtime_queue.py` cover recovery and genuine insufficient
+memory. The combined focused lifecycle/probe/offline/replay run passes
+122 tests; the final 10-test recovery set also passes. Replay goldens:
+v3 `f78d2b2c37a3880a523eba4f5315ada0207678c841d633229782bfa3a05c1829`,
+v8 `965f218bb5f81a57dbb51167624798f02eb79354b6cc042683b2b1ed9b1a868d`.
+Both are unchanged.
+
+`campaigns/burstgpt/offline_residency_gate.py` now invokes canonical
+observation retry and records the scheduler's exploitation state before
+collecting reverse/fault reference calls. It does not choose a fraction.
+The 30-reference/equivalent-class/2x metric is unchanged; insufficient
+reference evidence still fails. New artifact prefix:
+`/home/zhihao/s42-telemetry-recovery-20260906-v1-{inputs,deploy,gate}`.
+Existing qualified disabled-graph desktop parents are reused. The bounded
+gate must pass before any reduced trace or matched energy claim.
+
+## Log - `2026-09-06 03:52 EDT` - CUDA mode experiment reported; full gate remains FAIL
+
+No run is active. The existing CUDA switch is reused as a declared,
+process-local graph mode, separate from FFN configuration and included in
+fresh qualification and comparison identity. Default/disabled cold and
+hot controls passed with unchanged binaries, artifacts, placements, and
+decoding. No native rewrite, GDM stop, unrelated process kill, memory-check
+weakening, commit, push, PR, or trace was performed.
+
+Latest bounded V6 artifacts:
+`/home/zhihao/s42-cuda-graphs-disabled-20260906-v6-gate/run`.
+Forward replacement passes all 22 equivalent-call classes. Worst ratios
+are 1.433462x/1.369400x; retained next-token maxima are 563.649/566.815 ms.
+Qwen/Gemma complete with 3,726/6,416 calls and 75.0%/89.683% weighted
+eligible-token coverage. Gemma reuses HTP2/gen2 with load counts unchanged
+at 1/1/2. Qwen median token latency is 558.998 ms, Gemma 457.986 ms.
+Their physical CPU+GPU execution energy is 19.423/40.040 kJ; assumed phone
+energy is 0.336/0.532 kJ at 4.5 W active, 0.875 W idle. These are absolute
+diagnostics, not a matched fleet-saving claim. All capture/update marker
+counts are zero; Qwen full-width host-gap median/max are 354.629/366.604 ms.
+The frozen execution source manifest is
+`sha256:785d865994fbc25113f5d811a607c0e12349041b2bed0f23430509f27dbe64b7`.
+
+V6 stops before reverse loading with `offline phone target is already
+resident`. The saved reverse snapshot has unavailable phone-runtime
+telemetry: conservative 10 GB capacity fully occupied, zero free bytes,
+battery 0, temperature 100 C. These are unknown-state defaults, not
+physical exhaustion/overheating measurements. Memory admission retained
+the existing layout instead of authorizing a larger Qwen shard. The HTTP
+diagnostic endpoint timed out after cleanup; three read-only canonical
+ADB-fallback probes subsequently recovered valid observations. Later
+samples cannot authorize the earlier command. The exact missing/stale/
+errored monitor condition is not persisted in the snapshot; that remains
+a diagnostics gap, not a reason to weaken the memory ledger.
+
+V5 already proves physical reverse loading and isolated rollback:
+HTP2 Qwen/gen1 -> Gemma/gen2 -> Qwen/gen3 -> Gemma/gen4 restored, while
+retained HTP0/HTP1 stay Qwen/gen1 and continue calls. V5 nevertheless stays
+FAIL for insufficient same-fraction reference intervals in the fault
+window. Neither run certifies the final clean reverse retry or terminal
+proof. No more physical retries were launched after V6.
+
+The measurement-only V6 change in `offline_residency_gate.py` and its two
+regressions in `test_burstgpt_replay.py` would collect missing-reference
+evidence through retry before enforcing final FAIL; it never changes the
+30-reference/2x threshold. This branch was not reached in V6. Latest
+focused graph/measurement/replay validation is 30 PASS; the preceding
+helper/adaptive/session/replay set is 115 PASS. Both replay hashes remain
+unchanged. One expanded multi-session fixture failure is pre-existing,
+reproduced in a pre-change source copy and left untouched.
+
+Full file list, calibration tables, timelines, native timings, and
+320 individual physical artifact hashes plus recursive tree hashes:
+`scheduler/campaigns/burstgpt/reports/20260906-cuda-graph-mode-gate/README.md`.
+Key preserved failure hashes:
+
+- V5 FAILURE: `sha256:33bab86c092bd265f3414e4a808a1cfd31fd9fb172e2f32c5131e677fa47e2c7`.
+- V5 REVERSE_FAULT_RESULT: `sha256:8e3fcf552dec8b7aa484d2235a2f8b856813013b8f2c9c644678ec2d98614571`.
+- V6 FAILURE: `sha256:a5cb40e138d4146329149ec8d227149be26f369b38bbb25a7582527c818740dc`.
+- V6 Gemma result: `sha256:643fd5cda75cd3ee4ebacbaf841bac5bfbb1d5dd44934f22f9e149eedade0985`.
+
+## Log - `2026-09-06 03:30 EDT` - Physical reverse and rollback recorded; reference evidence incomplete
+
+V5 under `/home/zhihao/s42-cuda-graphs-disabled-20260906-v5-gate/run`
+passes forward replacement and Gemma execution (3,720 online Qwen calls,
+6,416 Gemma calls). Only selected HTP2 changes: Qwen/gen1 -> Gemma/gen2
+-> Qwen/gen3 -> Gemma/gen4 restored after the injected post-load failure.
+The injection is consumed; the logical/physical map equality assertion
+passes. Retained HTP0/HTP1 stay Qwen/gen1, one load each, and make calls
+during forward loading, reverse loading, and rollback. The final physical
+load counts are 1/1/4. Forward equivalent-call v2 checks pass unchanged.
+
+V5 remains FAIL, not a complete gate pass. Its fault interval crosses
+adaptive 75% and 50% windows with zero and 28-29 outside-load reference
+intervals respectively, below the unchanged requirement of 30. Full-width
+classes have 30 references and pass; no measured class with a reference
+exceeds 2x. The missing evidence is not a proven latency violation and is
+not converted into PASS. The gate stopped before the final reverse retry.
+
+The bounded V6 retry preserves policy, requests, binaries, placements,
+shards, safety checks, and metric version. Measurement-only changes in
+`campaigns/burstgpt/offline_residency_gate.py` permit collection to continue
+past missing references in the fault/retry phases, then enforce their
+unchanged FAIL after persisting lifecycle and terminal proofs. An observed
+over-bound gap still stops immediately. Two regressions were added in
+`tests/test_burstgpt_replay.py`; that file, graph-mode tests, and both
+goldens pass (30 tests, 65.643 s). V6 preflight passed and the same bounded
+gate is running. No trace, native build, GDM change, commit, or push.
+
+Detailed V5 timings, absolute native measurements, and identities are in
+`scheduler/campaigns/burstgpt/reports/20260906-cuda-graph-mode-gate/V5_GATE_AUDIT.json`.
+All previous failures are preserved. Terminal proof and a clean reverse
+retry are still pending for V6; do not infer them from V5's physical load.
+
+## Log - `2026-09-06 02:16 EDT` - Declared CUDA graph mode; bounded gate in progress
+
+Reused the existing presence-based `GGML_CUDA_DISABLE_GRAPHS` switch. No
+native source or binary was changed. The desktop launch contract,
+qualification identity, and comparison identity now carry graph mode.
+Default subprocesses remove an inherited switch (including value `0`);
+disabled subprocesses set `1`. The mode is separate from FFN configuration
+and immutable for each server lifetime. No GDM or unrelated process was
+stopped, and memory admission remains strict.
+
+Fresh default/disabled cold and hot controls passed for Qwen GPU16 and
+Gemma GPU22 using identical placement operators, requests, decoding, model
+bytes, and server binary. Hot median token latency is 613.581/613.206 ms
+for Qwen and 471.022/470.616 ms for Gemma. Measured CPU+GPU hot energy is
+26.284/27.015 kJ and 50.424/49.833 kJ respectively. These single-pair mode
+screens are not a fleet energy-saving claim. Load energy/time is recorded
+separately; disabled Gemma's 263.091 s load included observed host storage
+waiting and is not attributed to graph-disabled decode.
+
+Physical roots are `/home/zhihao/s42-cuda-graphs-disabled-20260906-vN-*`.
+V1 failed before inference on a missing Python `replace` import; repaired
+with a public-entry regression. V2 passes forward replacement with exact
+matched retained-session gap ratios 1.451433x/1.460393x; Qwen/Gemma make
+3,312/6,416 online phone calls. Dynamic S is HTP2; retained sessions remain
+generation 1. V2 still FAILs before reverse loading, whose underlying
+error was hidden by an incomplete-phase assertion. V3 preserves that FAIL
+and proves the reverse command incorrectly included 6,417,285,120 bytes of
+retained Qwen as a whole-model eviction. Physical validation correctly
+rejected it before loading; the intended injection was never reached.
+
+V4 exposed a regression in the first compiler-wide repair: it also checked
+historical metadata during READY-helper refresh, pushing Qwen back to zero
+assistance. V4 remains FAIL. The final check lives in the existing helper
+envelope's authorized preparation boundary in `_internal/runtime_plan.py`.
+It removes only verified retained aggregates from physical commands, with
+exact changed-session eviction identity preserved. The compiler and READY
+template path are unchanged. V5 is in fresh preflight and will run only the
+same bounded gate. Reverse replacement and rollback remain unproven.
+
+Focused validation: 182 tests PASS, including both unchanged replay
+goldens; 25 additional focused tests PASS after diagnostic persistence.
+The compiler repair passed 90 focused tests; the final boundary repair
+passes 115 helper/adaptive/session/replay tests. An expanded 43-test run
+has one pre-existing cold-helper fixture failure, reproduced independently
+in a pre-change source copy; it is documented and was not patched here.
+No trace or full-harness run. Calibration data and the v2 forward audit are
+under `scheduler/campaigns/burstgpt/reports/20260906-cuda-graph-mode-gate/`.
+Reverse replacement and physical rollback are not yet claimed proven.
+
+## Log - `2026-09-05 23:06 EDT` - V6 load-start gap traced to desktop CUDA recapture
+
+Read-only diagnosis of the preserved v6 logs locates the long retained-call
+gap between host RPCs. Native request 168 completes in 11.393038 ms; the
+desktop then waits 907.483216 ms before submitting request 169, whose RPC
+takes 12.032650 ms. Their HTP compute times are 9.274/10.449 ms. Between
+those calls the server records 13 CUDA graph warmup-complete events,
+spanning 569.337 ms, while token 45 takes 1.136030 s. That log span is not
+an exclusive CUDA capture-time measurement. It is direct evidence that
+the long gap is desktop-side work including CUDA recapture, not one
+0.9-second outstanding phone RPC. Other phone-loading interference is
+not ruled out.
+
+The matching native source explicitly enables capture/update at the
+warmup-complete log. Its two CUDA source hashes match the local inspected
+files. Server SHA-256 remains
+`92950efd39902b798e7b4e2810e6bb0ce620994213e7a9b256cab8742535aef6`.
+Source root: `/home/zhihao/s42-no-phone-wait-20260905-v1-source`.
+CUDA implementation SHA-256:
+`1b31e546fc2a1f32e8f426b80085f43eaf870a2bff90b7c262ec6b54475c4e09`.
+CUDA common-header SHA-256:
+`f48608848ddfe23c232359c26a95ad9f584d6b72ae4b23cc906302174de433e6`.
+
+V6 remains FAIL at 2.052805x/2.031402x against the unchanged 2x bound.
+Retained generations and calls are intact; reverse/rollback still have no
+new physical proof. No new gate, trace, binary build, scheduler policy,
+qualification, or metric change was made. Moving loading until after CUDA
+warmup would hide the interval and is not a fix. Injecting an undeclared
+graph-disable environment variable would change the qualified desktop
+runtime identity and is also not acceptable.
+
+The next scope decision is a declared desktop CUDA-graph mode with fresh
+control/helper qualification, or a native graph-cache repair with exact
+buffer/topology checks. The former is the smaller bounded experiment, but
+neither is merely an unchanged helper-binding repair. Implementation pauses
+for that decision. GDM and other processes were not stopped; observed GPU
+use/free remains 3,178/12,770 MiB.
+
+Evidence is preserved at
+`/home/zhihao/s42-ffn-mixed-session-20260905-v6-gate/run/large-model-5-physical-hot-desktop.stderr`.
+Stderr SHA-256:
+`bf317a36177d240493a29dffa85d492c050f5dad458c5b979210df066f8f5d24`.
+Only this log and
+`research_dev/scheduler/campaigns/burstgpt/reports/20260906-mixed-load-start-diagnosis/{README.md,HOST_GAP_AUDIT.json,analyze_saved_host_gap.py}`
+were added/updated. The analyzer reads saved logs only. Production files
+and both replay goldens are unchanged; the prior 170 focused tests remain
+the latest scheduler validation, with no unrelated suite rerun.
+
+## Log - `2026-09-05 20:57 EDT` - Parent-compatible reuse proven; retained-call timing blocks reverse gate
+
+The bounded v6 gate has exited FAIL; no further physical retries are
+running. Cold/online Qwen complete with 4,962/3,720 calls. Dynamic S=HTP2
+loads Gemma generation 2; retained HTP0/HTP1 remain Qwen generation 1 with
+their original loads. Each retained session records 54/114/1,668 calls
+before/during/after replacement. No helper rematerialization or identity
+error occurs. Native terminal proof totals 8,682 calls, zero reset
+recoveries, status 0, and preserves generation-keyed historical proofs.
+
+The unchanged v2 equivalent-call interruption check fails: HTP0's worst
+same-layer next-token gap is 1.138335 s against a 0.5545265 s matched median
+(2.052805x); HTP1 is 1.130085/0.556308 s (2.031402x). All six next-token
+classes per session fail, while all five within-token classes pass. Each
+class has 30 exact references; next-token references are after READY under
+the predeclared v2 rule, not preceding calls. HTP0's worst interval begins
+0.100884 s after LOAD_AUTHORIZED and ends 1.239219 s after it. This locates
+the stall near weight-read start, but does not prove HTP, USB, host
+dispatch, or memory contention as its cause. Do not weaken the bound or
+attribute it to an unmeasured resource.
+
+The old measurement-window wait remains removed: drain requested at
+58.090313 s; next safe boundary 58.704958; reduced control 59.258092;
+applied ACK/quiescence 59.978756; loading transaction 60.463756;
+physical READY ACK 71.255956; publication 71.342474. Drain delay is
+1.888443 s, with a six-token measurement-ineligible old-policy window.
+Separate phone load-to-READY duration is 10.733656 s. The gate stops before
+Gemma submission, reverse replacement, or fault injection, so those later
+phases are NOT_REACHED, not PASS. V4's independent Gemma 837-token,
+6,416-call, zero-additional-load evidence remains valid. CPU-only parent
+compatibility is software-tested; the physical v4 parent was GPU+CPU.
+
+Final focused validation: 170 tests pass in 113.480 s. Both replay cases
+remain byte-identical with unchanged goldens. No full harness or trace was
+run. The final audit changes only this log and report files; the earlier
+repair's exact ten source/test files, tests, native proof, timelines, and
+qualification limits are listed in
+`research_dev/scheduler/campaigns/burstgpt/reports/20260905-parent-compatible-helper-gate/README.md`.
+The next work is a load-start timing diagnosis, not another helper identity
+rewrite. Reverse/rollback physical acceptance is still outstanding.
+
+Frozen v6 artifacts: `/home/zhihao/s42-ffn-mixed-session-20260905-v6-gate/run`.
+FAILURE SHA-256:
+`b0c2e849ba2fb46ccc566fcb8fd23b05c9d528fef3df4f522ff396b03651c975`.
+DRAIN_TIMELINE SHA-256:
+`17deb7667edfe923f4673785ae14bbd0b75b90aa1c9478c276188e1517457509`.
+Execution source-manifest file SHA-256:
+`abddf9f1ea420ff7eddc302c372b7f7a345a0d7454158051e60ab4241edda457`.
+Manifest identity:
+`4de82124cc08da2adf7c6633fe8e05ba53dda67f2e224777dea39f0cecb601fc`.
+Router-log SHA-256:
+`6c59f6b8f175685f0f11a0f51931a78d61d3381207644acbedb5d7d68200c379`.
+All 208 deployed source files still match their manifest. Phone USB is
+restored at 5,000 Mbps; GPU use is 3,178 MiB with 12,770 MiB free.
+No GDM stop, unrelated process termination, reset recovery, binary/shard
+rebuild, forced route, energy-saving claim, commit, push, or old-result
+overwrite. Earlier v3-v5 and old pooled-metric FAIL results remain frozen.
+
+## Log - `2026-09-05 20:30 EDT` - Coverage assertion separated from lifecycle evidence collection
+
+The bounded v5 run completes cold/online Qwen with 5,016/2,088 phone
+calls, zero helper rejections, and the expected 1/1/2 session map after
+forward replacement. It stops before Gemma submission because Qwen's
+contract-relative weighted coverage is 34.7058% (118 weighted tokens over
+340 eligible tokens). Assistance returns to zero at token 204 after the
+100/75/50/25% sweep. The 100% valid window uses 47.266051 J/token versus
+the initial baseline's 59.077266, but latency is 0.528518 versus 0.487888
+s/token. At 75%, latency is 0.489595 s/token. No probe passes both strict
+LEARNING improvements against that baseline. No qualification, fraction,
+route selection, or energy policy was changed to force a winner.
+
+To complete the requested reverse/rollback evidence without confusing it
+with a coverage pass, the two existing 70% checks now run after all bounded
+lifecycle operations and terminal validation. The threshold and failure
+messages are unchanged. ONLINE_LIFECYCLE_RESULT.json and TERMINAL_PROOF.json
+are persisted first; an insufficient model still makes the entire gate
+FAIL and does not authorize a trace. A new test verifies both model
+thresholds, including rejection at 699,999 ppm. Only the gate's result
+validation order and `tests/test_burstgpt_replay.py` change here; 66 targeted
+tests pass. V6 has a fresh deploy/input directory and is in preflight.
+
+V5 FAIL remains frozen at
+`/home/zhihao/s42-ffn-mixed-session-20260905-v5-gate/run`.
+FAILURE SHA-256:
+`6d2825dfe0c00bc846162c0955533e49e93fe4ba1975487275519d3878352051`.
+ONLINE_QWEN_RESULT SHA-256:
+`88040f3b9fd2fef4e0648be2222c46ef35b4e4a7b016dde0f484b466a56aa431`.
+Execution source-manifest file SHA-256:
+`7d03e24205da6022c45be6671c965773966411a47bd7e209c5584cdcb7796f77`.
+The v4 Gemma 6,416-call, zero-reload proof remains valid and unchanged.
+Its native terminal separately records 15,122 calls, zero recoveries,
+status 0; router-log SHA-256 is
+`7ea04aaf21967fc521bbbbc7bd907eb06b83fea3770a86099bc06e7572b893c1`.
+Reported weighted coverage is relative to the configured resident column
+superset, not all CPU/model FFNs. In particular, Gemma stores 15,360 of
+20,480 columns on eight layers; the gate's normalized fraction must not
+be described as whole-model offload coverage. No energy-saving claim,
+policy tuning, trace, binary/shard rebuild, commit, push, or GDM change.
+
+## Log - `2026-09-05 20:07 EDT` - Gemma READY-shard reuse proven; reverse checker lookup repaired
+
+The bounded v4 run completes cold Qwen, online Qwen, and Gemma with
+4,986, 3,720, and 6,416 physical calls. Gemma finishes all 837 output
+tokens on its automatically selected GPU+CPU parent. The existing HTP2
+Gemma shard remains generation 2; load counts before attachment and after
+completion are both HTP0/HTP1/HTP2 = 1/1/2. There are zero helper
+rematerialization failures/rejections. Its regenerated route is explicitly
+LEARNING/DIAGNOSTIC. Gemma's execution proof SHA-256 is
+`ecfa9304da8730a5adf77b227a0ef95f53f45b09b2fa86743f9bdd7dc67fb789`.
+CPU-only parent compatibility remains a software result, not a physical
+claim from this automatically selected GPU+CPU run.
+
+Forward replacement preserves HTP0/HTP1 generation 1 and their original
+loads. Drain-to-quiescence is 1.180344 s. Cold load-to-READY intervals are
+10.774505, 10.730639, and 10.884299 s; first/all readiness are 10.774505
+and 46.436289 s after first load authorization. Desktop execution precedes
+phone loading and HTP0 calls occur while HTP1 loads.
+
+The full gate is still FAIL: after Gemma finishes, a campaign assertion
+reads `session_generation` from PhoneFfnShardPlacement, whose immutable
+geometry does not contain a generation. Reverse loading has not begun.
+Both reverse/retry assertions now use the same selected-session generation
+map as the existing phase-timing check. A focused regression checks
+generations 3 and 5, an unchanged retained generation, and fail-closed
+behavior when the selected generation is absent. This correction changes
+only `campaigns/burstgpt/offline_residency_gate.py` and
+`tests/test_burstgpt_replay.py`; production lifecycle code is unchanged
+after the successful Gemma reuse. 65 focused checks pass after this repair.
+
+Frozen v4 artifacts: `/home/zhihao/s42-ffn-mixed-session-20260905-v4-gate/run`.
+FAILURE file SHA-256:
+`a59cd5ecd71ef924b965e08d6af32b0e3586e6d86067d9e1a6e543452f3b5e87`.
+ONLINE_GEMMA_RESULT file SHA-256:
+`bd0f6aab2872be9918cdd894feedec0d324f2202ea82f7ac5720ca5939ebc7f6`.
+Execution source-manifest file SHA-256:
+`da52868498efff4f1d63316f19fc13535742598a50c0310abffc6c6ca213c458`.
+Manifest identity:
+`fbdf35fbe63d57da1a3bc6fcc6275d03aa2a75c178833ee80b04102c9ffa506e`.
+The same bounded gate has fresh v5 directories and is in preflight.
+No trace, A/B comparison, force-GPU policy, binary/shard rebuild, GDM
+change, commit, push, or overwritten physical result.
+
+## Log - `2026-09-05 19:43 EDT` - Actual-parent helper repair; v3 FAIL preserved
+
+Helper regeneration now derives a real plan from the acquired desktop
+parent, including CPU-only placement. It rebuilds operator mapping,
+endpoint binding, transfer/cost records, and request authorization rather
+than substituting a parent hash. CPU+phone opportunities remain LEARNING
+unless their own exact control is qualified. A missing parent-compatible
+helper is logged once per ticket/parent/catalog/layout/session-generation/
+learning configuration, and a relevant change permits another attempt.
+Submission tickets and candidate journals are now persisted by the bounded
+gate. Physical session, artifact, geometry, operator-plan, memory, and
+generation checks remain strict.
+
+The v3 gate selected GPU+CPU for Gemma without a runner override. Its
+submission rejects CPU with HIGHER_CALIBRATION_PRIORITY and CPU+phone
+with ADAPTIVE_EXECUTION_CONTRACT_ABSENT. The v2 CPU submission journal was
+not saved; its snapshot shows only 414,187,520 available VRAM bytes after
+reserve while Qwen was resident, but this is not an exact selection reason.
+CPU-parent derivation is software-tested, not physically established by v3.
+
+v3 reached Qwen/gen1 -> Gemma/gen2 on dynamic S=HTP2, with HTP0/HTP1
+unchanged. Cold/online Qwen completed with 4,872/3,720 calls. Gemma remained
+at zero calls: 61 rematerialization failures plus one REJECTED event report
+`ready one-session replacement authority is not exact`. The READY execution
+envelope was incorrectly recovering an old load authorization from
+request-owned preparation caches. A fresh READY execution envelope now
+has no load assignment; PROPOSED preparation still requires its exact
+replacement authority. This does not relax physical execution validation.
+
+The added regression exercises a fresh helper and leases after an offline
+one-session replacement with preparation-owner caches absent, zero reload,
+and the existing reverse/epoch-bumped rollback. 167 focused tests pass;
+the separate replay test passes twice per case with unchanged goldens:
+v3 `f78d2b2c37a3880a523eba4f5315ada0207678c841d633229782bfa3a05c1829`,
+v8 `965f218bb5f81a57dbb51167624798f02eb79354b6cc042683b2b1ed9b1a868d`.
+No full harness, trace, binary/shard rebuild, commit, push, or GDM action.
+
+Changed scheduler files in this repair:
+`_internal/adaptive_decode_planning.py`,
+`_internal/route_generation/compiler.py`,
+`_unified/automated_candidates.py`, `_unified/automated_selection.py`,
+`_unified/automated_requests.py`, `_unified/helper_envelopes.py`,
+`campaigns/burstgpt/offline_residency_gate.py`,
+`tests/test_adaptive_runtime.py`, `tests/test_offline_phone_residency.py`.
+Campaign changes only persist decisions/reload counters and distinguish
+logical ATTACHED time from physically applied nonzero assistance.
+
+Frozen v3 artifacts: `/home/zhihao/s42-ffn-mixed-session-20260905-v3-gate/run`.
+FAILURE SHA-256:
+`b86db68ed48af4ce600cc98ca0f9bfccaf1d3fd88035af5e0e2261a0c510c03f`.
+DRAIN_TIMELINE SHA-256:
+`6b0f52b22de631e16d8086476826c82336ca918d3ff85fdfcf948116d0de441b`.
+Execution source-manifest file SHA-256:
+`b9419a6f89eaa274829b3757e076821d2c783d447c6f6eaa6c8439ddfa0a6a5f`.
+Reverse replacement/physical rollback were not reached. Gate processes
+have exited; GDM still uses 3,178 MiB and free VRAM is 12,770 MiB.
+The same bounded gate has a fresh v4 deploy/input directory; preflight is
+in progress. Old FAIL artifacts are preserved, not relabelled.
+
+## Log - `2026-09-05 18:29 EDT` - Drain wait removed physically; Gemma parent mismatch blocks full gate
+
+One bounded v2 rerun used the already tested next-boundary drain fix and the
+pre-versioned `s42-retained-session-call-gap-v2` metric. Drain requested at
+65.048335 s; next safe boundary at 65.327678 s; reduced control issued at
+65.841096 s; applied ACK/quiescence at 66.362939 s; physical transaction
+started at 66.851201 s; physical READY receipt at 82.247667 s; verified READY
+publication at 82.354271 s. All are in the online desktop epoch. The drain
+delay falls from 14.221488 to 1.314604 s. The six-token old-policy window
+retains 126 calls and energy accounting but is measurement-ineligible.
+The separate phone manager load-to-READY interval is 15.356244 s, not an
+improvement over the old 9.665491 s load.
+
+S is again dynamically selected as HTP2. Qwen/gen1 becomes Gemma/gen2,
+while retained HTP0/HTP1 records and generations stay unchanged. Each
+retained session has 54/168/1,614 calls before/during/after loading. Both
+pass all 11 equivalent classes with 30 exact references and worst matched
+ratios 1.36x/1.51x under the unchanged 2x bound. The source/target physical
+maps reproduce assignment hash
+`842aa5ab43727646360a00eb7cbf16482ed198643f0ec7fd00b618366e393747`.
+Cold and online Qwen complete with 4,962 and 3,720 calls. The final router
+terminal has 8,682 calls, zero resets, status 0, and historical gen1 proofs.
+Loads/generations are 1/1/2, with no retained-session or fraction-change reload.
+
+The complete mixed gate remains FAIL. Gemma runs on `physical:cold:cpu`,
+parent `511e007be85beca63f12cdacd441f8057a54d73d43b0bb326136587bc3141e7a`,
+but its prepared helper uses GPU+CPU parent
+`b3b0ee5d24c48e6ec19ebaf7eb360f5bb62691bd9a367117368dabbaa33cedcf`.
+No exact helper template exists for the actual parent. There are 62
+`helper rematerialization opportunity is not exact` failures and zero
+Gemma phone calls. The 300 s ATTACHED timeout triggers normal gate cleanup
+at Gemma token 371/837. Reverse replacement, physical rollback, and retry
+are NOT REACHED. Identity checks and runner route selection are unchanged.
+This distinct compatible-parent helper gap is documented, not patched here.
+Also found but not changed: the final gate attachment-duration assertion
+can subtract execution start from an earlier logical ATTACHED event
+(27.060584 - 29.116378 s here); physical applied attachment needs separate
+timing. This later assertion was not reached and did not cause this FAIL.
+
+Artifacts: `/home/zhihao/s42-ffn-mixed-session-20260905-v2-gate/run`, with
+fresh sibling `v2-inputs` and `v2-deploy`. FAILURE SHA-256 is
+`6d2d330412a5154f8845ceba16bb085c79f1e05764863a597b83006f686684a3`;
+DRAIN_TIMELINE SHA-256 is
+`5c113ef703b92387d93a4d0cb320104d7af40574d65cf147da128c8aaa0a23d7`;
+source-manifest file SHA-256 is
+`dfe53559f7ee02ccfdb8002f4688d68e34d5baf2ab7d5ca66e53fcf1fbab8e66`.
+Original v1 FAILURE remains byte-identical at
+`feb6c563db493ca1f21a2f65f23b74d1c9d8d47abe15713d1a790b9241e2ea38`.
+Report: `scheduler/campaigns/burstgpt/reports/20260905-next-boundary-mixed-gate/`.
+The prior entry lists the exact five measurement/test files plus this log;
+only report artifacts were added after running. 143 focused tests plus one
+two-case replay test pass; both goldens remain unchanged. No full harness.
+Gate-owned processes exited; normal USB restored at 5,000 Mbps. GDM remains
+untouched at 3,178 MiB, with 12,770 MiB free. No second rerun, trace, energy
+comparison, worker/shard rebuild, commit, push, or old-artifact overwrite.
+
+## Log - `2026-09-05 18:01 EDT` - Versioned interruption metric and bounded gate deployment
+
+The user approved replacing the pooled-median acceptance calculation before
+one bounded mixed-session rerun. Metric `s42-retained-session-call-gap-v2`
+compares exact within-token layer pairs and same-layer token cadence at the
+same active mask, width, fraction, and batch. Thirty matching references are
+required per class; missing evidence is not PASS. Post-READY references may
+supplement pre-load samples so collecting a reference does not delay the
+forward drain or loading. The original v1 FAIL and its artifacts are intact;
+new results retain its pooled calculation as a separate diagnostic.
+
+Changes are measurement/persistence only:
+`scheduler/campaigns/burstgpt/offline_residency_gate.py`,
+`scheduler/campaigns/burstgpt/INTERRUPTION_METRIC.md`,
+`scheduler/adapters/http_backend.py`,
+`scheduler/tests/test_burstgpt_replay.py`, and
+`scheduler/tests/test_llama_server_adapter.py`, plus this log. HTTP execution
+records direct decode-boundary and control-invocation timestamps. The gate
+persists these beside acknowledged helper events and physical phase receipts.
+The injected-failure gap interval now includes physical compensation through
+restored READY. No scheduling, worker, shard, or wire-format redesign.
+
+143 focused tests PASS in 10.139 s. The separate replay test passes in
+66.416 s, exercising both saved cases twice with unchanged v3/v8 goldens.
+Reanalysis of the old forward run finds 30 exact references for every one of
+22 equivalent classes and passes the v2 diagnostic; it does not change that
+run's FAIL status or complete its missing Gemma/reverse/rollback phases.
+
+Fresh deployment and inputs are
+`/home/zhihao/s42-ffn-mixed-session-20260905-v2-deploy` and
+`/home/zhihao/s42-ffn-mixed-session-20260905-v2-inputs`.
+The intended bounded gate output is the sibling `v2-gate/run`.
+Preflight is running with the unchanged catalog identity
+`sha256:d0403d09b786dd985767b57106079efdeb4f7fd7ade0596fef84db3f8ecab5ce`.
+GDM is untouched; the initial desktop reading is 12,770 MiB free and
+3,178 MiB used. Only the existing five-probe residency gate is authorized,
+not a sparse trace or matched energy campaign. The immediate measurement is
+drain-request to safe boundary/control/ACK, separately from physical loading.
+
+## Log - `2026-09-05 17:35 EDT` - Session drain preempts the measurement window
+
+The forward gate measured 14.221488 s from reduced-mask binding to its
+acknowledgement, before the 9.665491 s physical replacement. The adaptive
+controller queued the drain but returned from token callbacks until the
+ordinary measurement window ended. Only this scheduling delay is changed.
+
+`scheduler/_internal/adaptive_decode.py` now closes an open window at the
+next safe positive-token boundary when a session drain is pending. Its
+receipt retains the old policy, token interval, energy, transport, and phone
+call accounting. A drain-truncated window is measurement-ineligible and does
+not advance warmup or qualification. Full-length windows keep their existing
+eligibility. Tokens executed while awaiting the server acknowledgement are
+also accounted under the old policy through the existing transition receipt.
+
+The reduced mask uses the existing control and acknowledgement path. Pending
+controls are not bypassed or duplicated. The existing native FFN publication
+joins worker completion before the sampled decode boundary; successful server
+policy application precedes the exact request/slot/policy/control-generation
+acknowledgement. Layout loading still refuses admitted blockers or active
+references on the removed session. No native, adapter, wire-format, worker,
+shard, generation, memory, lease, or rollback logic changed.
+
+Tests changed: `scheduler/tests/test_adaptive_decode.py` adds next-token
+preemption, shortened-sample accounting, delayed acknowledgement accounting,
+and pending-control/idempotence checks. The existing full-window drain test
+still checks qualification eligibility. The retained-mask regression in
+`scheduler/tests/test_model_placement_controller.py` now also rejects loading
+before acknowledgement and a mismatched acknowledgement, and checks exact
+retained session records and lease identities. These are the only two test
+files changed; this log is the fourth changed file.
+
+Validation: 196 tests PASS in 77.928 s with
+`env PYTHONPATH=research_dev/scheduler/tests:. python3 -m unittest test_adaptive_decode test_model_placement_controller test_session_cow_transaction test_adaptive_runtime test_replay_determinism`.
+Both replay goldens are unchanged:
+
+- v3: `sha256:f78d2b2c37a3880a523eba4f5315ada0207678c841d633229782bfa3a05c1829`.
+- v8: `sha256:965f218bb5f81a57dbb51167624798f02eb79354b6cc042683b2b1ed9b1a868d`.
+
+The production file SHA-256 is
+`b142eb3259f29d8d4e624b4848a4c3ea21ece2315f6dc5f5358a672d6cca844b`.
+No physical run, deployment, trace, full-harness rerun, commit, or push.
+The earlier call-gap gate remains FAIL with its original artifacts and bound.
+The latency reduction and remaining reverse/rollback gate need physical
+validation; this software result does not establish a new interruption or
+energy result.
+
+## Log - `2026-09-05 16:47 EDT` - Forward replacement succeeds; raw call-gap gate fails
+
+The new indexed-shard gate passes preflight with the unchanged qualified
+16-GPU-layer Qwen and 22-GPU-layer Gemma parents and all six phone shard
+hashes. Cold Qwen completes with 4,878 calls; the online Qwen reuse probe
+completes with 3,876. The scheduler selects S=HTP2, replacing Qwen generation
+1 with Gemma generation 2 in 9.665491 s. HTP0/HTP1 remain Qwen generation 1,
+each with 210 calls before, 114 during, and 1,512 after replacement. Final
+loads are 1/1/2. The acknowledged drain mask is HTP0/HTP1, with the same
+policy hash in DRAIN_POLICY_BOUND and QUIESCED. The published target and
+authoritative physical map match exactly. Recomputed source/target map and
+assignment hashes match the unchanged preparation authorization.
+
+The gate correctly remains FAIL on its unchanged 2x-median gap criterion.
+HTP0's reference median/max are 14.9055/428.747 ms; its transition max is
+463.378 ms against a 29.811 ms bound. HTP1's values are 15.649/418.508 ms,
+461.254 ms, and a 31.298 ms bound. Each 30-interval reference contains 25
+within-token intervals and five between-token intervals. The no-load
+reference already violates the proposed limit. Thus the raw-call median
+does not represent the inter-token cadence whose maximum is being bounded.
+
+Joining all 3,876 online native FFN calls to the exact generation-scoped
+phone counters explains the largest gaps. They cross layers 5->0 and 11->6
+at a new decode token. HTP0's worst interval includes 454.480 ms before the
+host issues the next RPC, followed by an 8.635 ms RPC (7.909 ms phone compute).
+HTP1 has 451.157 ms before issue and a 10.125 ms RPC (9.674 ms compute).
+Within-token maxima during loading are only 20.798/20.142 ms. The between-
+token maximum increases 8.08%/10.21%; this is descriptive, not an isolated
+load-interference estimate. Changing shared HTP/USB arbitration alone cannot
+eliminate the ordinary host-side gap already present before loading.
+
+No bound was weakened or relabelled PASS. A like-for-like within-token and
+same-layer token-cadence measurement, at matched fraction/mask and with
+enough reference samples, needs user agreement before replacing the current
+criterion. Gemma execution, reverse fault/rollback/retry, coverage acceptance,
+and warm matched A/B were not reached. No further physical inference ran.
+The router terminal confirms 8,754 total calls, zero resets/recoveries and
+status 0, with the historical HTP2 Qwen generation-1 proof intact and zero
+Gemma calls. Normal USB is restored at 5,000 Mbps; gate-owned processes have
+exited. GDM remains untouched at 3,178 MiB with 12,770 MiB free VRAM.
+
+Artifact `/home/zhihao/s42-ffn-mixed-session-20260905-v1-gate/run/FAILURE.json`
+has SHA `feb6c563db493ca1f21a2f65f23b74d1c9d8d47abe15713d1a790b9241e2ea38`.
+Cold and online partial result SHAs are respectively
+`0b52ff6a6892e908eb139c2e25d47be87f502ed91d6955132a208867da297bbe` and
+`23ff95411a7082e022fa6ffb5fde7be296c07b67cee4b180eb3c6c96f48035f7`.
+Inputs/commands/native logs and decoded audits are in the sibling v1-inputs;
+the source manifest file SHA is
+`a7c387756555a1ed88350f29bfff01287b257eed5c33b8612499f0340ddc011c`.
+Only measurement/persistence in `campaigns/burstgpt/offline_residency_gate.py`
+and its `tests/test_burstgpt_replay.py` regressions changed. All 77 focused
+tests pass and both replay goldens are unchanged. No lifecycle rebuild,
+fraction-policy change, worker/shard modification, commit, push, long trace,
+or new energy-saving claim occurred. Full report and exact copied audits:
+`scheduler/campaigns/burstgpt/reports/20260905-mixed-session-gap-gate/`.
+
+## Log - `2026-09-05 16:20 EDT` - Bounded current-shard replacement validation starts
+
+The next gate reuses the existing offline session transaction for one
+dynamically selected Qwen-to-Gemma replacement, injected reverse-load
+failure and compensation, then reverse retry. No scheduler lifecycle,
+fraction policy, worker binary, shard format, or model files were changed.
+The phone and desktop are idle; GDM remains at 3,178 MiB, with 12,770 MiB
+free VRAM. Existing qualified capacity-aware desktop parents are retained.
+
+The gate's interruption measurement previously derived per-session calls
+from desktop stderr-read wall timestamps. It now uses the phone router's
+per-call monotonic clock together with the manager's monotonic phase times.
+The existing call-log option is explicitly recorded as period 1 in the
+gate command, not set globally. Thirty preceding intervals require 31 new
+call records per retained session before loading; the post-load service
+check remains one call and still returns immediately on request completion.
+An exceeded 2x bound retains the full reference and transition calls,
+baseline median and maximum, and measured maximum in FAILURE.json.
+Neither the bound nor identity, memory, generation or rollback checks were
+relaxed. The old desktop timing helper is retained as diagnostic code.
+
+Changed files: `campaigns/burstgpt/offline_residency_gate.py` and
+`tests/test_burstgpt_replay.py`. The focused helper/COW/offline/measurement
+and replay set passes all 77 tests in 105.176 s; both replay goldens remain
+unchanged. New regressions cover monotonic-clock use despite an unrelated
+wall-clock discontinuity, failed-bound measurement retention, and rejection
+of missing/foreign-generation call records.
+
+Fresh desktop paths are `/home/zhihao/s42-ffn-mixed-session-20260905-v1-deploy`,
+`...-v1-inputs`, and `...-v1-gate/run`. Inputs select the existing Qwen 43
+and Gemma 3 request shapes; the bounded residency harness, not a trace,
+reuses them for lifecycle probes. Preflight is in progress. No physical
+gate result or new savings claim is made yet. Warm matched A/B waits for
+replacement and interruption acceptance. No long trace, commit, push,
+GDM stop, or unrelated process intervention occurred.
+
+## Log - `2026-09-05 15:36 EDT` - Short wait-removal gate and complete harness pass
+
+Final v8 Gemma completes 837/837 tokens with accepted semantic output,
+19,456 phone calls (6,560/6,560/6,336 per session), 98.0861% token-position
+coverage, and 95.8732% fraction-weighted coverage. The three actual
+PROPOSED-to-PREPARING publication intervals are 0.201468, 0.210611, and
+0.463924 s, all below 1 s. READY publications are 20.512604, 31.495657,
+and 44.044699 s after paid start. Physical load-to-READY intervals are
+9.338100, 10.324944, and 11.748792 s. Each indexed FFN shard loads once
+and retains generation 1; terminal artifact, geometry, mask, endpoint,
+operator plan, and generation match the authoritative session map.
+
+Desktop loading (2.492137-12.858519 s) overlaps phone preparation starting
+at 2.488948 s. Desktop execution starts at 19.121118 s, before first READY.
+HTP0/HTP1 each record calls 1-208 while HTP2 loads; the first positive
+policy is acknowledged at token 11, 32.240052 s, before all sessions are
+ready. V6 already recorded HTP0 calls during HTP1 loading; no such claim
+is made for v8, whose decoding starts later. Zero helper errors, fallback
+recoveries, USB reset recoveries, or extra execution attempts are observed.
+Normal USB is restored at 5,000 Mbps, with no workload process left active.
+GDM remains untouched at 3,178 MiB.
+
+Artifact: `/home/zhihao/s42-no-phone-wait-20260905-v8-gemma-timing-gate/run/RESULT.json`,
+SHA `8557329dea53b4ba582bca2e3f23397099708a46391b70825ff62fbe863ffb27`.
+Decoded audits, all clocks, source hashes, and commands are in the fresh
+v8 inputs. SOURCE_MANIFEST file SHA is
+`29b0df0abf289870f159f64553cd11b58c3000bc4f0553b94e5f3f71c15f6513`.
+This v18 timing run is not compared energetically against v16. The measured
+v16 matched pair remains 54.7276% lower paid-interval fleet energy at assumed
+4.5 W active phone power; phone power is not physically measured. Complete
+v8 execution is 348.943563 s, so the timing fixes are not presented as a
+cross-version end-to-end latency improvement over v6's 316.743391 s.
+
+The full 82-module harness is green: 940 canonical scheduler tests plus
+316 historical tests, 1,256 total. Both replay goldens remain unchanged.
+The traversal resumed rather than repeating completed modules after two
+incomplete test doubles: test_multi_session_phone.py lacked the controller's
+phone_preload_inflight query; the historical test_full_fp16_burstgpt.py rig
+lacked phone_device_id, the desktop transition lock, and active transition
+count. Only fixture fields were added, with assertions unchanged. No runtime
+code changed after the physical gate. All 208 manifest entries were compared
+to the current tree; only the canonical test fixture differs. The historical
+fixture is outside that source manifest. Frozen deploys/results remain intact.
+
+Final report, exact changed-file list, all artifact identities, scope limits,
+test counts and raw test logs:
+`scheduler/campaigns/burstgpt/reports/20260905-no-phone-wait-gates/`.
+No long trace, new reverse-replacement gate, 2x inter-call-gap proof, worker
+rebuild, commit, or push is claimed. Unmeasured cold staging costs and the
+previously documented all-sensors-unreadable thermal case remain explicit.
+
+## Log - `2026-09-05 15:18 EDT` - Final-clock wiring and redundant tensor-index work
+
+V7 completes its single 837-token Gemma request with 19,456 phone calls,
+accepted semantic output, and no helper rejection or execution recovery.
+Artifact: `/home/zhihao/s42-no-phone-wait-20260905-v7-gemma-timing-gate/run/RESULT.json`,
+SHA `f1c3196b6c74299b72265404baa0ba7cc707154e0357f0da2f2648050b93aefe`.
+It does not pass the complete timing gate: the physical adapter is created
+after submission, so its clock registration misses the first PROPOSED event.
+Actual publication delays for subsequent additions are 1.170923 and
+0.624484 s. The first value misses the 1 s bound; it is not relabelled PASS.
+
+The canonical arrival coordinator now registers the same measurement clock
+before any submission. The adapter registration remains for direct adapter
+users. A focused test verifies publication before the first ticket exists.
+No logical timestamps, proposal ordering, or authorization states changed.
+
+The read-only profile identified 25,939 rebuilds of the immutable manifest's
+tensor lookup map, consuming 0.269 s in the profiled initial decision and
+recurring in helper generation. `ModelManifest.tensor_by_id` now uses the
+same `cached_property` pattern as the capability catalog, returning the
+existing read-only MappingProxyType. It is not a placement/cost/fraction
+policy change. The test verifies reuse, immutability, fresh indexing after
+dataclass replacement, and unchanged serialization. Submission on the exact
+saved snapshot falls from 1.348360 to 0.912308 s, with the route unchanged.
+This measurement is not a hard physical latency guarantee.
+
+Additional files: `adapters/coordinator.py`, `_internal/model_manifest.py`,
+`tests/test_arrival_coordinator.py`, and `tests/test_gguf_cost.py`.
+All 15 focused coordinator/model/replay tests pass; both goldens are unchanged.
+V8 uses fresh `s42-no-phone-wait-20260905-v8-inputs` and v18 deployment under
+`/home/zhihao/`, with canonical manifest identity
+`sha256:96468cd5754a2cda562b54d9fd1a577d044b87ee47ea17bdcddced823deb05bd`.
+Only the same single Gemma timing request is being rerun after preflight.
+Matched energy remains the v16 pair; v17/v18 energy is not compared to it.
+The full harness is still deferred. No worker/shard rebuild, long trace,
+unrelated process intervention, commit, or push occurred.
+
+## Log - `2026-09-05 14:59 EDT` - Matched Gemma screen and publication-clock validation
+
+The new-binary v6 Gemma pair completes the same 837-token request with
+accepted semantic output. Desktop uses zero phone calls; assisted uses
+19,352 calls (6,560/6,512/6,280 on HTP0/1/2). Each session loads its indexed
+FFN shard exactly once, stays at generation 1, and has independent physical
+verification. There are no helper/control rejections, execution recoveries,
+or USB reset recoveries. Fraction-weighted eligible-token coverage is
+95.8433%; token-position coverage is 98.0861%. The exact qualified desktop
+parent has first GPU layer 26; all assisted layers 0-23 are CPU-resident.
+
+Gemma HTP0 records calls 1 through 16 while HTP1 loads. During HTP2 loading,
+HTP0 records calls 48 through 240 and HTP1 records calls 1 through 192.
+These comparisons use the same physical phone monotonic clock. This proves
+serving during progressive additions, not a new forward/reverse replacement
+or a 2x inter-call-gap bound. Existing replacement/rollback evidence is not
+being recreated or broadened here.
+
+Artifacts are `s42-no-phone-wait-20260905-v6-gemma-desktop-r1/run/RESULT.json`
+and `s42-no-phone-wait-20260905-v6-gemma-assisted-r1/run/RESULT.json` under
+`/home/zhihao/`, with respective SHA-256 values
+`f7e7025ea10f310eb04822952e6b69e6e0a10fd608ab8e081fc620eb2dc88de1`
+and `791d5a76d4d7c6f7cb61ab2b5146464a5339fd2ac5613855b7f7f09546b94d65`.
+Both share the frozen v16 source manifest, exact parent, artifacts, binaries,
+request, and energy boundary. At assumed 4.5 W phone active / 0.875 W idle,
+paid-interval fleet energy is 49.114694 vs 22.235386 kJ, a 54.7276% reduction.
+CPU/GPU energy is physically measured; phone energy is assumed. Staging,
+preflight, and common warm CPU-service startup are outside this boundary.
+The assisted request overlaps preparation, so its full execution window is
+not labelled steady state. A matched post-READY 789-token suffix consumes
+45.003253 vs 18.742564 kJ, conservatively treating the assisted phone as
+active throughout. It is a diagnostic decode-only comparison, not a reuse
+sweep or full warm-request qualification.
+
+The apparent initial 1.377919 s proposal wait conflates snapshot capture
+with actual event publication. A read-only decision replay profiles
+1.348360 s total submission: PROPOSED is emitted after 1.044441 s, leaving
+0.303919 s after emission. No cost/compiler optimization was applied.
+The controller now optionally records `published_at_us` from the canonical
+physical adapter's monotonic epoch. Logical `observed_at_us`, decisions,
+fencing, and replay semantics are unchanged. Both timestamps are retained.
+
+Clock changes are confined to `_internal/model_placement_controller.py`,
+`_unified/phone_residency.py`, `adapters/runtime.py`, and their controller
+and physical-adapter tests. Wider focused checks found the watcher doing
+an unnecessary preparation lookup after final READY refresh; it now checks
+the existing pending-layout state before continuing, preserving progressive
+preload. Three transaction test fixtures were missing the real ticket's
+desktop transition status and now supply NOT_REQUIRED; assertions and
+production readiness checks are unchanged. `test_session_cow_transaction.py`
+also models the pending progressive target explicitly.
+
+Focused validation passes 137 tests, including both unchanged v3/v8 replay
+goldens. A single new Gemma timing gate is in preflight under v17, with
+fresh `/home/zhihao/s42-no-phone-wait-20260905-v7-inputs` and canonical
+manifest `sha256:833128562baab551b378bff29ef369a3f795ae08b0bc043f62e0d466cee68a4e`.
+No physical timing result is claimed yet. Its energy will not be compared
+with the v16 baseline. The complete harness still waits for this short
+validation. No worker/shard rebuild, long trace, GDM/process interference,
+commit, push, or old-artifact overwrite occurred.
+
+## Log - `2026-09-05 14:16 EDT` - Fresh Gemma parent qualification and matched-screen input repair
+
+Gemma cold/hot calibration passes on 22 GPU layers, first GPU layer 26,
+without stopping GDM. Live free VRAM is 13,390,315,520 bytes. The 24-, 23-,
+and 22-layer placements require 14,029,025,690, 13,492,510,311, and
+12,955,994,932 bytes including the unchanged safety factor, KV, workspace,
+and 512 MiB reserve. Only the last is feasible. Physical peak total VRAM
+is 15,994,978,304 bytes; process usage is 12,654,215,168 bytes. Cold/hot
+execution takes 402.030097/401.715053 s and consumes 48.034633/49.517116 kJ
+of measured CPU-package plus GPU-board energy. Model loading takes
+64.529213 s and 1.754640 kJ. These are qualification runs, not the matched
+screen's baseline. The model, binary, context, batch, and parallelism are
+unchanged; no qualification was copied from the old binary.
+
+Calibration artifact:
+`/home/zhihao/s42-no-phone-wait-20260905-v6-gemma-calibration/run/DESKTOP_PARENT_CALIBRATION.json`,
+SHA `a504b2314c2bb2c2b4edddc5bffa286817b27fadeb9740b06ada25cf5480c318`.
+The Gemma pair shares catalog identity
+`sha256:d0403d09b786dd985767b57106079efdeb4f7fd7ade0596fef84db3f8ecab5ce`
+and the frozen v16 source/binaries. Preflight passes all memory and parent
+checks. The first runner command stopped before inference because the
+saved result's replay summary was supplied as the named-replay input;
+it has `schedule`, not the required `arrivals`. No scheduler defect or
+physical failure occurred. Its command and log remain in the v6 inputs.
+
+New `GEMMA_NAMED_REPLAY_SCHEDULE.json` and retry campaign files use the
+existing parser's input shape. A decoded equality check preserves the
+same request, arrival, and schedule SHA
+`53a56bd4c5211cdfe60b4f1cdc9e00d0fec954b58ce4b0f0ac153a38fbf3cbef`.
+The preflight command is byte-identical and its already completed PASS
+is reused for this input-only retry. `GEMMA_INPUT_REPAIR.json` records that
+fact. The desktop control is running in the fresh
+`/home/zhihao/s42-no-phone-wait-20260905-v6-gemma-desktop-r1/run` directory.
+Only input and analysis artifacts changed after Qwen passed; scheduler,
+native, worker, shard, and replay-golden sources remain frozen.
+
+## Log - `2026-09-05 13:54 EDT` - Qwen wait-removal and READY reuse gate passes
+
+V6 completed requests 43 and 67 with 5,886 and 2,160 phone calls, accepted
+semantic output, fresh disjoint helper leases, no rejected control, no
+fallback, and zero USB reset recoveries. Request 67 first acknowledged
+100% assistance at token 3. Fraction-weighted eligible-token coverage is
+91.6176% and 90.9091%. Each HTP session loaded its indexed F16 FFN shard
+once and remained at generation 1; the second request caused no reload.
+
+Final scheduler READY times are 21.192128, 33.696956, and 47.329956 s.
+The third value supersedes the intermediate runtime-snapshot estimate.
+PROPOSED-to-PREPARING delays are 0.853236, 0.688489, and 0.680597 s.
+Physical phone-clock LOAD_AUTHORIZED-to-READY durations are 10.884891,
+10.628676, and 10.780222 s. These are separate clock domains, not directly
+interchangeable timestamps. There are distinct per-session loading,
+verification, and publication events. No preparation starts between the
+requests. This Qwen run does not prove serving between publications, since
+the initial desktop load/prefill overlapped that interval.
+
+Result: `/home/zhihao/s42-no-phone-wait-20260905-v6-qwen-gate/run/RESULT.json`,
+SHA `83045b71124c53fa55b16ae208d79642ce669a499498d7dcb8ce874842e2dd77`.
+Decoded checks are saved in the fresh v6 inputs `QWEN_GATE_AUDIT.json`.
+SOURCE_MANIFEST file SHA is
+`f748100f42a3b25df3cd896b2a5937a362d5c745549ab72eb1f7f4ac5b4e543e`;
+its canonical manifest identity remains `f85f73d4b211a73d7114b0a352f7541a97ff62f287855fedbedc933f3e8abb45`.
+The same frozen v16 deployment and new desktop binary are now running
+Gemma's cold/hot desktop-parent calibration, followed by one matched short
+desktop/assisted screen. No Qwen saving is claimed against an old baseline.
+The complete harness still waits for the Gemma screen; no long trace,
+commit, push, worker rebuild, GDM change, or unrelated process stop occurred.
+
+Inspection note, not changed in this bounded fix: the existing thermal
+maximum reduction initializes to 1 even if no temperature file is readable.
+The physical benchmark read all 96 normal zones and the passing run has
+valid samples; no all-unreadable case was observed. A separate fail-closed
+sensor-absence change would require its own regression and deployment.
+
+## Log - `2026-09-05 13:38 EDT` - Coverage improves; thermal sampler explains intermittent preload gap
+
+V5 completed 2/2 Qwen requests with 5,886/2,160 calls, accepted semantic
+outputs, no control errors, no recovery, and zero USB reset recovery.
+Fraction-weighted eligible-token coverage is 91.6176%/90.9091%; request 67
+first acknowledged 100% at token 3 and used fresh leases 31-44, disjoint
+from request 43's 11-24. All session generations remain 1, with one load
+per session. Artifact:
+`/home/zhihao/s42-no-phone-wait-20260905-v5-qwen-gate/run/RESULT.json`,
+SHA `de4b973ac3abefec1c178d76fb60445083f32be26560b428800918056a62afa7`.
+This validates the READY-helper cost-scope fix, but not complete wait removal:
+HTP1 spent 38.839169 s between proposal and preparation. Its READY times
+were 20.549271, 71.764251, and 90.580180 s.
+
+The saved runtime snapshots show the watcher polling once per second while
+the desktop is PENDING. Phone temperature/battery were unavailable from
+20.7 through 58.4 s, although valid NCM power samples continued throughout.
+At 59.4 s the phone runtime sample became valid and HTP1 immediately prepared.
+The safety rejection is correct; no stale sample is being accepted.
+
+The native session sampler stamps the snapshot before scanning 96 thermal
+zones. The existing per-file `cat` loop took 5.098776 s in an idle-phone
+ADB benchmark, already exceeding the unchanged 5 s freshness limit before
+publication. The same sensor set and type exclusion, read with shell
+built-ins, took 2.579296 s. The sampler's sleep is now 0.5 s rather than 2 s
+so a completed scan remains available within that freshness bound.
+Changes are limited to `adapters/native/direct_phone_ffn_session.sh` and
+`tests/test_phone_power_probe.py`. The test fails before the fix and verifies
+all normal zones are read without `cat`, including the highest DSP value,
+while the existing trip-point exclusion is retained. Focused phone, offline,
+transaction-worker, and replay checks pass 54 tests; goldens are unchanged.
+
+New session script SHA
+`5dfbc8f95216cae5ed34052dd8d7bec198f5fee72b9d804314b217c593d73d4c`
+was verified at the fresh phone path
+`/data/local/tmp/s42-fast-runtime-probe-20260905-v1/direct_phone_ffn_session.sh`.
+The canonical script also carries its pre-existing explicit call-log-period
+default of 16, equal to the deployed router's old implicit default. No worker,
+router, shard, gadget configuration, or wire format was changed here.
+The new identity binds the exact script hash; existing USB transfer receipts
+remain diagnostic provenance, not a newly measured qualification.
+
+V6 inputs are `/home/zhihao/s42-no-phone-wait-20260905-v6-inputs`, including
+the benchmark, script deployment commands/receipt, and input-serialization
+failures before inference. Source manifest identity is
+`sha256:f85f73d4b211a73d7114b0a352f7541a97ff62f287855fedbedc933f3e8abb45`;
+all 208 files match `s42-ffn-independent-sessions-20260905-v16-deploy`.
+The same Qwen gate is in preflight. The new-binary Gemma matched screen,
+complete harness, and all longer traces remain deferred. No GDM or unrelated
+process change, commit, or push occurred.
+
+## Log - `2026-09-05 13:02 EDT` - READY reuse must not repay a historical cold-load estimate
+
+V4 completed the same Qwen 43/67 workload: 2/2 accepted, 5,886/1,836
+phone calls, no helper rejection/control failure, and no request recovery.
+Artifact: `/home/zhihao/s42-no-phone-wait-20260905-v4-qwen-gate/run/RESULT.json`,
+SHA `d4ce9846a334ec5c65532c34f9a6544c9063121d404b11453e6fd9fabc6bd175`.
+Individual READY publications were 21.056241, 33.606225, and 48.104739 s.
+Initial PROPOSED-to-PREPARING was 0.854772 s, but later additions took
+1.428290 and 3.309289 s. The pending-parent guard does not establish a
+hard 1 s bound for every subsequent addition; that remains a measured gap.
+
+Decoded v3 request-67 evidence exposed another concrete cost-scope bug:
+the immutable ticket still had a cold helper row charging 54.949624 s and
+9,477.649639 J of residency transition cost. A freshly rematerialized READY
+helper happened to have the same route ID, so adaptive start reused that
+historical load estimate. Its windows expanded to 24 tokens; positive
+assistance was first acknowledged at token 51. When the route ID differed,
+the existing fallback already used the desktop row and small control cost.
+The scheduler now applies that READY-helper path consistently even when
+the old route ID matches. Actual residency load costs remain unchanged in
+the placement accounting. No fraction, memory, or qualification override
+was introduced.
+
+Changes: `_unified/adaptive_decode_control.py` and
+`tests/test_adaptive_runtime.py`. The exact regression failed before the
+fix and passes afterward; it also checks non-rematerialized estimates are
+preserved. Focused adaptive runtime/decode checks plus both replay goldens
+pass 75 tests. Goldens remain unchanged. V5 deploys the 208 verified files
+under `s42-ffn-independent-sessions-20260905-v15-deploy`, canonical source
+manifest `sha256:ef2379f42abd65050984f3437d3b1b9e5419cfbebbeb8122000b8d3fb21848bf`.
+Only the same short reuse gate is being rerun before Gemma's matched screen.
+
+## Log - `2026-09-05 12:49 EDT` - Clean progressive Qwen reuse and final pending-parent guard
+
+The v3 Qwen 43/67 gate completed 2/2 with accepted semantic outputs,
+5,886 and 1,368 phone calls, generations 1/1/1, no control failures,
+no request recovery, and no USB reset recovery. Each session loaded once;
+request 67 reused the same shards without reloading. Artifact:
+`/home/zhihao/s42-no-phone-wait-20260905-v3-qwen-gate/run/RESULT.json`,
+SHA `e0f83288e3890cbeef8065fc5e6e4566429f784a0793b5081cc05389955f6e92`.
+Independent READY publications were 19.360682, 30.760530, and 44.789304 s.
+Phone load-to-verification times were 10.697907, 10.739565, and 10.984137 s.
+The native desktop began loading at 0.204038 s and finished at 55.745523 s;
+phone preparation therefore completed before decode, without the old
+30 s startup connect wait. This run does not demonstrate serving between
+publications because the desktop was still loading. It is not a matched
+energy comparison or proof of the requested weighted-coverage target.
+
+Stage proposal-to-preparation delays were 0.853613, 0.292886, and 1.135990 s.
+The last misses the 1 s target. READY publication was still attempting
+helper rematerialization for an acquired ticket whose desktop transition
+was PENDING. `_unified/helper_envelopes.py` now applies the existing
+COMPLETED/NOT_REQUIRED desktop-parent guard before that work; preparation
+and per-session publication continue independently. The regression in
+`tests/test_offline_phone_residency.py` checks the PENDING parent is skipped.
+Offline/helper integration and both replay goldens pass: 20 tests, with
+unchanged v3/v8 hashes. No identity, lease, fraction, or terminal check
+was relaxed.
+
+The final guard is being validated separately in v4, using the fresh
+208-file verified `s42-ffn-independent-sessions-20260905-v14-deploy` and
+`/home/zhihao/s42-no-phone-wait-20260905-v4-inputs`. Its canonical source
+manifest identity is
+`sha256:11807facfa14fd35f23e1d2051af7a0cd04352404749216ed128ef0f9b92d03b`.
+Only helper envelopes and their offline integration test differ from v3.
+The native server, router, workers, shards, and qualification remain the
+same as v3. Gemma's new-binary parent calibration and matched short screen
+follow the Qwen gate. No long trace, complete harness, commit, push, or
+GDM/process intervention has been performed.
+
+## Log - `2026-09-05 12:19 EDT` - Fresh-manifest admission and chained control acknowledgement
+
+The v2 two-request attempt is a failed acceptance gate, not a usage pass.
+Artifact: `/home/zhihao/s42-no-phone-wait-20260905-v2-qwen-gate/run/`.
+Request 43's native server generated 341 tokens and recorded 3,876 phone
+calls, but the HTTP stream failed at the token-339 release guard with
+`adaptive tail seal is invalid`; request 67 did not execute. The failure
+helper journal also records a HELLO rejection. Earlier live inspection of
+server stderr alone missed this control error; the exported helper journal
+is authoritative for that claim.
+
+Two precise remaining causes were identified. The router reloaded the
+manifest before blocking for HELLO, so a later HELLO could still see the
+old one-session map. The existing manifest validation now runs after
+receiving HELLO and before selecting endpoints. Separately,
+`AdaptiveDecodeController.acknowledge` correctly returned a follow-up
+control when a new READY session expanded the helper during acknowledgement.
+`_AdaptivePayloadController._apply_control` discarded it, leaving the
+controller awaiting that unsent control. Boundaries then could not advance,
+and the strict tail guard rejected completion. The adapter now sends and
+acknowledges the returned control. No tail, generation, or identity check
+was relaxed.
+
+Changes since v2: `examples/layersplit/ffn-split-resident-router.cpp`,
+`scheduler/adapters/http_backend.py`, and
+`scheduler/tests/test_llama_server_adapter.py`. Focused adapter, adaptive,
+router, and transaction-worker checks pass 87 tests; both replay goldens
+pass unchanged. The new regression asserts that both the original and
+expanded controls are sent and acknowledged. Router SHA
+`25d27ff14daf649b993c76b35f2ad1a796ca27fecab864f7c66bbebd97dffd96`
+was verified at the fresh phone path
+`/data/local/tmp/s42-ready-subset-router-20260905-v2/llama-ffn-split-resident-router`.
+
+The v2 raw phone router/worker logs, final shard manifest, session log,
+terminal status, and hashes were copied read-only into `run/POSTMORTEM_PHONE/`.
+The root-readable `descriptors.ready` file was not copied; permissions were
+not changed. All old artifacts remain. V3 uses the verified 208-file
+`/home/zhihao/s42-ffn-independent-sessions-20260905-v13-deploy` deployment,
+inputs under `/home/zhihao/s42-no-phone-wait-20260905-v3-inputs`, and source
+manifest file SHA
+`aba71e99c3f098e8fbae30c2beed20132e816ab02dcdc5497f23a7c93a0b1b8c`.
+The same two-request gate is entering preflight. Gemma validation and the
+matched screen remain gated on a clean Qwen result. No long trace, full
+harness, worker rebuild, commit, push, or unrelated process stop occurred.
+
+## Log - `2026-09-05 11:52 EDT` - Short physical rerun exposes refresh and subset-HELLO barriers
+
+The v1 Qwen 43/67 gate completed 2/2 with accepted semantic output,
+5,670/1,836 phone calls, one load per session, generations 1/1/1, no
+request-67 reload, no execution recovery, and zero USB reset recoveries.
+Artifact: `/home/zhihao/s42-no-phone-wait-20260905-v1-qwen-gate/run/RESULT.json`,
+SHA `125091f4b59ac3b43c92a37d3b80c1ea71c26e98ee26f0884e35ae3efa0a0f57`.
+Its RESULT status is PASS, but the stricter acceptance gate is not: one
+CONTROL_FAILED event and an avoidable preload gap remain.
+
+The native startup repair is physically confirmed: `connection=deferred`
+precedes model loading at 0.196963 s, not after a 30 s USB timeout.
+Initial PROPOSED-to-PREPARING is 0.859657 s. Individual scheduler READY
+publications occur at 21.156346, 79.196994, and 92.048358 s. HTP0's
+physical load-to-verification is 11.203599 s, but the next authorization
+waits another 54.388920 s. `refresh_ready_request_helper` correctly defers
+while the desktop transition is PENDING; the preparation watcher wrongly
+treated that attachment deferral as a reason not to load the next shard.
+The watcher now proceeds with the next exact preparation envelope even
+when attachment refresh is not yet possible. The new pending-desktop
+regression and eight other transaction-worker tests pass.
+
+The single HELLO rejection at 83.483770 s requested the READY HTP0/HTP1
+mask 4095 while HTP2 was loading. Native router `select_targets` connected
+every same-artifact manifest row, including the unrequested third shard,
+then rejected the union as not equal to the requested mask. It now skips
+nonintersecting masks while retaining exact response identity and final
+coverage equality checks. A compiled native regression exercises one- and
+two-session subsets with a missing third worker and rejects missing
+coverage, partial masks, artifact, geometry, width, and mask mismatches.
+Combined focused checks: 10 tests pass; both replay goldens pass unchanged.
+
+Additional changed files are `examples/layersplit/ffn-split-resident-router.cpp`,
+`scheduler/tests/test_resident_router_subset.py`, and its native fixture
+`scheduler/tests/native/resident_router_subset.cpp`; the watcher and
+transaction tests listed in the prior entry were updated. Only the router
+was rebuilt with NDK r27c; the worker, shard generator, and wire formats
+remain unchanged. Router SHA
+`217dd0c8e4bd3aba5466364f70c8b42df2bba2f267021123a2ef1bb2a1482a78`
+matches the fresh phone path
+`/data/local/tmp/s42-ready-subset-router-20260905-v1/llama-ffn-split-resident-router`.
+Build command, source, binary, deployment receipt, and all new commands
+are preserved under `/home/zhihao/s42-no-phone-wait-20260905-v2-inputs`.
+The 208-file scheduler deployment is verified in
+`/home/zhihao/s42-ffn-independent-sessions-20260905-v12-deploy`.
+The v2 two-request rerun is now going through preflight; no long trace is
+authorized or running. These fixes are not yet claimed physically passed.
+
+Fresh desktop binary qualification completed before v1: Qwen's 16-GPU-layer
+parent remains `071a9a0b8112e5701e9055a4a254104e1dd31f04a850795500c098fadc542aad`,
+peak process VRAM 12,213,813,248 bytes, cold/hot times 223.162606/218.334059 s.
+Evidence: `/home/zhihao/s42-no-phone-wait-20260905-v1-qwen-calibration/run/`,
+calibration SHA `0c790d07d4d60a8e3c21f014eeb3d01432d4b7352134c74cec74178285aac255`.
+This is not a new matched energy comparison; Gemma's new-binary parent
+validation and the matched short screen still follow a clean Qwen gate.
+
+## Log - `2026-09-05 10:23 EDT` - Startup wait repair and progressive initial publication
+
+This bounded pass addresses the three remaining short-gate blockers from
+03:39. Runtime-controlled FFN startup now defers connection immediately;
+the first positive policy still requires the existing exact handshake.
+The scheduler uses the existing progressive layout projection to publish
+one verified initial shard at a time, retains the selected superset across
+those additions, and keeps the preparation watcher alive for the next
+stage. Dormant desktop callback coverage includes only stored shards on
+the exact parent's CPU FFN layers, so later READY subsets can attach
+without restarting the desktop. Active execution authorization remains
+restricted to verified shards and exact per-session generations.
+
+Files changed in this pass: `tools/server/server.cpp`, scheduler
+`_internal/model_placement_controller.py`, `_unified/phone_residency.py`,
+`_unified/automated_selection.py`, `adapters/runtime.py`, and tests
+`test_offline_phone_residency.py` and `test_session_cow_transaction.py`.
+No worker, shard generator, wire format, route policy, or old physical
+artifact was changed. Focused helper/adaptive/adapter/transaction/replay
+validation passed 170 tests; the additional watcher regression passed
+separately. Both replay cases also passed after the final dormant-mask
+change, with unchanged v3/v8 hashes
+`f78d2b2c37a3880a523eba4f5315ada0207678c841d633229782bfa3a05c1829`
+and `965f218bb5f81a57dbb51167624798f02eb79354b6cc042683b2b1ed9b1a868d`.
+
+Fresh native source/build artifacts are
+`/home/zhihao/s42-no-phone-wait-20260905-v1-source` and `-v1-build`.
+Build attempts and the downloaded UI directory are preserved; only the
+desktop server target was rebuilt. The final build disabled the optional
+UI. Scheduler deployment is
+`/home/zhihao/s42-ffn-independent-sessions-20260905-v11-deploy`.
+Inputs, command journals, and native source/binary hashes are in
+`/home/zhihao/s42-no-phone-wait-20260905-v1-inputs`.
+Its source manifest SHA is
+`b1bc36b4770dfef142be6bbd0525b6c00af89c1f68427a295d677d459fa6f94d`,
+with local HEAD `5f89a2d9d33be547a1bdef5fd0f504a279c50800` and the
+existing dirty tree captured. No commit was made.
+
+The new-build preflight file
+`/home/zhihao/s42-no-phone-wait-20260905-v1-preflight` is PASS (99 checks,
+two existing desktop-cost evidence warnings). Old USB measurement receipts
+are reused only after validating the unchanged transport-client source
+and phone binary identities; no new desktop qualification is inferred
+from them. A fresh Qwen cold/hot parent calibration is running before the
+two short gates. The GNOME allocation remains untouched at 3,178 MiB.
+Physical wait removal, <=1 s proposal-to-preparation, and useful service
+between individual publications are not yet claimed. No long trace or
+complete harness has been launched.
+
+## Log - `2026-09-05 03:39 EDT` - Matched Gemma energy screen passes; native startup wait remains
+
+The fresh v2 Gemma desktop and assisted arms both completed 837 tokens with
+accepted semantic output and exact terminal proofs. The control loaded no
+phone session, emitted no helper event, and made zero phone calls. The
+assisted arm loaded three FFN shards once, made 19,752 calls (6,584/session),
+kept generations 1/1/1, and recorded no reload, fallback, rejected helper,
+stale proof, or reset. Phone-assisted token-position coverage is 98.44% and
+fraction-weighted coverage is 96.59% over 836 eligible decode tokens. It
+tested 100/75/50/25, then used 100% from token 62 onward. The control and
+assisted arms share source manifest, binaries, catalog, artifact, prompt,
+seed, token count, exact CPU/GPU operators, desktop parameters, qualified
+22-GPU-layer parent, and energy boundary. The explicit dormant FFN runtime
+is the only desktop adapter parameter difference.
+
+At 4.5 W assumed phone active power and 0.875 W idle power, warm execution
+is 395.466451 s / 49.014568 kJ for desktop and 315.562478 s / 21.354295 kJ
+for assisted: 56.43% less fleet energy and 20.21% less execution time. The
+runtime preparation-inclusive totals are 49.939990 vs 23.576136 kJ, a 52.79%
+saving. At 3/4.5/6 W, warm savings are 56.82/56.43/56.04%; preparation-
+inclusive savings are 53.29/52.79/52.30%. CPU/GPU energy is physically
+measured; phone energy remains assumed. These are one-pair diagnostic
+results, not qualification. Staging, artifact generation/transfer,
+preflight, and common CPU-service startup are outside the paid boundary.
+
+Gemma physical per-session load-to-READY times are 9.391268/9.805753/
+10.034406 s; first authorization to all physically READY is 29.231438 s.
+The phone preparation interval contains 1.344229 kJ of fleet energy and
+overlaps desktop preparation, so it must not be summed again with the
+desktop load receipt. A conservative interval-bracket amortization estimate
+is ceil(1344/27660) = 1 request for this exact long workload. It is not a
+reuse sweep or a cold-install break-even claim.
+
+The broader acceptance gate remains BLOCKED, despite RESULT status PASS.
+Inspection of the desktop server and logs identifies a real 30 s startup
+wait: `tools/server/server.cpp` attempts `client_->connect(error)` before
+model loading even with runtime control enabled. The USB client polls 600
+times at 50 ms in `examples/layersplit/ffn-split-usb-client.cpp`. Only after
+that attempt fails does the server print `connection=deferred`. This native
+startup path was not modified or rebuilt in the scheduler-only pass. The
+normal scheduler also still publishes all initial session READY events
+together, and Gemma PROPOSED-to-PREPARING was 1.380600 s rather than <=1 s.
+The passing Qwen v9 result is therefore usage/reuse evidence, not proof of
+the complete zero-wait/progressive-publication acceptance requirements.
+
+The final focused repair checks passed 19 tests (16 physical adapter tests
+plus baseline exclusion, learning preparation, and the determinism test
+containing both replay cases). Both goldens are unchanged. Earlier v9
+focused validation passed 166 tests and the physical-residency set passed
+24. The complete harness is deferred because zero-wait physical acceptance
+has not passed. No further physical workload is running, ADB is restored at
+5,000 Mbps, and GPU use is back to the untouched 3,178 MiB GNOME allocation.
+
+Full measurements, changed-file list, cleanup inventory, bounds, and hashes:
+`scheduler/campaigns/burstgpt/reports/20260905-short-ffn-gates/README.md` and
+`COMPARISON.json`. Gemma artifacts are
+`/home/zhihao/s42-ffn-gemma-positive-screen-20260905-v2-desktop/run/RESULT.json`
+(SHA-256 `d1feccf333b336d024ab3567c5113a5a5d8bed63a8be500be8915e70e4704813`)
+and
+`/home/zhihao/s42-ffn-gemma-positive-screen-20260905-v2-assisted/run/RESULT.json`
+(SHA-256 `45b6f57fcb3b920447f579f21a563c3f8226f274dd2b3ab7b1197b22eedda872`).
+Their shared source-manifest file hashes to
+`3497a759db268e781f48269efdc5e00913daee61fc4cd69a21c082c443eb5edb`.
+No long trace, complete-harness rerun, commit, push, native-worker rebuild,
+or modification of unrelated processes or prior artifacts occurred.
+
+---
+
+## Log - `2026-09-05 03:07 EDT` - Gemma control exposes a desktop-baseline preparation leak
+
+The bounded Gemma control generated all 837 output tokens, but its run failed
+at terminal phone cleanup with `phone session has no ticket-bound execution
+proof`. The early preparation watcher had authorized a three-session Gemma
+load for a `desktop-baseline` request: PREPARATION_STARTED at 2.380530 s and
+PREPARATION_READY at 40.899083 s. The desktop request correctly never attached
+or used the phone. This is not a passing baseline or a valid energy comparison.
+
+The focused regression reproduces the incorrect permission for both queued
+and acquired desktop-baseline tickets. `_unified/helper_envelopes.py` now
+rejects that selection mode in the existing background preparation permission
+and public preparation-envelope entry point. The regression is in
+`tests/test_offline_phone_residency.py`. Calibration and energy-aware early
+preparation remain permitted. Physical terminal, memory, generation, and
+identity checks are unchanged; the phone proof check is not bypassed.
+
+The failed artifact is
+`/home/zhihao/s42-ffn-gemma-positive-screen-20260905-v1-desktop/run/FAILURE.json`,
+SHA-256 `bfabc28165fb4757e73cce337adbc50c770ce475e44ad4c8ae963dd92dee15b0`.
+Its helper-event artifact SHA-256 is
+`0d8e1c575fe4c6a14f4648486cdce2becef5946baee4d7564fb843fc23ecd604`.
+The shared v1 source-manifest file hashes to
+`9228393fc5d3ce1403b213153627b6ab864d0cab9f192439712e925c2d7a5c1b`.
+Both Gemma arms will use a fresh v10 deployment and new v2 artifacts. The
+passing Qwen v9 artifact is preserved. ADB is restored, GPU use is again
+3,178 MiB, and no existing non-campaign process was changed.
+
+---
+
+## Log - `2026-09-05 02:51 EDT` - Gate A passes with real FFN shards and overlapping preparation
+
+The frozen v9 two-request gate is PASS: Qwen 43 and 67 both completed with
+accepted semantic output and exact generation-keyed terminal proofs. Request
+43 finished before request 67 arrived. The shard set loaded once: exactly
+three LOAD_AUTHORIZED events, no reload, generation 1/1/1 throughout, zero
+reset recoveries, zero execution fallbacks, and no rejected helper candidate.
+One desktop server process served both requests. Final USB restoration is
+RESTORED at 5,000 Mbps. No long trace ran.
+
+| Request | Output tokens | Phone calls | Any-phone coverage | Fraction-weighted coverage |
+| --- | ---: | ---: | ---: | ---: |
+| 43 | 341 | 5,886 | 96.18% | 91.62% |
+| 67 | 133 | 1,836 | 77.27% | 72.35% |
+
+Coverage is over 340/132 eligible decode tokens, starting at boundary 1.
+Physical call widths and exact per-layer counts give 327/102 assisted tokens
+and 311.5/95.5 full-fraction-equivalent tokens across the resident 18-layer
+FFN set. This is not a claim that every model layer executes on the phone.
+Each session made 1,962 calls for request 43 and 612 for request 67. Active
+helper leases are disjoint: request 43 used lease-11 through lease-24; request
+67 used lease-31 through lease-44. Initial 0% attachment itself holds no
+positive-assistance leases. Request 67's first 100% control was acknowledged
+at token 3, without a transition or waiting until token 51. Request 43 tested
+100/75/50/25 before exploiting 100%; request 67 tested 100/75 and temporarily
+returned to baseline when a window bid was negative. These are diagnostic
+learning decisions, not qualification promotion.
+
+PROPOSED was at 1.006617 s and PREPARING at 1.868651 s: 0.862034 s later.
+Physical desktop preparation ran from 3.027522 to 74.168895 s; phone
+preparation ran from 3.032684 to 46.544661 s. Their intervals overlap.
+Per-session load-authorization-to-READY times were 11.220984/11.147148/
+12.365610 s; first authorization to all READY was 34.733762 s. All three
+weight sources are `ffn_shard`, with the index, parent, path, layer mask,
+column width, and hashes persisted in the direct phone receipt. File bytes
+loaded were 3,208,644,448/3,208,644,448/3,208,644,480; tensor residency remains
+3,208,642,560 bytes per session.
+
+The phone preparation interval contains 1.068007 kJ of fleet energy, including
+0.195803 kJ of assumed phone energy at 4.5 W. It overlaps desktop preparation
+and is not an independently additive phone-load cost. No energy-saving claim
+is made against the older baseline. The normal preparation path still emits
+its scheduler SESSION_VERIFIED/SESSION_READY events together at completion;
+physical per-session timestamps differ. Gate A therefore does not establish
+new mid-load serving evidence, and that publication limitation is not hidden.
+
+Artifact: `/home/zhihao/s42-ffn-ready-reuse-20260905-v9-run/run/RESULT.json`,
+SHA-256 `43c6977d207a53884f45ce6a7dff6ec35cd5f48215b2790af14c005bc9f06a5a`.
+Source manifest SHA-256 is
+`490e061a055d4136095a76ceb64121cddb2c2ea70c9f226893f5ab80b7b1a466`.
+Request proof hashes are
+`sha256:1a8f9582317ba9a9bac3ca5f030bd94832b9455f3adcc7bfccca6b4f2fd37f80`
+and
+`sha256:f46c074a9fd96da0dfb51fb33df3be5bd47808fe37b635ac8836a586050ba7a5`.
+The last focused run passed 166 tests and both unchanged replay goldens.
+Next is the bounded Gemma screen, using one shared source manifest and exact
+matched request/parent/binary identities for the desktop and assisted arms.
+
+---
+
+## Log - `2026-09-05 02:26 EDT` - V8 overlaps loading; late control acknowledgement exposes terminal race
+
+V8 preflight passed and the two Qwen requests physically generated all 341/133
+tokens with 5,886/1,836 phone calls. The run still failed terminal acceptance:
+`adaptive observation differs from the execution ticket`. No Gemma screen or
+long trace followed the failure. Request 43 completed at 239.781815 s; request
+67 arrived at 351 s, attached at 351.904216 s, and needed no transition. Both
+attachments used READY generation 1/1/1. The second request began positive
+assistance at its first decode boundary, rather than waiting until token 51.
+
+Preparation started at 1.883537 s and became READY at 44.485646 s while the
+desktop loader was active. Physical authorization-to-READY times were
+12.320824/10.720306/10.944576 s. First authorization to all READY was
+33.985726 s. The phone manifest names the three deployed `HTP*.ffn.gguf`
+paths; worker phase logs report FFN-only parent identity, layer masks, and
+F16 slices. There were exactly three LOAD_AUTHORIZED records, all generation
+1. Phone diagnostics were copied into the fresh run's `PHONE_DIAGNOSTICS/`
+without modifying any original logs.
+
+The remaining failure follows a late fraction-control acknowledgement into
+the server's release guard. The server log records request 67's control
+generation 5 at token 132 of 133 with mask 0 and columns 0, immediately before
+slot release at token 133. The adapter previously opened another statistics
+window even when the acknowledgement already covered that boundary; a later
+read after release became a stale diagnostic window and correctly failed
+terminal proof. `_internal/adaptive_decode.py` now permits sealing an empty
+window only at an exact current acknowledgement with a recorded preceding
+window ending at that token. `adapters/http_backend.py` honors an already
+sealed acknowledgement and seals an acknowledged boundary in the existing
+two-token release guard, without reading released-slot stats. Neither the
+guard size nor any physical proof, identity, generation, or qualification
+check is relaxed. Regressions in `tests/test_adaptive_decode.py` and
+`tests/test_llama_server_adapter.py` failed before the changes and pass after.
+All 166 focused helper, adaptive, adapter, transaction, and replay tests passed
+in 146.793 s; both replay goldens are unchanged. No full harness was run.
+
+Artifacts: `/home/zhihao/s42-ffn-ready-reuse-20260905-v8-run` and matching
+`-v8-preflight`. SHA-256 values are:
+`run/FAILURE.json` =
+`6584ee60e5fca210025493cb2f371441797b81c49b6651c6e773dea4d042e660`;
+`run/FAILURE_REQUEST_HELPER_EVENTS.json` =
+`59da834abc6abc7079ba0d7f31ebf4c4d213f9cda19543217b8f57d6b1781ed7`;
+`SOURCE_MANIFEST.json` =
+`9d7ea4f0da6b7d7464e780b3fa836b07f4cff9a521571efd54dca36d30c98182`;
+`run/PHONE_DIAGNOSTICS/residency.log` =
+`379821a1641cfb2a71133bed103cc0ddc1bc5caec1c897c05a466b5f9fec40fa`.
+Cleanup restored ADB; live GPU use returned to 3,178 MiB without touching GDM.
+The next physical run repeats only Qwen 43/67 in a new directory.
+
+---
+
+## Log - `2026-09-05 02:00 EDT` - V7 reaches both requests; terminal-tail and load-lock repairs
+
+The Qwen 43/67 FFN-shard preflight passed. Both requests generated their full
+341/133 output tokens and made 5,886/1,836 physical phone calls, respectively.
+The second request nevertheless failed terminal validation with `adaptive
+unmeasured tail reason differs`. This is not a 2/2 acceptance result. The
+three phone sessions were READY at generation 1/1/1 in the 44.913671 s snapshot.
+The physical launch timeline also exposed a global rig transition lock: the
+desktop loader did not start until the disjoint phone load finished.
+
+`_internal/adaptive_decode.py` now clears a tail reason when a seal is at the
+final output token. Actual unmeasured tails and failed windows keep their
+diagnostic state; the grouped-observation validator is unchanged. The normal
+and stale-final-window regression is in `tests/test_adaptive_decode.py`.
+`adapters/heterogeneous_rig.py` serializes transitions by their existing
+phone/desktop resource domains, with a fixed lock order for mixed operations.
+Phone replacement and rollback still share the phone transition lock. The
+tests in `tests/test_physical_residency.py` prove disjoint loads overlap and
+conflicting loads remain serialized. Its restart fixture now supplies the
+existing weight-source metadata field. `campaigns/burstgpt/runner.py` also
+persists public helper events on failure for direct attachment diagnosis.
+
+The focused run exercised 189 tests: 188 passed and one older restart fixture
+lacked `weight_sources`. After correcting that fixture, all 24 physical
+residency tests passed. Both replay goldens passed unchanged. This was not a
+complete harness run. No generator, worker, qualification, or memory-limit
+change was made for these repairs.
+
+Preserved artifacts:
+`/home/zhihao/s42-ffn-ready-reuse-20260905-v7-preflight` and
+`/home/zhihao/s42-ffn-ready-reuse-20260905-v7-run`.
+`run/FAILURE.json` hashes to
+`aa137dcc99fbdc16580f7eb0752ba1e14d3da4dad65499b386df217e0318131b`,
+`run/FAILURE_ADAPTIVE_DECODE_OBSERVATIONS.json` to
+`32b50ad442553d25741fe080456ac546b4094f0411b82337e030df61c464ccf7`,
+and `SOURCE_MANIFEST.json` to
+`a3d6fab3c38c982e33a3621259e1b3c17b8f4ef216006fd6ccbff68d60bd1513`.
+The run cleaned up its own servers and restored ADB. The next run repeats only
+Gate A in a fresh directory. No long trace or unmatched energy claim is made.
+
+---
+
+## Log - `2026-09-05 01:33 EDT` - V6 records a pre-measurement arbitration failure
+
+The FFN-shard v6 preflight passed. Its cold stage loaded Qwen once per session
+at generation 1/1/1. HTP0/HTP1/HTP2 load-authorization-to-READY intervals were
+12.367083 s, 10.797253 s, and 10.991955 s. First authorization to all READY was
+47.310432 s, including intervening serving checks. HTP0 served during the next
+session's load, but the cold request made only 204 HTP0 calls. The online reuse
+request made 612 calls before replacement stopped with `request helper rebind
+drain policy changed`. V6 is a failed acceptance run, not a savings result.
+
+The cold events identify the ordering defect: `record_adaptive_decode_window`
+ranked the completed phone policy before recording its observation. The new
+bounded-exploration authorization correctly required a pending policy, so
+this premature arbitration marked the active helper unavailable. An additive
+READY publication then called the active-only rebind path despite baseline
+recovery. A replacement retry also recomputed a previously bound drain hash
+from the newly pending baseline policy.
+
+The focused repair in `_unified/adaptive_decode_control.py` records the
+measurement first and arbitrates the next policy. An exact authorized retained
+drain continues through its existing leases and acknowledgement checks.
+`_internal/adaptive_decode.py` resolves an explicitly requested fraction to
+the pending/active policy before same-fraction candidates, preserving its mask.
+`_unified/helper_preparation.py` waits for the existing drain acknowledgement
+instead of rebinding its identity. `_unified/helper_envelopes.py` routes an
+unavailable baseline helper through the existing strict READY path. Regression
+coverage is in `test_offline_phone_residency.py`, `test_adaptive_decode.py`, and
+`test_session_cow_transaction.py`. Both the pre-measurement veto and drain retry
+failed before their repairs. The gate now persists physical state, phase/call
+events, and helper events in its failure artifact as well as completed stages.
+
+Artifacts are preserved at
+`/home/zhihao/s42-ffn-independent-sessions-20260905-v6-offline`.
+`run/FAILURE.json` hashes to
+`43d498f0931e08c391395e26b26142eb12fcd7f14ef8975f67c201216158f3e2`,
+`run/COLD_PRELOAD_RESULT.json` to
+`fec6ff805af38015c3772fd2cbc0ad546b2d35fc9315f5ce5945e75c6d7ad6c6`,
+and `SOURCE_MANIFEST.json` to
+`3029a8a6166a6b0aaef183efb537bdc9befa938c5dcebbe8e030963dda966dec`.
+Cleanup restored ADB and left no campaign server running. No trace ran.
+
+After the repair, 128 focused adaptive, runtime, offline, transaction, and replay
+tests passed in 196.768 s. Both replay goldens remain unchanged. The next
+physical check is the requested Qwen 43/67 two-request gate with deployed FFN
+indexes, not another multi-request offline sweep or a long trace.
+
+---
+
+## Log - `2026-09-05 01:07 EDT` - V5 exposes offline storage bypass and learning-window veto
+
+V5 preflight passed with both deployed FFN indexes and the calibrated desktop
+parents at 3,178 MiB live GPU use. The cold request completed with one load per
+session and generations 1/1/1. Physical load-authorization-to-READY intervals
+were 10.952810 s, 10.836301 s, and 11.349113 s; first authorization to all READY
+was 46.381835 s, including the intervening attachment/serving checks. Its
+generation-keyed proof reports 408 HTP0 calls and 204 HTP1 calls, with no HTP2
+calls. The subsequent Gemma replacement failed before loading because the
+offline portfolio generator did not receive the registered storage coverage.
+Constraining compiler envelopes alone had not constrained this separate
+existing call site.
+
+The same storage-coverage projection now constrains new shards in the existing
+mixed portfolio generator and compiler. The offline target, candidate count,
+and online portfolio calls all pass the registered metadata. Retained shards
+are preserved. Production changes are `_internal/phone_shards.py`,
+`_internal/route_generation/envelopes.py`, and `_unified/phone_residency.py`.
+The regression in `tests/test_offline_phone_residency.py` preloads Qwen, then
+proves the dynamically selected Gemma replacement fits its stored eight-layer
+mask while retained session identities and load counts remain unchanged.
+
+The cold helper events also show why HTP2 stayed unused: after two windows on
+smaller layouts, the next exact geometry had no measurement and its bid used
+the 5 s measurement-resolution default as predicted token latency. The old
+request-wide first-probe rule then vetoed all later learning windows.
+`_internal/adaptive_decode.py` and `_unified/helper_preparation.py` now authorize
+only the pending, unmeasured LEARNING policy within the existing request probe
+budget. A changed helper set resumes fraction search, keeps the serving mask
+until its boundary acknowledgement, and does not reset the budget. Repeated
+rebind polling is idempotent. Two new adaptive regressions reproduced the
+veto and premature EXPLOITING state before their fixes. The physical gate also
+persists completed online Qwen/Gemma checkpoints before later assertions.
+
+Focused helper, adaptive, shard, transaction, adapter, and replay validation
+passed 201 tests in 152.103 s. Both replay goldens remain unchanged. V5 evidence
+is under `/home/zhihao/s42-ffn-independent-sessions-20260905-v5-offline`:
+`run/FAILURE.json` hashes to
+`14e75539c57132757012adc97ed9c989f3297936d859b7dd5901574fd05f98af`,
+`run/COLD_PRELOAD_RESULT.json` to
+`8b2f2a03683ac4c11037c24cd4353b126d038509efcc94aec9dae16a4c0495af`,
+and `SOURCE_MANIFEST.json` to
+`e770fda716c9cd504902f71e0c3af4e028b9a79ca915c03407c441f133131a1c`.
+Cleanup restored ADB and stopped only the campaign's servers. No trace ran.
+
+---
+
+## Log - `2026-09-05 00:41 EDT` - Resume FFN-shard residency gate after v4 pause
+
+The paused v4 deployment matches the current scheduler source byte for byte.
+The desktop has no campaign server running, the OP15 is reachable on ADB,
+and live GPU memory use is 3,178 MiB. Validation resumes with the existing
+calibrated desktop parents and fresh v5 artifacts. No trace is authorized by
+this gate.
+
+The v2 failure was an adaptive progress race: a buffered decode callback
+arrived after a control acknowledgement with a non-increasing timestamp.
+`adapters/http_backend.py` now applies the existing progress fence to the
+single-request path too; the regression is
+`tests/test_llama_server_adapter.py::test_buffered_progress_after_control_ack_is_ignored`.
+The focused adapter, adaptive, and offline set passed 86 tests before v3.
+
+The v3 run then exposed a separate assignment defect. The Gemma FFN index
+stores disjoint eight-layer shards, but planning could select a larger
+one-session assignment. The physical adapter correctly rejected it with
+`configured phone FFN shard index does not cover the scheduled assignment`.
+Storage coverage is now supplied to the existing scheduler compiler through
+`PhoneFfnShardStorageMetadata`, and shard lookup validates the selected session.
+Files changed for that repair are `scheduler/__init__.py`,
+`scheduler/scheduler.py`, `scheduler/_internal/phone_shards.py`,
+`scheduler/_internal/route_generation/compiler.py`,
+`scheduler/_internal/route_generation/residency_evidence.py`,
+`scheduler/_internal/route_generation/envelopes.py`,
+`scheduler/adapters/ffn_shards.py`, `scheduler/adapters/phone_session.py`,
+`scheduler/campaigns/burstgpt/runner.py`,
+`scheduler/tests/test_ffn_shards.py`, and
+`scheduler/tests/test_multi_session_phone.py`. The focused shard, session,
+offline, and catalog set passed 63 tests; replay determinism passed with
+both existing goldens unchanged. The generator and worker were reused.
+
+Artifact root for these attempts is
+`/home/zhihao/s42-ffn-independent-sessions-20260904-vN-offline`.
+The `run/FAILURE.json` hashes for v2, v3, and v4 are respectively
+`eab7d944629d40791ab8264c622d16f95b2fd87f4356c61d87d69aa726964cc1`,
+`bafca386e2d4a1a2f9378c8172c0feb21bc6b6bbf771fcb1e2025cb24e99b0bf`,
+and `cc53a01c4f754e0a468d3e0e9c88a98f3ceccea4ddee255f536711fca3c54439`.
+Their source-manifest hashes are
+`834cec9e00c5805a6001bb8f3af3115261be06b113ec68cfe45bd44201c81d18`,
+`43bab97fae151f5addfdabaedd35aac7c4bf939257618c26e4edf4f65848680b`,
+and `c14693f1b7fe5e76270528f78009e6b4c2c5a775d86d8a6437587a5a80ea8a92`.
+V4 was interrupted at the user's request during the cold validation request,
+after 612 physical Qwen calls. Its failure records `KeyboardInterrupt`, not
+a completed acceptance result. The gate processes stopped and the existing
+USB close command restored ADB; partial evidence remains intact.
+
+---
+
+## Log - `2026-09-04 13:22 EDT` - Cross-request READY-layout reuse passes on Qwen 43 and 67
+
+The short physical acceptance gate passed. Request 43 prepared one Qwen shard
+set, used HTP0/HTP1/HTP2, and completed before request 67 arrived. Request 67
+then materialized a new request-bound helper from the existing system-owned
+READY template. It reused the same artifact, desktop parent, layout geometry,
+per-session generation, shard identities, and per-session operator plans
+without a second phone launch or any weight reload.
+
+The root cause was that the reusable helper cache retained request-preparation
+transaction state. Equivalent READY envelopes could therefore differ only by
+`replacement_authorization` or `preparation_changed_session_ids`, and a later
+request failed the exact-opportunity check after the preparation owner had
+completed. `_unified/helper_envelopes.py` now strips that request-owned state
+from reusable templates, resolves the authoritative READY template at each
+eligible boundary, and creates a fresh request-bound envelope. Exact artifact,
+desktop-parent, geometry, shard, operator-plan, transport, endpoint, and
+session-generation checks remain in force. Helper lifecycle evidence is
+exported directly as `ELIGIBLE`, `TEMPLATE_FOUND`, `MATERIALIZED`, `ATTACHED`,
+`FRACTION_APPLIED`, `DETACHED`, and `REJECTED` events.
+
+The focused helper, adaptive, and replay set passed 129 tests. Repeated replay
+output is byte-identical. The v8 golden remains
+`sha256:965f218bb5f81a57dbb51167624798f02eb79354b6cc042683b2b1ed9b1a868d`.
+After decoding the previously documented v29 memory-reserve change, the v3
+golden was deliberately updated from
+`sha256:59b7d9d1da816d685042676c68dbca32b6bc45a3602e84bb98b8f8edf55db26a`
+to
+`sha256:f78d2b2c37a3880a523eba4f5315ada0207678c841d633229782bfa3a05c1829`.
+The decoded difference is 17 to 18 resident Qwen layers, resident bytes
+9,091,153,920 to 9,625,927,680, masks 31/2016/129024 to 63/4032/258048,
+and a generation-2 one-session replacement moving from HTP1 with six Gemma
+layers to HTP0 with nine. Selected routes and lifecycle event-kind sequences
+are unchanged. The full field-level diff is recorded in
+`scheduler/tests/data/replay/README.md`; the hash was not updated in isolation.
+
+Physical artifact:
+`/home/zhihao/s42-goal1-ready-reuse-20260904-v5-run/run/RESULT.json`
+(`3f493a852a45acf6c88cb45d1d8bd85b42ac4405e36bea4be1985bd8c9c39040`).
+The RESULT is PASS with 2/2 semantically accepted requests. There is one direct
+phone receipt, three initial `LOAD_AUTHORIZED` session records, and no later
+load. All three sessions stay at generation 1. Request 43 makes 5,148 phone
+calls, 1,716 per session; request 67 makes 1,476 calls, 492 per session. Their
+generation-keyed execution proof hashes are
+`sha256:deb0be6b3d46bfea7cafa91d4ca87d021c8400f07128989ad2db3f56e9c0c66d`
+and
+`sha256:8bf4dcb9de76d266744b0a90480d77cd1be4ae2c735ef2a12add90ecaa1326a6`.
+
+The initial physical load published HTP0 after 10.992073 seconds, HTP1 after
+12.623597 more seconds, and HTP2 after 11.855897 more seconds. First-session
+and all-session readiness were 10.992073 and 35.471585 seconds from physical
+load authorization; scheduler preparation, including orchestration, took
+49.612915 seconds. Request 43 started desktop execution at 117.686573 seconds,
+before READY at 161.653325 seconds, and attached at token 52 at 161.781635
+seconds. Request 67 arrived after request 43 completed and attached at token 0
+at 351.528715 seconds without loading. Its helper leases `lease-24` through
+`lease-30` are disjoint from request 43's `lease-11` through `lease-17`.
+
+There are zero `REJECTED` helper events, zero recoveries, zero direct transport
+reset recoveries, zero rematerialization errors, zero stale-execution errors,
+and no executed fallback. One large-model server process served both requests,
+so there was no endpoint restart. Final USB restoration reports `RESTORED` at
+5,000 Mbps. An earlier fresh v4 artifact failed before any phone load because
+the old 18-GPU-layer desktop parent exhausted live VRAM; the passing v5 gate
+used the independently calibrated 16-GPU-layer parent
+`sha256:071a9a0b8112e5701e9055a4a254104e1dd31f04a850795500c098fadc542aad`
+without weakening memory admission.
+
+Exact Goal 1 source files are `_unified/helper_envelopes.py`,
+`_unified/helper_preparation.py`, `_unified/adaptive_decode_control.py`,
+`_unified/automated_selection.py`, and
+`_internal/model_placement_controller.py`. Focused regressions are in
+`tests/test_offline_phone_residency.py`,
+`tests/test_session_cow_transaction.py`, and
+`tests/test_replay_determinism.py`; the bounded schedule is
+`campaigns/burstgpt/data/traces/physical_two_request_ready_reuse_gate_v1.json`.
+No full or reduced trace was run.
+
+---
+
+## Log - `2026-09-04 11:32 EDT` - Replay mismatch decoded to the v29 residency reserve
+
+The `session_cow_gate_v3` replay mismatch predates the 09:55 late-helper
+attachment changes. Replaying clean deployed source trees reproduces the old
+golden with v28 and the mismatch with v29. The only scheduler source change
+between those deployments is `_unified/placement_epochs.py`: v29 stopped
+reserving memory for an unobserved persistent phone service unless its energy
+evidence is `QUALIFIED`.
+
+That policy change freed exactly 534,773,760 bytes. The saved v3 physical
+snapshot proves a 17-layer Qwen layout totaling 9,091,153,920 bytes: HTP0 has
+layer mask 31 and 2,673,868,800 bytes, while HTP1 and HTP2 have masks 2016 and
+129024 and 3,208,642,560 bytes each. Current planning proposes an 18-layer
+layout totaling 9,625,927,680 bytes: masks 63, 4032, and 258048, with
+3,208,642,560 bytes per session. Exact proof validation therefore returns
+`NOT_OBSERVED`, as it should, because the saved physical identity does not
+match the newly proposed geometry.
+
+The 09:55 changes in `_unified/helper_envelopes.py` and
+`_unified/automated_selection.py` only permit a system-owned READY endpoint
+template to follow an already validated desktop-parent rebind. They cannot
+affect the initial proposal before a READY layout exists. They remain in
+place. The replay golden remains unchanged; any future re-pin must be an
+explicit oracle update for the earlier v29 memory-policy change and include
+this decoded layout diff.
+
+---
+
+## Log - `2026-09-04 10:46 EDT` - Fresh v14-v7 completion and bounded-wait diagnostics
+
+The requested v14-v7 mixed gate was rerun from the immutable v14 deployment in
+a fresh artifact directory. It completed all 16 requests (11 Qwen, 2 Gemma,
+and 3 Llama) in 1,084.931 seconds. The campaign RESULT is PASS, while the
+strict session-COW checker is FAIL on exactly one check: 190
+`helper rematerialization opportunity is not exact` events. The physical
+transaction itself passed every checker invariant. The dynamically selected
+session was HTP0; Qwen produced 54 calls on each of HTP0, HTP1, and HTP2;
+Gemma produced 270 calls on HTP0; only HTP0 was reconfigured; HTP1 and HTP2
+remained generation 1; and there was no fallback, recovery, unavailable
+session, or mid-run USB reset.
+
+- Result:
+  `/home/zhihao/s42-per-session-correctness-20260904-v14-v7-rerun-v1/run/RESULT.json`
+  (`ea778a9300c896304ef01e0762449d11eee8d0816f02a3dc3252fb33175cece0`).
+- Strict checker:
+  `/home/zhihao/s42-per-session-correctness-20260904-v14-v7-rerun-v1/CHECK_SESSION_COW.json`
+  (`e011b4dc2c4820550f18900fd7eed71d2ec39fdf2f6b8a3addff28176ed3930d`).
+- Runner log:
+  `/home/zhihao/s42-per-session-correctness-20260904-v14-v7-rerun-v1/runner.log`
+  (`c9ec22d288e7e83e7861c7265ee71136230c38a0ed721960a717573c62e697b6`).
+- Source manifest:
+  `719d0fbf40c2e434d002b826563e53d49f52177097df4eb7fa0d91945572d01b`;
+  capability catalog:
+  `1b18986ef394f9c18e002486d7915e169db5eacde6be27d20ee88b9163869317`.
+
+The failure is request-lifetime coupling, not a physical COW failure. Once a
+preparation-owning request completed, later Qwen decode-boundary polls could
+not reconstruct an exact helper from request-owned preparation state. The
+current branch addresses that cause with the system-owned endpoint-template
+fallback in `_unified/helper_envelopes.py`, while retaining exact artifact,
+desktop parent, endpoint, operator-plan, geometry, and session-generation
+checks. `_unified/automated_selection.py` also permits that exact template to
+follow a validated hot/cold desktop-parent rebind. Those files currently hash
+to `358d8f040d6093cbe671514a38ce863c66727a2b4c35cd597d25fb4acb31ba75`
+and `b17162b24fe2732f21a377f5c0fabc2a6b3cfecec1aa17bc7219dee43e883b2d`,
+respectively.
+
+The bounded offline gate wait was also corrected. It now returns the observed
+per-session totals as soon as the probed request is terminal, uses a one-call
+minimum for retained-service proof, and carries call baselines and observed
+totals into `FAILURE.json` on timeout. Exact files changed are
+`campaigns/burstgpt/offline_residency_gate.py`
+(`65c624cfcd02426d60b84e815a1057af0410259b94d2558e96526fbabf4a29e9`)
+and `tests/test_burstgpt_replay.py`
+(`6e2027f2dce8540062e6cb3c6cb4306cf10af5de2acad4723dc4812f2c5babbc`).
+The focused scheduler set passed 82 tests. No trace was run.
+
+---
+
+## Log - `2026-09-04 10:40 EDT` - Offline FFN shard GGUF files: worker shard mode, generator, scheduler lookup
+
+Until now every HTP worker opened the complete Qwen or Gemma GGUF and read each
+selected `ffn_gate`/`ffn_up`/`ffn_down` matrix in full before slicing out its
+suffix of `--columns` intermediate units. Sessions now open a per-session shard
+file that holds exactly the suffix slices they load.
+
+```
+complete GGUF (28 GB)                       HTP0.ffn.gguf  layers 0-5,  suffix 4096 cols
+  blk.*.attn_*, embd, norms  --dropped-->   HTP1.ffn.gguf  layers 6-11, suffix 4096 cols
+  blk.L.ffn_{gate,up}[n_ff-C:, :]  ------>  HTP2.ffn.gguf  layers 12-17, suffix 4096 cols
+  blk.L.ffn_down[:, n_ff-C:]       ------>  + HTPk.ffn.json (shard sha256) + FFN_SHARDS.json
+```
+
+| Piece | Where | What it does |
+|---|---|---|
+| Generator | `research_dev/scheduler/native/ffn_shard_gguf.py` | Slices via gguf-py byte views (block-aligned for quantized types), writes `s42.ffn_shard.*` metadata (version, parent sha256, n_embd, n_ff, column_offset, columns, layer_mask, layers, weight_type), sidecar sha256 manifest, and an index. `--verify-parent` hashes the source model. |
+| Worker shard mode | `examples/layersplit/ffn-split-worker.cpp` | Detects `s42.ffn_shard.version`; requires parent sha256 == `--artifact-sha256`, stored mask covers `--layers`, stored width >= `--columns`; slices inside the stored suffix and feeds the same metadata and bytes into the weight hash, so the hash, mask, slice, and block layout are identical to the full-GGUF path. Fraction changes keep activating blocks of the loaded slice; nothing new is read. |
+| Scheduler lookup | `research_dev/scheduler/adapters/ffn_shards.py`, `adapters/phone_session.py`, `campaigns/burstgpt/runner.py` | `FfnShardIndex.resolve(artifact, layer_mask, columns)` picks the smallest covering shard; the resident-workers manifest row carries the shard path instead of the model path; preflight and every launch hash the shards on the phone against the index. Runner flags `--qwen-ffn-shards LOCAL_FFN_SHARDS.json=/phone/dir`, `--gemma-ffn-shards ...`; absent flags keep today's behavior byte for byte. |
+
+Tests: `tests/test_ffn_shard_gguf.py` (tool byte equality against an independent
+quantize-then-slice reference for F16 and Q8_0; host worker equivalence on the
+CPU backend: full-GGUF vs shard hash/mask/slice/blocks equal for the stored
+width, a smaller served width, and a layer subset; foreign parent, uncovered
+layers, and insufficient width are refused) and `tests/test_ffn_shards.py`
+(index resolution, hash verification, manifest substitution). 63 focused tests
+pass; the full suite runs 949 tests with one unrelated failure (below).
+
+Binaries built, not deployed: host `build-cpu/bin/llama-ffn-split-worker`;
+Android arm64 `build-ffn-overlap-android/bin/llama-ffn-split-worker`
+(snapdragon-toolchain-hostgcc:v0.3 container), sha256
+`43adcb755f8ff10ba30073ae55a31c7af95ee4f14071cfd2a5ba961b8317da19`. Deploying
+it and the shard files to the phone is the worker session's step, after the
+running offline gate finishes.
+
+Latent issue seen on the way: the host CPU worker segfaults during weight
+upload on Q8_0 FFN weights in the unchanged full-GGUF path (phone shards are
+f16, so the phone path is unaffected); the Q8_0 case is covered at tool level
+only.
+
+Unrelated regression present in the tree at 10:35 EDT:
+`test_replay_determinism` fails for `session_cow_gate_v3` with
+`replay_observed_phone_layout` returning `NOT_OBSERVED` instead of `READY`
+during the generation-2 bootstrap. The replay test imports none of the modules
+changed here; `_unified/helper_envelopes.py` and `_unified/automated_selection.py`
+were edited at 09:55 by the worker session after the suite was green at 01:30
+(901 tests). That edit needs to be reverted or its golden regenerated with a
+decoded diff before commit.
+
+---
+
+## Log - `2026-09-04 02:00 EDT` - Per-session physical iteration ledger, v8 through v14
+
+This ledger was reconstructed from the immutable deploy, preflight, runner-log,
+and RESULT artifacts before further scheduler changes. All seven preflights
+passed. The capability catalog remained
+`sha256:59e75b5f734cb6875e53b9045b5781d0cdf5f8184042708c812a33161b7ac0a3`.
+
+### v8
+
+- Cause exposed: repeated session-mask drain binding reached a QUIESCED rebind
+  and raised `request helper rebind cannot bind a drain policy`. The resulting
+  execution command also inherited a one-session changed set without an exact
+  replacement authorization and failed closed with `partial phone command
+  lacks exact replacement authority`.
+- Change: preserve cached LEARNING demand as actionable uncovered demand.
+  Exact files changed from v7 were `_unified/phone_residency.py`
+  (`112b24755a194a53a4f9cbcfe89077629c34b1a8fc962356cea104dff830a4c8`)
+  and `tests/test_adaptive_runtime.py`
+  (`86bb09869844ad7876c678ced92a5ada4c6c9d77d80f51d05b4ad79cca6d6e71`).
+- Result: preflight PASS, physical v6 aborted, and no RESULT was published.
+  Artifacts:
+  `/home/zhihao/s42-per-session-correctness-20260903-v8-v6-preflight/PHYSICAL_PREFLIGHT.json`
+  (`efd9f2a122522d4defd41fba0d8e1769e5b2bb0df46ce75e1d1c13e8d950f7e8`)
+  and
+  `/home/zhihao/s42-per-session-correctness-20260903-v8-v6-run/runner.log`
+  (`c8d15c608d029c7457f09e066535fffc4d8b516cf39e32bec9995a802b3bbe44`).
+  Source manifest:
+  `65830cff7b812d923be7e1d26fdaddff36810e97261be6d89bc4cbbeb41d3c92`.
+
+### v9
+
+- Cause exposed: the drain-policy operation was not fully idempotent after
+  QUIESCED, and terminal proof found a real one-row discrepancy between the
+  adaptive window ledger and server calls: expected 360, observed 359.
+- Change: make a repeated identical drain-policy bind idempotent before the
+  REQUESTED-state check, and stop copying a transition-wide changed-session
+  set into a helper transition that did not own it. Exact files changed were
+  `_internal/model_placement_controller.py`
+  (`5381dbd6cc38b8c92e67f289ac518ed58d220485da1868368e56e86970f7270c`),
+  `_internal/runtime_plan.py`
+  (`3daba9ce23f9bbf3ff2eaca743d2dd40c2c3fd960fe06f9c4aeff91b80c15282`),
+  `tests/test_model_placement_controller.py`
+  (`a4cefb930711752b93b0ccdea3f29854d0569b3bc4edd59ccb5acdb97b948b6b`),
+  and `tests/test_session_cow_transaction.py`
+  (`c88119fe8d6d0e401d48aabc1a0669e73bbee4c553284e11f000f41d84377812`).
+- Result: preflight PASS, physical v6 aborted on terminal proof, and no RESULT
+  was published. Artifacts:
+  `/home/zhihao/s42-per-session-correctness-20260903-v9-v6-preflight/PHYSICAL_PREFLIGHT.json`
+  (`75934a33972b1cca3d934e190e7bccae3bb80a79f8eae16515b33c6a682a4805`)
+  and
+  `/home/zhihao/s42-per-session-correctness-20260903-v9-v6-run/runner.log`
+  (`d3a12993e331fd9d7ccaaa680b42fd5539d38e14c7644eca9b1588bfada92cb2`).
+  Source manifest:
+  `3c6e14b8cdef783e882d96a59995ed908ccade20e89a458f5dfda94fe41aa1e5`.
+
+### v10
+
+- Cause exposed: after terminal completion was repaired, the run showed that
+  the layout transaction was still not one-session exact. It performed three
+  physical reconfigurations, published READY generations 1, 3, and 4, produced
+  no Gemma phone calls, and emitted 41 helper-rematerialization failures.
+- Change: skip a drain-policy rebind already acknowledged QUIESCED, and parse
+  the timestamp and log-level prefix on `S41SERVERFFNCALL` records so proof
+  counting uses the actual server rows. Exact files changed were
+  `_unified/helper_preparation.py`
+  (`d8a2d8ab459ae4851798a0b7b1178e99fdfd32b415c620b653c74fd787897904`),
+  `adapters/llama_server.py`
+  (`a149699f39bec74b275379100f56baba30c36c526692f3fa2b6ddb7c648485c0`),
+  `tests/test_llama_server_adapter.py`
+  (`b5db336e69ce1114afd9cfb9f8d9de7a4a119de0e0d426ec4ff63d05c3aba848`),
+  and `tests/test_session_cow_transaction.py`
+  (`91ac5b1f6292b258d283746c761c44d3862a715f178cc7c89b19c1f9dd8bc6be`).
+- Result: campaign RESULT PASS for 2/2 requests, but strict session-COW verdict
+  FAIL. Artifact:
+  `/home/zhihao/s42-per-session-correctness-20260903-v10-v6-run/run/RESULT.json`
+  (`4341e960775328e2d790680b75bed11c602d5dc70fd1efc9507d93a7bf9a3a40`).
+  Preflight hash:
+  `0c7f703b721087320c0b332117ec9d008207649b1858c5d4282ee4b3a54bf8e3`;
+  source manifest:
+  `999a55e7a0f70f886825e486061e267b9674ff199bd7ecca052979c7669ba4ac`.
+
+### v11
+
+- Cause exposed: a READY partial target could be rematerialized, but the
+  resulting execution command had no recoverable exact replacement authority
+  and failed closed with `partial phone command lacks exact replacement
+  authority`.
+- Change: retain a profitable LEARNING layout when it already covers all
+  demand; allow a preparation owner's exact envelope to bootstrap another
+  request; compile late helpers against the authoritative READY layout and its
+  verified safety sample; validate rollback usability by retained session
+  subset; and fail closed on zero phone capacity. Exact files changed were
+  `_internal/model_placement_controller.py`
+  (`31691921f4ab9c86ab4f878f3bd94bc708641e411cc32a49ae0a5d3e1fb49ee3`),
+  `_unified/helper_envelopes.py`
+  (`b7374865827ff2c1f6fa761fea180c71693d6a76090ca4da04f21aa099606a8d`),
+  `_unified/helper_preparation.py`
+  (`8a53582754637328beaafae49aa20de5685f165185b69ad4b6d4c09f883f1b6e`),
+  `_unified/phone_residency.py`
+  (`e70dc6f231045f1a768c27c54b14eff0fb5f52730b6494228a43a9cdf84eb54e`),
+  `tests/test_model_placement_controller.py`
+  (`53f0a9fdd2e3634dceb9b1eafbae2faa99a8567f4a47cdb7de0c2a1d014a4adb`),
+  and `tests/test_session_cow_transaction.py`
+  (`218eaab7e65edc0ebd3c3f396225620cf4c5632cfa7aee51c65a09ef38bed748`).
+- Result: preflight PASS, physical v6 aborted, and no RESULT was published.
+  Artifacts:
+  `/home/zhihao/s42-per-session-correctness-20260903-v11-v6-preflight/PHYSICAL_PREFLIGHT.json`
+  (`61c80763bcfd99598d5c755fe3cfcac3f38fc787573e881bdf32cc784a857573`)
+  and
+  `/home/zhihao/s42-per-session-correctness-20260903-v11-v6-run/runner.log`
+  (`910750711fc0e2eb512bab4388cf772eb5d12972c4855043a3075c866e8b9af4`).
+  Source manifest:
+  `43cd14d5fcaab7f05a63d210b2f67cf7c2d362b675ec786d1a39bd6271e792f5`.
+
+### v12
+
+- Cause exposed: the physical transaction became one-session exact, but the
+  retained QUIESCED request could not complete its ready-layout rebind. It
+  emitted 23 helper-rematerialization failures and did not preserve the
+  quiesced helper through rollback and retarget.
+- Change: attach replacement authorization only when the helper's own changed
+  set contains exactly one session, and recover the unique authorization for
+  an already READY partial target. Exact files changed were
+  `_unified/helper_envelopes.py`
+  (`873e5964502f10cba8334e2edc321553a4952d15f0882a14675e7d4bf5bc1ffd`)
+  and `tests/test_session_cow_transaction.py`
+  (`77c24c539fc14be47d88478b3cad62dfd1cb66aecca06713d2b953e0f99d78f8`).
+- Result: campaign RESULT PASS for 2/2 requests and physical rollback, but
+  strict verdict FAIL only on the helper lifecycle checks. HTP0 was the
+  dynamically selected session; Qwen called HTP0/1/2 120 times each and Gemma
+  called HTP0 180 times. Artifact:
+  `/home/zhihao/s42-per-session-correctness-20260904-v12-v6-run/run/RESULT.json`
+  (`ac84d922ecfa5a836ac96c204b68cd3a5373e31c67d2a65ca8ebda624e2545c8`).
+  Preflight hash:
+  `05e46cbf6d397403cd6bb5fd7cb5c495cf0646eeccc33988714ee11b8a385675`;
+  source manifest:
+  `00d9236e08976ced2593c4d66d25bf13582471d5e510a5fd55256fe20988f825`.
+
+### v13
+
+- Cause exposed: request-local historical identity was sufficient to retarget
+  the rollback rebind, but late refresh still emitted 18
+  `helper rematerialization opportunity is not exact` failures. The physical
+  one-session result itself remained correct.
+- Change: use a request's generation-scoped historical envelope only as an
+  exact endpoint bootstrap for its retained READY subset, and defer refresh
+  while the active rebind targets another generation. Exact files changed
+  were `_unified/helper_envelopes.py`
+  (`44c7df2c8a41140906d8be85de1556569053b74cb270850981b37efdedfef72e`)
+  and `tests/test_session_cow_transaction.py`
+  (`a2f413c4c0f80af5aaa197f147affc189252bd1978960b701b87e996984d07fa`).
+- Result: campaign RESULT PASS for 2/2 requests. Every strict physical and
+  rebind-retarget check passed except `no helper rematerialization failure`.
+  Artifact:
+  `/home/zhihao/s42-per-session-correctness-20260904-v13-v6-run/run/RESULT.json`
+  (`1297376e15fdd8144704c18bcea47fa470b619d7cd57ed96c3049f4519056301`).
+  Preflight hash:
+  `08c90b8776d722e38f1689b7f03fc4c89e88f9981a035a2daa4d4037fa5c82b1`;
+  source manifest:
+  `14a5f81c3a20200aec4131d6f2be920fe5bf47bd34b231fc1723d0265afefdc2`.
+
+### v14
+
+- Cause fixed: same-geometry route caches ignored physical session epochs,
+  the bounded rough frontier could discard the selected mixed portfolio, and
+  exact physical session residency was not credited when the logical route
+  executor differed from the session worker endpoint. A cold/additive
+  one-session publication also incorrectly demanded replacement authority.
+- Change: key residency cache invalidation by the complete execution identity;
+  validate and credit exact per-session physical residency; retain the exact
+  selected portfolio visit in the rough frontier; allow cold/additive partial
+  publication without replacement authority; and make the checker consume the
+  canonical `request_helper_events` stream. Exact files changed were
+  `_internal/route_generation/costing.py`
+  (`48171613a5f317570d96a1607aa3fa3c73232ae8ebf7010a894befaa2bc1033f`),
+  `_internal/route_generation/residency_evidence.py`
+  (`bef79b7e9d54070a84956bb08e631be93a41a6289f0e644448b9f21cc5b6977a`),
+  `_unified/helper_envelopes.py`
+  (`4aaa2ff8231b2a92f4b728994e8928d49147397f73b18299d4bb4ded212da810`),
+  `campaigns/burstgpt/check_session_cow_gate.py`
+  (`e5f1891c34b66d9a063f048437bb75b8192e4f6b33d581679763d1361e6fc5d4`),
+  `tests/test_multi_session_phone.py`
+  (`c30e47eb0b993fa92eeeecf7c179bb8f1ea46e4018ad40e6f50efffa22d26bc5`),
+  and `tests/test_session_cow_transaction.py`
+  (`580feece599f2778910f45552a38e16db9c71f012230d19907176502f8e05261`).
+- v14-v6 proof: strict fault checker PASS. The checker derived `S=HTP0`
+  from the proposal; production did not hardcode it. Qwen HTP0/1/2 each
+  published `LOADING -> VERIFIED -> READY` at session generation 1. Only S
+  then entered `DRAINING -> LOADING`. The injected Gemma generation-2 load
+  failed and rollback physically restored Qwen on S at generation 3. The
+  retry used source generation 3 and published Gemma on S at generation 4;
+  layout READY generations were 1 and 3. HTP1 and HTP2 remained Qwen READY at
+  generation 1 throughout and produced 240 calls each; Qwen's historical S
+  generation-1 proof remained valid with 120 calls, and Gemma produced 180
+  calls on S. Proof identities include session, artifact, shard geometry,
+  operator plan, and session generation.
+- The failed attempt preserved assignment hash
+  `sha256:323c7ba903e34434bac747399a65bdda0c6de3dd2e2936bd876dfef5a4e80a4b`
+  from `PREPARATION_STARTED` through `PREPARATION_FAILED`. The retry preserved
+  `sha256:895c00436e1435742acd773639de88eb43649e85b713516d59da6c0ec76df995`
+  from `PREPARATION_STARTED` through `PREPARATION_READY`. There was one
+  rollback, no unavailable session, no execution fallback/recovery, and no
+  mid-run USB reset.
+- v14-v6 artifact:
+  `/home/zhihao/s42-per-session-correctness-20260904-v14-v6-run/run/RESULT.json`
+  (`d06f21ffcf4547704eaaaea8685740ce00e32b3e2408b099c3f83d4cfe3035bf`).
+  Preflight hash:
+  `8ba38564ad5acf93fd67acd3723db0afa166e0e7428a40345a5305dbcec8e5bc`;
+  source manifest:
+  `5781a0574b728c6211c6279c85ecf953a05e34a5e110d47243352d6c72eaefae`.
+- v14-v7 separately completed 16/16 requests and the physical QQG transition,
+  but strict validation failed because 184 later Qwen boundary polls lacked a
+  system-owned endpoint template after the preparing requests had completed.
+  Artifact:
+  `/home/zhihao/s42-per-session-correctness-20260904-v14-v7-run/run/RESULT.json`
+  (`9a1683acd57fbbba38df2086d6c6cf55c4d43e3179739e80ed6cc9197719c0f7`).
+
+---
+
+## Log - `2026-09-03 16:55 EDT` - Offline residency gate implemented; physical preload blocked by GPU admission
+
+The canonical scheduler now plans a phone-resident FFN superset before a paid
+trace and exposes it as ordered, one-session stages. Each stage has an explicit
+`EMPTY -> LOADING -> VERIFIED -> READY` lifecycle and is published as soon as
+its own physical identity is verified. The physical adapter retries deferred
+session-scoped draining, preserves retained READY sessions, and records preload
+time, load energy, native manager phases, physical call timestamps, generation,
+resident bytes, and exact shard identity. Request-owned helper preparation no
+longer races a nonterminal system-owned preload plan. Desktop campaign restart
+now verifies that the authoritative phone map, per-session generations, and load
+counts are unchanged.
+
+A bounded physical gate was added for cold three-shard Qwen preload, progressive
+publication with desktop execution already active, desktop restart and exact
+reuse without reload, adaptive fractions `0/25/50/75/100`, a dynamic one-session
+Gemma replacement, and an injected second-session failure with physical rollback.
+The gate requires physical calls during overlapping load and inference, exact
+server acknowledgement of a retained-session drain mask, one terminal phone
+receipt, no fallback/reset/global restart, and logical/physical map equality.
+It does not invoke a trace.
+
+Software validation is green: 863 tests in the canonical scheduler test
+directory and 316 historical S42 compatibility tests passed, for 1,179 tests
+across the complete 78-program runner. The deterministic replay independently
+passed both saved cases with current canonical hashes
+`0a4e50fda8d96933f9b137cbf6784fd8ee916b6831ed53c00aec8bbcb3c39521`
+and `87bdec1e2b58f8cf71c5150fc778a0fea68a78a182dc89104851626199a3d6c0`.
+
+Fresh Android binaries were built and deployed without overwriting prior
+artifacts. On-device hashes are:
+
+- worker: `d4f310d1781355f00b08f682ee1684220bf20a3b4d847ea3210443ed3540e854`
+- resident manager: `0e7736c02ed880e4a186b2ee63212169dc0d6ce7b99df1fc128f5f28971a42df`
+- resident router: `f599dbd95af5cafa6708f0bdbff310a6548229c5d661424dc3572722d5a30c1d`
+- session script: `ca76c15661b3cfb9f6964cf8c8fc8c52226d94879f9ba4eb712e1e0f634f952e`
+
+The decision-only resolve gate passed and its catalog contains all eight
+references to the derived transport identity
+`sha256:c5b0fa32aa85fa78f901892ab7297a4ccd71639ad7cf4bfb9df6f12bf2f06462`.
+The unchanged physical preflight then stopped before any phone load. Its exact
+blocker is that the qualified Gemma desktop control
+`physical:cold:desktop` is rejected by `MEMORY_CAPACITY`; GPU memory remained
+3,178 MiB used with 12,770 MiB free. CPU energy, GPU identity, OP15 runtime and
+power telemetry, Android USB, 5,000 Mb/s link speed, models, and evidence all
+passed. Android USB was verified restored after the failure. The blocker
+artifact is
+`/home/zhihao/s42-offline-residency-independent-20260903-v1-preflight/PHYSICAL_PREFLIGHT.json`
+with SHA-256
+`5e6ffc6937036ae5680584bf70ea13e8910632f617911903a257e3261ae1b3ea`.
+No phone weights were loaded and no trace or physical inference was run. The
+gate must wait for freed desktop VRAM or a separately qualified lower-GPU Gemma
+control profile; qualification was not weakened.
+
+## Log - `2026-09-03 14:20 EDT` - Stage 3 active extraction complete
+
+Stage 3 stopped at the requested structural boundary. The six scheduler giants
+named by the cleanup plan are now 144 lines or fewer, and the active FFN
+resident-envelope extraction is 38 lines. The extracted helpers remain pure or
+single-purpose and preserve the existing public scheduler and route compiler
+entry points. No unrelated adapter or validator split was continued.
+
+| Metric | Frozen baseline | Stage 2 | Stage 3 |
+|---|---:|---:|---:|
+| `scheduler.py` lines | 19,757 | 995 | 995 |
+| direct `UnifiedScheduler` methods | 239 | 19 | 19 |
+| composed methods over 300 lines | 11 | 8 | 0 |
+| largest composed method | 1,155 | 1,155 | 265 |
+| largest of the six named extraction targets | 1,155 | 1,155 | 144 |
+| manual transaction checkpoint calls | 29 | 0 | 0 |
+| direct helper-envelope constructors | 5 | 1 | 1 |
+| free-text `UnifiedScheduleError` raises | 421 | 415 | 415 |
+
+Validation: all 890 scheduler tests passed, followed by every historical S42
+adapter and artifact test in `tests/run_all.py` (179.82 seconds total). The
+Stage 0b replay exercised all 40 saved requests and both lifecycle branches.
+Both canonical hashes are unchanged:
+`e3f7cc9d9ea3f5d61c04b12934ac7f3758556462b3cc5cb35c9bee70ba6461b0`
+and `05337c766b29da055551a6443af8b1224de3ed6adafb60b5e2eee492af9a8898`.
+
+The complete gate initially exposed a Python 3.13 dynamic-import failure in
+the mechanically extracted BurstGPT runner records. Restoring eager type
+annotations in that script fixed the cause; its historical module then passed
+22/22 before the complete clean rerun.
+
+Files structurally changed during Stage 3 were the unified placement,
+candidate, request, residency, helper-envelope, and adaptive-control concerns;
+the route-generation costing, evidence, template, pattern, and envelope
+concerns; runtime plan, capability, learning, controller, shard, policy, and
+dynamic-residency internals; and the HTTP, llama-server, phone-session,
+heterogeneous-rig, and BurstGPT runner adapters. No physical run was started.
+
+## Log - `2026-09-03 12:05 EDT` - Stage 2 transaction patterns collapsed
+
+Stage 2 is behavior-preserving and green. Every unified scheduler mutation now
+uses the single `self._transaction()` context manager. The only remaining
+low-level checkpoint and restore calls are inside that context manager. It
+restores recoverable scheduler errors by default, can preserve a deliberately
+published terminal failure, and retains the existing conversion behavior for
+unexpected adapter failures. The priority-compaction and projection-deferral
+paths were separated mechanically so their rollback scopes remain explicit.
+
+All five `RuntimeHelperExecutionEnvelope` sites now call one
+`_build_helper_envelope()` constructor. It owns the layout generation,
+geometry, changed-session scope, and replacement authorization. The constructor
+itself is the sole direct envelope construction site. `request_helper_events`
+are exported by the BurstGPT `RESULT.json` assembler and consumed directly by
+`analyze_phone_wait_timeline.py`.
+
+| Metric | Frozen baseline | Stage 1 | Stage 2 |
+|---|---:|---:|---:|
+| `scheduler.py` lines | 19,757 | 990 | 995 |
+| manual transaction checkpoint calls | 29 | 18 | 0 |
+| low-level checkpoint calls | 29 | 18 | 1 |
+| low-level restore calls | 29 | 20 | 1 |
+| direct helper-envelope constructors | 5 | 5 | 1 |
+| composed methods over 300 lines | 11 | 8 | 8 |
+| largest composed method | 1,155 | 1,155 | 1,155 |
+| free-text `UnifiedScheduleError` raises | 421 | 415 | 415 |
+
+Validation: 890 scheduler tests passed in 159.078 seconds. Focused
+session-COW, adaptive-runtime, and replay tests passed 55/55, and the automated
+runtime module passed 182/182. Both Stage 0b replay goldens are unchanged:
+`e3f7cc9d9ea3f5d61c04b12934ac7f3758556462b3cc5cb35c9bee70ba6461b0`
+and `05337c766b29da055551a6443af8b1224de3ed6adafb60b5e2eee492af9a8898`.
+
+Not fixed in this stage: free-text error centralization and typed helper-event
+payload builders remain follow-up cleanup; shrinking the remaining giant
+functions belongs to Stage 3. No physical command or inference run was
+started.
+
+## Log - `2026-09-03 11:47 EDT` - Stage 1 scheduler split complete
+
+Stage 1 is behavior-preserving and green. `UnifiedScheduler` now composes
+per-concern mixins for placement, phone residency and replay, candidate costs,
+request lifecycle, helper envelopes and preparation, adaptive decode, runtime
+requests, and legacy schedules. The route generator is likewise split by
+candidate construction, costing, feasibility, identity, templates, envelopes,
+patterns, and evidence. Public scheduler entry points and signatures are
+unchanged. The decode-progress and queue-boundary residency handlers were moved
+verbatim into the phone-residency concern so every production split module is
+below 3,000 lines.
+
+| Metric | Frozen baseline | Stage 1 |
+|---|---:|---:|
+| `scheduler.py` lines | 19,757 | 990 |
+| direct `UnifiedScheduler` methods | 239 | 19 |
+| largest split module | 19,757 | 2,989 |
+| composed methods over 300 lines | 11 | 8 |
+| largest composed method | 1,155 | 1,155 |
+| transaction checkpoint calls | 29 | 18 |
+| free-text `UnifiedScheduleError` raises | 421 | 415 |
+| v4-v7 absolute-path occurrences | 104 | 104 |
+| spike directories | 63 | 63 |
+
+Validation: 890 scheduler tests passed in 160.827 seconds, including
+`test_architecture` and the 40-request deterministic replay. The Stage 0b
+goldens remain `e3f7cc9d9ea3f5d61c04b12934ac7f3758556462b3cc5cb35c9bee70ba6461b0`
+for the session-COW v3 case and
+`05337c766b29da055551a6443af8b1224de3ed6adafb60b5e2eee492af9a8898`
+for sparse-locality24 v8. `compileall` and `git diff --check` also pass.
+
+Not fixed in this stage: repeated transaction blocks and free-text helper event
+payloads remain for Stage 2; the eight methods above 300 lines remain for Stage
+3. No physical command or inference run was started.
+
+## Log - `2026-09-03 15:48 EDT` - Stages 1-4 of the scheduler cleanup applied; 83 -> 17 giant functions
+
+Behavior-preserving restructuring of `research_dev/scheduler`, verified after
+every stage by the 890-test suite and the two Stage 0b replay goldens.
+
+| Stage | What changed | Verification |
+|---|---|---|
+| 1 | `scheduler.py` (19,857 lines, 240 methods) split by an AST script into `_unified/` mixins; `UnifiedScheduler` is now a 969-line assembly (init, registration, checkpoint/restore). `_internal/route_generation.py` (10,272 lines) became the `route_generation/` package (compiler + 8 mixins + conversion). | all 244 + 109 moved functions byte-identical to the originals; 890/890; goldens unchanged |
+| 2 | `_runtime_transaction()` context manager replaces 12 hand-written checkpoint/try/restore blocks (9 sites with custom failure handling kept explicit). `request_helper_events` exported in RESULT.json for the analyzer. | 890/890; goldens unchanged |
+| 3 | 12 parallel agents extracted named helpers from the giants (`_one` 1559, `_apply_adaptive_history_costs` 1155, runner `main` 1091, `_replan_automated_request_once` 763, ...). The agents were cut off by the API session limit before all reported; 17 functions of 200-352 lines remain (list below). | suite run after the cut-off: see below |
+| 4 | 13 root `.tmp_launch_*` scripts and 5 `.tmp_*` replay helpers moved to `campaigns/burstgpt/scripts/` (`launch_gate.sh` is the maintained one; the rest under `archive/`). README package layout rewritten for the new modules. | shell syntax check |
+
+```
+scheduler.py 19,857 -> 969 lines        route_generation.py 10,272 -> package, largest file 3,024
+functions >= 200 lines: 83 -> 17         largest function: 1,559 -> 352 lines
+```
+
+Remaining giants (200-352 lines): `runtime_residency_cohorts.__post_init__`,
+`placement.plan_sequence`, `adapters/runtime._start_helper_preparation`,
+`heterogeneous_rig.snapshot`, `route_generation/feasibility._eligibility` and
+`_transport_adapter_parameters`, `conversion.candidate_set_to_runtime_costs`,
+`UnifiedScheduler.__init__`, `model_placement_controller.select_phone_layout_candidate`
+and `__post_init__`, `adapters/runtime.worker`, `identity._capability_identity`,
+`http_backend.complete`, `phone_session.__post_init__`,
+`_prepare_legacy_evidence_migrations`, `heterogeneous_rig._close_bridge`,
+`runtime_residency_cohorts.holds`.
+
+Latent bugs found by lint during the split and fixed (all pre-existed the cleanup):
+`_prevalidate_target_layout_helper_envelopes` referenced
+`REQUEST_HELPER_REBIND_STATES` without importing it (NameError on the retained
+rebind path); the legacy `adapters/snapshot.py` builder used `device_health`
+without defining it on the composite-executor path; two annotation-only
+missing imports.
+
+Test-suite state at 15:55 EDT: 898 tests, 2 failures + 1 error, none from the
+cleanup. The worker session is concurrently adding per-session
+`SESSION_VERIFIED` / `SESSION_VERIFIED_FROM_OBSERVATION` events in
+`model_placement_controller.py` and the offline phone-residency preload
+(`_active_offline_phone_residency_plan_id`). Decoded golden diff (Stage 2
+snapshot vs current tree) contains only those additive events, so the golden
+regeneration belongs to that feature commit, and the
+`test_arrival_preserves_in_progress_phone_layout` error is the new attribute
+missing on a scheduler built without `__init__`. Two writers on one uncommitted
+tree is the main risk right now; commit the cleanup before the feature
+continues.
+
+Test command: `python3 -m unittest discover -s research_dev/scheduler/tests -p 'test_*.py'`
+(the `-t .` form does not discover; the tests directory is not a package).
+
+---
+
+## Log - `2026-09-03 00:12 EDT` - Stage 0b replay oracle hardened
+
+Stage 0b is behavior-preserving and green. The decision replay now hashes the
+full canonical phone-layout and request-helper event payloads after removing
+timestamps, event indices, and event hashes. Both saved cases also exercise a
+generation-2 proposal through `begin_request_helper_preparation`, an in-memory
+COMPLETED receipt, physical snapshot verification, and
+`complete_request_helper_preparation`. A second deterministic branch injects a
+post-load failure through `fail_request_helper_preparation` and records the
+rollback events.
+
+The test no longer reaches through scheduler-private controller, verification,
+or compiler attributes. `UnifiedScheduler.replay_observed_phone_layout()` is
+the single new public replay entry point and publishes a layout only when the
+snapshot proves its exact session identities. The replay-data README includes
+the golden regeneration command and requires a decoded before/after JSON diff
+for any deliberate golden change.
+
+| Case | Stage 0 hash | Stage 0b hash |
+|---|---|---|
+| session COW gate v3 | `883280ae5020c61eb2e6cbe3e29e8f6cb3fcfef1223e24811142a39e22ea9a29` | `e3f7cc9d9ea3f5d61c04b12934ac7f3758556462b3cc5cb35c9bee70ba6461b0` |
+| sparse-locality24 v8 | `735cd5c1f6eb98f2f3b240bf7bc24cbad272d906997f65a595c2ef2ed573848a` | `05337c766b29da055551a6443af8b1224de3ed6adafb60b5e2eee492af9a8898` |
+
+Validation: 890 scheduler tests passed in 155.617 seconds; the expanded replay
+test independently passed its byte-identical double execution in 83.016
+seconds. Frozen metrics are unchanged except `scheduler.py` is 19,857 lines,
+has 240 direct methods, and contains 423 `raise UnifiedScheduleError` sites
+because of the public replay boundary.
+
+Not fixed in this stage: later v8 arrival snapshots cross physical lifecycle
+discontinuities and cannot serve as the authoritative generation-1 QQQ source;
+using them directly still exposes the existing exact-eviction/projection
+failure. The lifecycle oracle therefore uses the saved generation-1 physical
+proof snapshot and retimes it for the saved arrivals, matching the fixture's
+existing segment boundary. This remains scheduler behavior to address after
+the cleanup stages, not an oracle assertion to weaken.
+
+---
+
+## Log - `2026-09-02 20:30 EDT` - session COW replacement made transactional; physical gate blocked by GPU headroom
+
+**Context.** The 2026-09-02 audit of `s42-online-learning-gate-20260902-v5` traced
+the failure past the online-learning fix to a copy-on-write phone-layout bug:
+after HTP2 was physically swapped Qwen -> Gemma, the retained Qwen helper
+envelope received the layout-global changed set (`HTP2`) and was rejected, the
+logical layout rolled back to QQQ while the phone stayed QQG, the retry hit
+`request helper rebind requires an active acquired helper`, and the terminal
+proof check compared Qwen's historical HTP2 calls against the new Gemma shard.
+
+**Fixed in `research_dev/scheduler` (all unit tests green, 172 focused + 869 module-wide).**
+
+| Step | Before | Now |
+|---|---|---|
+| Envelope scope | `changed_session_ids` copied layout-wide into every helper | `helper_preparation_changed_session_ids()` intersects with each helper's own shards (retained Qwen -> `()`, Gemma -> `(S,)`); one `_helper_changed_session_ids` used at all 5 sites; `_prevalidate_target_layout_helper_envelopes` runs before any physical load |
+| Commit | rematerialization failure rolled the commit back (logical QQQ, phone QQG) | PREPARE -> APPLY -> VERIFY -> COMMIT; rematerialization is post-commit in its own checkpoint |
+| Post-APPLY failure | logical rollback only | runtime worker calls `backend.rollback_transition` (rig `rollback_helper_transition`, receipt-driven `S42RESIDENCY_V3` restore, verified against captured source shards) before `fail_request_helper_preparation`; unproven restore -> session `UNAVAILABLE`, never republished READY |
+| Rebind retry | 0% quiesced helper could not re-request a rebind | `request_helper_rebind` resumes REQUESTED/QUIESCED, retargets after a rolled-back proposal (`REBIND_RETARGETED`), quiesced rebinds survive rollback (`REBIND_RETAINED_AFTER_ROLLBACK`); detached fallback attachments are not blockers |
+| Proofs | validated against current residency only | per-session residency windows in session generations; a ticket's calls verify against the shard resident during its window (`historical_execution_proofs` in the close receipt) |
+| Gate harness | none | `campaign.helper_preparation_fault_injection: post-load-once` (fires once, only on a partial replacement), `configs/v6` fault gate + `configs/v7` mixed gate, `check_session_cow_gate.py` requires one dynamic S consistent across plan / command / receipt / publication |
+
+**Not done.** Session-subset draining (keep Qwen live on the retained pair *while* S loads) is unchanged: Qwen quiesces to 0%, S loads, then Qwen rebinds to the retained pair.
+
+**Physical status: BLOCKED before execution.** Deploy `s42-session-cow-fault-gate-20260902-v1-deploy` resolved, but preflight is `BLOCKED`: Gemma's qualified desktop control (`physical:cold:desktop`, 24 GPU layers) is `MEMORY_CAPACITY`-rejected. Reproduced with the V5 code and the new code identically: admitted at GPU used <= 3.04 GB, rejected at >= 3.17 GB. The gdm greeter (`gnome-shell --mode=gdm`, PID 6871, up 39 days) now holds 3178 MiB (2829 MiB at the 16:40 V5 preflight). No compute process holds VRAM. Unblocking needs root on the desktop (restart gdm / the greeter) or a deliberate reserve/profile change; then: `.tmp_launch_session_cow_gate_v1.sh v6 <tag> preflight` -> `run` -> `check_session_cow_gate.py --expect-fault-injection`, then `v7`. Long trace not started.
+
+---
+
+## Current status - `2026-08-06 EDT`
+
+**THREE REAL LLAMA-SERVER BURSTGPT PAIRS SAVE 14.4% LATENCY AND 16.8%
+ACCOUNTED FLEET ENERGY WITH OP15 FFN OFFLOAD.**
+
+The RTX 4060 Ti desktop plus OP15 completed three alternating source-length
+BurstGPT control/treatment pairs. Every run completed 74 requests, 33,843
+input tokens, and 11,605 output tokens with default CPU selection, normal
+clock policy, continuous batching, identical models and arrivals, and zero
+swap. The I3 table `1:9664,3:8192,8:4096,128:8192,512:11136` changes only the
+sliced FFN route.
+
+Average makespan falls from 736.468 to 630.594 seconds (-14.38%), throughput
+rises 16.79%, server CPU-package plus GPU-board energy falls from 136.144 to
+112.586 kJ (-17.30%), and synchronized server-plus-phone energy falls from
+137.217 to 114.217 kJ (-16.76%). Every individual pair improves latency and
+fleet energy. OP15 executes 52,320 calls and 88.245 trillion MACs per
+treatment, with zero bridge resets and clean restoration.
+
+Mean exposed join wait is 2.67%, below S42's 5% trace-mix gate. The pinned
+MMLU64 score is 27 / 64 in both arms. Exact-token quality remains unclaimed:
+the path-matched greedy screen is exact for 2 / 4 sequences and 21 / 32 token
+positions. The fixed workload/profile epoch passes; rare M=1 through M=3
+shapes individually exceed the wait gate, so general per-shape admission is
+the next narrow scheduler task. Shared continuous-batch energy also requires a
+cohort-scoped S42 profile before live `enforce` can use this evidence. Evidence:
+`spikes/s41_gemma_qwen_continuous_baseline/tp_operator_split_v1/RESULTS_LLAMA_SERVER_I3_ENERGY_V1.md`.
+
+## Previous status - `2026-08-02 EDT`
+
+**A 64 KIB OP15 AOA KERNEL RECEIVE BUFFER CUTS REAL HOST-TO-PHONE LATENCY
+BY ABOUT HALF.**
+
+The official OnePlus accessory read path submits one 16 KiB receive request at
+a time. A source-matched GKI A/B test kept the transmit path at 16 KiB and
+changed only the receive size to 64 KiB. On OP15 directly attached at USB
+SuperSpeed to the RTX 4060 Ti desktop, the 1 MiB upload boundary fell from
+9.7466 to 4.7483 ms (-51.28%) and aggregate payload rate rose from 111.78 to
+215.29 MB/s. All three fresh-process repetitions improved.
+
+The model-shaped SwiGLU boundary fell from 0.8311 to 0.5337 ms (-35.78%) and
+the M=8 hidden boundary from 1.0468 to 0.6660 ms (-36.37%). Tiny attention and
+M=1 boundaries were noise-equivalent or slightly worse. Phone-to-host latency
+was unchanged, as expected. Live traces show the exact upload changing from
+64 x 16 KiB receive queues plus a tail to 16 x 64 KiB plus a tail.
+
+This is still a serial receive loop, not an RX ring, and it runs no model
+compute or energy test. Both kernels were temporary boots; no partition was
+flashed, and the phone was restored to its stock kernel with no workers or
+tracing left active. The next system gate is one real phone operator using the
+new staging primitive. Evidence:
+`spikes/s41_gemma_qwen_continuous_baseline/tp_operator_split_v1/RESULTS_AOA_KERNEL_RX64K_V1.md`.
+
+**DIRECT AOA ASYNC BUFFERING IMPROVES CONTINUOUS-BATCH TRANSPORT, NOT ONE
+DEPENDENT DECODE REQUEST.**
+
+The physical RTX 4060 Ti plus OP15 campaign completed 90 fresh-process cases
+and 21,000 exact response-validated paid exchanges. The new native path
+preposts libusb IN transfers and uses a reusable phone reader/writer ring.
+
+At queue depth 1, paired median latency is 7.67% to 14.04% worse for the four
+tested model boundaries, so serial direct AOA remains the single-request
+decode path. With independent requests, selected queue depths improve paired
+median transport throughput by 53.46% for a 10 KiB hidden boundary, 18.13%
+for an 80 KiB boundary, and 6.50% for a 68/34 KiB SwiGLU boundary. These are
+transport gains, not token-throughput gains.
+
+One MiB direction controls reach 79.72 MB/s host-to-phone versus 242.96 MB/s
+phone-to-host in serial mode; depth 2 raises them only to 87.28 and 286.54
+MB/s. Preposting therefore does not remove the Android accessory upload
+bottleneck. The next narrow gate is one real HTP reader/compute/writer
+pipeline with independent request IDs and changing-input correctness. No
+operator, full-model, BurstGPT, power, or energy result is claimed. Evidence:
+`spikes/s41_gemma_qwen_continuous_baseline/tp_operator_split_v1/RESULTS_AOA_ASYNC_TRANSPORT_V1.md`.
+
+**USB NCM REACHES HUNDREDS OF MB/S, BUT ITS 1.75 MS SYNCHRONOUS RPC FLOOR
+MAKES IT WORSE THAN DIRECT AOA FOR DECODE OPERATORS.**
+
+The OP15 CDC NCM link on the physical RTX 4060 Ti host reached 2.61 Gbit/s
+desktop-to-phone and 3.37 Gbit/s phone-to-desktop in separate exploratory
+streams, or about 326 and 421 decimal MB/s. A three-process operator-payload
+campaign with 6,300 paid exchanges confirmed an effective aggregate 334 MB/s
+for a 1.25 MiB request plus 1.25 MiB response.
+
+The same campaign found a 1.748 ms zero-payload request/response floor. NCM
+transport alone takes 1.872 ms for a hidden vector each way, versus 0.300 ms
+for the complete best AOA RMSNorm path; it takes 1.764 ms for the attention
+state boundary, versus 0.459 ms for AOA plus HTP attention. NCM therefore does
+not enlarge the viable per-token split. It is a bulk staging or future large
+pipelined-batch candidate, while AOA remains the decode transport. Small-
+packet p99 was unstable in the first repetition, so no tail claim is made.
+Evidence:
+`spikes/s41_gemma_qwen_continuous_baseline/tp_operator_split_v1/RESULTS_NCM_OPERATOR_TRANSPORT_V1.md`.
+
+**REAL QWEN-SHAPED OPERATORS CONFIRM THAT GPU PERSISTENCE REMOVES DISPATCH,
+BUT HTP AND TRANSPORT STILL DECIDE THE ROUTE.**
+
+On the OP15 attached directly to the physical RTX 4060 Ti host, a resident
+Adreno command loop was tested on Qwen3-14B-shaped RMSNorm, full-width SwiGLU,
+and one GQA attention core at KV=8,192. Each result is the median of three
+fresh processes with 50 warmups and 300 changing-input measurements.
+
+Persistent OpenCL reduces response-ready latency against the exact relaunched
+custom kernel from 1.930 to 0.300 ms for RMSNorm, 2.536 to 1.061 ms for
+SwiGLU, and 9.697 to 7.198 ms for attention. It is the fastest complete path
+only for RMSNorm. HTP takes 0.943 ms for SwiGLU because the 102 KiB activation
+boundary dominates the persistent kernel's 21 us arithmetic. HTP takes 0.459
+ms for attention because its flash-attention kernel is 22x faster inside the
+backend than the materialized-score persistent prototype.
+
+All 10,800 measured responses pass independent CPU oracles. This establishes
+the launch-latency mechanism on real operator shapes, but not a complete
+layer, full model, BurstGPT, power, or energy win. The next persistent-GPU
+candidate should have resident large state, compact I/O, and an already
+competitive fused kernel; the existing HTP route should remain selected for
+the tested attention core. Evidence:
+`spikes/s41_gemma_qwen_continuous_baseline/tp_operator_split_v1/RESULTS_PERSISTENT_MODEL_OPS_V1.md`.
+
+**A PERSISTENT ADRENO SVM DOORBELL REMOVES THE RECURRING DUMMY-KERNEL
+DISPATCH; EARLY FLUSH DOES NOT.**
+
+On the real OP15 attached directly to the RTX 4060 Ti, three alternating
+600-sample runs put rebuilt OpenCL at 1.172 ms E2E and 0.844 ms inside the
+backend. Calling `clFlush()` at graph return only moves blocking time into
+submission: E2E is 1.167 ms and the backend remains 0.842 ms. Native queue
+intervals remain about 94 us queued-to-submit and 400 us submitted-to-start.
+
+One resident workgroup receiving jobs through fine-grained SVM atomics takes
+0.266 ms E2E and 6.82 us from doorbell through result publication, 77.3% and
+99.2% below the rebuilt control. Relaunching the exact same doorbell workgroup
+per request reproduces the 100/401 us queue, so the gain is from amortizing
+OpenCL/KGSL/GMU dispatch. HTP's corresponding overhead is shorter, not absent:
+one SQR is 3 us inside a 91-us persistent FastRPC/dspqueue batch envelope.
+
+All 8,400 primary/profile outputs match an independent oracle. This is not yet
+a real operator or energy result: the one-workgroup kernel polls continuously,
+phone power is unmeasured, and a real path needs resident weights,
+multi-workgroup scheduling, and reductions. Evidence:
+`spikes/s41_gemma_qwen_continuous_baseline/tp_operator_split_v1/RESULTS_OPENCL_QUEUE_V1.md`.
+
+**OP15 HTP BEATS OPENCL FOR WARM DUMMY GRAPHS; BOTH ARE OVERHEAD-BOUND.**
+
+A matched direct-AOA microbenchmark now exposes the phone NPU and GPU path at
+a 2,816-element FP16 boundary. With profiling disabled, HTP takes 0.400 ms
+end to end for one real SQR kernel and 0.431 ms for eight dependent kernels in
+one graph. Adreno 840 OpenCL takes 0.840 and 1.294 ms. The no-compute floor is
+0.256 ms on HTP and 0.274 ms on OpenCL.
+
+Native profiles explain the gap. One HTP SQR is 3 us inside a 91-us batch;
+eight total 16 us inside 129 us. One OpenCL SQR executes in 29.4 us but waits
+404.8 us from submit to start; eight kernels total 118.6 us of execution in a
+1,022-us first-queue-to-last-completion path. The next operator design should
+keep a fused island on HTP or use one large/fused OpenCL kernel. This is a
+dummy-kernel latency result only, not a model, energy, or CUDA-overlap claim.
+Evidence:
+`spikes/s41_gemma_qwen_continuous_baseline/tp_operator_split_v1/RESULTS_BACKEND_DUMMY_LATENCY_V1.md`.
 
 **XMEM MAKES THE 1M GEMMA PHONE ATTENTION LEG FIT AT THE MEDIAN; NUMERICAL
 CORRECTNESS AND P90 STILL FAIL.**

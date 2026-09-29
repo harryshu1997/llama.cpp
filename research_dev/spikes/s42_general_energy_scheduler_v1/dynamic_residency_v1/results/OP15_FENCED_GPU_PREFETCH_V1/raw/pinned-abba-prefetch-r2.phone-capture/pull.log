@@ -1,0 +1,5 @@
+/data/local/tmp/s41-opoffload-dmabuf-v1/dynamic-prefetch-pinned-abba-prefetch-r2-op15-r20/samples.tsv: 1 file pulled, 0 skipped. 0.4 MB/s (15822 bytes in 0.041s)
+/data/local/tmp/s41-opoffload-dmabuf-v1/dynamic-prefetch-pinned-abba-prefetch-r2-op15-r20/session.log: 1 file pulled, 0 skipped. 0.2 MB/s (132 bytes in 0.001s)
+/data/local/tmp/s41-opoffload-dmabuf-v1/dynamic-prefetch-pinned-abba-prefetch-r2-op15-r20/resident-workers.log: 1 file pulled, 0 skipped. 6.1 MB/s (3720 bytes in 0.001s)
+/data/local/tmp/s41-opoffload-dmabuf-v1/dynamic-prefetch-pinned-abba-prefetch-r2-op15-r20/router.log: 1 file pulled, 0 skipped. 0.8 MB/s (309 bytes in 0.000s)
+/data/local/tmp/s41-opoffload-dmabuf-v1/dynamic-prefetch-pinned-abba-prefetch-r2-op15-r20/session-launch.log: 1 file pulled, 0 skipped.

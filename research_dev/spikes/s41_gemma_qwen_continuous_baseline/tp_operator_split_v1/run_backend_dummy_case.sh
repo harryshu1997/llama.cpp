@@ -2,7 +2,7 @@
 set -eu
 
 if [ "$#" -ne 4 ]; then
-    echo "usage: $0 <HTP|OpenCL> <noop|sqr> <repeats> <result-dir>" >&2
+    echo "usage: $0 <HTP|HTPFast|OpenCL|OpenCLFast|OpenCLRebuilt|OpenCLRebuiltFast|OpenCLFlush|OpenCLFlushFast|OpenCLDoorbellDispatch|OpenCLPersistent> <noop|sqr> <repeats> <result-dir>" >&2
     exit 2
 fi
 
@@ -22,11 +22,83 @@ case_name=$(printf '%s_%s_%s' "$backend" "$op" "$repeats" |
 case "$backend" in
     HTP)
         runtime=htp
+        worker_backend=HTP
         backend_env="GGML_HEXAGON_PROFILE=1"
+        worker_executable=backend_dummy_worker
+        ready_pattern='\[dummy-worker\] ready'
+        profile_artifacts=0
+        ;;
+    HTPFast)
+        runtime=htp
+        worker_backend=HTP
+        backend_env=""
+        worker_executable=backend_dummy_worker
+        ready_pattern='\[dummy-worker\] ready'
+        profile_artifacts=0
         ;;
     OpenCL)
         runtime=opencl
+        worker_backend=OpenCL
         backend_env=""
+        worker_executable=backend_dummy_worker
+        ready_pattern='\[dummy-worker\] ready'
+        profile_artifacts=1
+        ;;
+    OpenCLFast)
+        runtime=htp
+        worker_backend=OpenCL
+        backend_env=""
+        worker_executable=backend_dummy_worker
+        ready_pattern='\[dummy-worker\] ready'
+        profile_artifacts=0
+        ;;
+    OpenCLRebuilt)
+        runtime=opencl_flush_profile
+        worker_backend=OpenCL
+        backend_env=""
+        worker_executable=backend_dummy_worker
+        ready_pattern='\[dummy-worker\] ready'
+        profile_artifacts=1
+        ;;
+    OpenCLRebuiltFast)
+        runtime=opencl_flush
+        worker_backend=OpenCL
+        backend_env=""
+        worker_executable=backend_dummy_worker
+        ready_pattern='\[dummy-worker\] ready'
+        profile_artifacts=0
+        ;;
+    OpenCLFlush)
+        runtime=opencl_flush_profile
+        worker_backend=OpenCL
+        backend_env="GGML_OPENCL_EARLY_FLUSH=1"
+        worker_executable=backend_dummy_worker
+        ready_pattern='\[dummy-worker\] ready'
+        profile_artifacts=1
+        ;;
+    OpenCLFlushFast)
+        runtime=opencl_flush
+        worker_backend=OpenCL
+        backend_env="GGML_OPENCL_EARLY_FLUSH=1"
+        worker_executable=backend_dummy_worker
+        ready_pattern='\[dummy-worker\] ready'
+        profile_artifacts=0
+        ;;
+    OpenCLPersistent)
+        runtime=opencl_persistent
+        worker_backend=OpenCLPersistent
+        backend_env=""
+        worker_executable=opencl_persistent_dummy_worker
+        ready_pattern='\[persistent-worker\] ready'
+        profile_artifacts=0
+        ;;
+    OpenCLDoorbellDispatch)
+        runtime=opencl_persistent
+        worker_backend=OpenCLDoorbellDispatch
+        backend_env=""
+        worker_executable=opencl_persistent_dummy_worker
+        ready_pattern='\[persistent-worker\] ready'
+        profile_artifacts=0
         ;;
     *)
         echo "unsupported backend: $backend" >&2
@@ -71,14 +143,20 @@ if [ "$device_ready" -ne 1 ]; then
     exit 3
 fi
 ADB_SERVER_PORT=$adb_port adb -s "$serial" shell \
-    "su -c 'cd $phone_root && LD_LIBRARY_PATH=. ADSP_LIBRARY_PATH=. $backend_env ./backend_dummy_worker $elements $backend $op $repeats $requests > $case_name.log 2>&1'" &
+    "su -c ': > $phone_log'"
+if [ "$profile_artifacts" -eq 1 ]; then
+    ADB_SERVER_PORT=$adb_port adb -s "$serial" shell \
+        "su -c 'rm -f $phone_root/cl_profiling.csv $phone_root/cl_trace.json'"
+fi
+ADB_SERVER_PORT=$adb_port adb -s "$serial" shell \
+    "su -c 'cd $phone_root && LD_LIBRARY_PATH=. ADSP_LIBRARY_PATH=. $backend_env ./$worker_executable $elements $worker_backend $op $repeats $requests > $case_name.log 2>&1'" &
 worker_transport_pid=$!
 
 ready=0
 attempt=0
 while [ "$attempt" -lt 30 ]; do
     if ADB_SERVER_PORT=$adb_port adb -s "$serial" shell cat "$phone_log" \
-            2>/dev/null | grep -q '\[dummy-worker\] ready'; then
+            2>/dev/null | grep -q "$ready_pattern"; then
         ready=1
         break
     fi
@@ -91,14 +169,23 @@ if [ "$ready" -ne 1 ]; then
     exit 3
 fi
 worker_device_pid=$(ADB_SERVER_PORT=$adb_port adb -s "$serial" shell \
-    pidof backend_dummy_worker 2>/dev/null | tr -d '\r')
+    pidof "$worker_executable" 2>/dev/null | tr -d '\r')
 
 switched=0
 attempt=0
-while [ "$attempt" -lt 5 ]; do
-    if python3 "$desktop_root/aoa_bench.py" \
-            --vid 22d9 --pid 2769 switch; then
+while [ "$attempt" -lt 60 ]; do
+    if lsusb | grep -Eq '18d1:2d0(0|1|4|5)'; then
         switched=1
+        break
+    fi
+    for normal_pid in 2769 2772; do
+        if python3 "$desktop_root/aoa_bench.py" \
+                --vid 22d9 --pid "$normal_pid" switch; then
+            switched=1
+            break
+        fi
+    done
+    if [ "$switched" -eq 1 ]; then
         break
     fi
     attempt=$((attempt + 1))
@@ -117,18 +204,18 @@ python3 "$desktop_root/backend_dummy_bench.py" \
 wait "$worker_transport_pid"
 worker_transport_pid=
 worker_device_pid=
-python3 "$desktop_root/aoa_bench.py" reset
 trap - EXIT INT TERM
 device_ready=0
 attempt=0
-while [ "$attempt" -lt 30 ]; do
+while [ "$attempt" -lt 5 ]; do
+    python3 "$desktop_root/aoa_bench.py" reset || true
+    sleep 3
     if [ "$(ADB_SERVER_PORT=$adb_port adb -s "$serial" get-state \
             2>/dev/null || true)" = "device" ]; then
         device_ready=1
         break
     fi
     attempt=$((attempt + 1))
-    sleep 1
 done
 if [ "$device_ready" -ne 1 ]; then
     echo "phone did not return to adb after AOA reset" >&2
@@ -136,11 +223,14 @@ if [ "$device_ready" -ne 1 ]; then
 fi
 ADB_SERVER_PORT=$adb_port adb -s "$serial" pull \
     "$phone_log" "$result_dir/$case_name.worker.log" >/dev/null
-if [ "$backend" = "OpenCL" ]; then
-    ADB_SERVER_PORT=$adb_port adb -s "$serial" pull \
-        "$phone_root/cl_profiling.csv" \
-        "$result_dir/$case_name.cl_profiling.csv" >/dev/null
-    ADB_SERVER_PORT=$adb_port adb -s "$serial" pull \
-        "$phone_root/cl_trace.json" \
-        "$result_dir/$case_name.cl_trace.json" >/dev/null
+if [ "$profile_artifacts" -eq 1 ]; then
+    if ADB_SERVER_PORT=$adb_port adb -s "$serial" shell \
+            test -f "$phone_root/cl_profiling.csv"; then
+        ADB_SERVER_PORT=$adb_port adb -s "$serial" pull \
+            "$phone_root/cl_profiling.csv" \
+            "$result_dir/$case_name.cl_profiling.csv" >/dev/null
+        ADB_SERVER_PORT=$adb_port adb -s "$serial" pull \
+            "$phone_root/cl_trace.json" \
+            "$result_dir/$case_name.cl_trace.json" >/dev/null
+    fi
 fi

@@ -650,6 +650,22 @@ struct llama_model {
     // total number of parameters in the model
     uint64_t n_elements() const;
 
+    // remote-resident dense FFN weights (S42): layers whose gate/up/down weights are not loaded locally
+    uint64_t remote_resident_ffn_layer_mask() const;
+    size_t   remote_resident_ffn_bytes() const;
+    size_t   remote_resident_ffn_unmapped_bytes() const;
+
+    // dormant host share (S42 decode-only relocation): the FFN column suffix [host_columns, n_ff)
+    // of every masked layer stays mapped but its pages are released while a phone session
+    // executes those columns; populate them again before local execution needs them
+    bool     ffn_host_share_configure(bool drop_cache, bool populate);
+    size_t   ffn_host_share_release(uint64_t layer_mask, int64_t host_columns);
+    size_t   ffn_host_share_restore();
+    uint64_t ffn_host_share_layer_mask() const;
+    int64_t  ffn_host_share_host_columns() const;
+    size_t   ffn_host_share_released_bytes() const;
+    size_t   ffn_host_share_range_count() const;
+
     void print_info() const;
 
     ggml_backend_dev_t dev_layer(int il) const;

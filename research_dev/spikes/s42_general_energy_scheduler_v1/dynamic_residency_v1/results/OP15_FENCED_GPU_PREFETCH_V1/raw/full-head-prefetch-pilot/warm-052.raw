@@ -1,0 +1,20 @@
+data: {"index":0,"content":"<think>","tokens":[151667],"stop":false,"id_slot":-1,"tokens_predicted":1,"tokens_evaluated":16}
+
+data: {"index":0,"content":"\n","tokens":[198],"stop":false,"id_slot":-1,"tokens_predicted":2,"tokens_evaluated":16}
+
+data: {"index":0,"content":"Okay","tokens":[32313],"stop":false,"id_slot":-1,"tokens_predicted":3,"tokens_evaluated":16}
+
+data: {"index":0,"content":",","tokens":[11],"stop":false,"id_slot":-1,"tokens_predicted":4,"tokens_evaluated":16}
+
+data: {"index":0,"content":" the","tokens":[279],"stop":false,"id_slot":-1,"tokens_predicted":5,"tokens_evaluated":16}
+
+data: {"index":0,"content":" user","tokens":[1196],"stop":false,"id_slot":-1,"tokens_predicted":6,"tokens_evaluated":16}
+
+data: {"index":0,"content":"'s","tokens":[594],"stop":false,"id_slot":-1,"tokens_predicted":7,"tokens_evaluated":16}
+
+data: {"index":0,"content":" query","tokens":[3239],"stop":false,"id_slot":-1,"tokens_predicted":8,"tokens_evaluated":16}
+
+data: {"index":0,"content":" is","tokens":[374],"stop":false,"id_slot":-1,"tokens_predicted":9,"tokens_evaluated":16}
+
+data: {"index":0,"content":"","tokens":[],"id_slot":3,"stop":true,"model":"qwen-full-phone","tokens_predicted":9,"tokens_evaluated":16,"generation_settings":{"seed":52,"temperature":0.0,"dynatemp_range":0.0,"dynatemp_exponent":1.0,"top_k":40,"top_p":0.949999988079071,"min_p":0.05000000074505806,"top_n_sigma":-1.0,"xtc_probability":0.0,"xtc_threshold":0.10000000149011612,"typical_p":1.0,"repeat_last_n":64,"repeat_penalty":1.0,"presence_penalty":0.0,"frequency_penalty":0.0,"dry_multiplier":0.0,"dry_base":1.75,"dry_allowed_length":2,"dry_penalty_last_n":24576,"dry_sequence_breakers":["\n",":","\"","*"],"mirostat":0,"mirostat_tau":5.0,"mirostat_eta":0.10000000149011612,"stop":[],"max_tokens":9,"n_predict":9,"n_keep":0,"n_discard":0,"ignore_eos":true,"stream":true,"logit_bias":[{"bias":null,"token":128247},{"bias":null,"token":151643},{"bias":null,"token":151645},{"bias":null,"token":151662},{"bias":null,"token":151663},{"bias":null,"token":151664}],"n_probs":0,"min_keep":0,"grammar":"","grammar_lazy":false,"grammar_triggers":[],"preserved_tokens":[],"chat_format":"Content-only","reasoning_format":"deepseek","reasoning_in_content":false,"generation_prompt":"","samplers":["penalties","dry","top_n_sigma","top_k","typ_p","top_p","min_p","xtc","temperature"],"speculative.types":"none","timings_per_token":false,"post_sampling_probs":false,"backend_sampling":false,"lora":[]},"prompt":"<|im_start|>user\nRequest 52. Explain in\n<|im_end|>\n<|im_start|>assistant\n","has_new_line":true,"truncated":false,"stop_type":"limit","stopping_word":"","tokens_cached":24,"timings":{"cache_n":0,"prompt_n":16,"prompt_ms":692.01,"prompt_per_token_ms":43.250625,"prompt_per_second":23.12105316397162,"predicted_n":9,"predicted_ms":4632.156,"predicted_per_token_ms":514.684,"predicted_per_second":1.942939745552611}}
+

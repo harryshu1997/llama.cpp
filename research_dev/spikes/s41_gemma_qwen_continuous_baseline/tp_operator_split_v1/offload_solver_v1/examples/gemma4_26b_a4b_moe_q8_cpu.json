@@ -1,0 +1,24 @@
+{
+  "activation_type": "f16",
+  "active_experts": 8,
+  "expert_intermediate": 704,
+  "expert_residency": "all",
+  "gate_count": 2,
+  "hidden": 2816,
+  "host_backend": "cpu_isolated",
+  "inter_request_gap_ms": 0.0,
+  "kind": "moe",
+  "m": 1,
+  "minimum_speedup_percent": 5.0,
+  "name": "Gemma-4-26B-A4B synthetic top-8 expert shape",
+  "phone_backends": [
+    "op15_htp",
+    "op15_gpu_opencl",
+    "op15_gpu_persistent"
+  ],
+  "quantization": "q8_0",
+  "schema": "s41-offload-workload-v1",
+  "shared_intermediate": 0,
+  "total_experts": 128,
+  "transport": "auto"
+}

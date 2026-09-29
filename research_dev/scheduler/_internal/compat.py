@@ -34,6 +34,7 @@ from .types import (
 LEGACY_QUALITY = {
     "unverified": QualityClass.UNVERIFIED,
     "approximate": QualityClass.SEMANTIC,
+    "semantic": QualityClass.SEMANTIC,
     "bounded_numeric": QualityClass.BOUNDED_NUMERIC,
     "exact": QualityClass.EXACT,
 }

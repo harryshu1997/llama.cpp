@@ -1,0 +1,259 @@
+{
+  "case": "session_cow_gate_v3",
+  "changes": [
+    {
+      "action": "delete",
+      "after": [],
+      "after_index": 26,
+      "before": [
+        {
+          "active_remaining_decode_tokens_by_artifact": {},
+          "active_request_count_by_artifact": {},
+          "candidates": [],
+          "current_geometry_sha256": null,
+          "evaluated_geometry_sha256": null,
+          "evaluated_objective_uj": null,
+          "evaluated_queue_benefit_uj": null,
+          "evaluated_transition_cost_uj": null,
+          "kind": "EVALUATED",
+          "minimum_residency_us": 30000000,
+          "phone_memory_accepted_resident_bytes": 0,
+          "phone_memory_live_available_bytes": 0,
+          "phone_memory_live_limit_bytes": 0,
+          "phone_memory_persistent_service_reserve_by_artifact": {},
+          "phone_memory_persistent_service_reserve_bytes": 0,
+          "phone_memory_selected_limit_bytes": 0,
+          "planning_geometry_sha256": "sha256:7bf55ae9bb49799de955f276b0ef0abc18ff69f2ca937afccc42e3f633604141",
+          "pressure_kind": "arrived_remaining_decode_tokens",
+          "queue_work_by_artifact": {
+            "sha256:4b90b1d7ae7324676194755a6dfce11cb6e457982c4c01a1db2857be1ed064ad": 292,
+            "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718": 539
+          },
+          "queue_work_unit": "decode_token",
+          "queued_output_tokens_by_artifact": {
+            "sha256:4b90b1d7ae7324676194755a6dfce11cb6e457982c4c01a1db2857be1ed064ad": 292,
+            "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718": 539
+          },
+          "queued_request_count_by_artifact": {
+            "sha256:4b90b1d7ae7324676194755a6dfce11cb6e457982c4c01a1db2857be1ed064ad": 1,
+            "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718": 5
+          },
+          "reason": "NO_FEASIBLE_PHONE_RESIDENCY",
+          "request_id": "s42:llama-3.2-1b-overlay:04",
+          "route_evidence_by_artifact": {
+            "sha256:4b90b1d7ae7324676194755a6dfce11cb6e457982c4c01a1db2857be1ed064ad": {
+              "artifact_sha256": "sha256:4b90b1d7ae7324676194755a6dfce11cb6e457982c4c01a1db2857be1ed064ad",
+              "candidate_rejections": {},
+              "reason": "PHONE_RESIDENCY_ASSISTED_ROUTE_ABSENT"
+            },
+            "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718": {
+              "artifact_sha256": "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718",
+              "assisted_operator_count": 18,
+              "benefit_normalization": "decode_token",
+              "benefit_normalization_source": "paired_warm_energy_delta_per_decode_token",
+              "benefit_unit": "uJ_per_decode_token",
+              "benefit_value_kind": "assumed_net_energy_uj",
+              "candidate_rejections": {
+                "auto:coordinated:physical:hot:cpu-phone-assisted:operator_split:750000:geometry:7d49cf437d5b:ops:4fbc11c7c01f:residency:cold": [
+                  "ROUTE_MARGINAL_ENERGY_EVIDENCE_ABSENT"
+                ],
+                "auto:coordinated:physical:hot:cpu-phone-assisted:operator_split:coalesced-batch:750000:geometry:7d49cf437d5b:ops:4fbc11c7c01f:residency:cold": [
+                  "ROUTE_MARGINAL_ENERGY_EVIDENCE_ABSENT"
+                ],
+                "auto:coordinated:physical:hot:phone-assisted:operator_offload:coalesced-batch:geometry:7d49cf437d5b:ops:4fbc11c7c01f:residency:cold": [
+                  "ROUTE_MARGINAL_ENERGY_EVIDENCE_ABSENT"
+                ],
+                "auto:coordinated:physical:hot:phone-assisted:operator_offload:geometry:7d49cf437d5b:ops:4fbc11c7c01f:residency:cold": [
+                  "ROUTE_MARGINAL_ENERGY_EVIDENCE_ABSENT"
+                ],
+                "auto:coordinated:physical:hot:phone-assisted:operator_split:750000:geometry:7d49cf437d5b:ops:4fbc11c7c01f:residency:cold": [
+                  "ROUTE_MARGINAL_ENERGY_EVIDENCE_ABSENT"
+                ],
+                "auto:coordinated:physical:hot:phone-assisted:operator_split:750000:sessions:2:geometry:4a8e1575b8b9:ops:089414419462:residency:cold": [
+                  "ROUTE_MARGINAL_ENERGY_EVIDENCE_ABSENT"
+                ],
+                "auto:coordinated:physical:hot:phone-assisted:operator_split:coalesced-batch:750000:geometry:7d49cf437d5b:ops:4fbc11c7c01f:residency:cold": [
+                  "ROUTE_MARGINAL_ENERGY_EVIDENCE_ABSENT"
+                ],
+                "auto:coordinated:physical:hot:phone-assisted:operator_split:coalesced-batch:750000:sessions:2:geometry:4a8e1575b8b9:ops:089414419462:residency:cold": [
+                  "ROUTE_MARGINAL_ENERGY_EVIDENCE_ABSENT"
+                ],
+                "auto:coordinated:physical:hot:phone-assisted:operator_split:coalesced-batch:750000:sessions:3:geometry:7bf55ae9bb49:ops:8daeb933ec2e:residency:cold": [
+                  "ROUTE_MARGINAL_ENERGY_EVIDENCE_ABSENT"
+                ]
+              },
+              "decode_tokens": 71,
+              "energy_evidence": "ASSUMED_4P5W",
+              "normalization_remainder_uj": 0,
+              "normalized_benefit_uj": 36574497,
+              "paired_desktop_route_id": "auto:coordinated:physical:hot:desktop:residency:hot",
+              "reason": "PHONE_RESIDENCY_ROUTE_EVIDENCE_READY",
+              "residency_pressure_unit": "remaining_decode_token",
+              "route_benefit_uj": 2596789287,
+              "source_component_capability_sha256": "sha256:2ac76c606dfa0066089d4a901d4d1157678dead81fc9f80ca2980976a1c9845a",
+              "source_layer_mask": 262143,
+              "source_maximum_columns": 17408,
+              "source_route_id": "auto:coordinated:physical:hot:phone-assisted:operator_split:750000:sessions:3:geometry:7bf55ae9bb49:ops:8daeb933ec2e:residency:cold",
+              "source_session_ids": [
+                "HTP0",
+                "HTP1",
+                "HTP2"
+              ],
+              "transition_energy_aggregation": "shared_phone_union",
+              "transition_energy_upper_uj": 309091631,
+              "transition_energy_upper_uj_by_session": {
+                "HTP0": 309091631,
+                "HTP1": 309091631,
+                "HTP2": 309091631
+              },
+              "transition_latency_upper_us": 68687029
+            }
+          },
+          "schema": "research-scheduler-phone-layout-event-v1",
+          "segment_id": "arrival-sequence",
+          "selected_geometry_sha256": "sha256:7bf55ae9bb49799de955f276b0ef0abc18ff69f2ca937afccc42e3f633604141",
+          "selected_layout_generation": 1,
+          "selected_layout_state": "PROPOSED",
+          "selected_objective_uj": -6054870847,
+          "selected_queue_benefit_uj": 6363962478,
+          "selected_transition_cost_uj": 309091631,
+          "selection_confirmed": true,
+          "selection_snapshot_count": 0,
+          "selection_snapshot_sha256": "sha256:8581991602fd908e59887f35245ca096d3003b8936dae7c1961d9d5901ab0f21",
+          "session_marginal_gains": [],
+          "switching_margin_uj": 0,
+          "transition_latency_us_by_session": {}
+        },
+        {
+          "active_remaining_decode_tokens_by_artifact": {},
+          "active_request_count_by_artifact": {},
+          "candidates": [],
+          "current_geometry_sha256": null,
+          "evaluated_geometry_sha256": null,
+          "evaluated_objective_uj": null,
+          "evaluated_queue_benefit_uj": null,
+          "evaluated_transition_cost_uj": null,
+          "kind": "EVALUATED",
+          "minimum_residency_us": 30000000,
+          "phone_memory_accepted_resident_bytes": 0,
+          "phone_memory_live_available_bytes": 0,
+          "phone_memory_live_limit_bytes": 0,
+          "phone_memory_persistent_service_reserve_by_artifact": {},
+          "phone_memory_persistent_service_reserve_bytes": 0,
+          "phone_memory_selected_limit_bytes": 0,
+          "planning_geometry_sha256": "sha256:7bf55ae9bb49799de955f276b0ef0abc18ff69f2ca937afccc42e3f633604141",
+          "pressure_kind": "arrived_remaining_decode_tokens",
+          "queue_work_by_artifact": {
+            "sha256:4b90b1d7ae7324676194755a6dfce11cb6e457982c4c01a1db2857be1ed064ad": 292,
+            "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718": 539
+          },
+          "queue_work_unit": "decode_token",
+          "queued_output_tokens_by_artifact": {
+            "sha256:4b90b1d7ae7324676194755a6dfce11cb6e457982c4c01a1db2857be1ed064ad": 292,
+            "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718": 539
+          },
+          "queued_request_count_by_artifact": {
+            "sha256:4b90b1d7ae7324676194755a6dfce11cb6e457982c4c01a1db2857be1ed064ad": 1,
+            "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718": 5
+          },
+          "reason": "NO_FEASIBLE_PHONE_RESIDENCY",
+          "request_id": "s42:llama-3.2-1b-overlay:04",
+          "route_evidence_by_artifact": {
+            "sha256:4b90b1d7ae7324676194755a6dfce11cb6e457982c4c01a1db2857be1ed064ad": {
+              "artifact_sha256": "sha256:4b90b1d7ae7324676194755a6dfce11cb6e457982c4c01a1db2857be1ed064ad",
+              "candidate_rejections": {},
+              "reason": "PHONE_RESIDENCY_ASSISTED_ROUTE_ABSENT"
+            },
+            "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718": {
+              "artifact_sha256": "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718",
+              "assisted_operator_count": 18,
+              "benefit_normalization": "decode_token",
+              "benefit_normalization_source": "paired_warm_energy_delta_per_decode_token",
+              "benefit_unit": "uJ_per_decode_token",
+              "benefit_value_kind": "assumed_net_energy_uj",
+              "candidate_rejections": {
+                "auto:coordinated:physical:hot:cpu-phone-assisted:operator_split:750000:geometry:7d49cf437d5b:ops:4fbc11c7c01f:residency:cold": [
+                  "ROUTE_MARGINAL_ENERGY_EVIDENCE_ABSENT"
+                ],
+                "auto:coordinated:physical:hot:cpu-phone-assisted:operator_split:coalesced-batch:750000:geometry:7d49cf437d5b:ops:4fbc11c7c01f:residency:cold": [
+                  "ROUTE_MARGINAL_ENERGY_EVIDENCE_ABSENT"
+                ],
+                "auto:coordinated:physical:hot:phone-assisted:operator_offload:coalesced-batch:geometry:7d49cf437d5b:ops:4fbc11c7c01f:residency:cold": [
+                  "ROUTE_MARGINAL_ENERGY_EVIDENCE_ABSENT"
+                ],
+                "auto:coordinated:physical:hot:phone-assisted:operator_offload:geometry:7d49cf437d5b:ops:4fbc11c7c01f:residency:cold": [
+                  "ROUTE_MARGINAL_ENERGY_EVIDENCE_ABSENT"
+                ],
+                "auto:coordinated:physical:hot:phone-assisted:operator_split:750000:geometry:7d49cf437d5b:ops:4fbc11c7c01f:residency:cold": [
+                  "ROUTE_MARGINAL_ENERGY_EVIDENCE_ABSENT"
+                ],
+                "auto:coordinated:physical:hot:phone-assisted:operator_split:750000:sessions:2:geometry:4a8e1575b8b9:ops:089414419462:residency:cold": [
+                  "ROUTE_MARGINAL_ENERGY_EVIDENCE_ABSENT"
+                ],
+                "auto:coordinated:physical:hot:phone-assisted:operator_split:coalesced-batch:750000:geometry:7d49cf437d5b:ops:4fbc11c7c01f:residency:cold": [
+                  "ROUTE_MARGINAL_ENERGY_EVIDENCE_ABSENT"
+                ],
+                "auto:coordinated:physical:hot:phone-assisted:operator_split:coalesced-batch:750000:sessions:2:geometry:4a8e1575b8b9:ops:089414419462:residency:cold": [
+                  "ROUTE_MARGINAL_ENERGY_EVIDENCE_ABSENT"
+                ],
+                "auto:coordinated:physical:hot:phone-assisted:operator_split:coalesced-batch:750000:sessions:3:geometry:7bf55ae9bb49:ops:8daeb933ec2e:residency:cold": [
+                  "ROUTE_MARGINAL_ENERGY_EVIDENCE_ABSENT"
+                ]
+              },
+              "decode_tokens": 71,
+              "energy_evidence": "ASSUMED_4P5W",
+              "normalization_remainder_uj": 0,
+              "normalized_benefit_uj": 36574497,
+              "paired_desktop_route_id": "auto:coordinated:physical:hot:desktop:residency:hot",
+              "reason": "PHONE_RESIDENCY_ROUTE_EVIDENCE_READY",
+              "residency_pressure_unit": "remaining_decode_token",
+              "route_benefit_uj": 2596789287,
+              "source_component_capability_sha256": "sha256:2ac76c606dfa0066089d4a901d4d1157678dead81fc9f80ca2980976a1c9845a",
+              "source_layer_mask": 262143,
+              "source_maximum_columns": 17408,
+              "source_route_id": "auto:coordinated:physical:hot:phone-assisted:operator_split:750000:sessions:3:geometry:7bf55ae9bb49:ops:8daeb933ec2e:residency:cold",
+              "source_session_ids": [
+                "HTP0",
+                "HTP1",
+                "HTP2"
+              ],
+              "transition_energy_aggregation": "shared_phone_union",
+              "transition_energy_upper_uj": 309091631,
+              "transition_energy_upper_uj_by_session": {
+                "HTP0": 309091631,
+                "HTP1": 309091631,
+                "HTP2": 309091631
+              },
+              "transition_latency_upper_us": 68687029
+            }
+          },
+          "schema": "research-scheduler-phone-layout-event-v1",
+          "segment_id": "arrival-sequence",
+          "selected_geometry_sha256": "sha256:7bf55ae9bb49799de955f276b0ef0abc18ff69f2ca937afccc42e3f633604141",
+          "selected_layout_generation": 1,
+          "selected_layout_state": "PROPOSED",
+          "selected_objective_uj": -6054870847,
+          "selected_queue_benefit_uj": 6363962478,
+          "selected_transition_cost_uj": 309091631,
+          "selection_confirmed": true,
+          "selection_snapshot_count": 0,
+          "selection_snapshot_sha256": "sha256:8581991602fd908e59887f35245ca096d3003b8936dae7c1961d9d5901ab0f21",
+          "session_marginal_gains": [],
+          "switching_margin_uj": 0,
+          "transition_latency_us_by_session": {}
+        }
+      ],
+      "before_index": 26,
+      "key": "phone_layout_events"
+    }
+  ],
+  "new_sha256": "ea5b30c9e4a3f705c194188d6e5788c64990953aad73ff3c4b7573bc69eca27d",
+  "old_sha256": "f78d2b2c37a3880a523eba4f5315ada0207678c841d633229782bfa3a05c1829",
+  "schema": "s42-decoded-replay-diff-v1",
+  "unchanged_keys": [
+    "case_id",
+    "preparation_lifecycle",
+    "request_helper_events",
+    "selected_route_ids"
+  ]
+}

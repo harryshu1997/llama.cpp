@@ -272,26 +272,48 @@ def main() -> int:
         choices=("qwen3_14b", "gemma4_12b"),
         default="qwen3_14b",
     )
-    parser.add_argument("--aoa-bus", required=True)
-    parser.add_argument("--aoa-address", required=True)
+    parser.add_argument("--aoa-bus")
+    parser.add_argument("--aoa-address")
+    parser.add_argument(
+        "--schedule",
+        choices=("paired", "monolithic-only", "two-phase-only"),
+        default="paired",
+    )
     parser.add_argument("--timeout-s", type=int, default=180)
     parser.add_argument("--expected-graphics-mhz", type=float)
     parser.add_argument("--expected-memory-mhz", type=float)
     parser.add_argument("--activation-return", action="store_true")
     args = parser.parse_args()
+    if (
+        args.schedule == "paired"
+        and (args.aoa_bus is None or args.aoa_address is None)
+    ):
+        parser.error("paired schedule requires --aoa-bus and --aoa-address")
+    if args.activation_return and args.schedule == "two-phase-only":
+        parser.error("activation-return probe has no two-phase mode")
 
     args.output_dir.mkdir(parents=True, exist_ok=False)
     environment = dict(os.environ)
     environment.pop("GGML_CUDA_DISABLE_GRAPHS", None)
-    environment["S41_AOA_BUS"] = args.aoa_bus
-    environment["S41_AOA_ADDRESS"] = args.aoa_address
+    if args.schedule == "paired":
+        assert args.aoa_bus is not None and args.aoa_address is not None
+        environment["S41_AOA_BUS"] = args.aoa_bus
+        environment["S41_AOA_ADDRESS"] = args.aoa_address
 
     schedule: list[str] = []
-    for repeat in range(args.repeats):
-        pair = ["monolithic", "split"]
-        if repeat % 2:
-            pair.reverse()
-        schedule.extend(pair)
+    if args.schedule == "paired":
+        for repeat in range(args.repeats):
+            pair = ["monolithic", "split"]
+            if repeat % 2:
+                pair.reverse()
+            schedule.extend(pair)
+    else:
+        mode = (
+            "monolithic"
+            if args.schedule == "monolithic-only"
+            else "two_phase"
+        )
+        schedule = [mode] * args.repeats
 
     sampler = PowerSampler(args.gpu, args.period_ms)
     sampler.start()
@@ -300,8 +322,8 @@ def main() -> int:
     try:
         for index, mode in enumerate(schedule, start=1):
             iterations = (
-                args.monolithic_iters if mode == "monolithic"
-                else args.split_iters
+                args.split_iters if mode == "split"
+                else args.monolithic_iters
             )
             run = run_probe(
                 binary=args.binary,
@@ -353,9 +375,10 @@ def main() -> int:
         ),
         encoding="utf-8",
     )
+    modes = sorted({run["mode"] for run in runs})
     by_mode = {
         mode: [run for run in runs if run["mode"] == mode]
-        for mode in ("monolithic", "split")
+        for mode in modes
     }
     medians = {
         mode: statistics.median(
@@ -370,7 +393,12 @@ def main() -> int:
             else "s41-causal-gpu-energy-v1"
         ),
         "scope": "GPU_BOARD_ONLY",
-        "method": "100ms nvidia-smi arrival timestamps with ZOH integration",
+        "gpu_index": args.gpu,
+        "method": (
+            f"{args.period_ms}ms nvidia-smi arrival timestamps "
+            "with ZOH integration"
+        ),
+        "period_ms": args.period_ms,
         "schedule": schedule,
         "shape": args.shape,
         "weight_type": args.weight_type,
@@ -378,6 +406,8 @@ def main() -> int:
         "median_energy_per_iteration_j": medians,
         "split_gpu_energy_change_fraction": (
             medians["split"] / medians["monolithic"] - 1.0
+            if {"monolithic", "split"}.issubset(medians)
+            else None
         ),
         "binary": str(args.binary),
         "binary_sha256": sha256(args.binary),

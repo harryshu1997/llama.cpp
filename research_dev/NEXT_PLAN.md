@@ -1,6 +1,8 @@
 # Active warm-tier executable research plan
 
-Status: `S41_COMPLETE_FFN_AND_VOCAB_HEAD_PROXY_PASS; S41_QWEN_ATTENTION_8K_PROXY_PASS; S41_REAL_BURSTGPT_T2_PROTOTYPE_PASS_SLO_FAIL; S39_JOINT_B8_PASS; SWITCH_NOT_RUN`
+Status: `S42_I3_FLEET_ENERGY_PASS; S42_MMLU64_NONINFERIOR; S42_UNIFIED_COHORT_EXECUTION_PASS; S42_PRECOMMIT_PHONE_THERMAL_PENDING; S42_GENERAL_PER_SHAPE_BLOCKED; S39_JOINT_B8_PASS; SWITCH_NOT_RUN`
+
+Active engineering plan (2026-09-20): [FAST_PATH_UTILIZATION_PLAN.md](FAST_PATH_UTILIZATION_PLAN.md), milestones M0-M5 with checks; supersedes the split-KV Step 5 item.
 
 The current paper-critical system is defined in
 [ACTIVE_WARM_TIER_DESIGN.md](ACTIVE_WARM_TIER_DESIGN.md). The current bounded
@@ -10,6 +12,218 @@ disabled-by-default shared llama.cpp controller in
 [S40](spikes/s40_shared_warm_tier_server/PLAN.md). The active exact pair is
 Qwen3 14B Q4_K_M plus Qwen3 8B Q8_0. S41 is a preserved Gemma/Qwen
 server-only alternative and cannot authorize this Qwen/Qwen phone route.
+
+The current bounded operator-offload scheduler result is S42 physical loop I3.
+On the real RTX 4060 Ti desktop and OP15, three alternating 74-request source-
+length BurstGPT pairs each completed 11,605 output tokens. The final FFN route
+reduces average makespan from 736.468 to 630.594 seconds (-14.38%), server
+CPU-package plus GPU-board energy from 136.144 to 112.586 kJ (-17.30%), and
+accounted server-plus-phone energy from 137.217 to 114.217 kJ (-16.76%). Mean
+exposed join wait is 2.67%, MMLU64 is 27 / 64 in both arms, and all placement,
+work, and cleanup checks pass. This supplies physical admission evidence only
+for the exact measured workload/profile epoch with bounded approximate
+quality. A fresh 2026-08-08 successor pair then ran through hash-bound plans
+from the unified scheduler: accounted fleet energy fell from 135.663 to
+113.956 kJ (-16.00%) and makespan fell from 735.298 to 631.548 seconds
+(-14.11%), with equal work, equal SLO count, and all runtime gates passing.
+The exact cohort route is now installed and physically exercised through the
+unified execution adapter. It does not authorize S39 model switching,
+exact-token service, or universal per-shape routing. The next bounded scheduler
+change is an atomic pre-dispatch runtime snapshot that includes phone thermal
+state, followed by shape-bucket qualification and a held-out arrival-mix
+replay. See
+`spikes/s41_gemma_qwen_continuous_baseline/tp_operator_split_v1/RESULTS_LLAMA_SERVER_I3_ENERGY_V1.md`
+and `spikes/s42_general_energy_scheduler_v1/RESULTS.md`.
+
+## S42-DR1: dynamic residency and GPU backfilling
+
+The selected successor baseline is the physical two-model F16 BurstGPT A-B-B-A
+result under
+`spikes/s42_general_energy_scheduler_v1/full_fp16_burstgpt_v1/results/`.
+It completes the same 74 requests and 11,605 output tokens while reducing mean
+accounted fleet energy from 300.873 to 224.038 kJ (-25.54%) and makespan from
+2,779.145 to 2,578.050 seconds (-7.24%). S42-DR1 must preserve that static
+resident policy as its fail-closed fallback.
+
+The new policy has two timescales:
+
+1. A slow loop changes one hash-verified weight placement per residency epoch.
+   It may keep, stage, verify, publish, drain, or evict a placement on GPU,
+   desktop memory, or phone memory.
+2. A fast loop leases an already-resident secondary GPU chunk only inside a
+   conservatively bounded primary-model wait. It never loads weights on the
+   request path and never delays ready protected work.
+
+The slow loop admits a transition only when all of these gates pass:
+
+- the source snapshot and residency generation are current and unexpired;
+- destination capacity includes declared KV, workspace, and mandatory reserve;
+- no evicted placement has a live lease or unexpired minimum-residency window;
+- expected reuse reaches the candidate's measured amortization floor;
+- baseline lower-bound fleet energy exceeds resident-path upper-bound energy,
+  load energy, eviction energy, and the configured safety margin;
+- the transition upper latency reaches READY before its declared latest time;
+- every transfer, verify, publish, and prepare row is measured and names the
+  same energy boundary and accounting scope; and
+- a failed, stale, or partial transition leaves the prior epoch authoritative.
+
+The fast loop admits a filler only when its complete upper latency plus restore
+and guard time fits before the primary GPU ready lower bound. Required weight
+placements must already be READY in the exact residency generation. GPU memory,
+KV, DMA, CPU, HTP, USB, and phone-memory leases remain shared with ordinary
+routes. Maximizing utilization is not an objective; a filler must reduce
+conservative fleet energy for fixed completed work.
+
+Implementation order:
+
+1. Add strict dynamic snapshot, placement, candidate, decision, transition,
+   receipt, and epoch schemas to `research_dev/scheduler`.
+2. Add energy, reuse, hysteresis, memory, transition-resource, and stale-epoch
+   tests. Execute no physical transition in this phase.
+3. Add a Qwen/Gemma shadow replay using the measured static run as fallback.
+   Report proposed, rejected, useful, unused, and evicted bytes and predicted
+   GPU-bubble coverage without claiming energy savings.
+4. Add disabled-by-default physical transition executors. Use strict
+   stage-verify-publish-drain when staging capacity exists. Otherwise permit a
+   separately named drain/reload mode only while a hash-matched CPU plus phone
+   route is READY, leased, and measured through the same energy boundary.
+5. Run matched static versus dynamic A-B-B-A on the RTX 4060 Ti plus OP15. All
+   weight-transfer and residency energy stays inside the paid boundary.
+
+Progress on 2026-08-10:
+
+- Steps 1 and 2 are implemented in the unified scheduler. Placement identity
+  now binds memory plus GPU or HTP-session execution resources. Atomic
+  transition receipts, placement leases, slow/fast-loop exclusion, and
+  conservative energy and deadline gates have focused tests.
+- Step 3 is implemented under
+  `spikes/s42_general_energy_scheduler_v1/dynamic_residency_v1/`. The shadow
+  replay preserves the measured static fallback. A hash-bound target-4060
+  capacity probe now passes for Qwen-15 plus Gemma-1 with zero process swap and
+  a 512 MiB GPU reserve. The dual state leaves only 180,355,072 bytes beyond
+  that reserve. The phone has only 248,168,448 bytes beyond its 2 GiB reserve
+  versus 3,208,646,656 bytes for the smallest known slice.
+- A physical service-only A-B-B-A screen now compares Qwen-18 plus CPU Gemma
+  against Qwen-15 plus Gemma-1 for the same two concurrent requests. Both
+  treatment arms reduce paired server energy and wall time. Mean CPU-package
+  energy changes by -24.06%, GPU-board energy by +45.05%, their sum by -8.66%,
+  and wall service time by -7.25%. Qwen is exact for 9/9 tokens but its mean
+  first-token time regresses 8.90%; Gemma has 37/41 positional agreement.
+  Loads and warmups are excluded and OP15 is absent. The result is
+  `REPEATED_SERVICE_DIRECTION_PASS_NO_ADMISSION`, not a dynamic saving.
+- Exact GGUF manifests now bind Qwen-15, Qwen-18, Gemma-0, and Gemma-1 to the
+  measured llama.cpp model-buffer logs. Qwen-18 to Qwen-15 removes exactly 33
+  tensors from blocks 23 through 25 and 1,981,934,592 raw bytes; Gemma-1 adds
+  two output tensors and 2,013,281,280 raw bytes. The checked bundle is
+  `GPU_TENSOR_MANIFEST_BUNDLE_V1.json`.
+- The target final placement fits, but strict atomic staging does not. Qwen-18
+  service leaves 205,520,896 bytes stageable above reserve versus a measured
+  2,444,230,656-byte Gemma runtime allocation, a 2,238,709,760-byte shortfall.
+  The next physical sequence uses two epochs: fallback-backed Qwen-18 to
+  Qwen-15, then atomic Gemma-1 addition. Qwen-15 leaves 2,624,585,728 bytes
+  stageable, enough for Gemma with 180,355,072 bytes remaining. Strict atomic
+  transition remains the default whenever enough memory exists.
+- The unified scheduler now implements that second mode as a distinct contract.
+  It acquires hash-matched READY CPU/phone placements before GPU drain, leases
+  their execution resources through the measured recovery bound, charges
+  fallback service plus restore energy, and accepts a failed transition only
+  after the exact source epoch is restored. Focused success, failure, identity,
+  coverage, timing, energy, and shared-calendar tests pass.
+- Executor-facing placement leases and atomic receipt contracts are present,
+  and the disabled-by-default transfer executor in step 4 is physically
+  qualified. A pinned-source 256 MiB A-B-B-A changed mean accounted
+  fleet energy by +0.072% and duration by +0.020%, with equal Qwen work, byte
+  verification, a 512 MiB GPU reserve, and zero protected-window overrun. A
+  full 2,013,265,920-byte Gemma tied-output tensor then copied in 54 protected
+  Qwen FFN group windows with a 22.880 ms p90 and 452,526,080 bytes remaining
+  beyond reserve. A successor run now stages the same tensor directly into the
+  Gemma executor, verifies all 480 chunks, publishes the model, and reproduces
+  the exact 41-token Gemma request-50 hash. It enforced zero process/cgroup
+  swap, retained 458,817,536 bytes beyond the GPU reserve, and recorded no OOM
+  event. This is
+  `SAME_PROCESS_WEIGHT_ADOPTION_QUALIFIED_ENERGY_ABBA_PENDING`, not a dynamic
+  saving: source preparation and CPU fallback load are still outside the paid
+  Qwen interval.
+- A matched pre-admission A-B-B-A now puts source preparation, the verified
+  2,013,265,920-byte transition, Qwen/Gemma service, CPU-package energy,
+  GPU-board energy, and synchronized whole-phone energy inside the paid
+  boundary. All four arms completed the same seven BurstGPT-derived requests
+  with exact output hashes, zero swap, no OOM, and the GPU reserve preserved.
+  The early-dynamic arm made Gemma READY 32.69% sooner, but increased duration
+  24.16% and fleet energy 15.33%. Both paired savings were negative. Complete
+  Gemma request execution contended with the Qwen CPU prompt path and CUDA
+  context, so the result is `ENERGY_SCREEN_FAIL_FULL_TRACE_BLOCKED`.
+- The stop gate fired as designed. Step 5 remains blocked, and the 74-request
+  dynamic campaign was not run. The next candidate must be a bounded,
+  contention-adjusted micro-filler with an explicit primary-GPU lower-bound
+  fence and measured restore time. It must pass the repeated conservative
+  whole-fleet screen before full-trace qualification. The measured static
+  policy remains the fallback at 25.537% fleet-energy savings.
+- A separate Gemma shape-balance A-B-B-A tested narrower OP15 suffixes on the
+  same 17 Gemma requests. Mean makespan improved 1.97%, but fleet energy
+  increased 0.79%; the paired fleet changes were +1.50% and -3.07%. Weighted
+  join wait fell from about 0.860 ms to 0.035 ms, while the added host columns
+  raised mean CPU package power from about 74.66 W to 77.75 W. The admission
+  gate returned `RETAIN_FIXED_POLICY`, so this table was not promoted to the
+  full trace. Any next split search must optimize measured fleet joules, not
+  branch latency alone.
+- The unified scheduler now owns a protected-first shared-phone arbiter and a
+  native two-client bridge. Qwen and Gemma retain three hash-verified OP15
+  sessions but share one HTP, FunctionFS, and USB execution lease. A real
+  mechanics run completed 1,296 Qwen calls plus 920 Gemma calls with a
+  timestamped Qwen completion transition and zero timing, pending-work, reset,
+  or router-accounting violations. A matched B-A-A-B screen then changed mean
+  fleet energy from 9.196 to 8.901 kJ (-3.206%) and duration from 99.600 to
+  93.786 seconds (-5.837%). This is not an admitted saving: one duration pair
+  regressed, whole-phone energy rose 4.408%, Gemma decode slowed 4.451%, and
+  the fleet direction missed the 5% margin. CPU-only Gemma prefill produced
+  the apparent timing gain even though that work was unchanged. The decision
+  is `RETAIN_CONTROL_PHONE_ROUTE`. Next measure M=1,2,4,8,16 Gemma prefill
+  microbatches and admit only bounded shapes that fit real Qwen phone-idle
+  windows; do not run the full trace first.
+- The same-process run peaked at 31,435,599,872 host-cgroup bytes even though
+  its GPU reserve passed. Dynamic candidates now carry transition-workspace
+  bytes by memory resource, so the unified scheduler charges the pinned source
+  and verification workspace against a live desktop-DRAM snapshot and reserve
+  before copy admission.
+- A separate run-start placement selector is now integrated through
+  `UnifiedScheduler`. It captured live GPU, host, and OP15 capacities, rejected
+  the full-GPU candidate on VRAM and Qwen-15/Gemma-1 wavefront on protected
+  host RAM, and bound the qualified Qwen-18/Gemma-25 CPU plus OP15 placement
+  into a schema-v2 physical execution receipt. The exact 74-request retest
+  reduced fleet energy 21.92% and makespan 4.05% versus the GPU plus CPU
+  baseline mean. This confirms runtime selection and fail-closed capacity
+  behavior, but does not unblock the mid-trace DR1 transition campaign.
+
+Stop before full-trace physical execution if repeated shadow-bound evidence
+cannot preserve the 2 GiB phone reserve, 512 MiB GPU reserve, zero process
+swap, fixed completed work, acceptable output quality, and a positive
+conservative whole-fleet energy margin. The whole-request overlap failed this
+energy-margin gate, so it is rejected rather than promoted to the full trace.
+
+The first cohort-energy calibration is now implemented under
+`spikes/s42_general_energy_scheduler_v1/model_energy_v1/`. It isolates
+Qwen3-14B CUDA, Gemma4-12B CPU, and Gemma4-12B CPU-plus-OP15 instead of trying
+to attribute energy from their concurrent I3 trace. The nine-case grid,
+RAPL/NVML runner, server-only acquisition wrapper, explicit 5 W temporary
+phone estimate, clock-aligned phone reducer, no-extrapolation fitter, and
+11 / 11 focused tests pass. No physical profile is claimed yet: the first Qwen
+pilot encountered two foreign orphaned Gemma servers holding about 12.5 GiB
+of VRAM and failed before any paid case. The wrapper now rejects this state
+without touching the phone. Resume Qwen and Gemma CPU server-only acquisition,
+then Gemma OP15 only after the target desktop is uncontended. CPU-package and
+GPU-board energy are measured; any 5 W phone contribution remains explicitly
+estimated and cannot authorize a measured fleet-energy claim.
+
+S42 now supports an operator-composed energy prior in addition to affine route
+costs. It uses kernel-effective ops/s, bytes/s, launch time, idle power, and
+active power with per-request operator work. It handles compute-bound and
+memory-bound operators, adds energy across concurrent devices, publishes an
+operator/domain breakdown, and rejects mismatched measurement boundaries.
+The 9 / 9 focused operator tests and 57 / 57 complete S42 tests pass. No
+kernel coefficient is claimed measured yet. The next physical work is the
+small CUDA, CPU, HTP, DMA, and merge kernel set followed by whole-route held-out
+validation, rather than fitting every complete model independently.
 
 The first non-qualification Qwen3-14B prototype now runs end to end on the
 target hardware: OP15 `[0,30)`, OP12 `[30,40)`, and concurrent RTX 4060 Ti

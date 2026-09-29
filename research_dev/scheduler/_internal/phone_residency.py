@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Mapping, Sequence
+from typing import Mapping, NamedTuple, Sequence
 
 from .types import MetricEstimate
 
@@ -735,6 +735,197 @@ class PhoneOffloadDecision:
     rejected: tuple[tuple[str, str], ...]
 
 
+class _FeasibleOffload(NamedTuple):
+    candidate: PhoneOffloadCandidate
+    split_upper_us: int
+    join_wait_upper_us: int
+    energy_saving_ppm: int
+    execute_not_before_us: int
+
+
+def _phone_ready_by_candidate(
+    phone_resource_ready_us: int | Mapping[str, int | None],
+) -> Mapping[str, int | None] | None:
+    if isinstance(phone_resource_ready_us, Mapping):
+        for candidate_id, ready_us in phone_resource_ready_us.items():
+            _text("phone ready candidate_id", candidate_id)
+            if ready_us is not None:
+                _integer("phone candidate resource_ready_us", ready_us)
+        return phone_resource_ready_us
+    _integer("phone resource_ready_us", phone_resource_ready_us)
+    return None
+
+
+def _validate_offload_gates(
+    *,
+    now_us: int,
+    deadline_us: int,
+    minimum_energy_saving_ppm: int,
+    latency_limit_ppm: int,
+    maximum_join_wait_ppm: int,
+) -> None:
+    _integer("phone decision deadline_us", deadline_us, 1)
+    _integer("minimum_energy_saving_ppm", minimum_energy_saving_ppm)
+    _integer("latency_limit_ppm", latency_limit_ppm, 1)
+    _integer("maximum_join_wait_ppm", maximum_join_wait_ppm)
+    if minimum_energy_saving_ppm >= 1_000_000:
+        raise PhoneResidencyError("energy saving gate reaches 100 percent")
+    if latency_limit_ppm < 1_000_000:
+        raise PhoneResidencyError("latency limit is below baseline")
+    if maximum_join_wait_ppm > 1_000_000:
+        raise PhoneResidencyError("join wait gate exceeds 100 percent")
+    if deadline_us <= now_us:
+        raise PhoneResidencyError("phone decision deadline has passed")
+
+
+def _register_candidate(
+    candidate: PhoneOffloadCandidate,
+    seen_ids: set[str],
+    boundary_scope: tuple[str, str] | None,
+) -> tuple[str, str]:
+    if not isinstance(candidate, PhoneOffloadCandidate):
+        raise PhoneResidencyError("phone offload candidate is invalid")
+    if candidate.candidate_id in seen_ids:
+        raise PhoneResidencyError("duplicate phone candidate id")
+    seen_ids.add(candidate.candidate_id)
+    current_boundary = (
+        candidate.energy_boundary_id,
+        candidate.accounting_scope,
+    )
+    if boundary_scope is None:
+        return current_boundary
+    if current_boundary != boundary_scope:
+        raise PhoneResidencyError(
+            "phone candidates use different energy boundaries or scopes"
+        )
+    return boundary_scope
+
+
+def _resident_rejection(
+    candidate: PhoneOffloadCandidate,
+    plan: PhoneResidencyPlan,
+    snapshot: PhoneResidencySnapshot,
+    physical_m: int,
+) -> str | None:
+    try:
+        locations = tuple(
+            plan.slice_location(slice_id)
+            for slice_id in candidate.slice_ids
+        )
+    except PhoneResidencyError:
+        return "RESIDENCY_UNKNOWN"
+    sessions = [session for session, _ in locations]
+    resident_slices = [resident_slice for _, resident_slice in locations]
+    if len({session.session_id for session in sessions}) != len(sessions):
+        return "COMPOSITE_SESSION_CONFLICT"
+    if len({row.model_hash for row in resident_slices}) != 1:
+        return "COMPOSITE_MODEL_MISMATCH"
+    if any(
+        snapshot.sessions[session.session_id].state != "WARM"
+        for session in sessions
+    ):
+        return "SESSION_NOT_WARM"
+    if any(not row.supports(physical_m) for row in resident_slices):
+        return "SHAPE_UNSUPPORTED"
+    return None
+
+
+def _split_timing(
+    candidate: PhoneOffloadCandidate,
+    queue_delay_us: int,
+) -> tuple[int, int, int]:
+    phone_upper_us = queue_delay_us + candidate.phone_path_us.upper
+    if candidate.execution_mode == "full_replacement":
+        split_upper_us = phone_upper_us
+        join_wait_upper_us = 0
+    else:
+        split_upper_us = max(
+            candidate.host_remainder_us.upper,
+            phone_upper_us,
+        )
+        host_lower_us = (
+            candidate.host_remainder_us.lower
+            if candidate.host_remainder_us.lower is not None
+            else candidate.host_remainder_us.mean
+        )
+        join_wait_upper_us = max(0, phone_upper_us - host_lower_us)
+    join_wait_ppm = (
+        join_wait_upper_us * 1_000_000 + split_upper_us - 1
+    ) // split_upper_us
+    return split_upper_us, join_wait_upper_us, join_wait_ppm
+
+
+def _evaluate_offload_candidate(
+    candidate: PhoneOffloadCandidate,
+    plan: PhoneResidencyPlan,
+    snapshot: PhoneResidencySnapshot,
+    *,
+    physical_m: int,
+    now_us: int,
+    phone_resource_ready_us: int | Mapping[str, int | None],
+    ready_by_candidate: Mapping[str, int | None] | None,
+    deadline_us: int,
+    minimum_energy_saving_ppm: int,
+    latency_limit_ppm: int,
+    maximum_join_wait_ppm: int,
+    require_measured: bool,
+) -> str | _FeasibleOffload:
+    rejection = _resident_rejection(candidate, plan, snapshot, physical_m)
+    if rejection is not None:
+        return rejection
+    candidate_ready_us = (
+        ready_by_candidate.get(candidate.candidate_id)
+        if ready_by_candidate is not None
+        else phone_resource_ready_us
+    )
+    if candidate_ready_us is None:
+        return "RESOURCE_NOT_READY"
+    execute_not_before_us = max(now_us, candidate_ready_us)
+    queue_delay_us = execute_not_before_us - now_us
+
+    metrics = (
+        candidate.baseline_latency_us,
+        candidate.host_remainder_us,
+        candidate.phone_path_us,
+        candidate.baseline_energy_uj,
+        candidate.split_energy_uj,
+    )
+    if require_measured and not all(row.measured for row in metrics):
+        return "MEASUREMENT_REQUIRED"
+    if candidate.baseline_energy_uj.lower is None:
+        return "BASELINE_ENERGY_LCB_MISSING"
+
+    split_upper_us, join_wait_upper_us, join_wait_ppm = _split_timing(
+        candidate, queue_delay_us
+    )
+    if now_us + split_upper_us > deadline_us:
+        return "DEADLINE"
+    if (
+        split_upper_us * 1_000_000
+        > candidate.baseline_latency_us.upper * latency_limit_ppm
+    ):
+        return "LATENCY_REGRESSION"
+    if join_wait_ppm > maximum_join_wait_ppm:
+        return "PHONE_EXPOSED"
+    energy_threshold = (
+        candidate.baseline_energy_uj.lower
+        * (1_000_000 - minimum_energy_saving_ppm)
+    ) // 1_000_000
+    if candidate.split_energy_uj.upper > energy_threshold:
+        return "ENERGY_MARGIN"
+    energy_saving_ppm = (
+        (candidate.baseline_energy_uj.lower - candidate.split_energy_uj.upper)
+        * 1_000_000
+    ) // candidate.baseline_energy_uj.lower
+    return _FeasibleOffload(
+        candidate,
+        split_upper_us,
+        join_wait_upper_us,
+        energy_saving_ppm,
+        execute_not_before_us,
+    )
+
+
 def select_energy_positive_offload(
     plan: PhoneResidencyPlan,
     snapshot: PhoneResidencySnapshot,
@@ -753,151 +944,41 @@ def select_energy_positive_offload(
 ) -> PhoneOffloadDecision:
     _integer("phone decision physical_m", physical_m, 1)
     _integer("phone decision now_us", now_us)
-    ready_by_candidate: Mapping[str, int | None] | None = None
-    if isinstance(phone_resource_ready_us, Mapping):
-        ready_by_candidate = phone_resource_ready_us
-        for candidate_id, ready_us in ready_by_candidate.items():
-            _text("phone ready candidate_id", candidate_id)
-            if ready_us is not None:
-                _integer("phone candidate resource_ready_us", ready_us)
-    else:
-        _integer("phone resource_ready_us", phone_resource_ready_us)
-    _integer("phone decision deadline_us", deadline_us, 1)
-    _integer("minimum_energy_saving_ppm", minimum_energy_saving_ppm)
-    _integer("latency_limit_ppm", latency_limit_ppm, 1)
-    _integer("maximum_join_wait_ppm", maximum_join_wait_ppm)
-    if minimum_energy_saving_ppm >= 1_000_000:
-        raise PhoneResidencyError("energy saving gate reaches 100 percent")
-    if latency_limit_ppm < 1_000_000:
-        raise PhoneResidencyError("latency limit is below baseline")
-    if maximum_join_wait_ppm > 1_000_000:
-        raise PhoneResidencyError("join wait gate exceeds 100 percent")
-    if deadline_us <= now_us:
-        raise PhoneResidencyError("phone decision deadline has passed")
+    ready_by_candidate = _phone_ready_by_candidate(phone_resource_ready_us)
+    _validate_offload_gates(
+        now_us=now_us,
+        deadline_us=deadline_us,
+        minimum_energy_saving_ppm=minimum_energy_saving_ppm,
+        latency_limit_ppm=latency_limit_ppm,
+        maximum_join_wait_ppm=maximum_join_wait_ppm,
+    )
 
     snapshot.validate_against(plan)
     rejected: list[tuple[str, str]] = []
-    feasible: list[tuple[PhoneOffloadCandidate, int, int, int, int]] = []
+    feasible: list[_FeasibleOffload] = []
     seen_ids: set[str] = set()
     boundary_scope: tuple[str, str] | None = None
 
     for candidate in candidates:
-        if not isinstance(candidate, PhoneOffloadCandidate):
-            raise PhoneResidencyError("phone offload candidate is invalid")
-        if candidate.candidate_id in seen_ids:
-            raise PhoneResidencyError("duplicate phone candidate id")
-        seen_ids.add(candidate.candidate_id)
-        current_boundary = (
-            candidate.energy_boundary_id,
-            candidate.accounting_scope,
+        boundary_scope = _register_candidate(candidate, seen_ids, boundary_scope)
+        outcome = _evaluate_offload_candidate(
+            candidate,
+            plan,
+            snapshot,
+            physical_m=physical_m,
+            now_us=now_us,
+            phone_resource_ready_us=phone_resource_ready_us,
+            ready_by_candidate=ready_by_candidate,
+            deadline_us=deadline_us,
+            minimum_energy_saving_ppm=minimum_energy_saving_ppm,
+            latency_limit_ppm=latency_limit_ppm,
+            maximum_join_wait_ppm=maximum_join_wait_ppm,
+            require_measured=require_measured,
         )
-        if boundary_scope is None:
-            boundary_scope = current_boundary
-        elif current_boundary != boundary_scope:
-            raise PhoneResidencyError(
-                "phone candidates use different energy boundaries or scopes"
-            )
-
-        try:
-            locations = tuple(
-                plan.slice_location(slice_id)
-                for slice_id in candidate.slice_ids
-            )
-        except PhoneResidencyError:
-            rejected.append((candidate.candidate_id, "RESIDENCY_UNKNOWN"))
+        if isinstance(outcome, str):
+            rejected.append((candidate.candidate_id, outcome))
             continue
-        sessions = [session for session, _ in locations]
-        resident_slices = [resident_slice for _, resident_slice in locations]
-        if len({session.session_id for session in sessions}) != len(sessions):
-            rejected.append((candidate.candidate_id, "COMPOSITE_SESSION_CONFLICT"))
-            continue
-        if len({row.model_hash for row in resident_slices}) != 1:
-            rejected.append((candidate.candidate_id, "COMPOSITE_MODEL_MISMATCH"))
-            continue
-        if any(
-            snapshot.sessions[session.session_id].state != "WARM"
-            for session in sessions
-        ):
-            rejected.append((candidate.candidate_id, "SESSION_NOT_WARM"))
-            continue
-        if any(not row.supports(physical_m) for row in resident_slices):
-            rejected.append((candidate.candidate_id, "SHAPE_UNSUPPORTED"))
-            continue
-        candidate_ready_us = (
-            ready_by_candidate.get(candidate.candidate_id)
-            if ready_by_candidate is not None
-            else phone_resource_ready_us
-        )
-        if candidate_ready_us is None:
-            rejected.append((candidate.candidate_id, "RESOURCE_NOT_READY"))
-            continue
-        execute_not_before_us = max(now_us, candidate_ready_us)
-        queue_delay_us = execute_not_before_us - now_us
-
-        metrics = (
-            candidate.baseline_latency_us,
-            candidate.host_remainder_us,
-            candidate.phone_path_us,
-            candidate.baseline_energy_uj,
-            candidate.split_energy_uj,
-        )
-        if require_measured and not all(row.measured for row in metrics):
-            rejected.append((candidate.candidate_id, "MEASUREMENT_REQUIRED"))
-            continue
-        if candidate.baseline_energy_uj.lower is None:
-            rejected.append((candidate.candidate_id, "BASELINE_ENERGY_LCB_MISSING"))
-            continue
-
-        phone_upper_us = queue_delay_us + candidate.phone_path_us.upper
-        if candidate.execution_mode == "full_replacement":
-            split_upper_us = phone_upper_us
-            join_wait_upper_us = 0
-        else:
-            split_upper_us = max(
-                candidate.host_remainder_us.upper,
-                phone_upper_us,
-            )
-            host_lower_us = (
-                candidate.host_remainder_us.lower
-                if candidate.host_remainder_us.lower is not None
-                else candidate.host_remainder_us.mean
-            )
-            join_wait_upper_us = max(0, phone_upper_us - host_lower_us)
-        join_wait_ppm = (
-            join_wait_upper_us * 1_000_000 + split_upper_us - 1
-        ) // split_upper_us
-        if now_us + split_upper_us > deadline_us:
-            rejected.append((candidate.candidate_id, "DEADLINE"))
-            continue
-        if (
-            split_upper_us * 1_000_000
-            > candidate.baseline_latency_us.upper * latency_limit_ppm
-        ):
-            rejected.append((candidate.candidate_id, "LATENCY_REGRESSION"))
-            continue
-        if join_wait_ppm > maximum_join_wait_ppm:
-            rejected.append((candidate.candidate_id, "PHONE_EXPOSED"))
-            continue
-        energy_threshold = (
-            candidate.baseline_energy_uj.lower
-            * (1_000_000 - minimum_energy_saving_ppm)
-        ) // 1_000_000
-        if candidate.split_energy_uj.upper > energy_threshold:
-            rejected.append((candidate.candidate_id, "ENERGY_MARGIN"))
-            continue
-        energy_saving_ppm = (
-            (candidate.baseline_energy_uj.lower - candidate.split_energy_uj.upper)
-            * 1_000_000
-        ) // candidate.baseline_energy_uj.lower
-        feasible.append(
-            (
-                candidate,
-                split_upper_us,
-                join_wait_upper_us,
-                energy_saving_ppm,
-                execute_not_before_us,
-            )
-        )
+        feasible.append(outcome)
 
     if not feasible:
         return PhoneOffloadDecision(
@@ -911,13 +992,7 @@ def select_energy_positive_offload(
             rejected=tuple(rejected),
         )
 
-    (
-        candidate,
-        split_upper_us,
-        join_wait_upper_us,
-        energy_saving_ppm,
-        execute_not_before_us,
-    ) = min(
+    row = min(
         feasible,
         key=lambda row: (
             row[0].split_energy_uj.upper,
@@ -926,6 +1001,7 @@ def select_energy_positive_offload(
             row[0].candidate_id,
         ),
     )
+    candidate = row.candidate
     signal = build_arm_group(
         plan,
         snapshot,
@@ -934,7 +1010,7 @@ def select_energy_positive_offload(
         slice_ids=candidate.slice_ids,
         physical_m=physical_m,
         armed_at_us=now_us,
-        execute_not_before_us=execute_not_before_us,
+        execute_not_before_us=row.execute_not_before_us,
         deadline_us=deadline_us,
     )
     return PhoneOffloadDecision(
@@ -942,8 +1018,8 @@ def select_energy_positive_offload(
         reason="ENERGY_POSITIVE_RESIDENT_PHONE_ROUTE",
         arm_signal=signal,
         offload_units=candidate.offload_units,
-        split_latency_upper_us=split_upper_us,
-        exposed_join_wait_upper_us=join_wait_upper_us,
-        energy_saving_ppm=energy_saving_ppm,
+        split_latency_upper_us=row.split_upper_us,
+        exposed_join_wait_upper_us=row.join_wait_upper_us,
+        energy_saving_ppm=row.energy_saving_ppm,
         rejected=tuple(rejected),
     )

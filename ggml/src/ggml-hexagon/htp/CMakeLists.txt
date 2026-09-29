@@ -23,6 +23,7 @@ add_library(${HTP_LIB} SHARED
     flash-attn-ops.c
     hmx-flash-attn-ops.c
     matmul-ops.c
+    ffn-fused-ops.c
     binary-ops.c
     unary-ops.c
     sum-rows-ops.c

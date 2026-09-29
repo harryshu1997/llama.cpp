@@ -576,6 +576,8 @@ struct common_params {
     bool verbose_prompt    = false; // print prompt tokens before generation
     bool display_prompt    = true;  // print prompt before generation
     bool no_kv_offload     = false; // disable KV offloading
+    std::vector<int32_t> kv_cpu_layers; // CPU KV and attention overrides
+    std::vector<llama_kv_device_cells> kv_device_cells;
     bool warmup            = true;  // warmup run
     bool check_tensors     = false; // validate tensor data
     bool no_op_offload     = false; // globally disable offload host tensor operations to device

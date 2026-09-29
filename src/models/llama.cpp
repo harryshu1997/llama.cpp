@@ -1,4 +1,7 @@
 #include "models.h"
+#include "../llama-ffn-split-policy.h"
+
+#include <cstdlib>
 
 void llama_model_llama::load_arch_hparams(llama_model_loader & ml) {
     uint32_t n_vocab = 0;
@@ -105,6 +108,8 @@ llama_model_llama::graph<embed>::graph(const llama_model & model, const llm_grap
     ggml_tensor * cur;
     ggml_tensor * inpL;
 
+    const dense_ffn_split_policy ffn_split_policy = resolve_dense_ffn_split_policy();
+
     inpL = build_inp_embd(model.tok_embd);
 
     // inp_pos - contains the positions
@@ -186,12 +191,7 @@ llama_model_llama::graph<embed>::graph(const llama_model & model, const llm_grap
                     LLM_NORM_RMS, il);
             cb(cur, "ffn_norm", il);
 
-            cur = build_ffn(cur,
-                    model.layers[il].ffn_up,   model.layers[il].ffn_up_b,   model.layers[il].ffn_up_s,
-                    model.layers[il].ffn_gate, model.layers[il].ffn_gate_b, model.layers[il].ffn_gate_s,
-                    model.layers[il].ffn_down, model.layers[il].ffn_down_b, model.layers[il].ffn_down_s,
-                    NULL,
-                    LLM_FFN_SILU, LLM_FFN_PAR, il);
+            cur = build_dense_ffn_split(cur, model.layers[il], LLM_FFN_SILU, ffn_split_policy, il);
             cb(cur, "ffn_out", il);
         } else {
             // MoE branch

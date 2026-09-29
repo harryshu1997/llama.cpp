@@ -441,10 +441,14 @@ void llama_file::write_u32(uint32_t val) const { pimpl->write_u32(val); }
 struct llama_mmap::impl {
 #ifdef _POSIX_MAPPED_FILES
     std::vector<std::pair<size_t, size_t>> mapped_fragments;
+    int fd = -1;
 
     impl(struct llama_file * file, size_t prefetch, bool numa) {
         size = file->size();
         int fd = file->file_id();
+        // keep our own descriptor: the loader closes the file once the tensors are loaded, while
+        // page-cache advice for a dormant host share is issued much later
+        this->fd = dup(fd);
         int flags = MAP_SHARED;
         if (numa) { prefetch = 0; }
 #ifdef __linux__
@@ -523,11 +527,141 @@ struct llama_mmap::impl {
         mapped_fragments = std::move(new_mapped_fragments);
     }
 
+    void prefetch_fragment(size_t first, size_t last) {
+        const size_t page_size = sysconf(_SC_PAGESIZE);
+        // align outward: pages touching a retained byte are always still mapped because
+        // unmap_fragment only releases pages that lie completely inside an omitted range
+        first = first & ~(page_size - 1);
+        last  = (last + page_size - 1) & ~(page_size - 1);
+        if (last > size) {
+            last = size;
+        }
+        for (const auto & frag : mapped_fragments) {
+            const size_t lo = std::max(first, frag.first);
+            const size_t hi = std::min(last,  frag.second);
+            if (lo >= hi) {
+                continue;
+            }
+            void * start = (uint8_t *) addr + lo;
+#if defined(__linux__) && defined(MADV_POPULATE_READ)
+            if (madvise(start, hi - lo, MADV_POPULATE_READ) == 0) {
+                continue;
+            }
+#endif
+            if (posix_madvise(start, hi - lo, POSIX_MADV_WILLNEED)) {
+                LLAMA_LOG_WARN("warning: posix_madvise(.., POSIX_MADV_WILLNEED) failed: %s\n",
+                        strerror(errno));
+            }
+        }
+    }
+
+    size_t mapped_bytes() const {
+        size_t total = 0;
+        for (const auto & frag : mapped_fragments) {
+            total += frag.second - frag.first;
+        }
+        return total;
+    }
+
+    // Inward page-aligned intersection of [first, last) with the mapped fragments.
+    void mapped_pieces(size_t first, size_t last, std::vector<std::pair<size_t, size_t>> & out) const {
+        const size_t page_size = sysconf(_SC_PAGESIZE);
+        align_range(&first, &last, page_size);
+        if (last <= first) {
+            return;
+        }
+        for (const auto & frag : mapped_fragments) {
+            const size_t lo = std::max(first, frag.first);
+            const size_t hi = std::min(last,  frag.second);
+            if (lo < hi) {
+                out.emplace_back(lo, hi);
+            }
+        }
+    }
+
+    // Drop this process's page-table entries for the pieces (exact RSS accounting), optionally
+    // advising away the unmapped clean pages inside the cover ranges. Pages that
+    // are still mapped (the retained host prefix) are skipped by the kernel, so a cover range
+    // may span a whole tensor.
+    size_t release_fragments(const std::vector<std::pair<size_t, size_t>> & ranges,
+                             const std::vector<std::pair<size_t, size_t>> & cache_drop_ranges, bool drop_cache) {
+        std::vector<std::pair<size_t, size_t>> pieces;
+        for (const auto & range : ranges) {
+            mapped_pieces(range.first, range.second, pieces);
+        }
+        size_t total = 0;
+        for (const auto & piece : pieces) {
+            if (madvise((uint8_t *) addr + piece.first, piece.second - piece.first, MADV_DONTNEED)) {
+                LLAMA_LOG_WARN("warning: madvise(.., MADV_DONTNEED) failed: %s\n", strerror(errno));
+                continue;
+            }
+            total += piece.second - piece.first;
+        }
+        if (drop_cache && fd >= 0) {
+            for (const auto & range : cache_drop_ranges) {
+                const size_t lo = std::min(range.first, size);
+                const size_t hi = std::min(range.second, size);
+                if (lo < hi) {
+                    posix_fadvise(fd, (off_t) lo, (off_t) (hi - lo), POSIX_FADV_DONTNEED);
+                }
+            }
+        }
+        return total;
+    }
+
+    // Read the still-mapped pages covering the ranges back in (MADV_POPULATE_READ / WILLNEED).
+    // The ranges are whole tensors whose released share is interleaved with retained rows, so a
+    // synchronous populate alone issues many small reads; an asynchronous whole-range readahead
+    // first lets the block layer stream each tensor sequentially.
+    size_t populate_fragments(const std::vector<std::pair<size_t, size_t>> & ranges) {
+        size_t total = 0;
+        const size_t page_size = sysconf(_SC_PAGESIZE);
+        if (fd >= 0) {
+            for (const auto & range : ranges) {
+                const size_t lo = std::min(range.first, size);
+                const size_t hi = std::min(range.second, size);
+                if (lo < hi) {
+                    posix_fadvise(fd, (off_t) lo, (off_t) (hi - lo), POSIX_FADV_WILLNEED);
+                }
+            }
+        }
+        for (const auto & range : ranges) {
+            size_t first = range.first & ~(page_size - 1);
+            size_t last  = std::min(size, (range.second + page_size - 1) & ~(page_size - 1));
+            for (const auto & frag : mapped_fragments) {
+                const size_t lo = std::max(first, frag.first);
+                const size_t hi = std::min(last,  frag.second);
+                if (lo < hi) {
+                    auto * start = (uint8_t *) addr + lo;
+#if defined(__linux__) && defined(MADV_POPULATE_READ)
+                    if (madvise(start, hi - lo, MADV_POPULATE_READ) != 0) {
+                        if (errno != EINVAL && errno != ENOSYS && errno != EOPNOTSUPP) {
+                            throw std::runtime_error(format("failed to populate model pages: %s", strerror(errno)));
+                        }
+#endif
+                        // WILLNEED is advisory; restoration requires synchronous page reads.
+                        const volatile uint8_t * pages = start;
+                        for (size_t offset = 0; offset < hi - lo; offset += page_size) {
+                            (void) pages[offset];
+                        }
+#if defined(__linux__) && defined(MADV_POPULATE_READ)
+                    }
+#endif
+                    total += hi - lo;
+                }
+            }
+        }
+        return total;
+    }
+
     ~impl() {
         for (const auto & frag : mapped_fragments) {
             if (munmap((char *) addr + frag.first, frag.second - frag.first)) {
                 LLAMA_LOG_WARN("warning: munmap failed: %s\n", strerror(errno));
             }
+        }
+        if (fd >= 0) {
+            close(fd);
         }
     }
 #elif defined(_WIN32)
@@ -582,6 +716,28 @@ struct llama_mmap::impl {
         GGML_UNUSED(last);
     }
 
+    void prefetch_fragment(size_t first, size_t last) {
+        GGML_UNUSED(first);
+        GGML_UNUSED(last);
+    }
+
+    size_t release_fragments(const std::vector<std::pair<size_t, size_t>> & ranges,
+                             const std::vector<std::pair<size_t, size_t>> & cache_drop_ranges, bool drop_cache) {
+        GGML_UNUSED(ranges);
+        GGML_UNUSED(cache_drop_ranges);
+        GGML_UNUSED(drop_cache);
+        return 0;
+    }
+
+    size_t populate_fragments(const std::vector<std::pair<size_t, size_t>> & ranges) {
+        GGML_UNUSED(ranges);
+        return 0;
+    }
+
+    size_t mapped_bytes() const {
+        return size;
+    }
+
     ~impl() {
         if (hMapping) {
             if (addr) {
@@ -611,6 +767,30 @@ struct llama_mmap::impl {
 
         throw std::runtime_error("mmap not supported");
     }
+
+    void prefetch_fragment(size_t first, size_t last) {
+        GGML_UNUSED(first);
+        GGML_UNUSED(last);
+
+        throw std::runtime_error("mmap not supported");
+    }
+
+    size_t mapped_bytes() const {
+        throw std::runtime_error("mmap not supported");
+    }
+
+    size_t release_fragments(const std::vector<std::pair<size_t, size_t>> & ranges,
+                             const std::vector<std::pair<size_t, size_t>> & cache_drop_ranges, bool drop_cache) {
+        GGML_UNUSED(ranges);
+        GGML_UNUSED(cache_drop_ranges);
+        GGML_UNUSED(drop_cache);
+        throw std::runtime_error("mmap not supported");
+    }
+
+    size_t populate_fragments(const std::vector<std::pair<size_t, size_t>> & ranges) {
+        GGML_UNUSED(ranges);
+        throw std::runtime_error("mmap not supported");
+    }
 #endif
 
     void * addr;
@@ -624,6 +804,13 @@ size_t llama_mmap::size() const { return pimpl->size; }
 void * llama_mmap::addr() const { return pimpl->addr; }
 
 void llama_mmap::unmap_fragment(size_t first, size_t last) { pimpl->unmap_fragment(first, last); }
+void llama_mmap::prefetch_fragment(size_t first, size_t last) { pimpl->prefetch_fragment(first, last); }
+size_t llama_mmap::mapped_bytes() const { return pimpl->mapped_bytes(); }
+size_t llama_mmap::release_fragments(const std::vector<std::pair<size_t, size_t>> & ranges,
+                                     const std::vector<std::pair<size_t, size_t>> & cache_drop_ranges, bool drop_cache) {
+    return pimpl->release_fragments(ranges, cache_drop_ranges, drop_cache);
+}
+size_t llama_mmap::populate_fragments(const std::vector<std::pair<size_t, size_t>> & ranges) { return pimpl->populate_fragments(ranges); }
 
 #if defined(_POSIX_MEMLOCK_RANGE) || defined(_WIN32)
 const bool llama_mmap::SUPPORTED  = true;

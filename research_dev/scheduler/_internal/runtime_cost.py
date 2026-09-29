@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import InitVar, dataclass, field
 from types import MappingProxyType
 from typing import Mapping, Sequence
 
@@ -18,6 +18,7 @@ __all__ = [
     "RuntimeCostEstimateSet",
     "RuntimeCostEstimator",
     "RuntimeExecutorBinding",
+    "RuntimeParticipantBinding",
     "RuntimeExecutorRegistry",
     "RuntimeMemoryDemand",
     "RuntimeModelArtifact",
@@ -27,6 +28,9 @@ __all__ = [
 
 class RuntimeCostError(ValueError):
     pass
+
+
+_MAPPING_PROXY_TYPE = type(MappingProxyType({}))
 
 
 def _text(name: str, value: object) -> str:
@@ -69,6 +73,23 @@ def _unique_texts(name: str, values: Sequence[str]) -> tuple[str, ...]:
     return result
 
 
+def _clone_details(value: object) -> object:
+    if type(value) in {dict, _MAPPING_PROXY_TYPE}:
+        return {
+            key: _clone_details(item)
+            for key, item in sorted(value.items())
+        }
+    if type(value) is tuple:
+        return tuple(_clone_details(item) for item in value)
+    if type(value) is list:
+        return [_clone_details(item) for item in value]
+    if type(value) is set:
+        return {_clone_details(item) for item in value}
+    if type(value) is frozenset:
+        return frozenset(_clone_details(item) for item in value)
+    return value
+
+
 RUNTIME_MEMORY_LIFETIMES = frozenset({"request", "resident"})
 
 
@@ -80,32 +101,73 @@ class RuntimeMemoryDemand:
     required_bytes: int
     resident_bytes: int
     lifetime: str
+    share_key: str | None = None
+    replacement_group: str | None = None
+    replaceable_bytes: int = 0
+    device_id: str | None = None
 
     def __post_init__(self) -> None:
         for name in ("demand_id", "resource_id", "kind"):
             _text(f"runtime memory {name}", getattr(self, name))
         _integer("runtime memory required_bytes", self.required_bytes, 1)
         _integer("runtime memory resident_bytes", self.resident_bytes)
+        _integer("runtime memory replaceable_bytes", self.replaceable_bytes)
         if self.resident_bytes > self.required_bytes:
             raise RuntimeCostError(
                 "runtime memory resident bytes exceed required bytes"
             )
         if self.lifetime not in RUNTIME_MEMORY_LIFETIMES:
             raise RuntimeCostError("runtime memory lifetime is invalid")
+        if self.share_key is not None:
+            _text("runtime memory share key", self.share_key)
+            if self.lifetime != "resident":
+                raise RuntimeCostError(
+                    "only resident memory can have a share key"
+                )
+        if self.replacement_group is not None:
+            _text(
+                "runtime memory replacement group",
+                self.replacement_group,
+            )
+            if self.share_key is None:
+                raise RuntimeCostError(
+                    "replacement memory requires a share key"
+                )
+        if self.device_id is not None:
+            _text("runtime memory device id", self.device_id)
+        if self.replaceable_bytes:
+            if self.replacement_group is None:
+                raise RuntimeCostError(
+                    "replaceable memory requires a replacement group"
+                )
+            if self.resident_bytes + self.replaceable_bytes > (
+                self.required_bytes
+            ):
+                raise RuntimeCostError(
+                    "resident and replaceable memory exceed required bytes"
+                )
+            if self.device_id is None:
+                raise RuntimeCostError(
+                    "replaceable memory requires a device id"
+                )
 
     @property
     def additional_bytes(self) -> int:
-        return self.required_bytes - self.resident_bytes
+        return (
+            self.required_bytes
+            - self.resident_bytes
+            - self.replaceable_bytes
+        )
 
     @property
     def residency_satisfied(self) -> bool:
         return (
             self.lifetime == "request"
-            or self.additional_bytes == 0
+            or self.resident_bytes == self.required_bytes
         )
 
     def to_json(self) -> dict[str, int | str]:
-        return {
+        result = {
             "additional_bytes": self.additional_bytes,
             "demand_id": self.demand_id,
             "kind": self.kind,
@@ -114,6 +176,15 @@ class RuntimeMemoryDemand:
             "resident_bytes": self.resident_bytes,
             "resource_id": self.resource_id,
         }
+        if self.share_key is not None:
+            result["share_key"] = self.share_key
+        if self.replacement_group is not None:
+            result["replacement_group"] = self.replacement_group
+        if self.replaceable_bytes:
+            result["replaceable_bytes"] = self.replaceable_bytes
+        if self.device_id is not None:
+            result["device_id"] = self.device_id
+        return result
 
 
 @dataclass(frozen=True)
@@ -140,6 +211,35 @@ class RuntimeModelArtifact:
 
 
 @dataclass(frozen=True)
+class RuntimeParticipantBinding:
+    executor_id: str
+    device_id: str
+    endpoint: str
+    backend: str
+    resource_ids: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        for name in ("executor_id", "device_id", "endpoint", "backend"):
+            _text(f"runtime participant {name}", getattr(self, name))
+        object.__setattr__(
+            self,
+            "resource_ids",
+            _unique_texts(
+                "runtime participant resource id", self.resource_ids
+            ),
+        )
+
+    def to_json(self) -> dict[str, object]:
+        return {
+            "backend": self.backend,
+            "device_id": self.device_id,
+            "endpoint": self.endpoint,
+            "executor_id": self.executor_id,
+            "resource_ids": list(self.resource_ids),
+        }
+
+
+@dataclass(frozen=True)
 class RuntimeExecutorBinding:
     executor_id: str
     route_id: str
@@ -154,6 +254,12 @@ class RuntimeExecutorBinding:
     memory_demands: tuple[RuntimeMemoryDemand, ...] = ()
     queueable: bool = False
     residency_candidate_id: str | None = None
+    route_family: str | None = None
+    eligibility_reasons: tuple[str, ...] = ()
+    participants: tuple[RuntimeParticipantBinding, ...] = ()
+    operator_plan_sha256: str | None = None
+    endpoint: str | None = None
+    operator_plan_protocol: str | None = None
 
     def __post_init__(self) -> None:
         for name in (
@@ -189,6 +295,56 @@ class RuntimeExecutorBinding:
                 "runtime executor residency_candidate_id",
                 self.residency_candidate_id,
             )
+        if self.route_family is not None:
+            _text("runtime executor route_family", self.route_family)
+        if self.endpoint is not None:
+            _text("runtime executor endpoint", self.endpoint)
+        if self.operator_plan_protocol is not None:
+            _text(
+                "runtime executor operator_plan_protocol",
+                self.operator_plan_protocol,
+            )
+        reasons = tuple(
+            _text("runtime executor eligibility reason", value)
+            for value in self.eligibility_reasons
+        )
+        if len(reasons) != len(set(reasons)):
+            raise RuntimeCostError(
+                "runtime executor eligibility reasons must be unique"
+            )
+        if self.ready and reasons:
+            raise RuntimeCostError(
+                "ready runtime executor has eligibility failures"
+            )
+        participants = tuple(self.participants)
+        if any(
+            not isinstance(item, RuntimeParticipantBinding)
+            for item in participants
+        ) or len({item.executor_id for item in participants}) != len(
+            participants
+        ):
+            raise RuntimeCostError(
+                "runtime executor participants are invalid"
+            )
+        if self.operator_plan_sha256 is not None:
+            object.__setattr__(
+                self,
+                "operator_plan_sha256",
+                _sha256(
+                    "runtime executor operator_plan_sha256",
+                    self.operator_plan_sha256,
+                ),
+            )
+        if participants and self.operator_plan_sha256 is None:
+            raise RuntimeCostError(
+                "runtime composite participants require an operator plan"
+            )
+        if self.operator_plan_sha256 is not None and self.ready and (
+            self.endpoint is None or self.operator_plan_protocol is None
+        ):
+            raise RuntimeCostError(
+                "ready operator plan requires a physical endpoint and protocol"
+            )
         demands = tuple(self.memory_demands)
         if not demands:
             if self.memory_resource_id is None:
@@ -222,13 +378,20 @@ class RuntimeExecutorBinding:
             "memory_demands",
             tuple(sorted(demands, key=lambda item: item.demand_id)),
         )
+        object.__setattr__(self, "eligibility_reasons", reasons)
+        object.__setattr__(
+            self,
+            "participants",
+            tuple(sorted(participants, key=lambda item: item.device_id)),
+        )
 
     def to_json(self) -> dict[str, object]:
-        return {
+        result = {
             "artifact_bytes": self.artifact_bytes,
             "artifact_sha256": self.artifact_sha256,
             "backend": self.backend,
             "executor_id": self.executor_id,
+            "eligibility_reasons": list(self.eligibility_reasons),
             "memory_resource_id": self.memory_resource_id,
             "memory_demands": [
                 demand.to_json() for demand in self.memory_demands
@@ -241,6 +404,18 @@ class RuntimeExecutorBinding:
             "resource_ids": list(self.resource_ids),
             "route_id": self.route_id,
         }
+        if self.endpoint is not None:
+            result["endpoint"] = self.endpoint
+        if self.operator_plan_protocol is not None:
+            result["operator_plan_protocol"] = self.operator_plan_protocol
+        if self.route_family is not None:
+            result["route_family"] = self.route_family
+        if self.participants:
+            result["participants"] = [
+                item.to_json() for item in self.participants
+            ]
+            result["operator_plan_sha256"] = self.operator_plan_sha256
+        return result
 
 
 @dataclass(frozen=True)
@@ -310,8 +485,11 @@ class RuntimeRouteCostEstimate:
     memory_resource_id: str | None
     additional_bytes_by_resource: Mapping[str, int]
     memory_demands: tuple[RuntimeMemoryDemand, ...]
+    details: Mapping[str, object] = field(default_factory=dict)
+    _owned_details: InitVar[bool] = False
 
-    def __post_init__(self) -> None:
+    def __post_init__(self, _owned_details: bool) -> None:
+        _boolean("runtime cost owned details", _owned_details)
         _text("runtime cost route_id", self.route_id)
         if self.executor_id is not None:
             _text("runtime cost executor_id", self.executor_id)
@@ -366,9 +544,24 @@ class RuntimeRouteCostEstimate:
             MappingProxyType(dict(sorted(additional.items()))),
         )
         object.__setattr__(self, "memory_demands", demands)
+        object.__setattr__(
+            self,
+            "details",
+            MappingProxyType(
+                dict(self.details)
+                if _owned_details
+                else _clone_details(dict(self.details))
+            ),
+        )
 
-    def to_json(self) -> dict[str, object]:
-        return {
+    def to_json(
+        self, *, copy_details: bool = True
+    ) -> dict[str, object]:
+        if type(copy_details) is not bool:
+            raise RuntimeCostError(
+                "runtime cost details-copy flag is invalid"
+            )
+        result = {
             "additional_bytes": self.additional_bytes,
             "additional_bytes_by_resource": dict(
                 self.additional_bytes_by_resource
@@ -391,6 +584,12 @@ class RuntimeRouteCostEstimate:
             "service_upper_us": self.service_upper_us,
             "service_us": self.service_us,
         }
+        if self.details:
+            result["details"] = (
+                _clone_details(dict(self.details))
+                if copy_details else dict(self.details)
+            )
+        return result
 
 
 @dataclass(frozen=True)
@@ -401,6 +600,10 @@ class RuntimeCostEstimateSet:
     snapshot: RuntimePlacementSnapshot
     baseline_route_id: str
     estimates: tuple[RuntimeRouteCostEstimate, ...]
+    planning_profile_sha256: str | None = None
+    candidate_generation_sha256: str | None = None
+    model_manifest_sha256: str | None = None
+    runtime_system_snapshot_sha256: str | None = None
 
     def __post_init__(self) -> None:
         _text("runtime cost request_id", self.request_id)
@@ -433,9 +636,20 @@ class RuntimeCostEstimateSet:
         object.__setattr__(self, "estimates", tuple(sorted(
             estimates, key=lambda item: item.route_id
         )))
+        for name in (
+            "planning_profile_sha256",
+            "candidate_generation_sha256",
+            "model_manifest_sha256",
+            "runtime_system_snapshot_sha256",
+        ):
+            value = getattr(self, name)
+            if value is not None:
+                object.__setattr__(
+                    self, name, _sha256(f"runtime cost {name}", value)
+                )
 
     def to_json(self) -> dict[str, object]:
-        return {
+        result = {
             "baseline_route_id": self.baseline_route_id,
             "estimates": [item.to_json() for item in self.estimates],
             "model": self.model.to_json(),
@@ -444,6 +658,19 @@ class RuntimeCostEstimateSet:
             "snapshot": self.snapshot.to_json(),
             "workload_id": self.workload_id,
         }
+        if self.planning_profile_sha256 is not None:
+            result["planning_profile_sha256"] = self.planning_profile_sha256
+        if self.candidate_generation_sha256 is not None:
+            result["candidate_generation_sha256"] = (
+                self.candidate_generation_sha256
+            )
+        if self.model_manifest_sha256 is not None:
+            result["model_manifest_sha256"] = self.model_manifest_sha256
+        if self.runtime_system_snapshot_sha256 is not None:
+            result["runtime_system_snapshot_sha256"] = (
+                self.runtime_system_snapshot_sha256
+            )
+        return result
 
 
 class RuntimeCostEstimator:
@@ -523,7 +750,7 @@ class RuntimeCostEstimator:
                     "CAPACITY", additional_bytes, resource_id,
                     additional_by_resource, binding.memory_demands,
                 )
-        if not binding.ready and not binding.queueable:
+        if not binding.ready:
             return (
                 "EXECUTOR_NOT_READY", additional_bytes,
                 binding.memory_resource_id, additional_by_resource,
@@ -532,6 +759,12 @@ class RuntimeCostEstimator:
         if not binding.resident:
             return (
                 "WEIGHTS_NOT_RESIDENT", additional_bytes,
+                binding.memory_resource_id, additional_by_resource,
+                binding.memory_demands,
+            )
+        if additional_bytes:
+            return (
+                "MEMORY_RESERVATION_UNAVAILABLE", additional_bytes,
                 binding.memory_resource_id, additional_by_resource,
                 binding.memory_demands,
             )

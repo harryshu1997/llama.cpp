@@ -11,6 +11,11 @@ import unittest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ROOT = REPO_ROOT / "research_dev/spikes/s42_general_energy_scheduler_v1"
+HARDWARE_PROFILE = (
+    REPO_ROOT
+    / "research_dev/scheduler/profiles/"
+      "MEASURED_4060TI_OP15_KERNEL_PROFILE_V1.json"
+)
 sys.path.insert(0, str(REPO_ROOT))
 
 from research_dev.scheduler import (  # noqa: E402
@@ -549,7 +554,7 @@ class MatmulVirtualQueueTests(unittest.TestCase):
             scheduler.enqueue(program("p1", mm("mm1")))
 
     def test_physical_campaign_materializer_sets_requested_memory_caps(self) -> None:
-        source_path = ROOT / "MEASURED_4060TI_OP15_KERNEL_PROFILE_V1.json"
+        source_path = HARDWARE_PROFILE
         source = json.loads(source_path.read_text(encoding="ascii"))
         value = materialize(source, generic_family=True)
         parsed = MatmulSystemProfile.from_json(value)
@@ -572,7 +577,7 @@ class MatmulVirtualQueueTests(unittest.TestCase):
 
     def test_checked_in_example_parses_and_runs_on_generic_shadow_profile(self) -> None:
         source = json.loads(
-            (ROOT / "MEASURED_4060TI_OP15_KERNEL_PROFILE_V1.json").read_text(
+            HARDWARE_PROFILE.read_text(
                 encoding="ascii"
             )
         )

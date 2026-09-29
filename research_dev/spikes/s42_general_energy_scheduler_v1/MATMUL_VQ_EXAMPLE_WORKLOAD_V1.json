@@ -1,0 +1,67 @@
+{
+  "programs": [
+    {
+      "arrival_us": 0,
+      "deadline_us": 1000000,
+      "model_id": "example-q4-mlp",
+      "ops": [
+        {
+          "allowed_devices": [
+            "cpu",
+            "gpu",
+            "phone"
+          ],
+          "compute_ops": 1006632960,
+          "input_bytes": 491520,
+          "kernel_family": "example-dense-matmul",
+          "kind": "matmul",
+          "layer_id": "layer-0",
+          "op_id": "layer-0:up",
+          "output_bytes": 524288,
+          "quantization": "q4_0",
+          "shape": {
+            "k": 3840,
+            "m": 32,
+            "n": 4096
+          },
+          "split_quantum_n": 128,
+          "weight_bytes": 8847360,
+          "weight_id": "layer-0.up.weight"
+        },
+        {
+          "kind": "follow",
+          "layer_id": "layer-0",
+          "op_id": "layer-0:gelu",
+          "op_kind": "GELU",
+          "output_bytes": 524288,
+          "shard_safe": true
+        },
+        {
+          "allowed_devices": [
+            "cpu",
+            "gpu",
+            "phone"
+          ],
+          "compute_ops": 1006632960,
+          "input_bytes": 524288,
+          "kernel_family": "example-dense-matmul",
+          "kind": "matmul",
+          "layer_id": "layer-0",
+          "op_id": "layer-0:down",
+          "output_bytes": 491520,
+          "quantization": "q4_0",
+          "shape": {
+            "k": 4096,
+            "m": 32,
+            "n": 3840
+          },
+          "split_quantum_n": 128,
+          "weight_bytes": 8847360,
+          "weight_id": "layer-0.down.weight"
+        }
+      ],
+      "program_id": "example-request-0"
+    }
+  ],
+  "schema": "s42-matmul-vq-workload-v1"
+}

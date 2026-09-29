@@ -1,0 +1,37 @@
+{
+  "activation_type": "f16",
+  "chain_beam_width": 64,
+  "host_backend": "cpu_isolated",
+  "inter_request_gap_ms": 0.0,
+  "kind": "chain",
+  "minimum_speedup_percent": 5.0,
+  "name": "ordered expansion and contraction matmuls",
+  "operations": [
+    {
+      "k": 3840,
+      "kind": "matmul",
+      "m": 1,
+      "n": 15360
+    },
+    {
+      "k": 15360,
+      "kind": "matmul",
+      "m": 1,
+      "n": 3840
+    },
+    {
+      "k": 3840,
+      "kind": "matmul",
+      "m": 1,
+      "n": 3840
+    }
+  ],
+  "phone_backends": [
+    "op15_htp",
+    "op15_gpu_opencl",
+    "op15_gpu_persistent"
+  ],
+  "quantization": "q8_0",
+  "schema": "s41-offload-workload-v1",
+  "transport": "auto"
+}

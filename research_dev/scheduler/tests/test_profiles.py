@@ -24,6 +24,11 @@ from research_dev.scheduler import (
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 S42_ROOT = REPO_ROOT / "research_dev/spikes/s42_general_energy_scheduler_v1"
+HARDWARE_PROFILE = (
+    REPO_ROOT
+    / "research_dev/scheduler/profiles/"
+      "MEASURED_4060TI_OP15_KERNEL_PROFILE_V1.json"
+)
 BGE_ROOT = S42_ROOT / "small_model_phone_v1/results/4060ti_op15_20260808"
 
 
@@ -73,7 +78,7 @@ class ProfileMaterializerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.source = json.loads(
-            (S42_ROOT / "MEASURED_4060TI_OP15_KERNEL_PROFILE_V1.json").read_text(
+            HARDWARE_PROFILE.read_text(
                 encoding="ascii"
             )
         )

@@ -8,7 +8,7 @@ to pass RoutePolicy's measured route gates before runtime enforcement.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import itertools
 from typing import Any, Mapping, Sequence
 
@@ -207,6 +207,67 @@ class TransferLink:
     status: str
     ready: bool
     evidence_ids: tuple[str, ...]
+    minimum_payload_bytes: int = 0
+    maximum_payload_bytes: int = 0
+    queue_depth: int = 1
+    concurrent_streams: int = 1
+    allocator: str = "unspecified"
+    full_duplex: bool = False
+    transport_generation: str = "legacy"
+    transport_profile_id: str = "legacy"
+    usbfs_available_bytes: int = 0
+    slot_safety_bytes: int = 0
+    qualification_identity_sha256: str | None = None
+
+    def __post_init__(self) -> None:
+        _integer("transfer link minimum payload", self.minimum_payload_bytes)
+        _integer("transfer link maximum payload", self.maximum_payload_bytes)
+        _integer("transfer link queue depth", self.queue_depth, 1)
+        _integer("transfer link concurrent streams", self.concurrent_streams, 1)
+        _string("transfer link allocator", self.allocator)
+        _boolean("transfer link full duplex", self.full_duplex)
+        _string("transfer link generation", self.transport_generation)
+        _string("transfer link profile id", self.transport_profile_id)
+        _integer(
+            "transfer link usbfs available bytes",
+            self.usbfs_available_bytes,
+        )
+        _integer("transfer link slot safety bytes", self.slot_safety_bytes)
+        if self.qualification_identity_sha256 is not None:
+            identity = _string(
+                "transfer link qualification identity",
+                self.qualification_identity_sha256,
+            )
+            if (
+                not identity.startswith("sha256:")
+                or len(identity) != 71
+                or any(
+                    value not in "0123456789abcdef"
+                    for value in identity[7:]
+                )
+            ):
+                raise PlacementError(
+                    "transfer link qualification identity must be SHA-256"
+                )
+        if (
+            self.maximum_payload_bytes
+            and self.maximum_payload_bytes < self.minimum_payload_bytes
+        ):
+            raise PlacementError("transfer link payload range is empty")
+
+    def supports_payload(
+        self,
+        payload_bytes: int,
+        concurrent_streams: int = 1,
+    ) -> bool:
+        return (
+            payload_bytes >= self.minimum_payload_bytes
+            and (
+                self.maximum_payload_bytes == 0
+                or payload_bytes <= self.maximum_payload_bytes
+            )
+            and concurrent_streams <= self.concurrent_streams
+        )
 
     @classmethod
     def from_json(cls, value: object) -> "TransferLink":
@@ -252,6 +313,49 @@ class TransferLink:
             ready=_boolean("transfer link ready", row.get("ready")),
             evidence_ids=_evidence(
                 "transfer link evidence_ids", row.get("evidence_ids")
+            ),
+            minimum_payload_bytes=_integer(
+                "transfer link minimum_payload_bytes",
+                row.get("minimum_payload_bytes", 0),
+            ),
+            maximum_payload_bytes=_integer(
+                "transfer link maximum_payload_bytes",
+                row.get("maximum_payload_bytes", 0),
+            ),
+            queue_depth=_integer(
+                "transfer link queue_depth", row.get("queue_depth", 1), 1
+            ),
+            concurrent_streams=_integer(
+                "transfer link concurrent_streams",
+                row.get("concurrent_streams", 1),
+                1,
+            ),
+            allocator=_string(
+                "transfer link allocator",
+                row.get("allocator", "unspecified"),
+            ),
+            full_duplex=_boolean(
+                "transfer link full_duplex",
+                row.get("full_duplex", False),
+            ),
+            transport_generation=_string(
+                "transfer link transport_generation",
+                row.get("transport_generation", "legacy"),
+            ),
+            transport_profile_id=_string(
+                "transfer link transport_profile_id",
+                row.get("transport_profile_id", "legacy"),
+            ),
+            usbfs_available_bytes=_integer(
+                "transfer link usbfs_available_bytes",
+                row.get("usbfs_available_bytes", 0),
+            ),
+            slot_safety_bytes=_integer(
+                "transfer link slot_safety_bytes",
+                row.get("slot_safety_bytes", 0),
+            ),
+            qualification_identity_sha256=row.get(
+                "qualification_identity_sha256"
             ),
         )
 
@@ -386,6 +490,8 @@ class TransferStep:
     source_device: str
     target_device: str
     bytes: int
+    invocations: int = 1
+    concurrent_streams: int = 1
 
 
 ExecutionStep = ComputeStep | TransferStep
@@ -441,6 +547,12 @@ class TransferDecision:
     link_ids: tuple[str, ...]
     latency_us: int
     dynamic_energy_uj: int
+    payload_bytes: int = 0
+    invocations: int = 1
+    queue_depth: int = 1
+    concurrent_streams: int = 1
+    message_waves: int = 1
+    fixed_latency_us: int = 0
 
 
 @dataclass(frozen=True)
@@ -664,6 +776,9 @@ class _TransferNetwork:
     def __init__(self, profile: PlacementHardwareProfile) -> None:
         self.profile = profile
         self._outgoing: dict[str, list[TransferLink]] = {}
+        self._choice_cache: dict[
+            tuple[object, ...], tuple[_WorkCost, ...]
+        ] = {}
         for link in profile.links:
             self._outgoing.setdefault(link.source_device, []).append(link)
         for links in self._outgoing.values():
@@ -674,13 +789,25 @@ class _TransferNetwork:
         step_id: str,
         link: TransferLink,
         transfer_bytes: int,
+        invocations: int,
+        concurrent_streams: int,
     ) -> _WorkCost:
-        latency_us = link.fixed_latency_us + _ceil_div(
-            transfer_bytes * 1_000_000,
-            link.bandwidth_bytes_per_s,
+        parallel_messages = min(
+            invocations, link.queue_depth, concurrent_streams
         )
-        dynamic_uj = link.fixed_dynamic_uj + _ceil_div(
-            transfer_bytes * link.dynamic_pj_per_byte,
+        message_waves = _ceil_div(invocations, parallel_messages)
+        effective_bandwidth = max(
+            1,
+            link.bandwidth_bytes_per_s
+            * concurrent_streams
+            // link.concurrent_streams,
+        )
+        latency_us = link.fixed_latency_us * message_waves + _ceil_div(
+            transfer_bytes * invocations * 1_000_000,
+            effective_bandwidth,
+        )
+        dynamic_uj = link.fixed_dynamic_uj * invocations + _ceil_div(
+            transfer_bytes * invocations * link.dynamic_pj_per_byte,
             1_000_000,
         )
         unattributed_dynamic_uj = dynamic_uj
@@ -706,10 +833,16 @@ class _TransferNetwork:
             step_id=step_id,
             source_device=link.source_device,
             target_device=link.target_device,
-            bytes=transfer_bytes,
+            bytes=transfer_bytes * invocations,
             link_ids=(link.link_id,),
             latency_us=latency_us,
             dynamic_energy_uj=dynamic_uj,
+            payload_bytes=transfer_bytes,
+            invocations=invocations,
+            queue_depth=link.queue_depth,
+            concurrent_streams=concurrent_streams,
+            message_waves=message_waves,
+            fixed_latency_us=link.fixed_latency_us * message_waves,
         )
         return _make_cost(
             latency_us,
@@ -731,6 +864,8 @@ class _TransferNetwork:
         target_device: str,
         transfer_bytes: int,
         require_measured: bool,
+        invocations: int = 1,
+        concurrent_streams: int = 1,
     ) -> list[_WorkCost]:
         _integer("transfer bytes", transfer_bytes)
         if source_device not in self.profile.devices:
@@ -744,8 +879,71 @@ class _TransferNetwork:
             return []
         if source_device == target_device:
             return [_zero_cost()]
+        cache_key = (
+            source_device,
+            target_device,
+            transfer_bytes,
+            require_measured,
+            invocations,
+            concurrent_streams,
+        )
+        cached = self._choice_cache.get(cache_key)
+        if cached is not None:
+            return [
+                replace(
+                    row,
+                    transfers=tuple(
+                        replace(transfer, step_id=step_id)
+                        for transfer in row.transfers
+                    ),
+                )
+                for row in cached
+            ]
 
         paths: list[tuple[TransferLink, ...]] = []
+
+        def outgoing(current: str) -> tuple[TransferLink, ...]:
+            by_target: dict[str, list[TransferLink]] = {}
+            for link in self._outgoing.get(current, ()):
+                if (
+                    link.ready
+                    and link.concurrent_streams >= concurrent_streams
+                    and self.profile.devices[link.target_device].ready
+                ):
+                    by_target.setdefault(link.target_device, []).append(link)
+            result = []
+            for links in by_target.values():
+                exact = tuple(
+                    (
+                        link
+                        if link.concurrent_streams == concurrent_streams
+                        else replace(link, status="estimated")
+                    )
+                    for link in links
+                    if link.supports_payload(
+                        transfer_bytes, concurrent_streams
+                    )
+                )
+                if exact:
+                    result.extend(exact)
+                    continue
+                if require_measured:
+                    continue
+                enclosing = tuple(
+                    link for link in links
+                    if link.maximum_payload_bytes >= transfer_bytes
+                )
+                if not enclosing:
+                    continue
+                closest = min(
+                    link.maximum_payload_bytes for link in enclosing
+                )
+                result.extend(
+                    replace(link, status="estimated")
+                    for link in enclosing
+                    if link.maximum_payload_bytes == closest
+                )
+            return tuple(sorted(result, key=lambda row: row.link_id))
 
         def visit(
             current: str,
@@ -755,11 +953,9 @@ class _TransferNetwork:
             if current == target_device:
                 paths.append(links)
                 return
-            for link in self._outgoing.get(current, ()):
+            for link in outgoing(current):
                 if (
-                    not link.ready
-                    or not self.profile.devices[link.target_device].ready
-                    or link.target_device in visited
+                    link.target_device in visited
                 ):
                     continue
                 if require_measured and link.status != "measured":
@@ -777,7 +973,13 @@ class _TransferNetwork:
             for index, link in enumerate(path):
                 cost = _serial_cost(
                     cost,
-                    self._link_cost(f"{step_id}:{index}", link, transfer_bytes),
+                    self._link_cost(
+                        f"{step_id}:{index}",
+                        link,
+                        transfer_bytes,
+                        invocations,
+                        concurrent_streams,
+                    ),
                 )
             if require_measured and not cost.measured:
                 continue
@@ -785,10 +987,41 @@ class _TransferNetwork:
                 step_id=step_id,
                 source_device=source_device,
                 target_device=target_device,
-                bytes=transfer_bytes,
+                bytes=transfer_bytes * invocations,
                 link_ids=tuple(link.link_id for link in path),
                 latency_us=cost.latency_us,
                 dynamic_energy_uj=cost.dynamic_uj,
+                payload_bytes=transfer_bytes,
+                invocations=invocations,
+                queue_depth=min(
+                    (link.queue_depth for link in path), default=1
+                ),
+                concurrent_streams=concurrent_streams,
+                message_waves=max(
+                    (
+                        _ceil_div(
+                            invocations,
+                            min(
+                                invocations,
+                                link.queue_depth,
+                                concurrent_streams,
+                            ),
+                        )
+                        for link in path
+                    ),
+                    default=1,
+                ),
+                fixed_latency_us=sum(
+                    link.fixed_latency_us * _ceil_div(
+                        invocations,
+                        min(
+                            invocations,
+                            link.queue_depth,
+                            concurrent_streams,
+                        ),
+                    )
+                    for link in path
+                ),
             )
             costs.append(_make_cost(
                 cost.latency_us,
@@ -802,7 +1035,9 @@ class _TransferNetwork:
                 _dynamic_map(cost),
                 cost.unattributed_dynamic_uj,
             ))
-        return _prune_costs(costs)
+        result = tuple(_prune_costs(costs))
+        self._choice_cache[cache_key] = result
+        return list(result)
 
 
 @dataclass(frozen=True)
@@ -837,6 +1072,18 @@ class HierarchicalPlacementPlanner:
         self.profile = profile
         self.beam_width = _integer("beam_width", beam_width, 1)
         self.network = _TransferNetwork(profile)
+        self._candidate_cost_cache: dict[
+            tuple[object, ...], tuple[_CandidateCost, ...]
+        ] = {}
+        self._candidate_work_cache: dict[
+            tuple[object, ...], tuple[_WorkCost, ...]
+        ] = {}
+        self._compute_cost_cache: dict[
+            tuple[object, ...], _WorkCost
+        ] = {}
+        self._memory_state_cache: dict[
+            tuple[object, ...], tuple[dict[str, int], dict[str, int], bool]
+        ] = {}
 
     def _step_costs(
         self,
@@ -851,6 +1098,14 @@ class HierarchicalPlacementPlanner:
                 step.target_device,
                 _integer("transfer step bytes", step.bytes),
                 require_measured,
+                _integer(
+                    "transfer step invocations", step.invocations, 1
+                ),
+                _integer(
+                    "transfer step concurrent streams",
+                    step.concurrent_streams,
+                    1,
+                ),
             )
         if not isinstance(step, ComputeStep):
             raise PlacementError("unknown execution step")
@@ -866,6 +1121,16 @@ class HierarchicalPlacementPlanner:
         profiled_domain = self.profile.domains[kernel.kernel.domain_id]
         if require_measured and profiled_domain.status != "measured":
             return []
+        cache_key = (
+            step.kernel_profile_id,
+            step.invocations,
+            step.compute_ops,
+            step.memory_bytes,
+            require_measured,
+        )
+        cached = self._compute_cost_cache.get(cache_key)
+        if cached is not None:
+            return [cached]
         domain = profiled_domain.domain
         estimate = estimate_kernel_energy(
             domain,
@@ -874,7 +1139,7 @@ class HierarchicalPlacementPlanner:
             _integer("compute step compute_ops", step.compute_ops),
             _integer("compute step memory_bytes", step.memory_bytes),
         )
-        return [_make_cost(
+        result = _make_cost(
             estimate.active_us,
             estimate.dynamic_uj,
             {domain.domain_id: estimate.active_us},
@@ -890,7 +1155,9 @@ class HierarchicalPlacementPlanner:
             frozenset({kernel.device_id}),
             {domain.domain_id: estimate.dynamic_uj},
             0,
-        )]
+        )
+        self._compute_cost_cache[cache_key] = result
+        return [result]
 
     def _sequence_costs(
         self,
@@ -909,12 +1176,114 @@ class HierarchicalPlacementPlanner:
                 break
         return costs
 
+    @staticmethod
+    def _step_geometry(step: ExecutionStep) -> tuple[object, ...]:
+        if isinstance(step, TransferStep):
+            return (
+                "transfer",
+                step.source_device,
+                step.target_device,
+                step.bytes,
+                step.invocations,
+                step.concurrent_streams,
+            )
+        if not isinstance(step, ComputeStep):
+            raise PlacementError("unknown execution step")
+        return (
+            "compute",
+            step.kernel_profile_id,
+            step.invocations,
+            step.compute_ops,
+            step.memory_bytes,
+        )
+
+    @classmethod
+    def _candidate_work_key(
+        cls,
+        candidate: OperatorCandidate,
+        required_quality: str,
+        require_measured: bool,
+    ) -> tuple[object, ...]:
+        return (
+            candidate.input_device,
+            candidate.output_device,
+            tuple(
+                tuple(cls._step_geometry(step) for step in branch.steps)
+                for branch in candidate.branches
+            ),
+            tuple(cls._step_geometry(step) for step in candidate.tail_steps),
+            candidate.quality_class,
+            candidate.status,
+            candidate.placement_verified,
+            required_quality,
+            require_measured,
+        )
+
+    @staticmethod
+    def _candidate_transfer_step_ids(
+        candidate: OperatorCandidate,
+    ) -> tuple[str, ...]:
+        return tuple(
+            step.step_id
+            for steps in (
+                *(branch.steps for branch in candidate.branches),
+                candidate.tail_steps,
+            )
+            for step in steps
+            if isinstance(step, TransferStep)
+            and step.source_device != step.target_device
+        )
+
+    @classmethod
+    def _bind_candidate_work(
+        cls,
+        candidate: OperatorCandidate,
+        work: _WorkCost,
+    ) -> _WorkCost:
+        step_ids = cls._candidate_transfer_step_ids(candidate)
+        if len(step_ids) != len(work.transfers):
+            raise PlacementError(
+                "cached candidate transfer geometry differs"
+            )
+        return replace(
+            work,
+            evidence_ids=(
+                work.evidence_ids | frozenset(candidate.evidence_ids)
+            ),
+            transfers=tuple(
+                replace(transfer, step_id=step_id)
+                for transfer, step_id in zip(work.transfers, step_ids)
+            ),
+        )
+
     def _candidate_costs(
         self,
         candidate: OperatorCandidate,
         required_quality: str,
         require_measured: bool,
     ) -> list[_CandidateCost]:
+        cache_key = (
+            candidate.candidate_id,
+            candidate.operator_id,
+            candidate.input_device,
+            candidate.output_device,
+            candidate.branches,
+            candidate.tail_steps,
+            candidate.resident_allocations,
+            tuple(sorted(candidate.workspace_bytes.items())),
+            candidate.quality_class,
+            candidate.status,
+            candidate.placement_verified,
+            candidate.evidence_ids,
+            candidate.split_axis,
+            candidate.split_amount,
+            candidate.split_total,
+            required_quality,
+            require_measured,
+        )
+        cached = self._candidate_cost_cache.get(cache_key)
+        if cached is not None:
+            return list(cached)
         _string("candidate id", candidate.candidate_id)
         _string("candidate operator id", candidate.operator_id)
         _string("candidate split axis", candidate.split_axis)
@@ -956,6 +1325,21 @@ class HierarchicalPlacementPlanner:
             if not device.ready:
                 return []
 
+        work_key = self._candidate_work_key(
+            candidate, required_quality, require_measured
+        )
+        cached_work = self._candidate_work_cache.get(work_key)
+        if cached_work is not None:
+            selected = tuple(
+                _CandidateCost(
+                    candidate,
+                    self._bind_candidate_work(candidate, work),
+                )
+                for work in cached_work
+            )
+            self._candidate_cost_cache[cache_key] = selected
+            return list(selected)
+
         branch_options = [
             self._sequence_costs(branch.steps, require_measured)
             for branch in candidate.branches
@@ -968,7 +1352,7 @@ class HierarchicalPlacementPlanner:
         if not tail_options:
             return []
 
-        results: list[_CandidateCost] = []
+        results: list[_WorkCost] = []
         for branches in itertools.product(*branch_options):
             domain_owners: dict[str, str] = {}
             conflict = False
@@ -996,7 +1380,7 @@ class HierarchicalPlacementPlanner:
                 all(branch.measured for branch in branches),
                 frozenset().union(
                     *(branch.evidence_ids for branch in branches)
-                ) | frozenset(candidate.evidence_ids),
+                ),
                 tuple(
                     transfer
                     for branch in branches
@@ -1022,10 +1406,20 @@ class HierarchicalPlacementPlanner:
                     _dynamic_map(work),
                     work.unattributed_dynamic_uj,
                 )
-                results.append(_CandidateCost(candidate, work))
-        pruned = _prune_costs([row.work for row in results])
+                results.append(work)
+        pruned = _prune_costs(results)
         allowed = set(pruned)
-        return [row for row in results if row.work in allowed]
+        selected_work = tuple(row for row in results if row in allowed)
+        self._candidate_work_cache[work_key] = selected_work
+        selected = tuple(
+            _CandidateCost(
+                candidate,
+                self._bind_candidate_work(candidate, work),
+            )
+            for work in selected_work
+        )
+        self._candidate_cost_cache[cache_key] = selected
+        return list(selected)
 
     def _memory_state(
         self,
@@ -1033,6 +1427,15 @@ class HierarchicalPlacementPlanner:
         workspace_by_pool: Mapping[str, int],
         workspace_by_device: Mapping[str, int],
     ) -> tuple[dict[str, int], dict[str, int], bool]:
+        cache_key = (
+            allocations,
+            tuple(sorted(workspace_by_pool.items())),
+            tuple(sorted(workspace_by_device.items())),
+        )
+        cached = self._memory_state_cache.get(cache_key)
+        if cached is not None:
+            totals, device_totals, fits = cached
+            return dict(totals), dict(device_totals), fits
         resident: dict[tuple[str, str], int] = {}
         resident_by_device: dict[tuple[str, str], int] = {}
         for allocation in allocations:
@@ -1074,12 +1477,16 @@ class HierarchicalPlacementPlanner:
             or device_totals[device_id] <= device.allocation_limit_bytes
             for device_id, device in self.profile.devices.items()
         )
-        return totals, device_totals, pools_fit and devices_fit
+        result = (totals, device_totals, pools_fit and devices_fit)
+        self._memory_state_cache[cache_key] = result
+        return dict(totals), dict(device_totals), result[2]
 
     def _add_candidate_memory(
         self,
         partial: _PartialPlan,
         candidate: OperatorCandidate,
+        *,
+        validate_capacity: bool = True,
     ) -> tuple[
         frozenset[ResidentAllocation],
         tuple[tuple[str, int], ...],
@@ -1103,13 +1510,14 @@ class HierarchicalPlacementPlanner:
             workspace_by_pool[pool_id] = max(
                 workspace_by_pool.get(pool_id, 0), amount
             )
-        _, _, fits = self._memory_state(
-            allocations,
-            workspace_by_pool,
-            workspace_by_device,
-        )
-        if not fits:
-            return None
+        if validate_capacity:
+            _, _, fits = self._memory_state(
+                allocations,
+                workspace_by_pool,
+                workspace_by_device,
+            )
+            if not fits:
+                return None
         return (
             allocations,
             tuple(sorted(workspace_by_pool.items())),
@@ -1201,6 +1609,129 @@ class HierarchicalPlacementPlanner:
                 raise PlacementError("candidate and operator ids do not match")
             seen.add(node.operator_id)
 
+    def _deferred_single_choice_partial(
+        self,
+        nodes: Sequence[OperatorNode],
+        initial: _PartialPlan,
+        deadline_us: int,
+        required_quality: str,
+        require_measured: bool,
+    ) -> _PartialPlan | None:
+        if any(len(node.candidates) != 1 for node in nodes):
+            return None
+        location = initial.location
+        latency_us = initial.latency_us
+        dynamic_uj = initial.dynamic_uj
+        dynamic_by_domain = dict(initial.dynamic_uj_by_domain)
+        unattributed_dynamic_uj = initial.unattributed_dynamic_uj
+        active = dict(initial.active_us)
+        domains = initial.domains
+        measured = initial.measured
+        evidence_ids = initial.evidence_ids
+        allocations = set(initial.allocations)
+        workspace_by_pool = dict(initial.workspace_by_pool)
+        workspace_by_device = dict(initial.workspace_by_device)
+        decisions = list(initial.decisions)
+
+        for node in nodes:
+            candidate = node.candidates[0]
+            candidate_costs = self._candidate_costs(
+                candidate, required_quality, require_measured
+            )
+            if len(candidate_costs) != 1:
+                return None
+            transitions = self.network.choices(
+                f"{node.operator_id}:input",
+                location,
+                candidate.input_device,
+                node.input_bytes,
+                require_measured,
+            )
+            if len(transitions) != 1:
+                return None
+            row = candidate_costs[0]
+            transition = transitions[0]
+            total = _serial_cost(transition, row.work)
+            latency_us += total.latency_us
+            if latency_us > deadline_us:
+                return None
+            for domain_id, amount in total.active_us:
+                active[domain_id] = active.get(domain_id, 0) + amount
+            for domain_id, amount in total.dynamic_uj_by_domain:
+                dynamic_by_domain[domain_id] = (
+                    dynamic_by_domain.get(domain_id, 0) + amount
+                )
+            domains |= total.domains
+            if any(
+                active.get(domain_id, 0) > latency_us
+                for domain_id in domains
+            ):
+                return None
+            allocations.update(candidate.resident_allocations)
+            current_by_pool: dict[str, int] = {}
+            for device_id, amount in candidate.workspace_bytes.items():
+                _integer("candidate workspace bytes", amount)
+                device = self.profile.devices.get(device_id)
+                if device is None:
+                    raise PlacementError(
+                        "workspace references an unknown device"
+                    )
+                pool_id = device.memory_pool_id
+                current_by_pool[pool_id] = (
+                    current_by_pool.get(pool_id, 0) + amount
+                )
+                workspace_by_device[device_id] = max(
+                    workspace_by_device.get(device_id, 0), amount
+                )
+            for pool_id, amount in current_by_pool.items():
+                workspace_by_pool[pool_id] = max(
+                    workspace_by_pool.get(pool_id, 0), amount
+                )
+            transition_decision = (
+                transition.transfers[0]
+                if transition.transfers else None
+            )
+            decisions.append(OperatorDecision(
+                operator_id=node.operator_id,
+                layer_id=node.layer_id,
+                candidate_id=candidate.candidate_id,
+                input_device=candidate.input_device,
+                output_device=candidate.output_device,
+                compute_devices=tuple(sorted(row.work.compute_devices)),
+                transition=transition_decision,
+                internal_transfers=row.work.transfers,
+                candidate_latency_us=row.work.latency_us,
+                dynamic_energy_uj=total.dynamic_uj,
+                split_axis=candidate.split_axis,
+                split_amount=candidate.split_amount,
+                split_total=candidate.split_total,
+            ))
+            location = candidate.output_device
+            dynamic_uj += total.dynamic_uj
+            unattributed_dynamic_uj += total.unattributed_dynamic_uj
+            measured = (
+                measured
+                and total.measured
+                and candidate.status == "measured"
+            )
+            evidence_ids |= total.evidence_ids
+
+        return _PartialPlan(
+            location=location,
+            latency_us=latency_us,
+            dynamic_uj=dynamic_uj,
+            dynamic_uj_by_domain=tuple(sorted(dynamic_by_domain.items())),
+            unattributed_dynamic_uj=unattributed_dynamic_uj,
+            active_us=tuple(sorted(active.items())),
+            domains=domains,
+            measured=measured,
+            evidence_ids=evidence_ids,
+            allocations=frozenset(allocations),
+            workspace_by_pool=tuple(sorted(workspace_by_pool.items())),
+            workspace_by_device=tuple(sorted(workspace_by_device.items())),
+            decisions=tuple(decisions),
+        )
+
     def plan_sequence(
         self,
         problem_id: str,
@@ -1211,6 +1742,7 @@ class HierarchicalPlacementPlanner:
         required_quality: str = "exact",
         require_measured: bool = True,
         initial_allocations: Sequence[ResidentAllocation] = (),
+        defer_memory_validation: bool = False,
     ) -> PlacementPlan:
         _string("problem id", problem_id)
         self._validate_nodes(nodes)
@@ -1264,8 +1796,19 @@ class HierarchicalPlacementPlanner:
             "deadline": 0,
         }
         frontier_truncated = False
-
-        for node in nodes:
+        fixed = (
+            self._deferred_single_choice_partial(
+                nodes,
+                partials[0],
+                deadline_us,
+                required_quality,
+                require_measured,
+            )
+            if defer_memory_validation else None
+        )
+        if fixed is not None:
+            partials = [fixed]
+        for node in (() if fixed is not None else nodes):
             next_partials: list[_PartialPlan] = []
             for partial in partials:
                 for candidate in node.candidates:
@@ -1285,7 +1828,11 @@ class HierarchicalPlacementPlanner:
                     if not transitions:
                         rejection_counts["transfer"] += 1
                         continue
-                    memory = self._add_candidate_memory(partial, candidate)
+                    memory = self._add_candidate_memory(
+                        partial,
+                        candidate,
+                        validate_capacity=not defer_memory_validation,
+                    )
                     if memory is None:
                         rejection_counts["memory"] += 1
                         continue
@@ -1359,7 +1906,11 @@ class HierarchicalPlacementPlanner:
                                 workspace_by_device=workspace_by_device,
                                 decisions=partial.decisions + (decision,),
                             ))
-            partials, truncated = self._prune_partials(next_partials)
+            if len(next_partials) == 1:
+                partials = next_partials
+                truncated = False
+            else:
+                partials, truncated = self._prune_partials(next_partials)
             frontier_truncated = frontier_truncated or truncated
             if not partials:
                 detail = ", ".join(
@@ -1452,11 +2003,13 @@ class HierarchicalPlacementPlanner:
                 selected.unattributed_dynamic_uj
             )
 
-        memory_by_pool, memory_by_device, _ = self._memory_state(
+        memory_by_pool, memory_by_device, memory_fits = self._memory_state(
             selected.allocations,
             dict(selected.workspace_by_pool),
             dict(selected.workspace_by_device),
         )
+        if not memory_fits:
+            raise PlacementError("final placement memory exceeds capacity")
         decisions_by_layer: dict[str, list[OperatorDecision]] = {}
         for decision in selected.decisions:
             decisions_by_layer.setdefault(decision.layer_id, []).append(decision)
@@ -1688,9 +2241,19 @@ def placement_plan_to_json(plan: PlacementPlan) -> dict[str, object]:
                     if row.transition is None
                     else {
                         "bytes": row.transition.bytes,
+                        "concurrent_streams": (
+                            row.transition.concurrent_streams
+                        ),
                         "dynamic_energy_uj": row.transition.dynamic_energy_uj,
+                        "fixed_latency_us": (
+                            row.transition.fixed_latency_us
+                        ),
+                        "invocations": row.transition.invocations,
                         "latency_us": row.transition.latency_us,
                         "link_ids": list(row.transition.link_ids),
+                        "message_waves": row.transition.message_waves,
+                        "payload_bytes": row.transition.payload_bytes,
+                        "queue_depth": row.transition.queue_depth,
                         "source_device": row.transition.source_device,
                         "target_device": row.transition.target_device,
                     }
@@ -1698,9 +2261,17 @@ def placement_plan_to_json(plan: PlacementPlan) -> dict[str, object]:
                 "internal_transfers": [
                     {
                         "bytes": transfer.bytes,
+                        "concurrent_streams": (
+                            transfer.concurrent_streams
+                        ),
                         "dynamic_energy_uj": transfer.dynamic_energy_uj,
+                        "fixed_latency_us": transfer.fixed_latency_us,
+                        "invocations": transfer.invocations,
                         "latency_us": transfer.latency_us,
                         "link_ids": list(transfer.link_ids),
+                        "message_waves": transfer.message_waves,
+                        "payload_bytes": transfer.payload_bytes,
+                        "queue_depth": transfer.queue_depth,
                         "source_device": transfer.source_device,
                         "target_device": transfer.target_device,
                     }

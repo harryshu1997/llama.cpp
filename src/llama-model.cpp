@@ -21,6 +21,7 @@
 #include "ggml.h"
 #include "ggml-cpp.h"
 
+#include <cinttypes>
 #include <algorithm>
 #include <cassert>
 #include <cerrno>
@@ -1000,6 +1001,27 @@ struct llama_model::impl {
     // contexts where the model tensors metadata is stored as well as the corresponding buffers:
     std::vector<std::pair<ggml_context_ptr, std::vector<ggml_backend_buffer_ptr>>> ctxs_bufs;
 
+    // remote-resident dense FFN weights (metadata only, no local allocation)
+    ggml_context_ptr ctx_remote_resident;
+    uint64_t remote_resident_ffn_layer_mask = 0;
+    size_t   remote_resident_ffn_bytes = 0;
+    size_t   remote_resident_ffn_unmapped_bytes = 0;
+    size_t   remote_resident_ffn_tensors = 0;
+    size_t   mapped_weight_bytes = 0;
+
+    // dormant host share (S42 decode-only relocation)
+    std::vector<llama_model_loader::dense_ffn_weight> dense_ffn_weights;
+    bool dormant_drop_cache = true;
+    bool dormant_populate = true;
+    struct dormant_state {
+        uint64_t layer_mask = 0;
+        int64_t  host_columns = 0;
+        size_t   released_bytes = 0;
+        size_t   range_count = 0;
+        std::vector<std::vector<std::pair<size_t, size_t>>> ranges_by_file;
+        std::vector<std::vector<std::pair<size_t, size_t>>> tensors_by_file;
+    } dormant;
+
     buft_list_t cpu_buft_list;
     std::map<ggml_backend_dev_t, buft_list_t> gpu_buft_list;
 
@@ -1483,6 +1505,20 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
     const bool ls_partial = getenv("LLAMA_LAYER_START") != nullptr || getenv("LLAMA_LAYER_END") != nullptr;
     ml.done_getting_tensors(ls_partial);
 
+    // remote-resident FFN weights: fail closed on incomplete coverage or unsupported shapes
+    ml.validate_remote_resident_coverage(hparams.n_layer_all, arch);
+    if (ml.remote_resident_ffn_layer_mask != 0) {
+        if (use_mlock) {
+            throw std::runtime_error("remote-resident FFN weights cannot be combined with mlock");
+        }
+        if (ml.no_alloc) {
+            throw std::runtime_error("remote-resident FFN weights cannot be combined with no_alloc");
+        }
+        if (!ml.use_mmap) {
+            throw std::runtime_error("remote-resident FFN weights require mmap loading");
+        }
+    }
+
     // Tied NVFP4 output is valid when no separate LM-head scale tensors are present.
     // If sidecar scales exist, the output weight must be an actual output tensor.
     GGML_ASSERT(!(output && tok_embd &&
@@ -1497,6 +1533,7 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
     }
 
     ml.init_mappings(true, use_mlock ? &pimpl->mlock_mmaps : nullptr);
+    ml.unmap_remote_resident_weights();
     pimpl->mappings.reserve(ml.mappings.size());
 
     // create the backend buffers
@@ -1625,10 +1662,34 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
         }
     }
 
+    if (ml.remote_resident_ffn_layer_mask != 0) {
+        pimpl->ctx_remote_resident = std::move(ml.ctx_remote_resident);
+        pimpl->remote_resident_ffn_layer_mask = ml.remote_resident_ffn_layer_mask;
+        pimpl->remote_resident_ffn_bytes = ml.size_remote_resident;
+        pimpl->remote_resident_ffn_unmapped_bytes = ml.size_remote_resident_unmapped;
+        pimpl->remote_resident_ffn_tensors = ml.remote_resident_weights.size();
+        pimpl->mapped_weight_bytes = ml.mapped_bytes();
+        size_t local_buffer_bytes = 0;
+        for (const auto & [_, bufs] : pimpl->ctxs_bufs) {
+            for (const auto & buf : bufs) {
+                local_buffer_bytes += ggml_backend_buffer_get_size(buf.get());
+            }
+        }
+        // Proof record: omitted tensors have no backend buffer (they are absent from every
+        // ctxs_bufs context) and their file ranges are unmapped page-exactly.
+        LLAMA_LOG_INFO("%s: REMOTE_RESIDENT_FFN layer_mask=0x%016" PRIx64 " tensors=%zu omitted_bytes=%zu unmapped_bytes=%zu "
+                "mapped_file_bytes=%zu local_buffer_bytes=%zu file_tensor_bytes=%zu\n",
+                __func__, pimpl->remote_resident_ffn_layer_mask, pimpl->remote_resident_ffn_tensors,
+                pimpl->remote_resident_ffn_bytes, pimpl->remote_resident_ffn_unmapped_bytes,
+                pimpl->mapped_weight_bytes, local_buffer_bytes, pimpl->n_bytes);
+    }
+
     if (use_mmap_buffer) {
         for (auto & mapping : ml.mappings) {
             pimpl->mappings.emplace_back(std::move(mapping));
         }
+        // the retained mappings are the only place a dormant host share can be released from
+        pimpl->dense_ffn_weights = std::move(ml.dense_ffn_weights);
     }
 
     return true;
@@ -1699,6 +1760,145 @@ std::map<ggml_backend_buffer_type_t, size_t> llama_model::memory_breakdown() con
 
 uint64_t llama_model::n_elements() const {
     return pimpl->n_elements;
+}
+
+uint64_t llama_model::remote_resident_ffn_layer_mask() const {
+    return pimpl->remote_resident_ffn_layer_mask;
+}
+
+size_t llama_model::remote_resident_ffn_bytes() const {
+    return pimpl->remote_resident_ffn_bytes;
+}
+
+size_t llama_model::remote_resident_ffn_unmapped_bytes() const {
+    return pimpl->remote_resident_ffn_unmapped_bytes;
+}
+
+bool llama_model::ffn_host_share_configure(bool drop_cache, bool populate) {
+#if defined(__linux__)
+    if (pimpl->dormant.layer_mask != 0 || pimpl->mappings.empty() || pimpl->dense_ffn_weights.empty()) {
+        return false;
+    }
+    pimpl->dormant_drop_cache = drop_cache;
+    pimpl->dormant_populate = populate;
+    return true;
+#else
+    GGML_UNUSED(drop_cache);
+    GGML_UNUSED(populate);
+    return false;
+#endif
+}
+
+size_t llama_model::ffn_host_share_release(uint64_t layer_mask, int64_t host_columns) {
+    auto & state = pimpl->dormant;
+    if (layer_mask == 0 || pimpl->mappings.empty() || pimpl->dense_ffn_weights.empty()) {
+        return 0;
+    }
+    if (state.layer_mask == layer_mask && state.host_columns == host_columns) {
+        return state.released_bytes; // already dormant with this geometry
+    }
+    const size_t n_files = pimpl->mappings.size();
+    std::vector<std::vector<std::pair<size_t, size_t>>> ranges_by_file(n_files);   // phone-share pieces
+    std::vector<std::vector<std::pair<size_t, size_t>>> tensors_by_file(n_files);  // whole tensor covers
+    size_t range_count = 0;
+    for (const auto & w : pimpl->dense_ffn_weights) {
+        if (w.layer < 0 || w.layer >= 64 || ((layer_mask >> w.layer) & 1) == 0 || w.idx >= n_files) {
+            continue;
+        }
+        const int64_t n_ff = w.kind == LLM_TENSOR_FFN_DOWN ? w.ne0 : w.ne1;
+        if (host_columns < 0 || host_columns > n_ff || host_columns % ggml_blck_size(w.type) != 0) {
+            LLAMA_LOG_ERROR("%s: dormant host share rejected: host_columns=%" PRId64 " for tensor %s (n_ff=%" PRId64 ")\n",
+                    __func__, host_columns, w.name.c_str(), n_ff);
+            return 0;
+        }
+        if (host_columns == n_ff) {
+            continue; // nothing executes remotely for this layer
+        }
+        auto & out = ranges_by_file[w.idx];
+        if (w.kind == LLM_TENSOR_FFN_DOWN) {
+            // [n_ff, n_embd]: the phone share is the column suffix of every output row
+            const size_t row_prefix = ggml_row_size(w.type, host_columns);
+            const size_t row_bytes  = ggml_row_size(w.type, w.ne0);
+            if (host_columns == 0) {
+                out.emplace_back(w.offs, w.offs + w.nbytes);
+                range_count += 1;
+            } else {
+                for (int64_t r = 0; r < w.ne1; ++r) {
+                    out.emplace_back(w.offs + (size_t) r*w.nb1 + row_prefix, w.offs + (size_t) r*w.nb1 + row_bytes);
+                }
+                range_count += (size_t) w.ne1;
+            }
+            // the down share is interleaved with retained rows: only its page-table entries are
+            // dropped, the clean pages stay in the page cache (still reclaimable) so that the
+            // populate before the next prompt is a re-map instead of thousands of short reads
+        } else {
+            // gate/up [n_embd, n_ff]: the phone share is a contiguous suffix of rows, so its pages
+            // can leave the page cache and stream back sequentially
+            out.emplace_back(w.offs + (size_t) host_columns*w.nb1, w.offs + (size_t) w.ne1*w.nb1);
+            range_count += 1;
+            tensors_by_file[w.idx].emplace_back(w.offs, w.offs + w.nbytes);
+        }
+    }
+    if (state.layer_mask != 0) {
+        ffn_host_share_restore();
+    }
+    size_t released = 0;
+    for (size_t i = 0; i < n_files; ++i) {
+        if (!ranges_by_file[i].empty()) {
+            released += pimpl->mappings[i]->release_fragments(ranges_by_file[i], tensors_by_file[i], pimpl->dormant_drop_cache);
+        }
+    }
+    state.layer_mask      = layer_mask;
+    state.host_columns    = host_columns;
+    state.released_bytes  = released;
+    state.range_count     = range_count;
+    state.ranges_by_file  = std::move(ranges_by_file);
+    state.tensors_by_file = std::move(tensors_by_file);
+    return released;
+}
+
+size_t llama_model::ffn_host_share_restore() {
+    auto & state = pimpl->dormant;
+    if (state.layer_mask == 0) {
+        return 0;
+    }
+    if (!pimpl->dormant_populate) {
+        const size_t restored = state.released_bytes;
+        state = {};
+        return restored; // local execution faults the still-mapped pages back in
+    }
+    // gate/up: populate the whole tensors (retained prefix pages are already resident, the share
+    // streams back sequentially); down: re-map the released pieces, which stayed in the page cache
+    size_t restored = 0;
+    for (size_t i = 0; i < state.tensors_by_file.size(); ++i) {
+        if (!state.tensors_by_file[i].empty()) {
+            pimpl->mappings[i]->populate_fragments(state.tensors_by_file[i]);
+        }
+    }
+    for (size_t i = 0; i < state.ranges_by_file.size(); ++i) {
+        if (!state.ranges_by_file[i].empty()) {
+            pimpl->mappings[i]->populate_fragments(state.ranges_by_file[i]);
+        }
+    }
+    restored = state.released_bytes;
+    state = {};
+    return restored;
+}
+
+uint64_t llama_model::ffn_host_share_layer_mask() const {
+    return pimpl->dormant.layer_mask;
+}
+
+int64_t llama_model::ffn_host_share_host_columns() const {
+    return pimpl->dormant.host_columns;
+}
+
+size_t llama_model::ffn_host_share_released_bytes() const {
+    return pimpl->dormant.released_bytes;
+}
+
+size_t llama_model::ffn_host_share_range_count() const {
+    return pimpl->dormant.range_count;
 }
 
 void llama_model::print_info() const {
@@ -2016,6 +2216,9 @@ ggml_tensor * llama_model::get_rope_factors(const llama_cparams & cparams, int i
 
 llama_memory_i * llama_model::create_memory(const llama_memory_params & params, const llama_cparams & cparams) const {
     llama_memory_i * res;
+    const llama_memory_i::layer_filter_cb offload_filter =
+        std::any_of(cparams.kv_cpu_layers.begin(), cparams.kv_cpu_layers.end(), [](bool v) { return v; })
+        ? llama_memory_i::layer_filter_cb([&](int32_t il) { return !cparams.kv_cpu_layers.at(il); }) : nullptr;
 
     switch (arch) {
         // Models that need specific instantiation should be handled in the
@@ -2267,7 +2470,8 @@ llama_memory_i * llama_model::create_memory(const llama_memory_params & params, 
                                     mem_other,
                                     filter,
                                     reuse,
-                                    share);
+                                    share,
+                                    offload_filter);
                         } else {
                             res = new llama_kv_cache_iswa(
                                     *this,
@@ -2284,7 +2488,8 @@ llama_memory_i * llama_model::create_memory(const llama_memory_params & params, 
                                     nullptr,
                                     filter,
                                     reuse,
-                                    share);
+                                    share,
+                                    offload_filter);
                         }
                     } else {
                         GGML_ASSERT(!hparams.is_swa_any());
@@ -2305,7 +2510,10 @@ llama_memory_i * llama_model::create_memory(const llama_memory_params & params, 
                                 nullptr,
                                 filter,
                                 nullptr,
-                                nullptr);
+                                nullptr,
+                                offload_filter,
+                                cparams.kv_device_cells,
+                                cparams.n_ubatch);
                     }
                 }
             }
@@ -2700,6 +2908,42 @@ const char * llama_model_chat_template(const llama_model * model, const char * n
 
 uint64_t llama_model_n_params(const llama_model * model) {
     return model->n_elements();
+}
+
+uint64_t llama_model_remote_resident_ffn_layer_mask(const llama_model * model) {
+    return model->remote_resident_ffn_layer_mask();
+}
+
+uint64_t llama_model_remote_resident_ffn_bytes(const llama_model * model) {
+    return model->remote_resident_ffn_bytes();
+}
+
+uint64_t llama_model_remote_resident_ffn_unmapped_bytes(const llama_model * model) {
+    return model->remote_resident_ffn_unmapped_bytes();
+}
+
+bool llama_model_ffn_host_share_configure(llama_model * model, bool drop_cache, bool populate) {
+    return model->ffn_host_share_configure(drop_cache, populate);
+}
+
+size_t llama_model_ffn_host_share_release(llama_model * model, uint64_t layer_mask, int64_t host_columns) {
+    return model->ffn_host_share_release(layer_mask, host_columns);
+}
+
+size_t llama_model_ffn_host_share_restore(llama_model * model) {
+    return model->ffn_host_share_restore();
+}
+
+size_t llama_model_ffn_host_share_released_bytes(const llama_model * model) {
+    return model->ffn_host_share_released_bytes();
+}
+
+uint64_t llama_model_ffn_host_share_layer_mask(const llama_model * model) {
+    return model->ffn_host_share_layer_mask();
+}
+
+size_t llama_model_ffn_host_share_range_count(const llama_model * model) {
+    return model->ffn_host_share_range_count();
 }
 
 bool llama_model_has_encoder(const llama_model * model) {

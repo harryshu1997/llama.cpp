@@ -1,0 +1,37 @@
+{
+  "models": [
+    {
+      "architecture": "qwen3",
+      "average_bits_per_weight": 4.87,
+      "embedding": 5120,
+      "ffn_width": 17408,
+      "file_bytes": 9001752960,
+      "heads": 40,
+      "kv_heads": 8,
+      "layers": 40,
+      "model_id": "qwen3-14b-q4_k_m",
+      "model_parameters": 14770000000,
+      "model_sha256": "500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0",
+      "quantization": "Q4_K_M",
+      "vocabulary": 151936
+    },
+    {
+      "architecture": "gemma4",
+      "average_bits_per_weight": 4.68,
+      "embedding": 3840,
+      "ffn_width": 15360,
+      "file_bytes": 6975878176,
+      "heads": 16,
+      "kv_heads_global": 8,
+      "kv_heads_local": 1,
+      "layers": 48,
+      "model_id": "gemma4-12b-q4_0",
+      "model_parameters": 11910000000,
+      "model_sha256": "494518c2262a26e2a607af0e40bca11c4de5a0b108e7c21308906dbbfb1c6f8c",
+      "phone_ffn_slice_max_columns": 11136,
+      "quantization": "Q4_0 mixed GGUF",
+      "vocabulary": 262144
+    }
+  ],
+  "schema": "s42-model-energy-model-catalog-v1"
+}

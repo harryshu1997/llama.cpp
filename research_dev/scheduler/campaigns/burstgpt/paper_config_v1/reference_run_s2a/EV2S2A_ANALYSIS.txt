@@ -1,0 +1,4 @@
+legacy                   PASS     2244.3s host  228.535 kJ phones*  1.964 kJ calls {} identical - prepfail 0
+s1c                      PASS     1834.5s host   83.944 kJ phones*  7.701 kJ calls {'gemma:op15': 45672, 'qwen:op15': 25488, 'qwen:pixel': 7458} identical 11 prepfail 0
+s1d                      PASS     1810.6s host  103.108 kJ phones*  7.570 kJ calls {'gemma:op15': 26472, 'qwen:op15': 23904, 'qwen:pixel': 7110} identical 12 prepfail 0
+s2a                      PASS     1821.5s host   94.602 kJ phones*  7.139 kJ calls {'gemma:op15': 47208, 'qwen:op15': 17244, 'qwen:pixel': 5658} identical 13 prepfail 0

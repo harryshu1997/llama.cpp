@@ -1,0 +1,45 @@
+{
+  "adaptive_decode_overrides": {
+    "batch_growth_verdict_inheritance": true,
+    "late_helper_adoption": true,
+    "late_helper_adoption_minimum_tokens": 24,
+    "server_policy_coherence": true
+  },
+  "adaptive_maximum_probe_attempts_per_context": 4,
+  "adaptive_minimum_remaining_tokens": null,
+  "campaign_id": "s43-two-phone-eval-eval2-template",
+  "dispatch_policy": {
+    "continuous_join": true,
+    "max_barrier_extension_s": 120,
+    "model_affinity": true,
+    "residency_hysteresis_s": 20,
+    "work_conserving_admission": true
+  },
+  "energy_attribution_kind": "diagnostic",
+  "evidence_manifest_path": "/mnt/storage/s43-two-phone-eval-20260925/template-eval2/evidence.json",
+  "helper_preparation_fault_injection": null,
+  "host_memory_budget_bytes": 30064771072,
+  "max_workers": 32,
+  "maximum_latency_ppm": 1250000,
+  "maximum_phone_sessions": null,
+  "minimum_energy_saving_ppm": 10000,
+  "models_manifest_path": "/mnt/storage/s43-two-phone-eval-20260925/template-eval2/models.json",
+  "phone_resident_model_reprovisioning": {
+    "count_queued_demand": true,
+    "early_on_transition": true
+  },
+  "reference_catalog_path": null,
+  "reference_replay_schedule_path": null,
+  "reference_runner_command_path": null,
+  "rig_manifest_path": "/mnt/storage/s43-two-phone-eval-20260925/template-eval2/rig.json",
+  "schema": "research-scheduler-campaign-v1",
+  "selection_mode": "energy-aware",
+  "trace": {
+    "arrival_scale": null,
+    "large_requests_path": "/mnt/storage/burstgpt-source/longtail_eval_v2/REQUESTS_SEMANTIC_SOURCE.jsonl",
+    "overlay_requests_path": "/mnt/storage/burstgpt-source/longtail_eval_v2/REQUESTS_OVERLAY.jsonl",
+    "replay_schedule_path": "/mnt/storage/burstgpt-source/longtail_eval_v2/burstgpt_longtail_eval_v2.json",
+    "request_indices": [],
+    "trace_manifest_path": "/mnt/storage/burstgpt-source/longtail_eval_v2/TRACE_MANIFEST.json"
+  }
+}

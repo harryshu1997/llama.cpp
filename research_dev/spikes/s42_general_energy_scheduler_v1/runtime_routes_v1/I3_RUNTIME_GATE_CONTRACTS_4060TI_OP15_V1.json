@@ -1,0 +1,151 @@
+{
+  "epoch_key": "sha256:27d004d2958af9df39e4543eda7853cca68f9293df7aba3515bed3585775a1e5",
+  "qualification": {
+    "activation_ready": false,
+    "next_gate": "fresh executor-owned runtime snapshot and atomic lease transaction",
+    "status": "contracts_compiled"
+  },
+  "routes": {
+    "i3-cold-cpu-control-v1": {
+      "epoch_key": "sha256:27d004d2958af9df39e4543eda7853cca68f9293df7aba3515bed3585775a1e5",
+      "failure_mode": "fallback_before_dispatch",
+      "resources": {
+        "cpu-cold": {
+          "allowed_contention_buckets": [
+            "i3-hot-qwen-default-affinity"
+          ],
+          "allowed_thermal_buckets": [
+            "not-throttled"
+          ],
+          "heartbeat_max_age_us": null,
+          "max_failure_count": 0,
+          "max_slowdown_ppm": 1000000,
+          "max_temperature_millic": null,
+          "required_residency_ids": [
+            "model:494518c2262a26e2a607af0e40bca11c4de5a0b108e7c21308906dbbfb1c6f8c"
+          ],
+          "reset_generation": 0
+        },
+        "cuda0": {
+          "allowed_contention_buckets": [
+            "i3-hot-qwen"
+          ],
+          "allowed_thermal_buckets": [
+            "not-throttled"
+          ],
+          "heartbeat_max_age_us": null,
+          "max_failure_count": 0,
+          "max_slowdown_ppm": 1000000,
+          "max_temperature_millic": null,
+          "required_residency_ids": [
+            "model:500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0"
+          ],
+          "reset_generation": 0
+        }
+      },
+      "schema": "s42-route-runtime-contract-v1",
+      "semantics": {
+        "cancellation_modes": [
+          "before_dispatch"
+        ],
+        "context_shift": false,
+        "full_logits": true,
+        "grammar": false,
+        "kv_migration": false,
+        "kv_owner": "llama_context",
+        "sampler_locations": [
+          "desktop"
+        ],
+        "speculative_decode": false
+      }
+    },
+    "i3-cold-cpu-op15-ffn-v1": {
+      "epoch_key": "sha256:27d004d2958af9df39e4543eda7853cca68f9293df7aba3515bed3585775a1e5",
+      "failure_mode": "fallback_before_dispatch",
+      "resources": {
+        "cpu-cold": {
+          "allowed_contention_buckets": [
+            "i3-hot-qwen-default-affinity"
+          ],
+          "allowed_thermal_buckets": [
+            "not-throttled"
+          ],
+          "heartbeat_max_age_us": null,
+          "max_failure_count": 0,
+          "max_slowdown_ppm": 1000000,
+          "max_temperature_millic": null,
+          "required_residency_ids": [
+            "model:494518c2262a26e2a607af0e40bca11c4de5a0b108e7c21308906dbbfb1c6f8c"
+          ],
+          "reset_generation": 0
+        },
+        "cuda0": {
+          "allowed_contention_buckets": [
+            "i3-hot-qwen"
+          ],
+          "allowed_thermal_buckets": [
+            "not-throttled"
+          ],
+          "heartbeat_max_age_us": null,
+          "max_failure_count": 0,
+          "max_slowdown_ppm": 1000000,
+          "max_temperature_millic": null,
+          "required_residency_ids": [
+            "model:500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0"
+          ],
+          "reset_generation": 0
+        },
+        "op15-htp": {
+          "allowed_contention_buckets": [
+            "exclusive-i3-worker"
+          ],
+          "allowed_thermal_buckets": [
+            "android-none"
+          ],
+          "heartbeat_max_age_us": 1100000,
+          "max_failure_count": 0,
+          "max_slowdown_ppm": 1000000,
+          "max_temperature_millic": null,
+          "required_residency_ids": [
+            "model:494518c2262a26e2a607af0e40bca11c4de5a0b108e7c21308906dbbfb1c6f8c",
+            "worker:a7b233bf466a184205c42d90e7fb189065165b2c555bc111f5c71d0ea47f9f00"
+          ],
+          "reset_generation": 0
+        },
+        "op15-usb": {
+          "allowed_contention_buckets": [
+            "exclusive-super-speed"
+          ],
+          "allowed_thermal_buckets": [
+            "not-applicable"
+          ],
+          "heartbeat_max_age_us": 1100000,
+          "max_failure_count": 0,
+          "max_slowdown_ppm": 1000000,
+          "max_temperature_millic": null,
+          "required_residency_ids": [
+            "bridge:1c5bfb27cd263238cf2e364ee5bdb538d7cd78fc82e55dd5a6228d143f1809d7",
+            "transport:functionfs-dmabuf-f16"
+          ],
+          "reset_generation": 0
+        }
+      },
+      "schema": "s42-route-runtime-contract-v1",
+      "semantics": {
+        "cancellation_modes": [
+          "before_dispatch"
+        ],
+        "context_shift": false,
+        "full_logits": true,
+        "grammar": false,
+        "kv_migration": false,
+        "kv_owner": "llama_context",
+        "sampler_locations": [
+          "desktop"
+        ],
+        "speculative_decode": false
+      }
+    }
+  },
+  "schema": "s42-i3-runtime-gate-contracts-v1"
+}

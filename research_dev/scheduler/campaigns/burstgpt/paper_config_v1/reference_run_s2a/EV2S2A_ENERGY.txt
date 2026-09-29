@@ -1,0 +1,6 @@
+run                          status    dur s  req   CPU kJ   GPU kJ  host kJ  host W phone kJ*  fleet kJ host vs first fleet vs first
+legacy                       PASS       2244   14    159.9     68.7    228.5   101.8      1.96     230.5         +0.0%          +0.0%
+s1c                          PASS       1835   14     31.3     52.7     83.9    45.8      4.95      88.9        -63.3%         -61.4%
+s1d                          PASS       1811   14     49.2     53.9    103.1    56.9      4.32     107.4        -54.9%         -53.4%
+s2a                          PASS       1821   14     41.5     53.2     94.6    51.9      3.99      98.6        -58.6%         -57.2%
+* phone energy is assumed (4.5 W active / 0.875 W idle), not measured

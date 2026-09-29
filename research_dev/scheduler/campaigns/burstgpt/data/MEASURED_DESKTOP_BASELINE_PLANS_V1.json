@@ -1,0 +1,46 @@
+{
+  "plans": [
+    {
+      "adapter_parameters": {
+        "context_size": 4096,
+        "context_token_quantum": 1024,
+        "parallel": 4
+      },
+      "artifact_sha256": "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718",
+      "desktop_control_profile_id": "desktop-control:d89e9e823744222e",
+      "desktop_executor_id": "physical:hot:desktop",
+      "desktop_placement_sha256": "sha256:ba941aeab31787018051dcc07cc34580c5c848d3685e2bd845c9235330b52ccc",
+      "evidence_ids": [
+        "sha256:0c7d73628d1490c0da5ef84df013d072cf7af9092ea2844a293550559cddb0f2",
+        "sha256:31c28d74c9954543bd884832d5298c28076cd98cd460d6907e4756896924b933",
+        "sha256:7ade4a75fde3a80aa7afa74777e986d1540c79275d81a4164f108d50d311e527"
+      ],
+      "gpu_first_layer": 22,
+      "identity_evidence_id": "sha256:7ade4a75fde3a80aa7afa74777e986d1540c79275d81a4164f108d50d311e527",
+      "maturity": "QUALIFIED"
+    },
+    {
+      "adapter_parameters": {
+        "kv_cache_swa_padding_tokens": 512,
+        "memory_model_weight_allocation_ppm:desktop-cpu": 1050000,
+        "memory_model_weight_allocation_ppm:desktop-cuda": 1150000,
+        "memory_workspace_minimum_bytes:desktop-cpu": 268435456,
+        "memory_workspace_minimum_bytes:desktop-cuda": 268435456,
+        "parallel": 2
+      },
+      "artifact_sha256": "sha256:ed76f2183d2d1d65091986033023e6c78d27f6276c1b0c5826cc92acf73538cf",
+      "desktop_control_profile_id": "desktop-control:ed76f2183d2d1d65",
+      "desktop_executor_id": "physical:cold:desktop",
+      "desktop_placement_sha256": "sha256:2bb4d9cb992ccfb788847239bc9ff9492e57a2b5df6b78c68a4cf5d860884359",
+      "evidence_ids": [
+        "sha256:0c7d73628d1490c0da5ef84df013d072cf7af9092ea2844a293550559cddb0f2",
+        "sha256:31c28d74c9954543bd884832d5298c28076cd98cd460d6907e4756896924b933",
+        "sha256:7ade4a75fde3a80aa7afa74777e986d1540c79275d81a4164f108d50d311e527"
+      ],
+      "gpu_first_layer": 24,
+      "identity_evidence_id": "sha256:7ade4a75fde3a80aa7afa74777e986d1540c79275d81a4164f108d50d311e527",
+      "maturity": "QUALIFIED"
+    }
+  ],
+  "schema": "s42-measured-desktop-baseline-plans-v1"
+}

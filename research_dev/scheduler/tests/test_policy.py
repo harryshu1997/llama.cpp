@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+import json
 import sys
+from types import MappingProxyType
 import unittest
 from pathlib import Path
 
@@ -360,6 +363,46 @@ def runtime_snapshot(
 
 
 class SchedulerTests(unittest.TestCase):
+    def test_resource_lease_owner_transfer_is_atomic(self) -> None:
+        timeline = ResourceTimeline({
+            "phone": ResourceProfile("phone", "npu", 1, True, "phone-0"),
+            "usb": ResourceProfile("usb", "link", 1, True, "usb-0"),
+        })
+        preview = timeline.preview_leases(
+            (
+                LeaseDemand("phone", "phone", 1, 0, 100, 100),
+                LeaseDemand("usb", "usb", 1, 0, 100, 100),
+            ),
+            0,
+            100,
+            100,
+        )
+        leases = timeline.commit_leases(preview, "decode-cohort-1")
+        checkpoint = timeline.checkpoint()
+        with self.assertRaises(SchedulerError):
+            timeline.reassign_owner(
+                (leases[0].token, "missing-token"),
+                expected_owner_id="decode-cohort-1",
+                owner_id="request-a",
+            )
+        self.assertEqual(timeline.checkpoint(), checkpoint)
+
+        timeline.reassign_owner(
+            tuple(row.token for row in leases),
+            expected_owner_id="decode-cohort-1",
+            owner_id="request-a",
+        )
+        state = timeline.causal_state()
+        self.assertEqual(
+            {
+                row["owner_id"]
+                for resource in state["resources"].values()
+                for lane in resource["lanes"]
+                for row in lane
+            },
+            {"request-a"},
+        )
+
     def test_resource_capacity_assigns_independent_lanes(self) -> None:
         timeline = ResourceTimeline({
             "phone": ResourceProfile("phone", "npu", 2, True, "phone-0")
@@ -375,6 +418,36 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual(first.start_us, 0)
         self.assertEqual(second.start_us, 0)
         self.assertNotEqual(first.plans[0].lanes, second.plans[0].lanes)
+        self.assertEqual(third.start_us, 100)
+
+    def test_large_weighted_capacity_uses_available_lanes(self) -> None:
+        timeline = ResourceTimeline({
+            "context": ResourceProfile(
+                "context", "memory-pool", 64, True, "context-0"
+            )
+        })
+        first_demand = (
+            LeaseDemand("first", "context", 20, 0, 100, 100),
+        )
+        second_demand = (
+            LeaseDemand("second", "context", 20, 0, 100, 100),
+        )
+        third_demand = (
+            LeaseDemand("third", "context", 30, 0, 100, 100),
+        )
+        first = timeline.preview_leases(first_demand, 0, 100, 100)
+        timeline.commit_leases(first, "r0")
+        second = timeline.preview_leases(second_demand, 0, 100, 100)
+        timeline.commit_leases(second, "r1")
+        third = timeline.preview_leases(third_demand, 0, 100, 100)
+
+        self.assertEqual(first.start_us, 0)
+        self.assertEqual(second.start_us, 0)
+        self.assertTrue(
+            set(first.plans[0].lanes).isdisjoint(
+                second.plans[0].lanes
+            )
+        )
         self.assertEqual(third.start_us, 100)
 
     def test_control_always_uses_baseline(self) -> None:
@@ -822,7 +895,7 @@ class SchedulerTests(unittest.TestCase):
             "shadow",
         )
         first = scheduler.schedule(request("r0"))
-        second = scheduler.schedule(request("r1"))
+        scheduler.schedule(request("r1"))
         snapshot = scheduler.timeline.resource_snapshot(50)
         self.assertEqual(snapshot["phone"]["active_until_us"], 400)
         self.assertEqual(snapshot["phone"]["reserved_until_us"], 900)
@@ -853,6 +926,21 @@ class SchedulerTests(unittest.TestCase):
             sorted(lease["resource_id"] for lease in row["leases"]),
             ["phone", "server", "usb", "usb"],
         )
+
+    def test_decision_serializes_immutable_cost_mappings(self) -> None:
+        scheduler = RoutePolicy(
+            profile([baseline(), phased_offload()]), "shadow"
+        )
+        decision = replace(
+            scheduler.schedule(request("r0")),
+            energy_breakdown=MappingProxyType({"compute_uj": 123}),
+            marginal_system_cost=MappingProxyType({"total_uj": 456}),
+        )
+        row = decision_to_json(decision)
+
+        json.dumps(row, sort_keys=True)
+        self.assertEqual(row["energy_breakdown"], {"compute_uj": 123})
+        self.assertEqual(row["marginal_system_cost"], {"total_uj": 456})
 
     def test_overlapping_internal_leases_fail_closed(self) -> None:
         candidate = offload()

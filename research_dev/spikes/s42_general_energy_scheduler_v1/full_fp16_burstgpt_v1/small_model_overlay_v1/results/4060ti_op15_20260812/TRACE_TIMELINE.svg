@@ -1,0 +1,186 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1060" viewBox="0 0 1600 1060">
+  <defs>
+    <style>
+      text { font-family: Inter, Arial, sans-serif; fill: #17202a; }
+      .title { font-size: 30px; font-weight: 700; }
+      .subtitle { font-size: 16px; fill: #536273; }
+      .panel-title { font-size: 20px; font-weight: 700; }
+      .label { font-size: 16px; font-weight: 600; }
+      .small { font-size: 14px; fill: #536273; }
+      .tiny { font-size: 12px; fill: #536273; }
+      .count { font-size: 15px; font-weight: 700; text-anchor: middle; dominant-baseline: middle; }
+      .axis { stroke: #7b8794; stroke-width: 1.2; }
+      .grid { stroke: #dce2e8; stroke-width: 1; }
+      .marker { stroke: #8593a3; stroke-width: 1; stroke-dasharray: 4 5; }
+    </style>
+    <pattern id="queueHatch" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="10" height="10" fill="#f4f6f8"/>
+      <line x1="0" y1="0" x2="0" y2="10" stroke="#aab4bf" stroke-width="3"/>
+    </pattern>
+    <pattern id="usbHatch" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="10" height="10" fill="#f5eff9"/>
+      <line x1="0" y1="0" x2="0" y2="10" stroke="#9c6ade" stroke-width="3"/>
+    </pattern>
+  </defs>
+
+  <rect width="1600" height="1060" fill="#ffffff"/>
+  <text x="70" y="55" class="title">New trace: 84 arrivals, then a long sequential execution</text>
+  <text x="70" y="83" class="subtitle">Physical runtime-scheduler arm, RTX 4060 Ti + i9-12900K + OP15, 2026-08-12</text>
+
+  <rect x="55" y="108" width="1490" height="335" rx="12" fill="#fbfcfd" stroke="#d9e0e7"/>
+  <text x="80" y="145" class="panel-title">A. Arrival burst, zoomed to the first 60 seconds</text>
+  <text x="1500" y="145" class="small" text-anchor="end">Numbers are arrivals per 5-second bin</text>
+
+  <text x="205" y="184" class="small" text-anchor="end">Effective model</text>
+  <line x1="230" y1="174" x2="1500" y2="174" class="axis"/>
+  <g class="small" text-anchor="middle">
+    <text x="230" y="166">0 s</text>
+    <text x="441.7" y="166">10 s</text>
+    <text x="653.3" y="166">20 s</text>
+    <text x="865" y="166">30 s</text>
+    <text x="1076.7" y="166">40 s</text>
+    <text x="1288.3" y="166">50 s</text>
+    <text x="1500" y="166">60 s</text>
+  </g>
+  <g>
+    <line x1="230" y1="174" x2="230" y2="395" class="grid"/>
+    <line x1="441.7" y1="174" x2="441.7" y2="395" class="grid"/>
+    <line x1="653.3" y1="174" x2="653.3" y2="395" class="grid"/>
+    <line x1="865" y1="174" x2="865" y2="395" class="grid"/>
+    <line x1="1076.7" y1="174" x2="1076.7" y2="395" class="grid"/>
+    <line x1="1288.3" y1="174" x2="1288.3" y2="395" class="grid"/>
+    <line x1="1500" y1="174" x2="1500" y2="395" class="grid"/>
+  </g>
+
+  <text x="205" y="224" class="label" text-anchor="end">Qwen 14B (57)</text>
+  <g stroke="#ffffff" stroke-width="2">
+    <rect x="230" y="197" width="105.8" height="42" rx="5" fill="#4c78a8" fill-opacity="0.08"/>
+    <rect x="335.8" y="197" width="105.8" height="42" rx="5" fill="#4c78a8" fill-opacity="0.95"/>
+    <rect x="441.7" y="197" width="105.8" height="42" rx="5" fill="#4c78a8" fill-opacity="0.47"/>
+    <rect x="547.5" y="197" width="105.8" height="42" rx="5" fill="#4c78a8" fill-opacity="0.25"/>
+    <rect x="653.3" y="197" width="105.8" height="42" rx="5" fill="#4c78a8" fill-opacity="0.29"/>
+    <rect x="759.2" y="197" width="105.8" height="42" rx="5" fill="#4c78a8" fill-opacity="0.25"/>
+    <rect x="865" y="197" width="105.8" height="42" rx="5" fill="#4c78a8" fill-opacity="0.12"/>
+    <rect x="970.8" y="197" width="105.8" height="42" rx="5" fill="#4c78a8" fill-opacity="0.29"/>
+    <rect x="1076.7" y="197" width="105.8" height="42" rx="5" fill="#4c78a8" fill-opacity="0.12"/>
+    <rect x="1182.5" y="197" width="105.8" height="42" rx="5" fill="#4c78a8" fill-opacity="0.12"/>
+    <rect x="1288.3" y="197" width="105.8" height="42" rx="5" fill="#4c78a8" fill-opacity="0.25"/>
+    <rect x="1394.2" y="197" width="105.8" height="42" rx="5" fill="#4c78a8" fill-opacity="0.08"/>
+  </g>
+  <g class="count">
+    <text x="282.9" y="218">0</text><text x="388.8" y="218" fill="#ffffff">23</text>
+    <text x="494.6" y="218">9</text><text x="600.4" y="218">4</text>
+    <text x="706.3" y="218">5</text><text x="812.1" y="218">4</text>
+    <text x="917.9" y="218">1</text><text x="1023.8" y="218">5</text>
+    <text x="1129.6" y="218">1</text><text x="1235.4" y="218">1</text>
+    <text x="1341.3" y="218">4</text><text x="1447.1" y="218">0</text>
+  </g>
+
+  <text x="205" y="294" class="label" text-anchor="end">Gemma 12B (17)</text>
+  <g stroke="#ffffff" stroke-width="2">
+    <rect x="230" y="267" width="105.8" height="42" rx="5" fill="#f58518" fill-opacity="0.95"/>
+    <rect x="335.8" y="267" width="105.8" height="42" rx="5" fill="#f58518" fill-opacity="0.08"/>
+    <rect x="441.7" y="267" width="105.8" height="42" rx="5" fill="#f58518" fill-opacity="0.30"/>
+    <rect x="547.5" y="267" width="105.8" height="42" rx="5" fill="#f58518" fill-opacity="0.75"/>
+    <rect x="653.3" y="267" width="105.8" height="42" rx="5" fill="#f58518" fill-opacity="0.75"/>
+    <rect x="759.2" y="267" width="105.8" height="42" rx="5" fill="#f58518" fill-opacity="0.08"/>
+    <rect x="865" y="267" width="105.8" height="42" rx="5" fill="#f58518" fill-opacity="0.08"/>
+    <rect x="970.8" y="267" width="105.8" height="42" rx="5" fill="#f58518" fill-opacity="0.08"/>
+    <rect x="1076.7" y="267" width="105.8" height="42" rx="5" fill="#f58518" fill-opacity="0.30"/>
+    <rect x="1182.5" y="267" width="105.8" height="42" rx="5" fill="#f58518" fill-opacity="0.75"/>
+    <rect x="1288.3" y="267" width="105.8" height="42" rx="5" fill="#f58518" fill-opacity="0.08"/>
+    <rect x="1394.2" y="267" width="105.8" height="42" rx="5" fill="#f58518" fill-opacity="0.55"/>
+  </g>
+  <g class="count">
+    <text x="282.9" y="288" fill="#ffffff">4</text><text x="388.8" y="288">0</text>
+    <text x="494.6" y="288">1</text><text x="600.4" y="288">3</text>
+    <text x="706.3" y="288">3</text><text x="812.1" y="288">0</text>
+    <text x="917.9" y="288">0</text><text x="1023.8" y="288">0</text>
+    <text x="1129.6" y="288">1</text><text x="1235.4" y="288">3</text>
+    <text x="1341.3" y="288">0</text><text x="1447.1" y="288">2</text>
+  </g>
+
+  <text x="205" y="364" class="label" text-anchor="end">Llama 1B (10)</text>
+  <g stroke="#ffffff" stroke-width="2">
+    <rect x="230" y="337" width="105.8" height="42" rx="5" fill="#54a24b" fill-opacity="0.35"/>
+    <rect x="335.8" y="337" width="105.8" height="42" rx="5" fill="#54a24b" fill-opacity="0.95"/>
+    <rect x="441.7" y="337" width="105.8" height="42" rx="5" fill="#54a24b" fill-opacity="0.35"/>
+    <rect x="547.5" y="337" width="105.8" height="42" rx="5" fill="#54a24b" fill-opacity="0.35"/>
+    <rect x="653.3" y="337" width="105.8" height="42" rx="5" fill="#54a24b" fill-opacity="0.35"/>
+    <rect x="759.2" y="337" width="105.8" height="42" rx="5" fill="#54a24b" fill-opacity="0.08"/>
+    <rect x="865" y="337" width="105.8" height="42" rx="5" fill="#54a24b" fill-opacity="0.08"/>
+    <rect x="970.8" y="337" width="105.8" height="42" rx="5" fill="#54a24b" fill-opacity="0.35"/>
+    <rect x="1076.7" y="337" width="105.8" height="42" rx="5" fill="#54a24b" fill-opacity="0.08"/>
+    <rect x="1182.5" y="337" width="105.8" height="42" rx="5" fill="#54a24b" fill-opacity="0.35"/>
+    <rect x="1288.3" y="337" width="105.8" height="42" rx="5" fill="#54a24b" fill-opacity="0.08"/>
+    <rect x="1394.2" y="337" width="105.8" height="42" rx="5" fill="#54a24b" fill-opacity="0.35"/>
+  </g>
+  <g class="count">
+    <text x="282.9" y="358">1</text><text x="388.8" y="358" fill="#ffffff">3</text>
+    <text x="494.6" y="358">1</text><text x="600.4" y="358">1</text>
+    <text x="706.3" y="358">1</text><text x="812.1" y="358">0</text>
+    <text x="917.9" y="358">0</text><text x="1023.8" y="358">1</text>
+    <text x="1129.6" y="358">0</text><text x="1235.4" y="358">1</text>
+    <text x="1341.3" y="358">0</text><text x="1447.1" y="358">1</text>
+  </g>
+  <text x="230" y="414" class="small">All arrivals: 1.95-57.90 s. Llama arrivals: 2.15, 7.85, 9.00, 9.60, 12.25, 17.55, 22.45, 37.20, 45.75, 57.90 s.</text>
+
+  <rect x="55" y="465" width="1490" height="510" rx="12" fill="#fbfcfd" stroke="#d9e0e7"/>
+  <text x="80" y="505" class="panel-title">B. Physical execution, full 2,701.5-second paid interval</text>
+  <text x="1500" y="505" class="small" text-anchor="end">Horizontal distances are proportional to runtime</text>
+
+  <g>
+    <line x1="230" y1="525" x2="230" y2="910" class="marker"/>
+    <line x1="258.2" y1="525" x2="258.2" y2="910" class="marker"/>
+    <line x1="284.2" y1="525" x2="284.2" y2="910" class="marker"/>
+    <line x1="1106.1" y1="525" x2="1106.1" y2="910" class="marker"/>
+    <line x1="1148.2" y1="525" x2="1148.2" y2="910" class="marker"/>
+    <line x1="1500" y1="525" x2="1500" y2="910" class="marker"/>
+  </g>
+
+  <text x="205" y="577" class="label" text-anchor="end">Arrivals</text>
+  <rect x="230.9" y="552" width="26.3" height="38" rx="5" fill="#30475e"/>
+  <text x="270" y="576" class="small">84 requests by 57.9 s</text>
+
+  <text x="205" y="647" class="label" text-anchor="end">Llama 1B</text>
+  <rect x="231" y="622" width="53.2" height="38" rx="5" fill="#54a24b"/>
+  <text x="296" y="646" class="small">10 CPU executions; last completes at 115.3 s</text>
+
+  <text x="205" y="717" class="label" text-anchor="end">Large-model route</text>
+  <rect x="233" y="692" width="873.1" height="38" rx="5" fill="#4c78a8"/>
+  <text x="669.5" y="716" class="label" fill="#ffffff" text-anchor="middle">Qwen 14B: GPU + CPU + OP15 (57 requests)</text>
+  <rect x="1106.1" y="692" width="42.1" height="38" fill="#c8ced6"/>
+  <text x="1127.2" y="680" class="tiny" text-anchor="middle">89.5 s</text>
+  <rect x="1148.2" y="692" width="351.8" height="38" rx="5" fill="#f58518"/>
+  <text x="1324.1" y="716" class="label" fill="#ffffff" text-anchor="middle">Gemma 12B: GPU + CPU + OP15 (17)</text>
+
+  <text x="205" y="787" class="label" text-anchor="end">Gemma requests</text>
+  <rect x="230.9" y="762" width="917.3" height="38" rx="5" fill="#e6eaef" stroke="#aab4bf"/>
+  <text x="689.5" y="786" class="label" text-anchor="middle">Held while Qwen owns the GPU</text>
+  <rect x="1148.2" y="762" width="351.8" height="38" rx="5" fill="#f58518" fill-opacity="0.22" stroke="#f58518"/>
+  <text x="1324.1" y="786" class="label" text-anchor="middle">Execute and drain</text>
+
+  <text x="205" y="857" class="label" text-anchor="end">Phone USB</text>
+  <rect x="230" y="832" width="1270" height="38" rx="5" fill="#eee5f7" stroke="#9c6ade"/>
+  <text x="865" y="856" class="label" text-anchor="middle">Reserved for Qwen/Gemma FunctionFS FFN traffic; Llama phone route cannot meet SLO</text>
+
+  <line x1="230" y1="910" x2="1500" y2="910" class="axis"/>
+  <g class="small" text-anchor="middle">
+    <text x="230" y="935">0</text>
+    <text x="258.2" y="935">60</text>
+    <text x="284.2" y="935">115</text>
+    <text x="1100" y="935" text-anchor="end">1,863.6</text>
+    <text x="1154" y="935" text-anchor="start">1,953.1</text>
+    <text x="1500" y="935">2,701.5 s</text>
+  </g>
+  <text x="1106.1" y="955" class="tiny" text-anchor="end">Qwen ends</text>
+  <text x="1148.2" y="955" class="tiny" text-anchor="start">Gemma GPU ready</text>
+
+  <rect x="70" y="995" width="16" height="16" rx="3" fill="#4c78a8"/>
+  <text x="95" y="1008" class="small">Qwen execution</text>
+  <rect x="245" y="995" width="16" height="16" rx="3" fill="#f58518"/>
+  <text x="270" y="1008" class="small">Gemma execution</text>
+  <rect x="430" y="995" width="16" height="16" rx="3" fill="#54a24b"/>
+  <text x="455" y="1008" class="small">Llama execution</text>
+  <text x="70" y="1037" class="tiny">Execution-model counts are from the runner mapping: source-hot rows execute Qwen; source-cold rows execute Gemma.</text>
+</svg>

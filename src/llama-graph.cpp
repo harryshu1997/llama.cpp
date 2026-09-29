@@ -12,6 +12,7 @@
 #include "llama-memory-hybrid.h"
 #include "llama-memory-hybrid-iswa.h"
 #include "llama-memory-recurrent.h"
+#include "llama-ffn-split-policy.h"
 
 #include <cassert>
 #include <cmath>
@@ -496,8 +497,17 @@ void llm_graph_input_attn_no_cache::set_input(const llama_ubatch * ubatch) {
 }
 
 void llm_graph_input_attn_kv::set_input(const llama_ubatch * ubatch) {
-    mctx->set_input_k_idxs(self_k_idxs, ubatch);
-    mctx->set_input_v_idxs(self_v_idxs, ubatch);
+    if (self_k_idxs->buffer) mctx->set_input_k_idxs(self_k_idxs, ubatch);
+    if (self_v_idxs->buffer) mctx->set_input_v_idxs(self_v_idxs, ubatch);
+
+    for (const auto & [cells, slice] : slices) {
+        for (int host = 0; host < 2; ++host) {
+            mctx->set_input_slice_idxs(slice.idxs[host], cells, host);
+            if (slice.masks[host] && slice.masks[host]->buffer) {
+                mctx->set_input_kq_mask(slice.masks[host], ubatch, cparams.causal_attn, host ? cells : 0);
+            }
+        }
+    }
 
     // the mask is left unallocated when the graph only stores K/V without attending
     // (e.g. DFlash's KV-injection pass)
@@ -1328,6 +1338,12 @@ llm_graph_context::llm_graph_context(const llm_graph_params & params) :
     arch             (params.arch),
     hparams          (params.hparams),
     cparams          (params.cparams),
+    ffn_split_runtime              (params.ffn_split_runtime),
+    ffn_split_layer_mask           (params.ffn_split_layer_mask),
+    ffn_split_columns              (params.ffn_split_columns),
+    ffn_row_diagnostic             (params.ffn_row_diagnostic),
+    ffn_remote_resident_layer_mask (params.ffn_remote_resident_layer_mask),
+    ffn_remote_resident_owned      (params.ffn_remote_resident_owned),
     ubatch           (params.ubatch),
     n_embd           (hparams.n_embd),
     n_layer          (hparams.n_layer()),
@@ -1562,6 +1578,118 @@ llm_graph_qkv llm_graph_context::build_qkv(
     return { Qcur, Kcur, Vcur };
 }
 
+
+llm_graph_context::dense_ffn_split_policy llm_graph_context::resolve_dense_ffn_split_policy() const {
+    dense_ffn_split_policy policy;
+    if (ffn_split_runtime) {
+        policy.layer_mask = ffn_split_layer_mask;
+        policy.columns    = ffn_split_columns;
+        return policy;
+    }
+    // standalone tools configure the split through the environment
+    if (const char * value = getenv("LLAMA_FFN_SPLIT_LAYER_MASK")) {
+        policy.layer_mask = strtoull(value, nullptr, 10);
+    }
+    if (const char * value = getenv("LLAMA_FFN_SPLIT_COLUMNS")) {
+        policy.columns = atoll(value);
+    }
+    const char * m1        = getenv("LLAMA_FFN_SPLIT_M1_COLUMNS");
+    const char * small     = getenv("LLAMA_FFN_SPLIT_SMALL_M_COLUMNS");
+    const char * large     = getenv("LLAMA_FFN_SPLIT_LARGE_M_COLUMNS");
+    const char * small_max = getenv("LLAMA_FFN_SPLIT_SMALL_M_MAX");
+    if (m1 != nullptr && small != nullptr && large != nullptr && small_max != nullptr) {
+        const int64_t small_max_tokens = atoll(small_max);
+        GGML_ASSERT(small_max_tokens > 0);
+        policy.columns = n_tokens == 1 ? atoll(m1) :
+                (n_tokens <= small_max_tokens ? atoll(small) : atoll(large));
+    }
+    if (const char * policy_text = getenv("LLAMA_FFN_SPLIT_POLICY")) {
+        std::vector<llama_ffn_split_policy::point> table;
+        std::string policy_error;
+        GGML_ASSERT(llama_ffn_split_policy::parse(
+                policy_text,
+                std::min(cparams.n_ubatch, UINT32_C(512)),
+                static_cast<uint32_t>(policy.columns),
+                table, policy_error));
+        policy.columns = llama_ffn_split_policy::select(table, static_cast<uint32_t>(n_tokens));
+    }
+    return policy;
+}
+
+ggml_tensor * llm_graph_context::build_dense_ffn_split(
+         ggml_tensor * cur,
+   const llama_layer & layer,
+     llm_ffn_op_type   type_op,
+const dense_ffn_split_policy & policy,
+                 int   il) const {
+    // remote-resident layers have no local gate/up/down weights: the whole FFN is executed
+    // by the eval-callback owner at full width, whatever the split policy says
+    const bool remote_resident =
+            il < 64 && (ffn_remote_resident_layer_mask & (UINT64_C(1) << il)) != 0;
+    if (remote_resident) {
+        GGML_ASSERT(ffn_remote_resident_owned && "remote-resident FFN layer has no execution owner");
+        GGML_ASSERT(layer.ffn_up->data == nullptr && layer.ffn_gate->data == nullptr && layer.ffn_down->data == nullptr &&
+                "remote-resident FFN layer unexpectedly has local weight data");
+    }
+    const int64_t n_ff_cur = layer.ffn_up->ne[1];
+    const int64_t split_columns = remote_resident ? n_ff_cur : policy.columns;
+    const bool split = remote_resident ||
+            (il < 64 && (policy.layer_mask & (UINT64_C(1) << il)) != 0 && policy.columns > 0);
+    if (!split) {
+        return build_ffn(cur,
+                layer.ffn_up,   layer.ffn_up_b,   layer.ffn_up_s,
+                layer.ffn_gate, layer.ffn_gate_b, layer.ffn_gate_s,
+                layer.ffn_down, layer.ffn_down_b, layer.ffn_down_s,
+                NULL,
+                type_op, LLM_FFN_PAR, il);
+    }
+    // the split path has no bias support: the worker computes bias-free gate/up/down slices
+    GGML_ASSERT(layer.ffn_up_b == nullptr && layer.ffn_gate_b == nullptr && layer.ffn_down_b == nullptr);
+    const int64_t host_columns = n_ff_cur - split_columns;
+    GGML_ASSERT(host_columns >= 0);
+    GGML_ASSERT(split_columns % ggml_blck_size(layer.ffn_down->type) == 0);
+    // Row diagnostic: a full local shadow of the FFN for the client to compare against the returned rows.
+    // Only meaningful when the phone owns the whole width; a partial split or a remote-resident layer has
+    // no complete local reference, so skip the shadow instead of aborting the server mid-request.
+    if (ffn_row_diagnostic && host_columns == 0 && !remote_resident) {
+        ggml_tensor * local = build_ffn(cur,
+                layer.ffn_up, nullptr, layer.ffn_up_s,
+                layer.ffn_gate, nullptr, layer.ffn_gate_s,
+                layer.ffn_down, nullptr, layer.ffn_down_s,
+                nullptr, type_op, LLM_FFN_PAR, il);
+        cb(local, "ffn_diag_local", il);
+        ggml_build_forward_expand(gf, local);
+    }
+    if (host_columns == 0) {
+        ggml_tensor * phone_partial = ggml_scale(ctx0, cur, 0.0f);
+        ggml_set_input(phone_partial);
+        cb(phone_partial, "ffn_phone_partial", il);
+        return ggml_scale(ctx0, phone_partial, 1.0f);
+    }
+    GGML_ASSERT(host_columns % ggml_blck_size(layer.ffn_down->type) == 0);
+
+    ggml_tensor * host_up = ggml_view_2d(ctx0, layer.ffn_up,
+            layer.ffn_up->ne[0], host_columns, layer.ffn_up->nb[1], 0);
+    ggml_tensor * host_gate = ggml_view_2d(ctx0, layer.ffn_gate,
+            layer.ffn_gate->ne[0], host_columns, layer.ffn_gate->nb[1], 0);
+    ggml_tensor * host_down = ggml_view_2d(ctx0, layer.ffn_down,
+            host_columns, layer.ffn_down->ne[1], layer.ffn_down->nb[1], 0);
+
+    cur = build_ffn(cur,
+            host_up,   nullptr, layer.ffn_up_s,
+            host_gate, nullptr, layer.ffn_gate_s,
+            host_down, nullptr, layer.ffn_down_s,
+            nullptr,
+            type_op, LLM_FFN_PAR, il);
+    cb(cur, "ffn_host_partial", il);
+
+    ggml_tensor * phone_partial = ggml_scale(ctx0, cur, 0.0f);
+    ggml_set_input(phone_partial);
+    cb(phone_partial, "ffn_phone_partial", il);
+    cur = ggml_add(ctx0, cur, phone_partial);
+    cb(cur, "ffn_split_sum", il);
+    return cur;
+}
 
 ggml_tensor * llm_graph_context::build_ffn(
          ggml_tensor * cur,
@@ -2383,6 +2511,58 @@ ggml_tensor * llm_graph_context::build_pos_bias(ggml_tensor * pos_bucket, ggml_t
     return pos_bias;
 }
 
+ggml_tensor * llm_graph_context::build_attn_split(
+        ggml_tensor * q, ggml_tensor * k, ggml_tensor * v,
+        ggml_tensor * k_host, ggml_tensor * v_host,
+        ggml_tensor * mask, ggml_tensor * mask_host,
+        ggml_tensor * sinks, float scale, int il) const {
+    GGML_ASSERT(cparams.flash_attn && k_host && v_host && mask && mask_host);
+    const auto streams = k->ne[3];
+    q = ggml_view_4d(ctx0, q, q->ne[0], q->ne[1], q->ne[2]/streams, streams,
+                     q->nb[1], q->nb[2], q->nb[3]/streams, 0);
+    q = ggml_permute(ctx0, q, 0, 2, 1, 3);
+    const auto width = v->ne[0];
+    ggml_backend_t device_backend = backend_cpu;
+    auto * storage = k->view_src ? k->view_src : k;
+    auto * device = ggml_backend_buft_get_device(ggml_backend_buffer_get_type(storage->buffer));
+    for (int i = 0; i < ggml_backend_sched_get_n_backends(sched); ++i) {
+        auto * backend = ggml_backend_sched_get_backend(sched, i);
+        if (ggml_backend_get_device(backend) == device) {
+            device_backend = backend;
+            break;
+        }
+    }
+    const bool stream_host = n_tokens >= 32;
+    ggml_tensor * partial[2];
+    ggml_tensor * outputs[2];
+    ggml_tensor * lse[2];
+    for (int host = 0; host < 2; ++host) {
+        auto * keys = ggml_permute(ctx0, host ? k_host : k, 0, 2, 1, 3);
+        auto * vals = ggml_permute(ctx0, host ? v_host : v, 0, 2, 1, 3);
+        partial[host] = ggml_flash_attn_ext_with_lse(ctx0, q, keys, vals, host ? mask_host : mask,
+            scale, hparams.f_max_alibi_bias, hparams.attn_soft_cap ? hparams.f_attn_logit_softcapping : 0.0f);
+        ggml_flash_attn_ext_set_prec(partial[host], GGML_PREC_F32);
+        if (!host) ggml_flash_attn_ext_add_sinks(partial[host], sinks);
+        cb(partial[host], LLAMA_TENSOR_NAME_FATTN, il);
+        ggml_format_name(partial[host], LLAMA_TENSOR_NAME_FATTN "-%d-%s", il,
+                         host ? (stream_host ? "host-prefill" : "host-decode") : "device");
+        ggml_backend_sched_set_tensor_backend(sched, partial[host], host && !stream_host ? backend_cpu : device_backend);
+        auto * p = partial[host];
+        outputs[host] = ggml_view_4d(ctx0, p, width, p->ne[1], p->ne[2], p->ne[3], p->nb[1], p->nb[2], p->nb[3], 0);
+        auto * stats = ggml_view_4d(ctx0, p, 1, p->ne[1], p->ne[2], p->ne[3],
+                                    p->nb[1], p->nb[2], p->nb[3], width*sizeof(float));
+        // Empty slices have zero output and -inf LSE; avoid -inf - -inf for fully masked queries.
+        lse[host] = ggml_clamp(ctx0, ggml_cont(ctx0, stats), -1e30f, 1e30f);
+    }
+    auto * w0 = ggml_sigmoid(ctx0, ggml_sub(ctx0, lse[0], lse[1]));
+    auto * w1 = ggml_sigmoid(ctx0, ggml_sub(ctx0, lse[1], lse[0]));
+    auto * merged = ggml_add(ctx0, ggml_mul(ctx0, outputs[0], w0), ggml_mul(ctx0, outputs[1], w1));
+    ggml_backend_sched_set_tensor_backend(sched, merged, device_backend);
+    auto * cur = ggml_reshape_2d(ctx0, merged, merged->ne[0]*merged->ne[1], merged->ne[2]*merged->ne[3]);
+    ggml_build_forward_expand(gf, cur);
+    return cur;
+}
+
 ggml_tensor * llm_graph_context::build_attn_mha(
          ggml_tensor * q,
          ggml_tensor * k,
@@ -2394,6 +2574,21 @@ ggml_tensor * llm_graph_context::build_attn_mha(
                float   kq_scale,
                  int   il) const {
     const bool v_trans = v->nb[1] > v->nb[2];
+    const bool cpu_attention = !cparams.offload_kqv ||
+        (il >= 0 && size_t(il) < cparams.kv_cpu_layers.size() && cparams.kv_cpu_layers[il]);
+    if (cpu_attention) {
+        // Keep projections outside the CPU attention subgraph.
+        ggml_build_forward_expand(gf, q);
+        ggml_build_forward_expand(gf, k);
+        ggml_build_forward_expand(gf, v);
+        if (kq_b) {
+            ggml_build_forward_expand(gf, kq_b);
+        }
+        if (kq_mask) {
+            ggml_build_forward_expand(gf, kq_mask);
+        }
+    }
+    const int attention_node_start = ggml_graph_n_nodes(gf);
 
     // split the batch into streams if needed
     const auto n_stream = k->ne[3];
@@ -2507,13 +2702,17 @@ ggml_tensor * llm_graph_context::build_attn_mha(
         // recombine streams
         cur = ggml_cont_2d(ctx0, cur, cur->ne[0]*cur->ne[1], cur->ne[2]*cur->ne[3]);
 
-        if (!cparams.offload_kqv) {
-            // all nodes between the KV store and the attention output are run on the CPU
-            ggml_backend_sched_set_tensor_backend(sched, cur, backend_cpu);
-        }
     }
 
     ggml_build_forward_expand(gf, cur);
+    if (cpu_attention) {
+        for (int i = attention_node_start; i < ggml_graph_n_nodes(gf); ++i) {
+            ggml_tensor * node = ggml_graph_node(gf, i);
+            if (node->view_src == nullptr) {
+                ggml_backend_sched_set_tensor_backend(sched, node, backend_cpu);
+            }
+        }
+    }
 
     return cur;
 }
@@ -2614,6 +2813,27 @@ static std::unique_ptr<llm_graph_input_attn_kv> build_attn_inp_kv_impl(
         inp->self_kq_mask_cnv = inp->self_kq_mask;
     }
 
+    for (uint32_t il = 0; il < hparams.n_layer_all; ++il) {
+        if (!hparams.has_kv(il)) {
+            continue;
+        }
+        const uint32_t cells = mctx_cur->get_device_cells(il);
+        if (!cells || inp->slices.count(cells)) {
+            continue;
+        }
+        auto & slice = inp->slices[cells];
+        for (int host = 0; host < 2; ++host) {
+            slice.idxs[host] = mctx_cur->build_input_k_idxs(ctx0, ubatch);
+            const auto n_kv = mctx_cur->get_n_kv();
+            const uint32_t count = host ? (n_kv > cells ? n_kv - cells : 0) : std::min(n_kv, cells);
+            if (count) {
+                const auto * mask = inp->self_kq_mask;
+                slice.masks[host] = ggml_new_tensor_4d(ctx0, GGML_TYPE_F16, count, mask->ne[1], 1, mask->ne[3]);
+                ggml_set_input(slice.masks[host]);
+            }
+        }
+    }
+
     inp->self_k_rot = mctx_cur->build_input_k_rot(ctx0);
     inp->self_v_rot = mctx_cur->build_input_v_rot(ctx0);
 
@@ -2661,22 +2881,33 @@ ggml_tensor * llm_graph_context::build_attn(
 
     const auto * mctx_cur = inp->mctx;
 
+    const uint32_t device_cells = mctx_cur->get_device_cells(il);
+    const auto * slice = device_cells ? &inp->slices.at(device_cells) : nullptr;
+
     // store to KV cache
     {
-        const auto & k_idxs = inp->get_k_idxs();
-        const auto & v_idxs = inp->get_v_idxs();
+        auto * k_idxs = slice ? slice->idxs[0] : inp->get_k_idxs();
+        auto * v_idxs = slice ? slice->idxs[0] : inp->get_v_idxs();
 
         ggml_build_forward_expand(gf, mctx_cur->cpy_k(ctx0, k_cur, k_idxs, il));
         ggml_build_forward_expand(gf, mctx_cur->cpy_v(ctx0, v_cur, v_idxs, il));
+        if (slice) {
+            ggml_build_forward_expand(gf, mctx_cur->cpy_k(ctx0, k_cur, slice->idxs[1], il, true));
+            ggml_build_forward_expand(gf, mctx_cur->cpy_v(ctx0, v_cur, slice->idxs[1], il, true));
+        }
     }
 
-    const auto & kq_mask = inp->get_kq_mask();
+    auto * kq_mask = slice ? slice->masks[0] : inp->get_kq_mask();
 
     ggml_tensor * q = q_cur;
     ggml_tensor * k = mctx_cur->get_k(ctx0, il);
     ggml_tensor * v = mctx_cur->get_v(ctx0, il);
 
-    ggml_tensor * cur = build_attn_mha(q, k, v, kq_b, kq_mask, sinks, v_mla, kq_scale, il);
+    auto * k_host = slice ? mctx_cur->get_k(ctx0, il, true) : nullptr;
+    auto * v_host = slice ? mctx_cur->get_v(ctx0, il, true) : nullptr;
+    GGML_ASSERT(!slice || (cparams.flash_attn && kq_b == nullptr && v_mla == nullptr));
+    ggml_tensor * cur = k_host ? build_attn_split(q, k, v, k_host, v_host, kq_mask, slice->masks[1], sinks, kq_scale, il) :
+                                build_attn_mha(q, k, v, kq_b, kq_mask, sinks, v_mla, kq_scale, il);
     cb(cur, "kqv_out", il);
 
     if (inp->self_v_rot) {

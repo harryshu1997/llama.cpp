@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Mapping, Sequence
+from typing import Mapping, Sequence
 
 from .capacity import LayerPlacementContract
 from .cohort import CohortDecision, cohort_decision_to_json

@@ -2154,6 +2154,51 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
         }
     ).set_env("LLAMA_ARG_KV_OFFLOAD"));
     add_opt(common_arg(
+        {"--kv-cpu-layers"}, "N0,N1,...",
+        "keep KV and attention of these zero-based layers on CPU; other layers retain their default placement",
+        [](common_params & params, const std::string & value) {
+            std::vector<int32_t> layers;
+            size_t first = 0;
+            do {
+                const size_t last = value.find(',', first);
+                const auto part = value.substr(first, last == std::string::npos ? last : last - first);
+                if (part.empty() || part.find_first_not_of("0123456789") != std::string::npos) {
+                    throw std::invalid_argument("--kv-cpu-layers expects comma-separated nonnegative layer indices");
+                }
+                layers.push_back(std::stoi(part));
+                if (last == std::string::npos) {
+                    break;
+                }
+                first = last + 1;
+            } while (true);
+            params.kv_cpu_layers = std::move(layers);
+        }
+    ));
+    add_opt(common_arg(
+        {"--kv-device-cells"}, "LAYER:CELLS,...",
+        "keep a 256-cell-aligned KV prefix on the layer device and overflow on CPU (requires flash attention)",
+        [](common_params & params, const std::string & value) {
+            std::vector<llama_kv_device_cells> entries;
+            for (const auto & part : string_split<std::string>(value, ',')) {
+                const auto colon = part.find(':');
+                if (colon == std::string::npos || colon == 0 || colon + 1 == part.size() ||
+                    part.substr(0, colon).find_first_not_of("0123456789") != std::string::npos ||
+                    part.substr(colon + 1).find_first_not_of("0123456789") != std::string::npos) {
+                    throw std::invalid_argument("--kv-device-cells expects LAYER:CELLS pairs");
+                }
+                const auto cells = std::stoul(part.substr(colon + 1));
+                if (cells > UINT32_MAX || cells % 256 != 0) {
+                    throw std::invalid_argument("KV device cell count must be a multiple of 256");
+                }
+                entries.push_back({std::stoi(part.substr(0, colon)), uint32_t(cells)});
+            }
+            if (entries.empty() || value.back() == ',') {
+                throw std::invalid_argument("--kv-device-cells requires at least one pair");
+            }
+            params.kv_device_cells = std::move(entries);
+        }
+    ));
+    add_opt(common_arg(
         {"--repack"},
         {"-nr", "--no-repack"},
         string_format("whether to enable weight repacking (default: %s)", params.no_extra_bufts ? "disabled" : "enabled"),

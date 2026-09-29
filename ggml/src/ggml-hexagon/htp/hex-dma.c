@@ -32,17 +32,15 @@ dma_queue * dma_queue_create(size_t capacity) {
     q->idx_mask = capacity - 1;
 
     q->desc = (dma_descriptor_2d *) memalign(64, capacity * sizeof(dma_descriptor_2d));
-    memset(q->desc, 0, capacity * sizeof(dma_descriptor_2d));
-
     q->dptr = (dma_ptr *) memalign(4, capacity * sizeof(dma_ptr));
-    memset(q->dptr, 0, capacity * sizeof(dma_ptr));
-
-    q->tail = &q->desc[capacity - 1];
-
-    if (!q->desc && !q->dptr) {
+    if (!q->desc || !q->dptr) {
         FARF(ERROR, "%s: failed to allocate DMA queue items\n", __FUNCTION__);
+        dma_queue_delete(q);
         return NULL;
     }
+    memset(q->desc, 0, capacity * sizeof(dma_descriptor_2d));
+    memset(q->dptr, 0, capacity * sizeof(dma_ptr));
+    q->tail = &q->desc[capacity - 1];
 
     FARF(HIGH, "dma-queue: capacity %u\n", capacity);
 

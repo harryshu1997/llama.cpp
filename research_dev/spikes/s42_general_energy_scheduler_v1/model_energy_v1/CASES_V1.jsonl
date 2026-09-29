@@ -1,0 +1,9 @@
+{"case_id":"resident-idle","duration_s":12,"holdout":false,"kind":"idle","schema":"s42-model-energy-case-v1"}
+{"case_id":"prefill-p128-c1","cohort_size":1,"holdout":false,"input_tokens":128,"kind":"inference","max_cohorts":128,"min_cohorts":1,"min_duration_s":8,"output_tokens":1,"schema":"s42-model-energy-case-v1"}
+{"case_id":"prefill-p128-c4-holdout","cohort_size":4,"holdout":true,"input_tokens":128,"kind":"inference","max_cohorts":64,"min_cohorts":1,"min_duration_s":8,"output_tokens":1,"schema":"s42-model-energy-case-v1"}
+{"case_id":"prefill-p512-c4","cohort_size":4,"holdout":false,"input_tokens":512,"kind":"inference","max_cohorts":32,"min_cohorts":1,"min_duration_s":8,"output_tokens":1,"schema":"s42-model-energy-case-v1"}
+{"case_id":"prefill-p512-c8","cohort_size":8,"holdout":false,"input_tokens":512,"kind":"inference","max_cohorts":16,"min_cohorts":1,"min_duration_s":8,"output_tokens":1,"schema":"s42-model-energy-case-v1"}
+{"case_id":"decode-p32-o32-c1","cohort_size":1,"holdout":false,"input_tokens":32,"kind":"inference","max_cohorts":64,"min_cohorts":1,"min_duration_s":8,"output_tokens":32,"schema":"s42-model-energy-case-v1"}
+{"case_id":"decode-p32-o32-c4","cohort_size":4,"holdout":false,"input_tokens":32,"kind":"inference","max_cohorts":32,"min_cohorts":1,"min_duration_s":8,"output_tokens":32,"schema":"s42-model-energy-case-v1"}
+{"case_id":"decode-p32-o32-c8","cohort_size":8,"holdout":false,"input_tokens":32,"kind":"inference","max_cohorts":16,"min_cohorts":1,"min_duration_s":8,"output_tokens":32,"schema":"s42-model-energy-case-v1"}
+{"case_id":"mixed-p256-o16-c4-holdout","cohort_size":4,"holdout":true,"input_tokens":256,"kind":"inference","max_cohorts":32,"min_cohorts":1,"min_duration_s":8,"output_tokens":16,"schema":"s42-model-energy-case-v1"}

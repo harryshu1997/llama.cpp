@@ -1,0 +1,183 @@
+{
+  "binding_receipts": {
+    "certificate_file_sha256": "sha256:739fc4a1f5b937097bde3c472bb49dcb7f997b4da60b7699eee313de28715258",
+    "epoch_file_sha256": "sha256:0c8c70aa8772cccbd45f5f73f2af433835b0a07d9be2337a89dc70773893413e",
+    "graphs": [
+      {
+        "file_sha256": "sha256:64d8f80c5e9bf58b18b0ff6662b4024c685fc2f1c692243000fbb18801c8b6a2",
+        "graph": "gemma",
+        "manifest_sha256": "sha256:1203809693999d3f1117c09760ea90f66e5a50323407cd7ae0b08a38baf8fd00",
+        "model_binding": "cold"
+      },
+      {
+        "file_sha256": "sha256:15d926f6837f188d519192dfd143367ebb62ec166c270be02b8c22fe87a50a61",
+        "graph": "qwen",
+        "manifest_sha256": "sha256:d515fb7e645618bab8c17660e557a34bb5966590e75393efdc50c7d482cc177b",
+        "model_binding": "hot"
+      }
+    ],
+    "kernel_profile_file_sha256": "sha256:fbc2375c9fea20c39c783778d27a0433d88f5c432f19a370684e36559da1092e"
+  },
+  "certificate_set_id": "rtx4060ti-op15-i3-cohort-certificates-v1",
+  "cohort_comparison": {
+    "all_pairs_reduce_duration": true,
+    "all_pairs_reduce_fleet_energy": true,
+    "mean_duration_change_pct": -14.375859528652168,
+    "mean_exposed_join_wait_fraction": 0.0267137339418705,
+    "mean_fleet_energy_change_pct": -16.76205776492614,
+    "reset_recoveries": 0
+  },
+  "compiled_routes": [
+    {
+      "activation": {
+        "ready": false,
+        "status": "held_for_stage5_online_gates"
+      },
+      "certificate_scope": "exact_workload_cohort",
+      "certification_status": "measured_cohort_certified",
+      "dispatch_contract": {
+        "cold_model": "cpu",
+        "hot_model": "cuda",
+        "phone_dense_ffn_split": false,
+        "route_mode": "cpu-control"
+      },
+      "epoch_key": "sha256:27d004d2958af9df39e4543eda7853cca68f9293df7aba3515bed3585775a1e5",
+      "fallback_route_id": null,
+      "metrics": {
+        "duration_s": {
+          "max_observed_bound": 737.309565064,
+          "mean": 736.4677298563333,
+          "min": 734.803969951
+        },
+        "fleet_j": {
+          "max_observed_bound": 137563.5442689086,
+          "mean": 137217.49192531462,
+          "min": 136670.2475212508
+        },
+        "repetitions": 3
+      },
+      "quality": {
+        "claim": "local llama.cpp execution without numerical offload",
+        "class": "exact"
+      },
+      "role": "control",
+      "route_id": "i3-cold-cpu-control-v1",
+      "scope": "task"
+    },
+    {
+      "activation": {
+        "ready": false,
+        "status": "held_for_stage5_online_gates"
+      },
+      "certificate_scope": "exact_workload_cohort",
+      "certification_status": "measured_cohort_certified",
+      "dispatch_contract": {
+        "cold_model": "cpu-plus-op15-htp",
+        "hot_model": "cuda",
+        "operator_family": "gemma4-dense-ffn-swiglu",
+        "phone_dense_ffn_split": true,
+        "policy_id": "i3-hidden-wait",
+        "route_mode": "cpu-htp-operator-split",
+        "split_table": "1:9664,3:8192,8:4096,128:8192,512:11136",
+        "transport": "functionfs-dmabuf-f16"
+      },
+      "epoch_key": "sha256:27d004d2958af9df39e4543eda7853cca68f9293df7aba3515bed3585775a1e5",
+      "fallback_route_id": "i3-cold-cpu-control-v1",
+      "metrics": {
+        "duration_s": {
+          "max_observed_bound": 632.916264563,
+          "mean": 630.5941635383333,
+          "min": 626.188986034
+        },
+        "fleet_j": {
+          "max_observed_bound": 114516.34474480324,
+          "mean": 114217.01666521053,
+          "min": 113865.56557493864
+        },
+        "repetitions": 3
+      },
+      "quality": {
+        "claim": "bounded cohort task quality; no exact-token claim",
+        "class": "approximate",
+        "mmlu64_control_correct": 27,
+        "mmlu64_treatment_correct": 27
+      },
+      "role": "treatment",
+      "route_id": "i3-cold-cpu-op15-ffn-v1",
+      "scope": "operator"
+    }
+  ],
+  "epoch_key": "sha256:27d004d2958af9df39e4543eda7853cca68f9293df7aba3515bed3585775a1e5",
+  "general_operator_enforcement": {
+    "certified_route_count": 0,
+    "status": "blocked_pending_composed_route_validation"
+  },
+  "operator_profile_matches": [
+    {
+      "architecture": "gemma4",
+      "certified_general_operator_routes": 0,
+      "family_counts": {
+        "attn_k": 144,
+        "attn_output": 144,
+        "attn_q": 144,
+        "attn_v": 120,
+        "dense_ffn": 144,
+        "lm_head": 3
+      },
+      "graph": "gemma",
+      "isolated_kernel_matches_by_backend": {
+        "adreno": 96,
+        "cpu": 144,
+        "cuda": 144,
+        "htp": 144
+      },
+      "isolated_kernel_matches_by_profile": {
+        "adreno-gemma-f16-xmem-ffn512-m32": 96,
+        "cpu-gemma-q4-ffn-m32": 96,
+        "cpu-gemma-q4-ffn-m8": 48,
+        "cuda-gemma-q4-ffn-m32": 96,
+        "cuda-gemma-q4-ffn-m8": 48,
+        "htp-gemma-q4-ffn-m32": 96,
+        "htp-gemma-q4-ffn-m8": 48
+      },
+      "local_full_operator_matches": 288,
+      "operator_count": 699,
+      "remote_composition_block_reasons": {
+        "campaign_cut_differs_from_kernel_row": 144,
+        "held_out_per_shape_route_missing": 240,
+        "host_complement_kernel_unprofiled": 240,
+        "profile_composition_fail_closed": 240,
+        "shared_memory_transition_unprofiled": 96,
+        "usb_payload_below_measured_range": 144
+      },
+      "remote_split_kernel_matches": 240
+    },
+    {
+      "architecture": "qwen3",
+      "certified_general_operator_routes": 0,
+      "family_counts": {
+        "attn_k": 120,
+        "attn_output": 120,
+        "attn_q": 120,
+        "attn_v": 120,
+        "dense_ffn": 120,
+        "lm_head": 3
+      },
+      "graph": "qwen",
+      "isolated_kernel_matches_by_backend": {},
+      "isolated_kernel_matches_by_profile": {},
+      "local_full_operator_matches": 0,
+      "operator_count": 603,
+      "remote_composition_block_reasons": {},
+      "remote_split_kernel_matches": 0
+    }
+  ],
+  "physical_evidence": {
+    "aggregate_file_sha256": "sha256:d4e4586125b27eecea0c2e02af903f6ef52922a2a29457eaff715d4312094da0",
+    "aggregate_record_sha256": "sha256:5d144dd797511b4f3aa15f356ef1a8d6bbdacae81abbec82807622f02dc4df42",
+    "trace_sha256": "sha256:b20a9ba66ee3558d835a0e19ed3cfa4c31a4a9e8b4f9c085b29a14f80250a0ff"
+  },
+  "runtime_activation_ready": false,
+  "schema": "s42-epoch-route-bundle-v1",
+  "status": "PASS"
+}

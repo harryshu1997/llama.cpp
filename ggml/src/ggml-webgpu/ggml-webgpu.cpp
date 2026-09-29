@@ -4211,6 +4211,9 @@ static bool ggml_backend_webgpu_device_supports_op(ggml_backend_dev_t dev, const
             break;
         case GGML_OP_FLASH_ATTN_EXT:
             {
+                if (ggml_flash_attn_ext_has_lse(op)) {
+                    break;
+                }
                 // conservative support checks for whether the more resource-intensive shader paths
                 // can be used, to avoid cases where flash_attn is assigned to the CPU later on
                 supports_op = src0->type == GGML_TYPE_F32 &&

@@ -1,0 +1,34 @@
+{
+  "adaptive_minimum_remaining_tokens": null,
+  "campaign_id": "s42-session-cow-mixed-gate-v1-20260902",
+  "energy_attribution_kind": "diagnostic",
+  "environment_overrides": {
+    "S42_ADAPTIVE_MINIMUM_REMAINING_TOKENS": "/adaptive_minimum_remaining_tokens",
+    "S42_ENERGY_ATTRIBUTION_KIND": "/energy_attribution_kind",
+    "S42_MAXIMUM_LATENCY_PPM": "/maximum_latency_ppm",
+    "S42_MAXIMUM_PHONE_SESSIONS": "/maximum_phone_sessions",
+    "S42_REPLAY_SCHEDULE": "/trace/replay_schedule_path",
+    "S42_SELECTION_MODE": "/selection_mode"
+  },
+  "evidence_manifest_path": "../v5/evidence.json",
+  "helper_preparation_fault_injection": null,
+  "max_workers": 32,
+  "maximum_latency_ppm": 1250000,
+  "maximum_phone_sessions": null,
+  "minimum_energy_saving_ppm": 10000,
+  "models_manifest_path": "../v4/models.json",
+  "reference_catalog_path": null,
+  "reference_replay_schedule_path": null,
+  "reference_runner_command_path": null,
+  "rig_manifest_path": "rig.json",
+  "schema": "research-scheduler-campaign-v1",
+  "selection_mode": "energy-aware",
+  "trace": {
+    "arrival_scale": null,
+    "large_requests_path": "/home/zhihao/s42-session-granular-deploy-20260831-v3/llama.cpp-release/research_dev/spikes/s41_gemma_qwen_continuous_baseline/tp_operator_split_v1/burstgpt_gpu_cpu_op15_v1/REQUESTS_SEMANTIC_SOURCE.jsonl",
+    "overlay_requests_path": "/home/zhihao/s42-session-granular-deploy-20260831-v3/llama.cpp-release/research_dev/spikes/s42_general_energy_scheduler_v1/full_fp16_burstgpt_v1/small_model_overlay_v1/REQUESTS_LLAMA1B_10.jsonl",
+    "replay_schedule_path": "../../data/traces/physical_three_model_session_cow_gate_v1.json",
+    "request_indices": [],
+    "trace_manifest_path": "/home/zhihao/s42-session-granular-deploy-20260831-v3/llama.cpp-release/research_dev/spikes/s42_general_energy_scheduler_v1/full_fp16_burstgpt_v1/small_model_overlay_v1/TRACE_MANIFEST.json"
+  }
+}

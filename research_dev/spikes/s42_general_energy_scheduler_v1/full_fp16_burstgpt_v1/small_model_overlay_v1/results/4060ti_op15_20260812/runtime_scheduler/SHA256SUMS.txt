@@ -1,0 +1,5 @@
+403be9b4309eefe6e5b2ef8df82c5470e61673ee7e767cb5c927aa7a0bc92476  /home/zhihao/s42-fp16-llama1b-runtime-v1/runtime-scheduler-r6-20260812-01/capture/EXECUTION_PLAN.json
+62f9cda0f63e713a6c2dd6d2f4f95d1a8a7059746e944c04aaf725f6e6c23cb1  /home/zhihao/s42-fp16-llama1b-runtime-v1/runtime-scheduler-r6-20260812-01/base/RESULT.json
+ea823034ca34f609821cbfaec49eb20faa8f74b65c3f148a16c59885b40af9bd  /home/zhihao/s42-fp16-llama1b-runtime-v1/runtime-scheduler-r6-20260812-01/combined/RESULT.json
+82374a1ab1ba0f7918896e2eb70a41e9744ed16c79510f415d9689099cf43950  /home/zhihao/s42-fp16-llama1b-runtime-v1/runtime-scheduler-r6-20260812-01/capture/PHONE_ENERGY.json
+aa07aaf2b8d86fbb9ac370f672464d4b5d92a810e318e40064ddda9fb6b65565  /home/zhihao/s42-fp16-llama1b-runtime-v1/runtime-scheduler-r6-20260812-01/capture/phone-samples.tsv

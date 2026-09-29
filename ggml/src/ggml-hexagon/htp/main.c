@@ -26,6 +26,7 @@
 #define GGML_COMMON_DECL_C
 #include "ggml-common.h"
 #include "htp-ctx.h"
+#include "ffn-fused-ops.h"
 #include "htp-ops.h"
 #include "htp-ops.h"
 #include "htp_iface.h"
@@ -425,9 +426,12 @@ AEEResult htp_iface_start(remote_handle64 handle, uint32_t sess_id, uint64_t dsp
     ctx->n_threads = n_hvx;
     for (int i = 0; i < ctx->n_threads; i++) {
         ctx->dma[i] = dma_queue_create(256); // queue depth
-        if (ctx->dma[i]) {
-            ctx->dma[i]->trace = &ctx->trace[i];
+        if (!ctx->dma[i]) {
+            FARF(ERROR, "DMA queue allocation failed for thread %d", i);
+            htp_iface_stop(handle);
+            return AEE_ENOMEMORY;
         }
+        ctx->dma[i]->trace = &ctx->trace[i];
     }
 
     ctx->ddr_spad_size = 512 * 1024; // 512 KB
@@ -477,7 +481,9 @@ AEEResult htp_iface_stop(remote_handle64 handle) {
 
     for (int i = 0; i < ctx->n_threads; i++) {
         dma_queue_delete(ctx->dma[i]);
+        ctx->dma[i] = NULL;
     }
+    ctx->n_threads = 0;
 
     if (ctx->hmx_queue) {
         hmx_queue_delete(ctx->hmx_queue);
@@ -586,6 +592,9 @@ static int execute_op(struct htp_ops_context * octx) {
         case HTP_OP_MUL_MAT_FFN:
             return op_matmul_ffn(octx);
 
+        case HTP_OP_FFN_FUSED:
+            return op_ffn_fused(octx);
+
         case HTP_OP_MUL:
         case HTP_OP_ADD:
         case HTP_OP_SUB:
@@ -678,14 +687,14 @@ static int execute_op(struct htp_ops_context * octx) {
     return -1;
 }
 
-static inline bool reuse_buf(struct htp_context *ctx, uint32_t *m_reuse, struct htp_buf_desc *b) {
+static inline bool reuse_buf(struct htp_context *ctx, uint64_t *m_reuse, struct htp_buf_desc *b) {
     b->base = NULL;
 
     for (uint32_t i=0; i<HTP_MAX_MMAPS; i++) {
         struct htp_mmap *m = ctx->mmap + i;
         if (m->size && m->fd == b->fd) {
             b->base   = m->base;
-            *m_reuse |= (1 << i);
+            *m_reuse |= (UINT64_C(1) << i);
             return true;
         }
     }
@@ -724,7 +733,7 @@ static inline void mmap_buf(struct htp_context *ctx, struct htp_buf_desc *b) {
 
             void *va = HAP_mmap(NULL, b->size, HAP_PROT_READ | HAP_PROT_WRITE, 0, b->fd, 0);
 #endif
-            if (va == (void*)-1) {
+            if (va == NULL || va == (void*)-1) {
                 FARF(ERROR, "mmap failed : va %p fd %u size %u", va, b->fd, (uint32_t) b->size);
                 abort(); // can't do much else at this point
             }
@@ -737,11 +746,19 @@ static inline void mmap_buf(struct htp_context *ctx, struct htp_buf_desc *b) {
             return;
         }
     }
+    FARF(ERROR, "mmap slots exhausted : fd %u size %u", b->fd, (uint32_t) b->size);
+    abort();
 }
 
 static void prep_op_bufs(struct htp_context *ctx, struct htp_buf_desc *bufs, uint32_t n_bufs) {
-    uint32_t m_reuse = 0; // mmap reuse mask (index from ctx->mmap array)
+    uint64_t m_reuse = 0; // mmap reuse mask (index from ctx->mmap array)
     uint32_t b_reuse = 0; // buf reuse count
+    uint32_t m_count = 0;
+
+    if (n_bufs > HTP_MAX_MMAPS) {
+        FARF(ERROR, "buffer count %u exceeds mapping capacity %u", n_bufs, HTP_MAX_MMAPS);
+        abort();
+    }
 
     uint64_t m_vmem  = 0; // mapped vmem
     uint64_t e_vmem  = 0; // extra  vmem
@@ -756,15 +773,18 @@ static void prep_op_bufs(struct htp_context *ctx, struct htp_buf_desc *bufs, uin
     if (b_reuse == n_bufs) return; // all bufs reuse existing mappings
 
     // See how much vmem we have mmaped right now
-    for (uint32_t i=0; i<HTP_MAX_MMAPS; i++) { m_vmem += ctx->mmap[i].size; }
+    for (uint32_t i=0; i<HTP_MAX_MMAPS; i++) {
+        m_vmem += ctx->mmap[i].size;
+        m_count += ctx->mmap[i].size != 0;
+    }
 
     FARF(HIGH, "prep-bufs : pass1 mmap-vmem %zu extra-vmem %zu max-vmem %zu : n-bufs %u b-reuse %u",
             (size_t) m_vmem, (size_t) e_vmem, (size_t) ctx->max_vmem, n_bufs, b_reuse);
 
-    if ((m_vmem + e_vmem) > ctx->max_vmem) {
+    if ((m_vmem + e_vmem) > ctx->max_vmem || m_count + n_bufs - b_reuse > HTP_MAX_MMAPS) {
         // Drop unused mappings
         for (uint32_t i=0; i < HTP_MAX_MMAPS; i++) {
-            bool used = m_reuse & (1<<i);
+            bool used = m_reuse & (UINT64_C(1) << i);
             if (!used) { drop_mmap(ctx, ctx->mmap + i); }
         }
     }

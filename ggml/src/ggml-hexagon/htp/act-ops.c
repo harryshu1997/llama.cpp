@@ -10,6 +10,7 @@
 
 #include "hex-dma.h"
 #include "hvx-utils.h"
+#include "act-ops.h"
 
 #define GGML_COMMON_DECL_C
 #include "ggml-common.h"
@@ -77,6 +78,28 @@ struct htp_act_context {
     uint32_t                  src0_nrows_per_thread;
     int                       nc;
 };
+
+static const float GELU_COEF_A     = 0.044715f;
+static const float SQRT_2_OVER_PI  = 0.79788456080286535587989211986876f;
+
+void htp_glu_f32(uint8_t * dst, const uint8_t * gate, const uint8_t * up, int nc, int op) {
+    if (op == HTP_OP_GLU_SWIGLU) {
+        hvx_sigmoid_f32_aa(dst, gate, nc);
+        hvx_mul_mul_f32_aa(dst, gate, dst, up, nc);
+    } else {
+        assert(op == HTP_OP_GLU_GEGLU);
+        hvx_mul_f32_aaa(dst, gate, gate, nc);
+        hvx_mul_scalar_f32_aa(dst, dst, GELU_COEF_A, nc);
+        hvx_add_scalar_f32_aa(dst, dst, 1.0f, nc);
+        hvx_mul_f32_aaa(dst, gate, dst, nc);
+        hvx_mul_scalar_f32_aa(dst, dst, SQRT_2_OVER_PI, nc);
+        hvx_tanh_f32_aa(dst, dst, nc);
+        hvx_add_scalar_f32_aa(dst, dst, 1.0f, nc);
+        hvx_mul_f32_aaa(dst, gate, dst, nc);
+        hvx_mul_scalar_f32_aa(dst, dst, 0.5f, nc);
+        hvx_mul_f32_aaa(dst, dst, up, nc);
+    }
+}
 
 static void glu_swiglu_f32_per_thread(unsigned int nth, unsigned int ith, void * data) {
     struct htp_act_context * actx = (struct htp_act_context *) data;
@@ -156,10 +179,8 @@ static void glu_swiglu_f32_per_thread(unsigned int nth, unsigned int ith, void *
             const float * src1_spad_ptr = src1_spad + ib * (src1_row_size_aligned / sizeof(float));
             float *       dst_spad_ptr  = dst_spad + ib * (dst_row_size_aligned / sizeof(float));
 
-            //swiglu(x) = x1 * sigmoid(x0)
-            hvx_sigmoid_f32_aa((uint8_t *) dst_spad_ptr, (const uint8_t *) src0_spad_ptr, nc);
-            hvx_mul_mul_f32_aa((uint8_t *) dst_spad_ptr, (const uint8_t *) src0_spad_ptr, (const uint8_t *) dst_spad_ptr,
-                                (const uint8_t *) src1_spad_ptr, nc);
+            htp_glu_f32((uint8_t *) dst_spad_ptr, (const uint8_t *) src0_spad_ptr,
+                        (const uint8_t *) src1_spad_ptr, nc, HTP_OP_GLU_SWIGLU);
         }
 
         dma_queue_push_vtcm_to_ddr(dma_queue, dma_make_ptr(data_dst + (ir * dst_row_size), dst_spad), dst_row_size,
@@ -501,8 +522,6 @@ static void unary_silu_f32_per_thread(unsigned int nth, unsigned int ith, void *
          ne03, src0_start_row, src0_end_row, ne0, ne1, ne2, ne3, (unsigned) HAP_perf_qtimer_count_to_us(t2 - t1));
 }
 
-static const float GELU_COEF_A     = 0.044715f;
-static const float SQRT_2_OVER_PI  = 0.79788456080286535587989211986876f;
 
 static void glu_geglu_f32_per_thread(unsigned int nth, unsigned int ith, void * data) {
     struct htp_act_context * actx = (struct htp_act_context *) data;
@@ -583,19 +602,7 @@ static void glu_geglu_f32_per_thread(unsigned int nth, unsigned int ith, void * 
             const uint8_t * src1_spad_ptr = (const uint8_t *)(src1_spad + ib * (src1_row_size_aligned / sizeof(float)));
             uint8_t *       dst_spad_ptr  = (uint8_t *)(dst_spad + ib * (dst_row_size_aligned / sizeof(float)));
 
-            // geglu tanh implementation
-            // geglu(x, g) = gelu(x) * g
-            // gelu(x) = 0.5f*x*(1.0f + tanhf(SQRT_2_OVER_PI*x*(1.0f + GELU_COEF_A*x*x)))
-            hvx_mul_f32_aaa(dst_spad_ptr, src0_spad_ptr, src0_spad_ptr, nc);                       // res = x*x
-            hvx_mul_scalar_f32_aa(dst_spad_ptr, (const uint8_t *)dst_spad_ptr, GELU_COEF_A, nc);   // res = res * GELU_COEF_A
-            hvx_add_scalar_f32_aa(dst_spad_ptr, (const uint8_t *)dst_spad_ptr, 1.0f, nc);          // res = res + 1.0f
-            hvx_mul_f32_aaa(dst_spad_ptr, src0_spad_ptr, (const uint8_t *)dst_spad_ptr, nc);       // res = res * x
-            hvx_mul_scalar_f32_aa(dst_spad_ptr, (const uint8_t*)dst_spad_ptr, SQRT_2_OVER_PI, nc); // res = result * SQRT_2_OVER_PI
-            hvx_tanh_f32_aa((uint8_t *) dst_spad_ptr, (const uint8_t *) dst_spad_ptr, nc);         // res = tanh(res)
-            hvx_add_scalar_f32_aa(dst_spad_ptr, (const uint8_t*)dst_spad_ptr, 1.0f, nc);           // res = res + 1.0f
-            hvx_mul_f32_aaa(dst_spad_ptr, src0_spad_ptr, (const uint8_t *)dst_spad_ptr, nc);       // res = res * x
-            hvx_mul_scalar_f32_aa(dst_spad_ptr, (const uint8_t *)dst_spad_ptr, 0.5f, nc);          // res = res + 0.5f
-            hvx_mul_f32_aaa(dst_spad_ptr, (const uint8_t *)dst_spad_ptr, src1_spad_ptr, nc);       // res = res * g
+            htp_glu_f32(dst_spad_ptr, src0_spad_ptr, src1_spad_ptr, nc, HTP_OP_GLU_GEGLU);
         }
 
         dma_queue_push_vtcm_to_ddr(dma_queue, dma_make_ptr(data_dst + (ir * dst_row_size), dst_spad), dst_row_size,

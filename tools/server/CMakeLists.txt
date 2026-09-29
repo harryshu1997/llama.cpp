@@ -54,6 +54,25 @@ target_include_directories(${TARGET} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(${TARGET} PRIVATE ../mtmd ${CMAKE_SOURCE_DIR})
 target_link_libraries(${TARGET} PUBLIC server-context llama-ui cpp-httplib ${CMAKE_THREAD_LIBS_INIT})
 
+option(S41_SERVER_FFN_SPLIT "Build the experimental server FFN split client" OFF)
+if(S41_SERVER_FFN_SPLIT)
+    if(NOT UNIX OR ANDROID)
+        message(FATAL_ERROR "S41_SERVER_FFN_SPLIT requires host libusb")
+    endif()
+    find_library(S41_SERVER_FFN_LIBUSB NAMES usb-1.0 libusb-1.0.so.0 REQUIRED)
+    target_sources(${TARGET} PRIVATE
+        ${CMAKE_SOURCE_DIR}/examples/gguf-hash/deps/sha256/sha256.c
+        ${CMAKE_SOURCE_DIR}/examples/layersplit/ffn-split-client.cpp
+        ${CMAKE_SOURCE_DIR}/examples/layersplit/ffn-split-usb-client.cpp
+    )
+    target_compile_definitions(${TARGET} PRIVATE
+        S41_SERVER_FFN_SPLIT
+        FFN_SPLIT_USB_TRANSPORT
+    )
+    target_include_directories(${TARGET} PRIVATE ${CMAKE_SOURCE_DIR}/examples/gguf-hash/deps)
+    target_link_libraries(${TARGET} PRIVATE ${S41_SERVER_FFN_LIBUSB})
+endif()
+
 if(LLAMA_TOOLS_INSTALL)
     install(TARGETS ${TARGET} LIBRARY)
 endif()

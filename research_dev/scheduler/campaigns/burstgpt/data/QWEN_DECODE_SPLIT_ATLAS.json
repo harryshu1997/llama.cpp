@@ -1,0 +1,572 @@
+{
+ "model_id": "qwen3-14b-q4km-dequant-f16",
+ "prompt_tolerance": 0.25,
+ "rig": "4060ti-i9-12900k+op15-3sessions-layers0-17",
+ "rows": [
+  {
+   "decode_host_power_w": 121.1564943490259,
+   "decode_ms_per_token": 618.34640625,
+   "dormant_release": false,
+   "environment": {
+    "artifact_sha256": "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718",
+    "batch": 512,
+    "column_quantum": 2176,
+    "context_cells": 32768,
+    "gpu_layers": 16,
+    "kv_plan_sha256": "sha256:a34db7d2b6fca83afadd69797c9b7fd2cff6dddfaea690761c36d8f44ecdc2dd",
+    "parallel": 1,
+    "runtime_sha256": "sha256:40b3dbf08318ae6bab781635dfa08ad9f001128ae36af528d82068b70b45aaec",
+    "session_masks": [
+     [
+      "HTP0",
+      63
+     ],
+     [
+      "HTP1",
+      4032
+     ],
+     [
+      "HTP2",
+      258048
+     ]
+    ],
+    "ubatch": 128
+   },
+   "host_columns": 17408,
+   "kv_cpu_bytes_per_token": 131072,
+   "kv_gpu_bytes_per_token": 32768,
+   "memory_budget": null,
+   "output_tokens": 96,
+   "phone_attached": true,
+   "prefill_s": 28.357876674,
+   "prompt_tokens": 1158,
+   "release_elapsed_us": null,
+   "released_bytes": 0,
+   "request_id": "kvd-sweep-00-h17408",
+   "result_sha256": "sha256:5f9b62774db862e718d18c7d1ddbde4153781e5c981d402003c9bdbbf8520fbe",
+   "run": "sweep-v2",
+   "split_fraction_ppm": 0,
+   "validated_prompt_tokens_max": 1447,
+   "validated_prompt_tokens_min": 868,
+   "validated_total_tokens_max": 1254
+  },
+  {
+   "decode_host_power_w": 121.92773899871023,
+   "decode_ms_per_token": 542.0499895833333,
+   "dormant_release": true,
+   "environment": {
+    "artifact_sha256": "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718",
+    "batch": 512,
+    "column_quantum": 2176,
+    "context_cells": 32768,
+    "gpu_layers": 16,
+    "kv_plan_sha256": "sha256:a34db7d2b6fca83afadd69797c9b7fd2cff6dddfaea690761c36d8f44ecdc2dd",
+    "parallel": 1,
+    "runtime_sha256": "sha256:40b3dbf08318ae6bab781635dfa08ad9f001128ae36af528d82068b70b45aaec",
+    "session_masks": [
+     [
+      "HTP0",
+      63
+     ],
+     [
+      "HTP1",
+      4032
+     ],
+     [
+      "HTP2",
+      258048
+     ]
+    ],
+    "ubatch": 128
+   },
+   "host_columns": 13056,
+   "kv_cpu_bytes_per_token": 131072,
+   "kv_gpu_bytes_per_token": 32768,
+   "memory_budget": null,
+   "output_tokens": 96,
+   "phone_attached": true,
+   "prefill_s": 25.031268582,
+   "prompt_tokens": 1158,
+   "release_elapsed_us": 158898,
+   "released_bytes": 2076033024,
+   "request_id": "kvd-sweep-01-h13056",
+   "result_sha256": "sha256:5f9b62774db862e718d18c7d1ddbde4153781e5c981d402003c9bdbbf8520fbe",
+   "run": "sweep-v2",
+   "split_fraction_ppm": 250000,
+   "validated_prompt_tokens_max": 1447,
+   "validated_prompt_tokens_min": 868,
+   "validated_total_tokens_max": 1254
+  },
+  {
+   "decode_host_power_w": 122.27436972554668,
+   "decode_ms_per_token": 464.73188541666667,
+   "dormant_release": true,
+   "environment": {
+    "artifact_sha256": "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718",
+    "batch": 512,
+    "column_quantum": 2176,
+    "context_cells": 32768,
+    "gpu_layers": 16,
+    "kv_plan_sha256": "sha256:a34db7d2b6fca83afadd69797c9b7fd2cff6dddfaea690761c36d8f44ecdc2dd",
+    "parallel": 1,
+    "runtime_sha256": "sha256:40b3dbf08318ae6bab781635dfa08ad9f001128ae36af528d82068b70b45aaec",
+    "session_masks": [
+     [
+      "HTP0",
+      63
+     ],
+     [
+      "HTP1",
+      4032
+     ],
+     [
+      "HTP2",
+      258048
+     ]
+    ],
+    "ubatch": 128
+   },
+   "host_columns": 8704,
+   "kv_cpu_bytes_per_token": 131072,
+   "kv_gpu_bytes_per_token": 32768,
+   "memory_budget": null,
+   "output_tokens": 96,
+   "phone_attached": true,
+   "prefill_s": 28.785229677,
+   "prompt_tokens": 1158,
+   "release_elapsed_us": 168149,
+   "released_bytes": 4435329024,
+   "request_id": "kvd-sweep-02-h8704",
+   "result_sha256": "sha256:5f9b62774db862e718d18c7d1ddbde4153781e5c981d402003c9bdbbf8520fbe",
+   "run": "sweep-v2",
+   "split_fraction_ppm": 500000,
+   "validated_prompt_tokens_max": 1447,
+   "validated_prompt_tokens_min": 868,
+   "validated_total_tokens_max": 1254
+  },
+  {
+   "decode_host_power_w": 84.73247124774059,
+   "decode_ms_per_token": 525.359,
+   "dormant_release": true,
+   "environment": {
+    "artifact_sha256": "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718",
+    "batch": 512,
+    "column_quantum": 2176,
+    "context_cells": 32768,
+    "gpu_layers": 16,
+    "kv_plan_sha256": "sha256:a34db7d2b6fca83afadd69797c9b7fd2cff6dddfaea690761c36d8f44ecdc2dd",
+    "parallel": 1,
+    "runtime_sha256": "sha256:40b3dbf08318ae6bab781635dfa08ad9f001128ae36af528d82068b70b45aaec",
+    "session_masks": [
+     [
+      "HTP0",
+      63
+     ],
+     [
+      "HTP1",
+      4032
+     ],
+     [
+      "HTP2",
+      258048
+     ]
+    ],
+    "ubatch": 128
+   },
+   "host_columns": 4352,
+   "kv_cpu_bytes_per_token": 131072,
+   "kv_gpu_bytes_per_token": 32768,
+   "memory_budget": null,
+   "output_tokens": 96,
+   "phone_attached": true,
+   "prefill_s": 37.550432415,
+   "prompt_tokens": 1158,
+   "release_elapsed_us": 252678,
+   "released_bytes": 6888996864,
+   "request_id": "kvd-sweep-03-h4352",
+   "result_sha256": "sha256:5f9b62774db862e718d18c7d1ddbde4153781e5c981d402003c9bdbbf8520fbe",
+   "run": "sweep-v2",
+   "split_fraction_ppm": 750000,
+   "validated_prompt_tokens_max": 1447,
+   "validated_prompt_tokens_min": 868,
+   "validated_total_tokens_max": 1254
+  },
+  {
+   "decode_host_power_w": 67.75700635690998,
+   "decode_ms_per_token": 532.7409166666666,
+   "dormant_release": true,
+   "environment": {
+    "artifact_sha256": "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718",
+    "batch": 512,
+    "column_quantum": 2176,
+    "context_cells": 32768,
+    "gpu_layers": 16,
+    "kv_plan_sha256": "sha256:a34db7d2b6fca83afadd69797c9b7fd2cff6dddfaea690761c36d8f44ecdc2dd",
+    "parallel": 1,
+    "runtime_sha256": "sha256:40b3dbf08318ae6bab781635dfa08ad9f001128ae36af528d82068b70b45aaec",
+    "session_masks": [
+     [
+      "HTP0",
+      63
+     ],
+     [
+      "HTP1",
+      4032
+     ],
+     [
+      "HTP2",
+      258048
+     ]
+    ],
+    "ubatch": 128
+   },
+   "host_columns": 0,
+   "kv_cpu_bytes_per_token": 131072,
+   "kv_gpu_bytes_per_token": 32768,
+   "memory_budget": null,
+   "output_tokens": 96,
+   "phone_attached": true,
+   "prefill_s": 30.035813175,
+   "prompt_tokens": 1158,
+   "release_elapsed_us": 119944,
+   "released_bytes": 9625706496,
+   "request_id": "kvd-sweep-04-h0",
+   "result_sha256": "sha256:5f9b62774db862e718d18c7d1ddbde4153781e5c981d402003c9bdbbf8520fbe",
+   "run": "sweep-v2",
+   "split_fraction_ppm": 1000000,
+   "validated_prompt_tokens_max": 1447,
+   "validated_prompt_tokens_min": 868,
+   "validated_total_tokens_max": 1254
+  },
+  {
+   "decode_host_power_w": 126.81927358759026,
+   "decode_ms_per_token": 817.4044619140625,
+   "dormant_release": false,
+   "environment": {
+    "artifact_sha256": "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718",
+    "batch": 512,
+    "column_quantum": 2176,
+    "context_cells": 32768,
+    "gpu_layers": 16,
+    "kv_plan_sha256": "sha256:a34db7d2b6fca83afadd69797c9b7fd2cff6dddfaea690761c36d8f44ecdc2dd",
+    "parallel": 1,
+    "runtime_sha256": "sha256:40b3dbf08318ae6bab781635dfa08ad9f001128ae36af528d82068b70b45aaec",
+    "session_masks": [
+     [
+      "HTP0",
+      63
+     ],
+     [
+      "HTP1",
+      4032
+     ],
+     [
+      "HTP2",
+      258048
+     ]
+    ],
+    "ubatch": 128
+   },
+   "host_columns": 17408,
+   "kv_cpu_bytes_per_token": 131072,
+   "kv_gpu_bytes_per_token": 32768,
+   "memory_budget": null,
+   "output_tokens": 1024,
+   "phone_attached": false,
+   "prefill_s": 306.661593617,
+   "prompt_tokens": 9737,
+   "release_elapsed_us": null,
+   "released_bytes": 0,
+   "request_id": "kvd-control-00-h17408",
+   "result_sha256": "sha256:8d878f607db967ae7805cc0db99956f059cbf61d9662161a38784124d5ebfe2a",
+   "run": "pair-v1/control",
+   "split_fraction_ppm": 0,
+   "validated_prompt_tokens_max": 12171,
+   "validated_prompt_tokens_min": 7302,
+   "validated_total_tokens_max": 10761
+  },
+  {
+   "decode_host_power_w": 126.92202664515546,
+   "decode_ms_per_token": 650.54801171875,
+   "dormant_release": true,
+   "environment": {
+    "artifact_sha256": "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718",
+    "batch": 512,
+    "column_quantum": 2176,
+    "context_cells": 32768,
+    "gpu_layers": 16,
+    "kv_plan_sha256": "sha256:a34db7d2b6fca83afadd69797c9b7fd2cff6dddfaea690761c36d8f44ecdc2dd",
+    "parallel": 1,
+    "runtime_sha256": "sha256:40b3dbf08318ae6bab781635dfa08ad9f001128ae36af528d82068b70b45aaec",
+    "session_masks": [
+     [
+      "HTP0",
+      63
+     ],
+     [
+      "HTP1",
+      4032
+     ],
+     [
+      "HTP2",
+      258048
+     ]
+    ],
+    "ubatch": 128
+   },
+   "host_columns": 8704,
+   "kv_cpu_bytes_per_token": 131072,
+   "kv_gpu_bytes_per_token": 32768,
+   "memory_budget": null,
+   "output_tokens": 1024,
+   "phone_attached": true,
+   "prefill_s": 286.745182476,
+   "prompt_tokens": 9737,
+   "release_elapsed_us": 114052,
+   "released_bytes": 4435329024,
+   "request_id": "kvd-combined-00-h8704",
+   "result_sha256": "sha256:976f1d93b387e4873b8eb7d5a9065e4a5cad3b2843253d3df6b0d46ebfd63362",
+   "run": "pair-v1/combined",
+   "split_fraction_ppm": 500000,
+   "validated_prompt_tokens_max": 12171,
+   "validated_prompt_tokens_min": 7302,
+   "validated_total_tokens_max": 10761
+  },
+  {
+   "decode_host_power_w": 70.81878424831118,
+   "decode_ms_per_token": 819.288005859375,
+   "dormant_release": true,
+   "environment": {
+    "artifact_sha256": "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718",
+    "batch": 512,
+    "column_quantum": 2176,
+    "context_cells": 32768,
+    "gpu_layers": 16,
+    "kv_plan_sha256": "sha256:a34db7d2b6fca83afadd69797c9b7fd2cff6dddfaea690761c36d8f44ecdc2dd",
+    "parallel": 1,
+    "runtime_sha256": "sha256:40b3dbf08318ae6bab781635dfa08ad9f001128ae36af528d82068b70b45aaec",
+    "session_masks": [
+     [
+      "HTP0",
+      63
+     ],
+     [
+      "HTP1",
+      4032
+     ],
+     [
+      "HTP2",
+      258048
+     ]
+    ],
+    "ubatch": 128
+   },
+   "host_columns": 0,
+   "kv_cpu_bytes_per_token": 131072,
+   "kv_gpu_bytes_per_token": 32768,
+   "memory_budget": null,
+   "output_tokens": 1024,
+   "phone_attached": true,
+   "prefill_s": 289.841053547,
+   "prompt_tokens": 9737,
+   "release_elapsed_us": 85758,
+   "released_bytes": 9625706496,
+   "request_id": "kvd-combined-00-h0",
+   "result_sha256": "sha256:31edaa7d126a287b6427fca29f5b95aa0397d8d90145fa074be814f4a1185a87",
+   "run": "combined-h0-v1",
+   "split_fraction_ppm": 1000000,
+   "validated_prompt_tokens_max": 12171,
+   "validated_prompt_tokens_min": 7302,
+   "validated_total_tokens_max": 10761
+  },
+  {
+   "decode_host_power_w": 65.7452678132404,
+   "decode_ms_per_token": 538.0415104166667,
+   "dormant_release": true,
+   "environment": {
+    "artifact_sha256": "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718",
+    "batch": 512,
+    "column_quantum": 2176,
+    "context_cells": 32768,
+    "gpu_layers": 16,
+    "kv_plan_sha256": "sha256:a34db7d2b6fca83afadd69797c9b7fd2cff6dddfaea690761c36d8f44ecdc2dd",
+    "parallel": 1,
+    "runtime_sha256": "sha256:40b3dbf08318ae6bab781635dfa08ad9f001128ae36af528d82068b70b45aaec",
+    "session_masks": [
+     [
+      "HTP0",
+      63
+     ],
+     [
+      "HTP1",
+      4032
+     ],
+     [
+      "HTP2",
+      258048
+     ]
+    ],
+    "ubatch": 128
+   },
+   "host_columns": 0,
+   "kv_cpu_bytes_per_token": 131072,
+   "kv_gpu_bytes_per_token": 32768,
+   "memory_budget": null,
+   "output_tokens": 96,
+   "phone_attached": true,
+   "prefill_s": 26.239103068,
+   "prompt_tokens": 1158,
+   "release_elapsed_us": 171597,
+   "released_bytes": 9625706496,
+   "request_id": "kvd-combined-00-h0",
+   "result_sha256": "sha256:6aeefa1f93515332539182256576eec5ea8f67520b9ae13ab47a948967bdc39b",
+   "run": "select-smoke-v1",
+   "split_fraction_ppm": 1000000,
+   "validated_prompt_tokens_max": 1447,
+   "validated_prompt_tokens_min": 868,
+   "validated_total_tokens_max": 1254
+  },
+  {
+   "decode_host_power_w": 127.56487580891763,
+   "decode_ms_per_token": 824.61958203125,
+   "dormant_release": false,
+   "environment": {
+    "artifact_sha256": "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718",
+    "batch": 512,
+    "column_quantum": 2176,
+    "context_cells": 32768,
+    "gpu_layers": 16,
+    "kv_plan_sha256": "sha256:a34db7d2b6fca83afadd69797c9b7fd2cff6dddfaea690761c36d8f44ecdc2dd",
+    "parallel": 1,
+    "runtime_sha256": "sha256:40b3dbf08318ae6bab781635dfa08ad9f001128ae36af528d82068b70b45aaec",
+    "session_masks": [
+     [
+      "HTP0",
+      63
+     ],
+     [
+      "HTP1",
+      4032
+     ],
+     [
+      "HTP2",
+      258048
+     ]
+    ],
+    "ubatch": 128
+   },
+   "host_columns": 17408,
+   "kv_cpu_bytes_per_token": 131072,
+   "kv_gpu_bytes_per_token": 32768,
+   "memory_budget": "capped-18.06GiB",
+   "output_tokens": 2048,
+   "phone_attached": false,
+   "prefill_s": 315.730076302,
+   "prompt_tokens": 9737,
+   "release_elapsed_us": null,
+   "released_bytes": 0,
+   "request_id": "kvd-control-00-h17408",
+   "result_sha256": "sha256:f987cf7b5d10fb38f30493566727e5a19f4ef0d0cbc642b011f6f5fbd1613268",
+   "run": "capped-v1/control",
+   "split_fraction_ppm": 0,
+   "validated_prompt_tokens_max": 12171,
+   "validated_prompt_tokens_min": 7302,
+   "validated_total_tokens_max": 11785
+  },
+  {
+   "decode_host_power_w": 71.14022712225318,
+   "decode_ms_per_token": 837.9646938476562,
+   "dormant_release": true,
+   "environment": {
+    "artifact_sha256": "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718",
+    "batch": 512,
+    "column_quantum": 2176,
+    "context_cells": 32768,
+    "gpu_layers": 16,
+    "kv_plan_sha256": "sha256:a34db7d2b6fca83afadd69797c9b7fd2cff6dddfaea690761c36d8f44ecdc2dd",
+    "parallel": 1,
+    "runtime_sha256": "sha256:40b3dbf08318ae6bab781635dfa08ad9f001128ae36af528d82068b70b45aaec",
+    "session_masks": [
+     [
+      "HTP0",
+      63
+     ],
+     [
+      "HTP1",
+      4032
+     ],
+     [
+      "HTP2",
+      258048
+     ]
+    ],
+    "ubatch": 128
+   },
+   "host_columns": 0,
+   "kv_cpu_bytes_per_token": 131072,
+   "kv_gpu_bytes_per_token": 32768,
+   "memory_budget": "capped-18.06GiB",
+   "output_tokens": 2048,
+   "phone_attached": true,
+   "prefill_s": 285.153114309,
+   "prompt_tokens": 9737,
+   "release_elapsed_us": 264875,
+   "released_bytes": 9625706496,
+   "request_id": "kvd-combined-00-h0",
+   "result_sha256": "sha256:2337a078e3d4db25043af24b4de71c273e7f29363f7f76494c91c5b6ae8b48a0",
+   "run": "capped-v1/combined",
+   "split_fraction_ppm": 1000000,
+   "validated_prompt_tokens_max": 12171,
+   "validated_prompt_tokens_min": 7302,
+   "validated_total_tokens_max": 11785
+  },
+  {
+   "decode_host_power_w": 71.14416616182734,
+   "decode_ms_per_token": 842.8551303710938,
+   "dormant_release": true,
+   "environment": {
+    "artifact_sha256": "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718",
+    "batch": 512,
+    "column_quantum": 2176,
+    "context_cells": 32768,
+    "gpu_layers": 16,
+    "kv_plan_sha256": "sha256:a34db7d2b6fca83afadd69797c9b7fd2cff6dddfaea690761c36d8f44ecdc2dd",
+    "parallel": 1,
+    "runtime_sha256": "sha256:40b3dbf08318ae6bab781635dfa08ad9f001128ae36af528d82068b70b45aaec",
+    "session_masks": [
+     [
+      "HTP0",
+      63
+     ],
+     [
+      "HTP1",
+      4032
+     ],
+     [
+      "HTP2",
+      258048
+     ]
+    ],
+    "ubatch": 128
+   },
+   "host_columns": 0,
+   "kv_cpu_bytes_per_token": 131072,
+   "kv_gpu_bytes_per_token": 32768,
+   "memory_budget": "capped-17.06GiB",
+   "output_tokens": 2048,
+   "phone_attached": true,
+   "prefill_s": 479.511817443,
+   "prompt_tokens": 9737,
+   "release_elapsed_us": 316479,
+   "released_bytes": 9625706496,
+   "request_id": "kvd-combined-00-h0",
+   "result_sha256": "sha256:cdf460127bc90fe65506bde2865bd5c735d228b6a01c45a7928c8785346d4a98",
+   "run": "capped-v2/combined",
+   "split_fraction_ppm": 1000000,
+   "validated_prompt_tokens_max": 12171,
+   "validated_prompt_tokens_min": 7302,
+   "validated_total_tokens_max": 11785
+  }
+ ],
+ "schema": "scheduler-decode-split-atlas-v2"
+}

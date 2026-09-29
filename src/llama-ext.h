@@ -107,6 +107,22 @@ LLAMA_API bool llama_set_layersplit_range(
                        int32_t start,
                        int32_t end);
 
+// Select a preloaded dense FFN helper slice for the next graph.
+LLAMA_API void llama_set_ffn_split_policy(
+        struct llama_context * ctx,
+                          bool runtime,
+                      uint64_t layer_mask,
+                      uint32_t columns,
+                          bool row_diagnostic = false);
+
+// Called synchronously before each physical microbatch executes, including graph reuse.
+// The batch view is borrowed for the callback only. False aborts before any FFN work.
+using llama_ffn_split_ubatch_callback = bool (*)(const llama_batch &, void *);
+LLAMA_API void llama_set_ffn_split_ubatch_callback(
+        struct llama_context * ctx,
+        llama_ffn_split_ubatch_callback callback,
+        void * user_data);
+
 // mirrors:
 // LLAMA_API float * llama_get_embeddings(struct llama_context * ctx);
 LLAMA_API float * llama_get_embeddings_nextn(struct llama_context * ctx);

@@ -1,0 +1,194 @@
+{
+  "cuda_epoch": {
+    "state": "cuda_epoch_reused",
+    "tail_charge_uj": 0,
+    "tail_receipt_required": true
+  },
+  "policy": {
+    "energy_saving_ppm": 50000,
+    "latency_limit_ppm": 14000000,
+    "max_exposed_join_wait_ppm": 50000
+  },
+  "profile_hash": "sha256:3702c6bab1ec2fcf3a8249906d6d6b1cf341e3ac975c6830cf82cdee50a80627",
+  "profile_id": "s42-bge-small-batch32-op15-cuda-epoch-reused-v1",
+  "request_contract": {
+    "batch_size": 32,
+    "feature": "batch32_groups",
+    "minimum_groups": 1,
+    "tokens_per_embedding": 34
+  },
+  "resources": [
+    {
+      "capacity": 1,
+      "identity": "rtx4060ti-gpu-3d43c513",
+      "kind": "gpu",
+      "ready": true,
+      "resource_id": "cuda0"
+    },
+    {
+      "capacity": 1,
+      "identity": "op15-adreno840-3c15au002cl00000",
+      "kind": "phone-gpu",
+      "ready": true,
+      "resource_id": "op15-adreno"
+    },
+    {
+      "capacity": 1,
+      "identity": "adb-token-embedding-3c15au002cl00000",
+      "kind": "transport",
+      "ready": true,
+      "resource_id": "usb-token-rpc"
+    }
+  ],
+  "routes": [
+    {
+      "baseline": true,
+      "energy": {
+        "boundary_id": "accounted-cpu-package-gpu-board-whole-phone-resident-bge-batch32-v1",
+        "cost_uj": {
+          "coefficients": {
+            "batch32_groups": 2120121
+          },
+          "fixed": 0,
+          "kind": "affine_features_v1"
+        },
+        "lower_error_ppm": 5462,
+        "status": "measured",
+        "upper_error_ppm": 3221
+      },
+      "evidence_ids": [
+        "sha256:ddb84fa2a28b63970ffcbbb029838bf6fb9f6d581e5b26b75b322ecd280444aa"
+      ],
+      "granularity": "task",
+      "latency": {
+        "cost_us": {
+          "coefficients": {
+            "batch32_groups": 20304
+          },
+          "fixed": 0,
+          "kind": "affine_features_v1"
+        },
+        "measured": true,
+        "sample_count": 3,
+        "ucb_add_us": 0
+      },
+      "overlap": {
+        "status": "not_applicable"
+      },
+      "placement_verified": true,
+      "quality_class": "bounded_numeric",
+      "resident": true,
+      "resource_slots": {
+        "cuda0": 1
+      },
+      "route_id": "desktop-cuda",
+      "server_busy_ppm": 100000,
+      "server_memory_bytes": 36685152,
+      "workload_id": "bge-small-en-v1.5-q8-batch32-resident"
+    },
+    {
+      "baseline": false,
+      "energy": {
+        "boundary_id": "accounted-cpu-package-gpu-board-whole-phone-resident-bge-batch32-v1",
+        "cost_uj": {
+          "coefficients": {
+            "batch32_groups": 4750125
+          },
+          "fixed": 0,
+          "kind": "affine_features_v1"
+        },
+        "lower_error_ppm": 2354,
+        "status": "measured",
+        "upper_error_ppm": 3556
+      },
+      "evidence_ids": [
+        "sha256:ddb84fa2a28b63970ffcbbb029838bf6fb9f6d581e5b26b75b322ecd280444aa"
+      ],
+      "granularity": "task",
+      "latency": {
+        "cost_us": {
+          "coefficients": {
+            "batch32_groups": 275011
+          },
+          "fixed": 0,
+          "kind": "affine_features_v1"
+        },
+        "measured": true,
+        "sample_count": 3,
+        "ucb_add_us": 0
+      },
+      "overlap": {
+        "status": "not_applicable"
+      },
+      "placement_verified": true,
+      "quality_class": "bounded_numeric",
+      "resident": true,
+      "resource_slots": {
+        "op15-adreno": 1,
+        "usb-token-rpc": 1
+      },
+      "route_id": "phone-adreno",
+      "runtime_contract": {
+        "epoch_key": "sha256:28e0863362abdcfcf861ee92ee9d98b76701319171943f9e0833e68a6bc19b80",
+        "failure_mode": "fallback_before_dispatch",
+        "resources": {
+          "op15-adreno": {
+            "allowed_contention_buckets": [
+              "qualified"
+            ],
+            "allowed_thermal_buckets": [
+              "nominal"
+            ],
+            "heartbeat_max_age_us": 1100000,
+            "max_failure_count": 0,
+            "max_slowdown_ppm": 1050000,
+            "max_temperature_millic": 45000,
+            "required_residency_ids": [
+              "sha256:f046db1dc724cf4f6f0a0c5917e922823b73eb1d27b8f9a9c2797f7866974804"
+            ],
+            "reset_generation": 0
+          },
+          "usb-token-rpc": {
+            "allowed_contention_buckets": [
+              "qualified"
+            ],
+            "allowed_thermal_buckets": [
+              "nominal"
+            ],
+            "heartbeat_max_age_us": 1100000,
+            "max_failure_count": 0,
+            "max_slowdown_ppm": 1050000,
+            "max_temperature_millic": null,
+            "required_residency_ids": [
+              "bge-embedding-rpc-session-v1"
+            ],
+            "reset_generation": 0
+          }
+        },
+        "schema": "s42-route-runtime-contract-v1",
+        "semantics": {
+          "cancellation_modes": [
+            "before_dispatch",
+            "cooperative"
+          ],
+          "context_shift": false,
+          "full_logits": false,
+          "grammar": false,
+          "kv_migration": false,
+          "kv_owner": "none",
+          "sampler_locations": [
+            "none"
+          ],
+          "speculative_decode": false
+        }
+      },
+      "server_busy_ppm": 20000,
+      "server_memory_bytes": 0,
+      "workload_id": "bge-small-en-v1.5-q8-batch32-resident"
+    }
+  ],
+  "schema": "s42-general-scheduler-profile-v1",
+  "trace_workload_map": {
+    "bge-small-en-v1.5-q8_0-batch32-34t": "bge-small-en-v1.5-q8-batch32-resident"
+  }
+}

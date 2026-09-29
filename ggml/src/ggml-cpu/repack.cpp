@@ -4237,16 +4237,20 @@ template <typename BLOC_TYPE, int64_t INTER_SIZE, int64_t NB_COLS, ggml_type PAR
 
         GGML_ASSERT(src1_ptr + src1_col_stride * nrows <= (const char *) params->wdata + params->wsize);
 
-        // If there are more than three rows in src1, use gemm; otherwise, use gemv.
-        if (nrows > 3) {
-            gemm<BLOC_TYPE, INTER_SIZE, NB_COLS, PARAM_TYPE>(ne00, (float *) (dst_ptr) + src0_start, nb1 / nb0,
-                                                             src0_ptr + src0_start * nb01, src1_ptr,
-                                                             nrows - (nrows % 4), ncols);
-        }
-        for (int iter = nrows - (nrows % 4); iter < nrows; iter++) {
-            gemv<BLOC_TYPE, INTER_SIZE, NB_COLS, PARAM_TYPE>(ne00, (float *) (dst_ptr + (iter * nb1)) + src0_start,
-                                                             ne01, src0_ptr + src0_start * nb01,
-                                                             src1_ptr + (src1_col_stride * iter), 1 /* nrows */, ncols);
+        // A K-prefix retains the parent's stride between interleaved row groups.
+        const int64_t step = nb01 == ggml_row_size(src0->type, ne00) ? ncols : NB_COLS;
+        for (int64_t column = src0_start; column < src0_end; column += step) {
+            const int64_t count = std::min(step, src0_end - column);
+            if (nrows > 3) {
+                gemm<BLOC_TYPE, INTER_SIZE, NB_COLS, PARAM_TYPE>(ne00, (float *) (dst_ptr) + column, nb1 / nb0,
+                                                                 src0_ptr + column * nb01, src1_ptr,
+                                                                 nrows - (nrows % 4), count);
+            }
+            for (int iter = nrows - (nrows % 4); iter < nrows; iter++) {
+                gemv<BLOC_TYPE, INTER_SIZE, NB_COLS, PARAM_TYPE>(ne00, (float *) (dst_ptr + (iter * nb1)) + column,
+                                                                 ne01, src0_ptr + column * nb01,
+                                                                 src1_ptr + (src1_col_stride * iter), 1 /* nrows */, count);
+            }
         }
     }
 
@@ -4525,7 +4529,7 @@ template <typename BLOC_TYPE, int64_t INTER_SIZE, int64_t NB_COLS, ggml_type PAR
 
 }  // namespace ggml::cpu::repack
 
-static const ggml::cpu::tensor_traits * ggml_repack_get_optimal_repack_type(const struct ggml_tensor * cur) {
+static const ggml::cpu::tensor_traits * ggml_repack_get_optimal_repack_type_impl(const struct ggml_tensor * cur) {
     // instance for Q4
     static const ggml::cpu::repack::tensor_traits<block_q4_0, 4, 4, GGML_TYPE_Q8_0> q4_0_4x4_q8_0;
     static const ggml::cpu::repack::tensor_traits<block_q4_0, 8, 4, GGML_TYPE_Q8_0> q4_0_4x8_q8_0;
@@ -4723,11 +4727,30 @@ static const ggml::cpu::tensor_traits * ggml_repack_get_optimal_repack_type(cons
     return nullptr;
 }
 
+static const ggml::cpu::tensor_traits * ggml_repack_get_optimal_repack_type(const struct ggml_tensor * cur) {
+    const auto * traits = ggml_repack_get_optimal_repack_type_impl(cur);
+    if (cur->view_src != nullptr) {
+        const ggml_tensor * parent = cur->view_src;
+        if (cur->view_offs != 0 || parent->view_src != nullptr ||
+            ggml_n_dims(cur) != 2 || ggml_n_dims(parent) != 2 ||
+            !ggml_is_contiguous(parent) || cur->type != parent->type ||
+            cur->ne[0] <= 0 || cur->ne[1] <= 0 ||
+            cur->ne[0] > parent->ne[0] || cur->ne[1] > parent->ne[1] ||
+            cur->ne[0] % ggml_blck_size(cur->type) != 0 ||
+            cur->nb[0] != parent->nb[0] || cur->nb[1] != parent->nb[1] ||
+            cur->nb[2] != cur->nb[1] * cur->ne[1] || cur->nb[3] != cur->nb[2] ||
+            traits != ggml_repack_get_optimal_repack_type_impl(parent)) {
+            return nullptr;
+        }
+    }
+    return traits;
+}
+
 static enum ggml_status ggml_backend_cpu_repack_buffer_init_tensor(ggml_backend_buffer_t buffer, struct ggml_tensor * tensor) {
     tensor->extra = (void *) const_cast<ggml::cpu::tensor_traits *>(ggml_repack_get_optimal_repack_type(tensor));
 
     GGML_UNUSED(buffer);
-    return GGML_STATUS_SUCCESS;
+    return tensor->extra ? GGML_STATUS_SUCCESS : GGML_STATUS_FAILED;
 }
 
 static void ggml_backend_cpu_repack_buffer_set_tensor(ggml_backend_buffer_t buffer, struct ggml_tensor * tensor,

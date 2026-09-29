@@ -1,0 +1,192 @@
+{
+  "artifacts": {
+    "bridge_log_sha256": "bfa40ac949eff801c7ce11296748b329fd314bd37397bc92a2f4110e562f9fcb",
+    "probe_log_sha256": "7ca98ad584326b41e35531d82b26013ec484bd20651ce00e5a25b00845d28789",
+    "router_log_sha256": "d422be86f48f7d6956df00369ac1f4c9f9c4893ac903e3dffdcfe56b3ed7bc70",
+    "session_log_sha256": "a993b50f8e0e2bd2fd352de1f3742e4371400307fb786bf3a57295f4ab937662",
+    "workers_log_sha256": "fe23f3e9d7566daa6da6c6c00b307d970b0ca9222b23c048a0adecb22c9957fc"
+  },
+  "bridge": {
+    "allocator": "malloc-split",
+    "energy_claim_eligible": false,
+    "filler_admitted": 5,
+    "filler_after_protected_done": 0,
+    "filler_before_protected_done": 5,
+    "filler_calls": 5,
+    "filler_deferred": 55,
+    "filler_sandwich_max_us": 20490,
+    "filler_sandwich_p50_us": 12481,
+    "filler_sandwich_p90_us": 17277,
+    "filler_upper_us": 250000,
+    "filler_upper_violations": 0,
+    "guard_us": 20000,
+    "guard_violations": 0,
+    "idle_lower_us": 330000,
+    "idle_lower_violations": 0,
+    "idle_samples": 5,
+    "max_wire_bytes": 5243008,
+    "observed_idle_min_us": 350456,
+    "observed_idle_p10_us": 350456,
+    "observed_idle_p50_us": 350531,
+    "prefetch_decode_window_min_ms": 0.0,
+    "prefetch_fence_calls": 0,
+    "prefetch_fence_enabled": false,
+    "prefetch_group_first_layer": -1,
+    "prefetch_group_last_layer": -1,
+    "prefetch_overrun_max_ms": 0.0,
+    "protected_calls": 72,
+    "protected_done_observed": false,
+    "protected_group_ends": 6,
+    "protected_group_starts": 6,
+    "protected_pending_after_filler": 0,
+    "protected_rpc_p50_us": 10983,
+    "reset_recoveries": 0,
+    "session_switches": 13,
+    "status": "MECHANICS_ONLY",
+    "switch_p50_us": 2079,
+    "switch_p90_us": 3337
+  },
+  "energy_claim_eligible": false,
+  "probe": {
+    "configured_gap_us": 350000,
+    "filler_calls": 5,
+    "protected_group_calls": 72,
+    "protected_groups": 6,
+    "samples": [
+      {
+        "filler_client_rpc_us": 154311,
+        "observed_gap_us": 350155,
+        "protected_group_rpc_us": 145574,
+        "tokens": 1
+      },
+      {
+        "filler_client_rpc_us": 134329,
+        "observed_gap_us": 350162,
+        "protected_group_rpc_us": 126144,
+        "tokens": 2
+      },
+      {
+        "filler_client_rpc_us": 152656,
+        "observed_gap_us": 350152,
+        "protected_group_rpc_us": 139611,
+        "tokens": 4
+      },
+      {
+        "filler_client_rpc_us": 156289,
+        "observed_gap_us": 350151,
+        "protected_group_rpc_us": 138471,
+        "tokens": 8
+      },
+      {
+        "filler_client_rpc_us": 160568,
+        "observed_gap_us": 350152,
+        "protected_group_rpc_us": 139538,
+        "tokens": 16
+      }
+    ],
+    "status": "PASS",
+    "validation_group_rpc_us": 138917
+  },
+  "record_sha256": "e83ab0906aa6512c9433633a92ffd88b7a3cf9d25f54d508a77ec58e18fcb822",
+  "residency": {
+    "available_kib": 2387060,
+    "minimum_available_kib": 2097152,
+    "session_count": 3,
+    "vmem_mib_per_session": 3264
+  },
+  "router": {
+    "requests": 77,
+    "sessions": 13,
+    "status": "ok",
+    "terminate_requested": true
+  },
+  "rows": [
+    {
+      "bridge": {
+        "calls": 1,
+        "energy_claim_eligible": false,
+        "sandwich_max_us": 8305,
+        "sandwich_p50_us": 8305,
+        "status": "PASS",
+        "tokens": 1
+      },
+      "probe": {
+        "filler_client_rpc_us": 154311,
+        "observed_gap_us": 350155,
+        "protected_group_rpc_us": 145574,
+        "tokens": 1
+      },
+      "tokens": 1
+    },
+    {
+      "bridge": {
+        "calls": 1,
+        "energy_claim_eligible": false,
+        "sandwich_max_us": 7520,
+        "sandwich_p50_us": 7520,
+        "status": "PASS",
+        "tokens": 2
+      },
+      "probe": {
+        "filler_client_rpc_us": 134329,
+        "observed_gap_us": 350162,
+        "protected_group_rpc_us": 126144,
+        "tokens": 2
+      },
+      "tokens": 2
+    },
+    {
+      "bridge": {
+        "calls": 1,
+        "energy_claim_eligible": false,
+        "sandwich_max_us": 12481,
+        "sandwich_p50_us": 12481,
+        "status": "PASS",
+        "tokens": 4
+      },
+      "probe": {
+        "filler_client_rpc_us": 152656,
+        "observed_gap_us": 350152,
+        "protected_group_rpc_us": 139611,
+        "tokens": 4
+      },
+      "tokens": 4
+    },
+    {
+      "bridge": {
+        "calls": 1,
+        "energy_claim_eligible": false,
+        "sandwich_max_us": 17277,
+        "sandwich_p50_us": 17277,
+        "status": "PASS",
+        "tokens": 8
+      },
+      "probe": {
+        "filler_client_rpc_us": 156289,
+        "observed_gap_us": 350151,
+        "protected_group_rpc_us": 138471,
+        "tokens": 8
+      },
+      "tokens": 8
+    },
+    {
+      "bridge": {
+        "calls": 1,
+        "energy_claim_eligible": false,
+        "sandwich_max_us": 20490,
+        "sandwich_p50_us": 20490,
+        "status": "PASS",
+        "tokens": 16
+      },
+      "probe": {
+        "filler_client_rpc_us": 160568,
+        "observed_gap_us": 350152,
+        "protected_group_rpc_us": 139538,
+        "tokens": 16
+      },
+      "tokens": 16
+    }
+  ],
+  "schema": "research-scheduler-phone-arbiter-probe-sweep-v1",
+  "status": "PASS"
+}

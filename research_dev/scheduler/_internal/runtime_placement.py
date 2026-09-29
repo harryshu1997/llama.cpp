@@ -335,9 +335,9 @@ class RuntimePlacementDecision:
             self.maximum_latency_ppm,
             1,
         )
-        if self.maximum_latency_ppm > 1_000_000:
+        if self.maximum_latency_ppm > 10_000_000:
             raise RuntimePlacementError(
-                "runtime placement latency limit permits a regression"
+                "runtime placement latency multiplier is too large"
             )
         for name in (
             "conservative_energy_saving_ppm",
@@ -517,9 +517,9 @@ class RuntimePlacementPlanner:
         maximum_latency_ppm = _integer(
             "runtime placement maximum_latency_ppm", maximum_latency_ppm, 1
         )
-        if maximum_latency_ppm > 1_000_000:
+        if maximum_latency_ppm > 10_000_000:
             raise RuntimePlacementError(
-                "runtime placement latency limit permits a regression"
+                "runtime placement latency multiplier is too large"
             )
         if not isinstance(snapshot, RuntimePlacementSnapshot):
             raise RuntimePlacementError("runtime placement snapshot is invalid")
@@ -690,7 +690,7 @@ class RuntimePlacementPlanner:
             conservative_latency_change_ppm=selected[3],
             mean_latency_change_ppm=selected[4],
             selection_reason=(
-                "LOWEST_MEASURED_FLEET_ENERGY_WITH_STRICT_LATENCY_GAIN"
+                "LOWEST_MEASURED_FLEET_ENERGY_WITHIN_LATENCY_BUDGET"
             ),
             rejected=tuple(rejected),
         )

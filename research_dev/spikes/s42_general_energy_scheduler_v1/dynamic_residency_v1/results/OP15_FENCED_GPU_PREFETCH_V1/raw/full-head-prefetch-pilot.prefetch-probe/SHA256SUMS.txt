@@ -1,0 +1,9 @@
+41ff3923e1dce8bde97f5773991a0b36f21230d02d173b2e7adeea23e407e56f  /tmp/s42-dynamic-prefetch-v1/bin/ffn_dmabuf_bridge-prefetch-v1
+462e9bab85a9db3a8deac8351f24eda89cef175364699274d86df16f73470858  /tmp/s42-dynamic-prefetch-v1/bin/cuda_weight_prefetch_probe-v1
+b6578a32723f9e1fdc17d2b2c66579ecfa3c82f0a26b17bc18778fa893394abb  /tmp/s42-dynamic-prefetch-v1/harness/qwen/run_qwen_full_energy_arm.sh
+1a384b90a9e4700ff0c319698716310d75dae987185bae4d3c6ae5471d8fbd37  /tmp/s42-dynamic-prefetch-v1/qualified/full-head-prefetch-pilot/RESULT.json
+17de79eb5a0ce0e498e9939c5161579b62261891fd53312383dd7e07e55b2973  /tmp/s42-dynamic-prefetch-v1/qualified/full-head-prefetch-pilot.phone-capture/PHONE_ENERGY_V3.json
+021adbaabdc1cb4c4cb3043f93fa6af9ebea435a967278b82c6da97b1f4b25db  /tmp/s42-dynamic-prefetch-v1/qualified/full-head-prefetch-pilot.phone-capture/server.stderr
+636b96dd053c124699deaa89f531e0b36922009f6d275eb841dfebbfa062c256  /tmp/s42-dynamic-prefetch-v1/qualified/full-head-prefetch-pilot.phone-capture/bridge.stderr
+231620730c9812fb4cebd6bcf6da896a629cca87b52506f0d6f5b9aa6b765130  /tmp/s42-dynamic-prefetch-v1/qualified/full-head-prefetch-pilot.prefetch-probe/helper.stdout
+203c702373c2a5b649215ef8d48fc72a37e1f768521c391e81d13d956a07139e  /tmp/s42-dynamic-prefetch-v1/qualified/full-head-prefetch-pilot.prefetch-probe/PREFETCH_RUN_V1.json

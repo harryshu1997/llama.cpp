@@ -112,7 +112,10 @@ public:
                llama_memory_t   mem_other,
         const layer_filter_cb & filter,
         const  layer_reuse_cb & reuse,
-        const  layer_share_cb & share);
+        const  layer_share_cb & share,
+        const layer_filter_cb & offload_filter = nullptr,
+        const std::vector<int64_t> & device_cells = {},
+                     uint32_t   trash_cells = 0);
 
     ~llama_kv_cache() = default;
 
@@ -154,6 +157,8 @@ public:
     //
 
     uint32_t get_size()     const;
+    // test hook: touch the pages of the first n_cells cells of every layer's K and V (stream 0) with zeros
+    size_t   touch_cells(uint32_t n_cells);
     uint32_t get_n_stream() const;
 
     bool get_has_shift() const;
@@ -183,12 +188,13 @@ public:
     uint32_t get_n_kv(const slot_info & sinfo) const;
 
     // get views of the current state of the cache
-    ggml_tensor * get_k(ggml_context * ctx, int32_t il, uint32_t n_kv, const slot_info & sinfo) const;
-    ggml_tensor * get_v(ggml_context * ctx, int32_t il, uint32_t n_kv, const slot_info & sinfo) const;
+    uint32_t get_device_cells(int32_t il) const;
+    ggml_tensor * get_k(ggml_context * ctx, int32_t il, uint32_t n_kv, const slot_info & sinfo, bool host = false) const;
+    ggml_tensor * get_v(ggml_context * ctx, int32_t il, uint32_t n_kv, const slot_info & sinfo, bool host = false) const;
 
     // store k_cur and v_cur in the cache based on the provided head location
-    ggml_tensor * cpy_k(ggml_context * ctx, ggml_tensor * k_cur, ggml_tensor * k_idxs, int32_t il, const slot_info & sinfo) const;
-    ggml_tensor * cpy_v(ggml_context * ctx, ggml_tensor * v_cur, ggml_tensor * v_idxs, int32_t il, const slot_info & sinfo) const;
+    ggml_tensor * cpy_k(ggml_context * ctx, ggml_tensor * k_cur, ggml_tensor * k_idxs, int32_t il, const slot_info & sinfo, bool host = false) const;
+    ggml_tensor * cpy_v(ggml_context * ctx, ggml_tensor * v_cur, ggml_tensor * v_idxs, int32_t il, const slot_info & sinfo, bool host = false) const;
 
     //
     // preparation API
@@ -220,10 +226,11 @@ public:
 
     void set_input_k_idxs(ggml_tensor * dst, const llama_ubatch * ubatch, const slot_info & sinfo) const;
     void set_input_v_idxs(ggml_tensor * dst, const llama_ubatch * ubatch, const slot_info & sinfo) const;
+    void set_input_slice_idxs(ggml_tensor * dst, const slot_info & sinfo, uint32_t device_cells, bool host) const;
 
     void set_input_k_shift(ggml_tensor * dst) const;
 
-    void set_input_kq_mask   (ggml_tensor * dst, const llama_ubatch * ubatch, bool causal_attn) const;
+    void set_input_kq_mask   (ggml_tensor * dst, const llama_ubatch * ubatch, bool causal_attn, uint32_t first_cell = 0) const;
     void set_input_pos_bucket(ggml_tensor * dst, const llama_ubatch * ubatch) const;
 
     void set_input_k_rot(ggml_tensor * dst) const;
@@ -243,6 +250,12 @@ private:
 
         std::vector<ggml_tensor *> k_stream;
         std::vector<ggml_tensor *> v_stream;
+
+        uint32_t device_cells = 0; // zero for an unsplit cache
+        ggml_tensor * k_host = nullptr;
+        ggml_tensor * v_host = nullptr;
+        std::vector<ggml_tensor *> k_host_stream = {};
+        std::vector<ggml_tensor *> v_host_stream = {};
     };
 
     bool v_trans = true;  // the value tensor is transposed
@@ -252,6 +265,7 @@ private:
 
     // required padding
     const uint32_t n_pad = 1;
+    const uint32_t trash_cells;
 
     // SWA
     const uint32_t n_swa = 0;
@@ -333,6 +347,10 @@ private:
 
     void state_write_meta(llama_io_write_i & io, const cell_ranges_t & cr, llama_seq_id seq_id = -1) const;
     void state_write_data(llama_io_write_i & io, const cell_ranges_t & cr) const;
+    void state_write_rows(llama_io_write_i & io, const kv_layer & layer, bool value,
+                          uint32_t stream, uint32_t begin, uint32_t count) const;
+    void state_read_rows(llama_io_read_i & io, const kv_layer & layer, bool value,
+                         uint32_t stream, uint32_t begin, uint32_t count);
 
     bool state_read_meta(llama_io_read_i & io, uint32_t strm, uint32_t cell_count,       slot_info & sinfo, llama_seq_id dest_seq_id = -1);
     bool state_read_data(llama_io_read_i & io, uint32_t strm, uint32_t cell_count, const slot_info & sinfo);
@@ -386,8 +404,9 @@ public:
     ggml_type type_v() const;
 
     // get views of the current state of the cache
-    ggml_tensor * get_k(ggml_context * ctx, int32_t il) const;
-    ggml_tensor * get_v(ggml_context * ctx, int32_t il) const;
+    uint32_t get_device_cells(int32_t il) const;
+    ggml_tensor * get_k(ggml_context * ctx, int32_t il, bool host = false) const;
+    ggml_tensor * get_v(ggml_context * ctx, int32_t il, bool host = false) const;
 
     // store k_cur and v_cur in the cache based on the provided head location
     // note: the heads in k_cur and v_cur should be laid out contiguously in memory
@@ -395,8 +414,8 @@ public:
     //   - k_idxs [n_tokens]
     //   - v_cur  [n_embd_head_v, n_head_v, n_tokens]
     //   - v_idxs [n_tokens] or [n_tokens*n_embd_v_gqa] depending if V cache is transposed
-    ggml_tensor * cpy_k(ggml_context * ctx, ggml_tensor * k_cur, ggml_tensor * k_idxs, int32_t il) const;
-    ggml_tensor * cpy_v(ggml_context * ctx, ggml_tensor * v_cur, ggml_tensor * v_idxs, int32_t il) const;
+    ggml_tensor * cpy_k(ggml_context * ctx, ggml_tensor * k_cur, ggml_tensor * k_idxs, int32_t il, bool host = false) const;
+    ggml_tensor * cpy_v(ggml_context * ctx, ggml_tensor * v_cur, ggml_tensor * v_idxs, int32_t il, bool host = false) const;
 
     // create destination indices for each head of the current batch for where it would be written in the KV cache
     // the indices address the global KV cache (not per stream) - this is not relevant for the user of this API, but
@@ -409,9 +428,10 @@ public:
 
     void set_input_k_idxs(ggml_tensor * dst, const llama_ubatch * ubatch) const;
     void set_input_v_idxs(ggml_tensor * dst, const llama_ubatch * ubatch) const;
+    void set_input_slice_idxs(ggml_tensor * dst, uint32_t device_cells, bool host) const;
 
     void set_input_k_shift   (ggml_tensor * dst) const;
-    void set_input_kq_mask   (ggml_tensor * dst, const llama_ubatch * ubatch, bool causal_attn) const;
+    void set_input_kq_mask   (ggml_tensor * dst, const llama_ubatch * ubatch, bool causal_attn, uint32_t first_cell = 0) const;
     void set_input_pos_bucket(ggml_tensor * dst, const llama_ubatch * ubatch) const;
 
     void set_input_k_rot(ggml_tensor * dst) const;

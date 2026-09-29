@@ -16,7 +16,10 @@
 #ifndef HTP_MAX_NTHREADS
 #define HTP_MAX_NTHREADS 10
 #endif
-#define HTP_MAX_MMAPS    16
+#define HTP_MAX_MMAPS HTP_OP_MAX_BUFS
+#if HTP_MAX_MMAPS > 64
+#error "mapping reuse mask must cover every slot"
+#endif
 
 // Memory mapping
 struct htp_mmap {

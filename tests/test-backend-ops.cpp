@@ -19,6 +19,7 @@
 #include <ggml-alloc.h>
 #include <ggml-backend.h>
 #include <ggml-cpp.h>
+#include "../ggml/src/ggml-hexagon/htp/ffn-fused-ops.h"
 
 #include <algorithm>
 #include <atomic>
@@ -6088,17 +6089,20 @@ struct test_mul_mat_vec_fusion : public test_case {
     const bool with_gate;
     std::array<int64_t, 2> batch_dims;
 
+    const int variant; // 1: extra consumer, 2: explicit precision, 3: strided weights, 4: swapped inputs
+
     test_mul_mat_vec_fusion(ggml_type type, ggml_glu_op op, int64_t m, int64_t n, int64_t k,
                         bool use_id = false, int n_mats = 1, int n_used = 1, bool b = false, bool with_bias = false, bool with_gate = true,
-                        std::array<int64_t, 2> batch_dims = {4, 2})
-    : type(type), glu_op(op), m(m), n(n), k(k), use_id(use_id), n_mats(n_mats), n_used(n_used), b(b), with_bias(with_bias), with_gate(with_gate), batch_dims(batch_dims) {
+                        std::array<int64_t, 2> batch_dims = {4, 2}, int variant = 0)
+    : type(type), glu_op(op), m(m), n(n), k(k), use_id(use_id), n_mats(n_mats), n_used(n_used), b(b), with_bias(with_bias), with_gate(with_gate), batch_dims(batch_dims), variant(variant) {
         if (use_id) {
             GGML_ASSERT(n_used <= n_mats);
         }
     }
 
     std::string vars() override {
-        return VARS_TO_STR12(type, glu_op, m, n, k, use_id, n_mats, n_used, b, with_bias, with_gate, batch_dims);
+        return VARS_TO_STR12(type, glu_op, m, n, k, use_id, n_mats, n_used, b, with_bias, with_gate, batch_dims) +
+               (variant ? "," + VAR_TO_STR(variant) : "");
     }
 
     std::string op_desc(ggml_tensor * t) override {
@@ -6133,6 +6137,11 @@ struct test_mul_mat_vec_fusion : public test_case {
             ggml_tensor * gate = with_gate ? ggml_new_tensor(ctx, type, 4, ne0.data()) : nullptr;
             ggml_tensor * up   = ggml_new_tensor(ctx, type, 4, ne0.data());
 
+            if (variant == 3) {
+                gate = ggml_view_2d(ctx, ggml_new_tensor_2d(ctx, type, k + 64, n), k, n,
+                                    (k + 64) * ggml_type_size(type), 0);
+            }
+
             ggml_tensor * ffn_up = ggml_mul_mat(ctx, up, cur);
             if (with_bias) {
                 std::array<int64_t, 4> bias_ne = { ffn_up->ne[0], 1, channels, samples };
@@ -6147,7 +6156,14 @@ struct test_mul_mat_vec_fusion : public test_case {
                 ffn_gate = ggml_add(ctx, ffn_gate, gate_bias);
             }
 
-            ggml_tensor * out = with_gate ? build_gate(ctx, ffn_gate, ffn_up) : ffn_up;
+            if (variant == 2) {
+                ggml_mul_mat_set_prec(ffn_gate, GGML_PREC_F32);
+            }
+            ggml_tensor * out = with_gate ? (variant == 4 ? build_gate(ctx, ffn_up, ffn_gate) :
+                                                          build_gate(ctx, ffn_gate, ffn_up)) : ffn_up;
+            if (variant == 1) {
+                out = ggml_add(ctx, out, ffn_gate);
+            }
 
             std::array<int64_t, 4> bias2_ne   = { out->ne[0], 1, channels, samples };
             ggml_tensor * bias2 = ggml_new_tensor(ctx, GGML_TYPE_F32, 4, bias2_ne.data());
@@ -6911,6 +6927,21 @@ struct test_flash_attn_ext : public test_case {
 
     bool grad_precise() override {
         return true;
+    }
+};
+
+struct test_flash_attn_ext_lse : public test_flash_attn_ext {
+    using test_flash_attn_ext::test_flash_attn_ext;
+
+    std::string op_desc(ggml_tensor *) override { return "FLASH_ATTN_EXT_LSE"; }
+
+    ggml_tensor * build_graph(ggml_context * ctx) override {
+        auto * plain = test_flash_attn_ext::build_graph(ctx);
+        auto * out = ggml_flash_attn_ext_with_lse(ctx, plain->src[0], plain->src[1], plain->src[2],
+                                                 plain->src[3], 1.0f/sqrtf(hsk), max_bias, logit_softcap);
+        ggml_flash_attn_ext_add_sinks(out, plain->src[4]);
+        ggml_flash_attn_ext_set_prec(out, prec);
+        return out;
     }
 };
 
@@ -9385,6 +9416,12 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
         }
     }
 
+    for (int kv : {256, 4096}) {
+        for (int nb : {1, 8, 512}) {
+            test_cases.emplace_back(new test_flash_attn_ext_lse(128, 128, 8, {5, 1}, kv, nb));
+        }
+    }
+
     for (int hsk : { 40, 64, 72, 80, 96, 128, 192, 256, 320, 512, 576 }) {
         for (int hsv : { 40, 64, 72, 80, 96, 128, 192, 256, 512 }) {
             if (hsk != 192 && hsk != 320 && hsk != 576 && hsk != hsv) continue;
@@ -9483,6 +9520,25 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
                 }
             }
         }
+    }
+
+    // FP16 HMX prefill and unchanged small-row decode, including partial block widths.
+    for (auto glu : {GGML_GLU_OP_GEGLU, GGML_GLU_OP_SWIGLU}) {
+        const int64_t k = glu == GGML_GLU_OP_GEGLU ? 3840 : 5120;
+        for (int64_t rows : {1, 4, 137, 512}) {
+            for (int64_t width : {512, 1280}) {
+                test_cases.emplace_back(new test_mul_mat_vec_fusion(GGML_TYPE_F16, glu, rows, width, k,
+                    false, 1, 1, false, false, true, {1, 1}));
+            }
+        }
+        for (int variant : {1, 2, 3, 4}) {
+            test_cases.emplace_back(new test_mul_mat_vec_fusion(GGML_TYPE_F16, glu, 137, 1280, k,
+                false, 1, 1, false, false, true, {1, 1}, variant));
+        }
+        test_cases.emplace_back(new test_mul_mat_vec_fusion(GGML_TYPE_F16, glu, 137, 1280, k,
+            false, 1, 1, false, true, true, {1, 1}));
+        test_cases.emplace_back(new test_mul_mat_vec_fusion(GGML_TYPE_F16, glu, 137, 1280, k,
+            false, 1, 1, false, false, true, {2, 1}));
     }
 
     for (auto gate : {GATING_FUNC_SOFTMAX, GATING_FUNC_SIGMOID, GATING_FUNC_SOFTMAX_WEIGHT}) {
@@ -10337,7 +10393,34 @@ static void usage(char ** argv) {
     printf("    -j <n> runs tests using <n> parallel worker threads (default: 1, test mode only)\n");
 }
 
+static void test_ffn_fused_scratch() {
+    htp_ffn_fused_params p = {};
+    for (uint32_t k : {3840, 5120}) {
+        for (uint32_t mc : {32, 160, 512}) {
+            for (uint32_t nc : {32, 128, 512, 1280}) {
+                GGML_ASSERT(htp_ffn_fused_layout(k, mc, nc, 8, &p));
+                const uint32_t offsets[] = {p.raw, p.weights[0], p.weights[1], p.input, p.input_tmp,
+                                            p.projections[0], p.projections[1], p.projections[2], p.glu_tmp, p.scales, p.vtcm_size};
+                for (unsigned i = 1; i < sizeof(offsets) / sizeof(offsets[0]); ++i) {
+                    GGML_ASSERT(offsets[i] > offsets[i - 1] && offsets[i] % 2048 == 0);
+                }
+                GGML_ASSERT(p.weights[0] - p.raw >= k * nc * 2);
+                GGML_ASSERT(p.input_tmp - p.input >= mc * k * 2);
+                GGML_ASSERT(p.projections[1] - p.projections[0] >= mc * nc * 2);
+                GGML_ASSERT(p.scales - p.glu_tmp >= 8 * 3 * 2 * nc * 4);
+            }
+        }
+    }
+    GGML_ASSERT(htp_ffn_fused_layout(3840, 512, 128, 8, &p) && p.vtcm_size <= 8 * 1024 * 1024);
+    GGML_ASSERT(htp_ffn_fused_layout(3840, 512, 1280, 8, &p) && p.vtcm_size > 8 * 1024 * 1024);
+    GGML_ASSERT(!htp_ffn_fused_layout(3840, 137, 128, 8, &p));
+    GGML_ASSERT(!htp_ffn_fused_layout(3840, 512, 128, 0, &p));
+    GGML_ASSERT(!htp_ffn_fused_layout(0xffffffe0, 512, 128, 8, &p));
+    GGML_ASSERT(!htp_ffn_fused_layout(0x7fffffe0, 0x7fffffe0, 128, 8, &p));
+}
+
 int main(int argc, char ** argv) {
+    test_ffn_fused_scratch();
     test_mode mode = MODE_TEST;
     output_formats output_format = CONSOLE;
     const char * op_names_filter = nullptr;

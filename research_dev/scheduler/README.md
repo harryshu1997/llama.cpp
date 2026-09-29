@@ -2,8 +2,9 @@
 
 `research_dev/scheduler` is the only policy and resource-control package for
 heterogeneous inference experiments in this fork. Experiment directories own
-measured artifacts, model-specific graph adapters, and physical runners. They
-must not contain a second route-selection policy.
+immutable traces, measured outputs, and historical reports. Reusable physical
+adapters and active campaign entry points live in this package and must not be
+duplicated under `research_dev/spikes`.
 
 ## Runtime entry point
 
@@ -55,11 +56,65 @@ before a protected GPU switch. The upper latency bound, including helper
 resource queues, must fit inside the window. A missing or exceeded window
 fails closed to the baseline route.
 
+### Dispatch ordering: work-conserving admission and model affinity
+
+By default every queued plan that uses an exclusive desktop residency resource
+is ordered by arrival, and a queued request of the resident model is released
+only when its predecessor completes. The opt-in campaign field
+`"dispatch_policy": {"work_conserving_admission": true}` (plumbed as
+`--dispatch-policy-json`, `RuntimeDispatchPolicy`) keeps the arrival-order
+barrier only for plans that may change residency (any transition on an
+exclusive residency device); transition-free work on the resident model runs
+ahead of a queued residency change whose lanes it frees in time, queued
+same-model work is replanned as soon as the load it waits for is published or
+capacity is released early, and a cancelled residency change is bounded by the
+reservations of its running predecessors. Adding `"model_affinity": true`
+lets an arrival of the resident model that would be reserved behind a queued
+residency change of another model displace that change and the work queued
+behind it (they replan after it), until a displaced request was bypassed
+`affinity_maximum_bypasses` times or waited `affinity_maximum_wait_us`
+(defaults 10 and 1,200 s). A request that arrived while its model was loading
+gets the same treatment when that load is published: it is replanned, and the
+not-started residency changes of other models it still waits on are displaced
+under the same bounds. Every admission and replan still passes the normal
+selection, memory, residency-projection and calendar checks; a displacement
+that would not start the arrival earlier (or, for a replan, would not keep the
+residency) is rolled back.
+`"residency_hysteresis_s": H` lets a queued residency change of another model
+wait up to H after the resident model's last release on the same residency
+resource, only when the wait can pay: a same-model request is queued and can
+still run first (held until it dispatches), or the same-model inter-arrival
+gaps learned from admissions (EWMA, memoryless model) predict an arrival within
+H with probability >= `residency_hysteresis_min_probability_ppm` (default
+500000; 0 = always hold). A change whose own model's queued work already waited
+longer than H is never held. Each decision (held or skipped, with its reason) is
+noted on the change's ticket (`RESIDENCY_HYSTERESIS_HELD` / `_SKIPPED`), listed
+under `dispatch_policy.residency_hysteresis_decisions` and counted in
+`residency_hysteresis_holds` / `residency_hysteresis_skips`.
+Decision-log records carry `selected.dispatch_policy` for displacements and
+RESULT.json carries `dispatch_policy` (policy, bypass counts, statistics).
+
 ## Package layout
 
-- `scheduler.py`: the only online scheduler. `UnifiedScheduler` owns lifecycle
-  state, the shared physical resource calendar, task/layer/operator admission,
-  and the matmul queue.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the request execution path, state
+owners, contract modules, and the implementation file to edit for each concern.
+
+- `scheduler.py`: the only online scheduler. It assembles `UnifiedScheduler`
+  from the topical mixins in `_unified/` and owns construction, catalog and
+  model registration, and the runtime transaction checkpoint/restore used by
+  every mutating entry point (`_runtime_transaction`).
+- `_unified/`: one module per scheduler concern, each a mixin of
+  `UnifiedScheduler`: `placement_epochs` (model placement proposals and
+  publication), `phone_residency` (phone FFN layouts, transitions, replay),
+  `automated_candidates` / `automated_selection` / `automated_requests`
+  (candidate generation, selection, and the submit/replan/fail lifecycle),
+  `helper_envelopes` / `helper_preparation` (request helper envelopes and the
+  copy-on-write phone-layout transaction), `adaptive_decode_control`,
+  `runtime_requests` (ticket API and decision log), and `legacy_schedules`
+  (granular residency/backfill/offload schedules). `common.py` holds the
+  shared records and helpers. Larger mixins delegate to topical `*_ops/`
+  modules using the same `UnifiedScheduler` instance; they do not add another
+  state owner.
 - `trace.py`: strict schema detection and ingestion for the two-model BurstGPT
   trace and the six-model mixed trace.
 - `__main__.py` and `plan_cli.py`: the public `matmul` and execution-plan
@@ -68,13 +123,172 @@ fails closed to the baseline route.
   gate, runtime cost, causal online placement, event-driven runtime queue,
   phone, capacity, and execution-plan implementation
   modules. They are helpers used by `UnifiedScheduler` or offline compilers,
-  not independent online schedulers.
+  not independent online schedulers. `_internal/route_generation/` is a
+  package: `compiler.py` assembles `AutomatedRouteCompiler` from mixins for
+  residency evidence, identities, templates, patterns, candidates,
+  feasibility, envelopes, and costing; `conversion.py` turns candidate sets
+  into runtime cost rows. Controller APIs delegate to `adaptive_decode_ops/`,
+  `model_placement_ops/`, and `runtime_controller_ops/`. Hash-bound records
+  and validators live in the corresponding `*_contracts/` packages, with
+  compatibility exports from their original modules.
+- `adapters/`: reusable physical process, transport, telemetry, transition,
+  and execution bindings. These modules execute scheduler tickets without
+  selecting or modifying routes. `phone_session.py` owns session state;
+  `phone_session_ops/` separates transport, weights, preparation, replacement,
+  and completion. `phone_session_contracts/` contains its public records.
+- `config.py` and `configuration/`: configuration loading and typed rig,
+  model, campaign, and evidence manifests.
+- `campaigns/burstgpt/`: the active three-model BurstGPT catalog builder,
+  preflight, physical runner, gate checker, wait-timeline analyzer, and
+  `scripts/launch_gate.sh` (deploy the local scheduler tree to the desktop
+  and run one gate config in resolve, preflight, or run mode).
+- `profiles/`: checked-in measured hardware profiles used by cost
+  materialization and tests.
 - `tests/`: canonical unit and cross-trace integration tests.
+
+Run `python3 research_dev/scheduler/tests/run_all.py` for the isolated-process
+scheduler and historical S42 acceptance harness. Isolation avoids module-name
+collisions between old experiment tests and canonical scheduler tests.
 
 The package-level `research_dev.scheduler` import is the supported API. Trace
 and experiment code must not import `_internal` modules. Keeping implementation
 modules private preserves reviewable contracts without presenting each planner
 as another scheduler.
+
+## Offline FFN shard files
+
+The phone FFN split worker serves, per selected layer, the suffix of the FFN
+intermediate dimension (`--columns` units of `ffn_gate`/`ffn_up` rows and the
+matching `ffn_down` columns). Opening the complete model GGUF makes the worker
+read every selected FFN matrix in full before slicing. `native/ffn_shard_gguf.py`
+materializes those suffix slices offline, one GGUF per intended session:
+
+```sh
+python3 research_dev/scheduler/native/ffn_shard_gguf.py \
+    /models/Qwen3-14B-f16.gguf --parent-sha256 sha256:<parent> \
+    --out-dir shards/qwen --verify-parent \
+    --shard HTP0=0-5:4096 --shard HTP1=6-11:4096 --shard HTP2=12-17:4096
+adb push shards/qwen /data/local/tmp/s42-ffn-shards/qwen
+```
+
+Each `HTPk.ffn.gguf` carries `s42.ffn_shard.*` metadata (parent sha256, layer
+mask, column offset and width, weight type, n_ff) and only the sliced tensors;
+`HTPk.ffn.json` records the shard's own sha256, and `FFN_SHARDS.json` indexes
+the set. Store the maximum useful slice: the worker serves any `--columns` up to
+the stored width and any layer subset of the stored mask, so fraction changes
+(25/50/75/100 percent) activate blocks of the already loaded slice and never
+read new weights. The worker computes the same weight hash as from the complete
+model, so shard geometry identities and execution proofs are unchanged.
+
+`adapters/ffn_shards.py` resolves an authorized phone shard (artifact, layer
+mask, columns) to the smallest covering shard file; `DirectPhoneFfnSession`
+substitutes it for the model path in the resident-workers manifest and hashes
+every shard on the phone against the index at preflight and at every launch.
+The runner takes `--qwen-ffn-shards LOCAL_FFN_SHARDS.json=/phone/dir` and
+`--gemma-ffn-shards ...`; without them sessions open the complete GGUF as before.
+
+### Re-provisioning for the desktop model
+
+By default the phone portfolio sums the arrived decode work of every model, so
+two queued large models keep a static session split. The opt-in campaign field
+`"phone_resident_model_reprovisioning": {}` (fields `load_bytes_per_second`,
+`minimum_learned_samples`, `boundary_reevaluation_interval_us`, and the opt-in booleans
+`early_on_transition`, `count_queued_demand`) makes the portfolio follow the models the desktop is
+loading or executing (else holds hot, else followed last): one model gets every
+session RAM and the stored shards allow, several share the sessions in
+proportion to remaining decode work, and an idle followed model holds the
+layout until the desktop switches. A dispatched desktop load triggers the swap,
+one session per proposal, so the phone load overlaps the desktop load; sessions
+an acquired helper uses are never replaced (the change resumes at release).
+Swap times come from observed `SESSION_LOADING` -> `SESSION_VERIFIED` windows.
+`EVALUATED` events carry the decision under `desktop_reprovision`. A decode
+boundary re-evaluates only after a state change (requests, dispatch or desktop
+load state, layout generations, session states and use, arrived-work buckets,
+route evidence), else at most once per `boundary_reevaluation_interval_us`
+(default 10 s, 0 = every boundary); a RETAINED/HOLD decision equal to the last
+record is not recorded. The next record counts both
+(`boundary_evaluations_skipped`, `unchanged_decisions_coalesced`, plus `_total`).
+With `count_queued_demand` the portfolio also follows the phone-capable model whose
+queued requests are next in dispatch order (`desktop_commitment_source: "queued"`, their
+arrived decode work is the demand); with `early_on_transition` the layout is re-evaluated
+when a plan carrying a desktop load is committed (the switch is decided) and at every
+release while such a load is decided or pending, so the swap overlaps the wait for the
+server and the desktop load instead of starting at the loading request's dispatch.
+A queued model is phone-capable only through its learning demand; while another
+model's work is protected on the desktop its phone routes carry
+`MARGINAL_SYSTEM_COST_UNKNOWN`, which `count_queued_demand` tolerates in the learning
+demand, so the phone can follow a first switch to a model that has not run yet.
+
+With `adaptive_decode_overrides.late_helper_adoption`, a helper-less session that
+adopts a READY layout records `HELPER_ADOPTED_LATE` (`source`: `DECODE_BOUNDARY` or
+`READY_LAYOUT_PUBLISHED`), and a READY refresh keeps a helper already materialized for
+that exact layout (`HELPER_MATERIALIZATION_RETAINED`) instead of rebuilding it, so the
+attachment expands at the next boundary rather than failing on
+`runtime helper plan history changed identity`.
+
+With `server_policy_coherence`, the server-policy group is keyed by the model's
+own phone shards (`artifact_layout_identity_sha256`: sessions, layer masks,
+columns, resident geometry and operator plan of that model), not by the layout
+generation, so a stage that only changes other sessions, or a layout that
+recurs, keeps the per-batch verdicts; a different layer set starts fresh.
+Decision records carry it as `helper_layout_identity_sha256` and
+`server_policy.layout_identity_sha256`.
+
+With `adaptive_decode_overrides.batch_growth_verdict_inheritance` (requires
+`server_policy_coherence`), a batch composition without a measured verdict inherits
+the phone verdict of the nearest smaller composition of the same group: the group
+keeps running that policy while the like-for-like probe at the new size collects
+evidence, and an exhausted probe budget keeps it (the verdict at that size, labelled
+inherited) instead of returning the server to the host. A measured rejection at the
+larger size, a monitored elimination, a phone failure or a quarantine still returns
+it to the host; a smaller composition never inherits from a larger one and a host
+verdict at the nearest smaller size blocks inheritance. Decode is bandwidth-bound on
+every stage (desktop step 611 ms at batch 1, 615-632 ms at batch 4; OnePlus 15 FFN
+call 9.6 ms for 1 row, 12.7 ms for 4), so a phone win at batch b is a win at b+1.
+ASSISTANCE_DECISION records carry `reason=BATCH_GROWTH_INHERITED` and
+`inherited_from_batch`, and `server_policy` carries `inherited_from_batch` and
+`inherited_batches`.
+
+## Remote-resident FFN weights
+
+`LLAMA_FFN_REMOTE_RESIDENT_LAYER_MASK` (server: `S41_SERVER_FFN_REMOTE_RESIDENT_LAYER_MASK`)
+makes the desktop llama-server omit the dense FFN weights of the masked layers
+and execute them on the owning phone session for every batch. The scheduler
+contract, route generation, launch environment and ledger accounting are
+described in [`ARCHITECTURE.md`](ARCHITECTURE.md). The bounded physical gates
+(correctness, memory, KV capacity, recovery) run with
+
+```sh
+python3 research_dev/scheduler/campaigns/burstgpt/remote_resident_gate.py <runner arguments> \
+  --desktop-parent-role cold --owner tcp:HOST:PORT:PIDFILE --remote-layer-mask 0xff \
+  --shard-index FFN_SHARDS.json --shard-remote-dir /data/local/tmp/... --recovery
+```
+
+where the runner arguments come from `launch.py ... --resolve-only`
+(`RUN_COMMAND.txt`). The native proof (`tests/test_remote_resident_native.py`)
+needs `build-cpu/bin/llama-ffn-remote-resident-probe` and
+`llama-ffn-split-worker`.
+
+### Decode-only relocation
+
+`ffn_host_share_release=1` on a decode-phase assisted launch makes the desktop
+server release the pages of the phone-executed FFN column suffix while every
+slot decodes and populate them before the next prompt (`S41SERVERFFN
+dormant_host_share phase=decode|local ...` proof lines). Weights stay mapped;
+prefill runs locally at native speed. Host KV buffers are backed page by page
+(`MADV_DONTNEED` zeroing), so the released weight pages can back KV growth
+during the generation (a memory equivalent; usable context is still bounded by the
+configured cells, the model limit, GPU-tier KV, workspace and the restoration before
+the next prompt). Measured on Qwen3-14B (4060 Ti CPU parent + OP15, three
+sessions, layers 0-17): 50 % split = -20 % decode time / -16 % request host
+energy, 100 % split = same decode time / -34 % request host energy / -44 %
+decode energy / 9.63 GB released; prefill unchanged. The split itself is chosen from the measured atlas by
+`_internal/decode_split_selection.select_decode_split` (objective latency /
+energy / memory, fail-closed outside the measured regime) and the released
+bytes are credited only for the decode phase by `DecodeReleaseAccountant`
+(the next prompt re-reserves the share or waits). See ARCHITECTURE.md,
+"Decode-only relocation", and
+`campaigns/burstgpt/reports/20260917-decode-relocation-kv-headroom/`.
 
 ## Measured hardware data
 
@@ -234,6 +448,40 @@ candidate and the qualified `1:6144,16:6144,512:0` table stays active. See
 
 ## Required workflow
 
+The model-level runtime path is:
+
+```text
+model or device event
+    -> background model frontier
+    -> published placement epoch
+    -> fast per-request live update
+    -> atomic ticket and leases
+    -> fixed execution envelope
+    -> within-request fraction adaptation
+    -> measured learning
+    -> background epoch refresh
+```
+
+`ModelPlacementController` observes only arrivals and state already visible at
+the decision time. It groups queue pressure into hysteretic buckets, coalesces
+repeated generation changes, and applies transition break-even before an epoch
+switch. The published epoch binds the artifact, component, exact desktop
+parent, executor and operator-plan identities, objective, latency allowance,
+generations, expected reuse, transition cost, and permitted adaptive fractions.
+The request path revalidates live readiness, memory, leases, residency, and
+queueing; it does not use future trace rows. A dispatched route remains fixed.
+Only a fraction change permitted by its execution envelope may occur at a safe
+decode boundary, and that change does not alter phone shard residency.
+
+The matched physical entry point is
+`campaigns/burstgpt/run_matched_ab.sh`. It freezes one catalog, source
+manifest, binary set, trace, and observation seed; runs preflight and the
+five-request A/B release gate; then runs exactly one 84-request desktop arm and
+one 84-request energy-aware arm. `compare_ab.py` rejects incomplete or
+identity-mismatched results, CPU-only large-model controls, baseline phone
+execution, forced treatment selection, or an incomplete CPU/GPU/phone energy
+boundary.
+
 1. Load a hash-checked profile or materialize a shadow profile.
 2. Load either trace schema with `research_dev.scheduler.load_trace`.
 3. Create one `UnifiedScheduler` for the whole run.
@@ -244,10 +492,10 @@ candidate and the qualified `1:6144,16:6144,512:0` table stays active. See
 7. Release actual completion, or cancel on failure.
 8. Bind decisions, releases, observed work, and energy receipts to the result.
 
-Physical adapters under S42 may load artifact-specific metadata and call this
-workflow. They must import `research_dev.scheduler`; the deleted S42 scheduler
-wrappers are not part of the runtime path. Tests for scheduler behavior belong
-in `scheduler/tests` and use the same package API.
+The active physical campaign under `scheduler/campaigns` may load immutable
+trace inputs from S42 and call this workflow. S42 does not own a physical
+runner or scheduler wrapper. Tests for scheduler behavior belong in
+`scheduler/tests` and use the same package API.
 
 ## Current enforcement boundaries
 
@@ -324,6 +572,10 @@ task-layer-operator scheduling was executed.
 
 ## Tests
 
+The phase gates, adversarial cases, and scheduler-owned per-request decision
+log contract are defined in
+[`ACCEPTANCE_TESTS.md`](ACCEPTANCE_TESTS.md).
+
 Run the canonical scheduler suite from the repository root:
 
 ```sh
@@ -334,5 +586,5 @@ Run the scheduler suite followed by every S42 physical-adapter and artifact
 test with:
 
 ```sh
-python3 research_dev/spikes/s42_general_energy_scheduler_v1/run_tests.py
+python3 research_dev/scheduler/tests/run_all.py
 ```

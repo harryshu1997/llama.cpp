@@ -914,7 +914,7 @@ static __global__ void flash_attn_combine_results(
         const float  * VKQ_parts_ptr,
         const float2 * VKQ_meta_ptr,
         float * dst_ptr,
-        const int parallel_blocks) {
+        const int parallel_blocks, const bool with_lse) {
     ggml_cuda_pdl_lc();
     const float  * GGML_CUDA_RESTRICT VKQ_parts = VKQ_parts_ptr;
     const float2 * GGML_CUDA_RESTRICT VKQ_meta  = VKQ_meta_ptr;
@@ -936,7 +936,7 @@ static __global__ void flash_attn_combine_results(
 
     VKQ_parts += j_dst_unrolled * parallel_blocks*D;
     VKQ_meta  += j_dst_unrolled * parallel_blocks;
-    dst       += j_dst_unrolled *                 D;
+    dst       += j_dst_unrolled * (D + (with_lse ? 1 : 0));
 
     const int tid = threadIdx.x;
     __builtin_assume(tid < D);
@@ -957,13 +957,18 @@ static __global__ void flash_attn_combine_results(
     float VKQ_numerator   = 0.0f;
     float VKQ_denominator = 0.0f;
     for (int l = 0; l < parallel_blocks; ++l) {
-        const float KQ_max_scale = expf(meta[l].x - kqmax);
+        const float KQ_max_scale = with_lse && meta[l].y == 0.0f ? 0.0f : expf(meta[l].x - kqmax);
 
-        VKQ_numerator   += KQ_max_scale * VKQ_parts[l*D + tid];
+        if (!with_lse || meta[l].y != 0.0f) {
+            VKQ_numerator += KQ_max_scale * VKQ_parts[l*D + tid];
+        }
         VKQ_denominator += KQ_max_scale * meta[l].y;
     }
 
-    dst[tid] = VKQ_numerator / VKQ_denominator;
+    dst[tid] = with_lse && VKQ_denominator == 0.0f ? 0.0f : VKQ_numerator / VKQ_denominator;
+    if (with_lse && tid == 0) {
+        dst[D] = VKQ_denominator > 0.0f ? kqmax + logf(VKQ_denominator) : -INFINITY;
+    }
 }
 
 template <int DV, int ncols1, int ncols2>
@@ -983,6 +988,8 @@ void launch_fattn(
     const ggml_tensor * sinks = dst->src[4];
 
     ggml_tensor * KQV = dst;
+    const bool with_lse = ggml_flash_attn_ext_has_lse(dst);
+    GGML_ASSERT(!with_lse || !stream_k);
 
     GGML_ASSERT(Q->type == GGML_TYPE_F32);
     GGML_ASSERT(KQV->type == GGML_TYPE_F32);
@@ -1170,6 +1177,9 @@ void launch_fattn(
             }
         }
 
+        if (with_lse) {
+            parallel_blocks = std::max(2, parallel_blocks);
+        }
         blocks_num.x = ntiles_x;
         blocks_num.y = parallel_blocks;
         blocks_num.z = ntiles_z_gqa*K->ne[2]*Q->ne[3];
@@ -1264,7 +1274,7 @@ void launch_fattn(
 
         const ggml_cuda_kernel_launch_params launch_params = ggml_cuda_kernel_launch_params(blocks_num_combine, block_dim_combine, nbytes_shared_combine, main_stream);
         ggml_cuda_kernel_launch(flash_attn_combine_results<DV>, launch_params,
-            dst_tmp.ptr, dst_tmp_meta.ptr, (float *) KQV->data, parallel_blocks);
+            dst_tmp.ptr, dst_tmp_meta.ptr, (float *) KQV->data, parallel_blocks, with_lse);
     }
     CUDA_CHECK(cudaGetLastError());
 }

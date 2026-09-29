@@ -8,7 +8,6 @@ device I/O and it does not create new tensor partitions at runtime.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-import itertools
 from typing import Any, Mapping, Sequence
 
 from .runtime_gates import (
@@ -19,94 +18,87 @@ from .runtime_gates import (
     RuntimeSnapshot,
     evaluate_runtime_gate,
 )
+from .runtime_system_cost import (
+    RuntimeSystemCostError,
+    calculate_marginal_system_cost,
+)
+
+from .policy_common import (
+    _mapping as _mapping,
+    SchedulerError as SchedulerError,
+    _strict_bool as _strict_bool,
+    _strict_int as _strict_int,
+    _text as _text,
+    PROFILE_SCHEMA as PROFILE_SCHEMA,
+    QUALITY_RANK as QUALITY_RANK,
+    POLICY_MODES as POLICY_MODES,
+    GRANULARITIES as GRANULARITIES,
+    ENERGY_STATUSES as ENERGY_STATUSES,
+    OVERLAP_STATUSES as OVERLAP_STATUSES,
+    ResourceProfile as ResourceProfile,
+    LeaseDemand as LeaseDemand,
+)
+
+from .resource_timeline import (
+    LeasePlan as LeasePlan,
+    LeasePreview as LeasePreview,
+    LeaseRecord as LeaseRecord,
+    _CalendarReservation as _CalendarReservation,
+    _ResourceTimelineCheckpoint as _ResourceTimelineCheckpoint,
+    ResourceTimeline as ResourceTimeline,
+)
 
 
 __all__ = [
-    "ENERGY_STATUSES",
-    "GRANULARITIES",
-    "OVERLAP_STATUSES",
-    "POLICY_MODES",
-    "PROFILE_SCHEMA",
-    "QUALITY_RANK",
-    "AffineCost",
-    "Candidate",
-    "Decision",
-    "EnergyDomain",
-    "EnergyProfile",
-    "RoutePolicy",
-    "KernelEnergyEstimate",
-    "KernelEnergyProfile",
-    "LatencyProfile",
-    "LatencyVariant",
-    "LeaseDemand",
-    "LeasePlan",
-    "LeasePreview",
-    "LeaseRecord",
-    "OperatorEnergyCost",
-    "OperatorWork",
-    "OverlapProfile",
-    "PolicyConfig",
-    "ProfileBundle",
-    "Request",
-    "RequestSemantics",
-    "ResourceLeaseProfile",
-    "ResourceProfile",
-    "ResourceTimeline",
-    "RouteProfile",
-    "RouteRuntimeContract",
-    "RuntimeGateError",
-    "RuntimeGateReceipt",
-    "RuntimeSnapshot",
-    "SchedulerError",
-    "decision_to_json",
-    "estimate_kernel_energy",
-    "evaluate_runtime_gate",
+    'AffineCost',
+    'Candidate',
+    'Decision',
+    'ENERGY_STATUSES',
+    'EnergyDomain',
+    'EnergyProfile',
+    'GRANULARITIES',
+    'KernelEnergyEstimate',
+    'KernelEnergyProfile',
+    'LatencyProfile',
+    'LatencyVariant',
+    'LeaseDemand',
+    'LeasePlan',
+    'LeasePreview',
+    'LeaseRecord',
+    'MarginalSystemCostContext',
+    'OVERLAP_STATUSES',
+    'OperatorEnergyCost',
+    'OperatorWork',
+    'OverlapProfile',
+    'POLICY_MODES',
+    'PROFILE_SCHEMA',
+    'PolicyConfig',
+    'ProfileBundle',
+    'QUALITY_RANK',
+    'Request',
+    'RequestSemantics',
+    'ResourceLeaseProfile',
+    'ResourceProfile',
+    'ResourceTimeline',
+    'RoutePolicy',
+    'RouteProfile',
+    'RouteRuntimeContract',
+    'RuntimeGateError',
+    'RuntimeGateReceipt',
+    'RuntimeSnapshot',
+    'RuntimeSystemCostError',
+    'SchedulerError',
+    '_CalendarReservation',
+    '_ResourceTimelineCheckpoint',
+    '_mapping',
+    '_strict_bool',
+    '_strict_int',
+    '_text',
+    'calculate_marginal_system_cost',
+    'decision_to_json',
+    'estimate_kernel_energy',
+    'evaluate_runtime_gate',
 ]
-
-
-PROFILE_SCHEMA = "s42-general-scheduler-profile-v1"
-QUALITY_RANK = {
-    "unverified": 0,
-    "approximate": 1,
-    "bounded_numeric": 2,
-    "exact": 3,
-}
-POLICY_MODES = {"control", "enforce", "shadow", "capacity", "adaptive"}
-GRANULARITIES = {"task", "layer", "operator"}
-ENERGY_STATUSES = {"unknown", "estimated", "measured"}
-OVERLAP_STATUSES = {"unknown", "diagnostic", "measured", "not_applicable"}
-
-
-class SchedulerError(ValueError):
-    pass
-
-
-def _strict_int(name: str, value: object, minimum: int = 0) -> int:
-    if type(value) is not int or value < minimum:
-        raise SchedulerError(f"{name} must be an integer >= {minimum}")
-    return value
-
-
-def _strict_bool(name: str, value: object) -> bool:
-    if type(value) is not bool:
-        raise SchedulerError(f"{name} must be bool")
-    return value
-
-
-def _text(name: str, value: object) -> str:
-    if type(value) is not str or not value:
-        raise SchedulerError(f"{name} must be a non-empty string")
-    try:
-        value.encode("ascii")
-    except UnicodeEncodeError as exc:
-        raise SchedulerError(f"{name} must be ASCII") from exc
-    return value
-
-
-def _mapping(name: str, value: object) -> Mapping[str, Any]:
-    if type(value) is not dict:
-        raise SchedulerError(f"{name} must be an object")
-    return value
 
 
 @dataclass(frozen=True)
@@ -149,26 +141,6 @@ class Request:
             raise SchedulerError(f"request lacks cost feature: {name}")
         return self.features[name]
 
-
-@dataclass(frozen=True)
-class ResourceProfile:
-    resource_id: str
-    kind: str
-    capacity: int
-    ready: bool
-    identity: str
-
-    @classmethod
-    def from_json(cls, value: object) -> "ResourceProfile":
-        row = _mapping("resource", value)
-        result = cls(
-            resource_id=_text("resource_id", row.get("resource_id")),
-            kind=_text("resource.kind", row.get("kind")),
-            capacity=_strict_int("resource.capacity", row.get("capacity"), 1),
-            ready=_strict_bool("resource.ready", row.get("ready")),
-            identity=_text("resource.identity", row.get("identity")),
-        )
-        return result
 
 
 @dataclass(frozen=True)
@@ -1020,46 +992,8 @@ class ProfileBundle:
         )
 
 
-@dataclass(frozen=True)
-class LeaseDemand:
-    lease_id: str
-    resource_id: str
-    slots: int
-    start_offset_us: int
-    duration_us: int
-    duration_upper_us: int
 
 
-@dataclass(frozen=True)
-class LeasePlan:
-    lease_id: str
-    resource_id: str
-    lanes: tuple[int, ...]
-    start_us: int
-    predicted_end_us: int
-    reserved_until_us: int
-
-
-@dataclass(frozen=True)
-class LeasePreview:
-    start_us: int
-    finish_us: int
-    finish_upper_us: int
-    plans: tuple[LeasePlan, ...]
-    queue_by_resource_us: Mapping[str, int]
-    blocking_resources: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class LeaseRecord:
-    token: str
-    owner_id: str
-    lease_id: str
-    resource_id: str
-    lanes: tuple[int, ...]
-    start_us: int
-    predicted_end_us: int
-    reserved_until_us: int
 
 
 @dataclass(frozen=True)
@@ -1121,139 +1055,31 @@ class MarginalSystemCostContext:
                 f"marginal cost lacks route interference: {route_id}"
             )
         ppm = self.route_cpu_interference_ppm[route_id]
-        upper_ppm = (
-            ppm * (1_000_000 + self.upper_error_ppm) + 999_999
-        ) // 1_000_000
-        lower_ppm = (
-            ppm * (1_000_000 - self.lower_error_ppm)
-        ) // 1_000_000
-        interference_us = (service_us * ppm + 999_999) // 1_000_000
-        interference_lower_us = (
-            service_us * lower_ppm + 999_999
-        ) // 1_000_000
-        interference_upper_us = (
-            service_upper_us * upper_ppm + 999_999
-        ) // 1_000_000
-        route_tail_us = max(0, finish_us - self.critical_path_end_us)
-        route_tail_upper_us = max(
-            0, finish_upper_us - self.critical_path_end_us
-        )
-        critical_path_extension_us = max(
-            interference_us, route_tail_us
-        )
-        critical_path_extension_upper_us = max(
-            interference_upper_us, route_tail_upper_us
-        )
-        causal_tail_us = max(0, route_tail_us - interference_us)
-
-        def energy(power_mw: int, duration_us: int) -> int:
-            return (power_mw * duration_us + 999) // 1000
-
-        phase_interference_uj = energy(
-            self.phase_power_mw, interference_us
-        )
-        causal_tail_uj = energy(
-            self.causal_tail_power_mw, causal_tail_us
-        )
-        gpu_idle_uj = energy(
-            self.gpu_idle_power_mw, causal_tail_us
-        )
-        total_uj = phase_interference_uj + causal_tail_uj + gpu_idle_uj
-        lower_power_ppm = 1_000_000 - self.lower_error_ppm
-        upper_power_ppm = 1_000_000 + self.upper_error_ppm
-        lower_phase_power_mw = (
-            self.phase_power_mw * lower_power_ppm // 1_000_000
-        )
-        lower_tail_power_mw = (
-            (self.causal_tail_power_mw + self.gpu_idle_power_mw)
-            * lower_power_ppm
-            // 1_000_000
-        )
-        upper_phase_power_mw = (
-            self.phase_power_mw * upper_power_ppm + 999_999
-        ) // 1_000_000
-        upper_tail_power_mw = (
-            (self.causal_tail_power_mw + self.gpu_idle_power_mw)
-            * upper_power_ppm
-            + 999_999
-        ) // 1_000_000
-
-        def bounded_energy(
-            phase_power_mw: int,
-            tail_power_mw: int,
-            interference_duration_us: int,
-            route_tail_duration_us: int,
-        ) -> int:
-            return energy(phase_power_mw, interference_duration_us) + energy(
-                tail_power_mw,
-                max(
-                    0,
-                    route_tail_duration_us - interference_duration_us,
-                ),
+        try:
+            result = calculate_marginal_system_cost(
+                critical_path_end_us=self.critical_path_end_us,
+                phase_power_mw=self.phase_power_mw,
+                stranded_idle_power_mw=self.gpu_idle_power_mw,
+                causal_tail_power_mw=self.causal_tail_power_mw,
+                interference_ppm=ppm,
+                lower_error_ppm=self.lower_error_ppm,
+                upper_error_ppm=self.upper_error_ppm,
+                service_us=service_us,
+                service_upper_us=service_upper_us,
+                finish_us=finish_us,
+                finish_upper_us=finish_upper_us,
             )
-
-        lower_candidates = [
-            interference_lower_us,
-            interference_upper_us,
-            min(
-                interference_upper_us,
-                max(interference_lower_us, route_tail_us),
-            ),
-        ]
-        upper_candidates = [
-            interference_lower_us,
-            interference_upper_us,
-            min(
-                interference_upper_us,
-                max(interference_lower_us, route_tail_upper_us),
-            ),
-        ]
-        lower_uj = min(
-            bounded_energy(
-                lower_phase_power_mw,
-                lower_tail_power_mw,
-                duration_us,
-                route_tail_us,
-            )
-            for duration_us in lower_candidates
-        )
-        upper_uj = max(
-            bounded_energy(
-                upper_phase_power_mw,
-                upper_tail_power_mw,
-                duration_us,
-                route_tail_upper_us,
-            )
-            for duration_us in upper_candidates
-        )
-        return {
-            "causal_tail_uj": causal_tail_uj,
-            "causal_tail_us": causal_tail_us,
+        except RuntimeSystemCostError as exc:
+            raise SchedulerError(str(exc)) from exc
+        result["gpu_idle_uj"] = result.pop("stranded_idle_uj")
+        result.update({
             "context_id": self.context_id,
-            "critical_path_end_us": self.critical_path_end_us,
-            "critical_path_extension_us": critical_path_extension_us,
-            "critical_path_extension_upper_us": (
-                critical_path_extension_upper_us
-            ),
-            "gpu_idle_uj": gpu_idle_uj,
-            "interference_us": interference_us,
-            "interference_upper_us": interference_upper_us,
-            "lower_uj": lower_uj,
             "measured": self.measured,
-            "phase_interference_uj": phase_interference_uj,
             "sample_count": self.sample_count,
-            "total_uj": total_uj,
-            "upper_uj": upper_uj,
-        }
+        })
+        return result
 
 
-@dataclass
-class _CalendarReservation:
-    token: str
-    owner_id: str
-    lease_id: str
-    start_us: int
-    end_us: int
 
 
 @dataclass(frozen=True)
@@ -1300,597 +1126,6 @@ class Decision:
     system_finish_upper_us: int | None = None
     marginal_system_cost: Mapping[str, Any] | None = None
 
-
-class ResourceTimeline:
-    def __init__(
-        self,
-        resources: Mapping[str, ResourceProfile],
-        ready_overrides: Mapping[str, bool] | None = None,
-    ) -> None:
-        self._resources = dict(resources)
-        self._ready = {
-            resource_id: resource.ready
-            for resource_id, resource in resources.items()
-        }
-        if ready_overrides is not None:
-            for resource_id, ready in ready_overrides.items():
-                if resource_id not in resources:
-                    raise SchedulerError("readiness override references an unknown resource")
-                self._ready[resource_id] = _strict_bool(
-                    f"readiness override {resource_id}", ready
-                )
-        self._calendar: dict[str, list[list[_CalendarReservation]]] = {
-            resource_id: [[] for _ in range(resource.capacity)]
-            for resource_id, resource in resources.items()
-        }
-        self._tokens: dict[str, list[_CalendarReservation]] = {}
-        self._next_token = 1
-
-    def require_compatible(
-        self, resources: Mapping[str, ResourceProfile]
-    ) -> None:
-        for resource_id, resource in resources.items():
-            current = self._resources.get(resource_id)
-            if current is None:
-                raise SchedulerError(
-                    f"shared timeline lacks resource: {resource_id}"
-                )
-            if current != resource:
-                raise SchedulerError(
-                    f"shared timeline resource differs: {resource_id}"
-                )
-
-    @staticmethod
-    def _overlaps(
-        start_us: int,
-        end_us: int,
-        reservation: _CalendarReservation,
-    ) -> bool:
-        return (
-            reservation.start_us < reservation.end_us
-            and start_us < reservation.end_us
-            and reservation.start_us < end_us
-        )
-
-    def _lane_is_free(
-        self,
-        resource_id: str,
-        lane: int,
-        start_us: int,
-        end_us: int,
-        tentative: Mapping[int, Sequence[tuple[int, int]]],
-    ) -> bool:
-        if any(
-            self._overlaps(start_us, end_us, reservation)
-            for reservation in self._calendar[resource_id][lane]
-        ):
-            return False
-        return not any(
-            start_us < other_end and other_start < end_us
-            for other_start, other_end in tentative.get(lane, ())
-        )
-
-    def _validate_internal_capacity(
-        self,
-        resource_id: str,
-        demands: Sequence[LeaseDemand],
-    ) -> None:
-        capacity = self._resources[resource_id].capacity
-        events: list[tuple[int, int]] = []
-        for demand in demands:
-            if demand.slots > capacity:
-                raise SchedulerError("resource lease exceeds resource capacity")
-            events.append((demand.start_offset_us, demand.slots))
-            events.append(
-                (
-                    demand.start_offset_us + demand.duration_upper_us,
-                    -demand.slots,
-                )
-            )
-        active = 0
-        for _, delta in sorted(events, key=lambda event: (event[0], event[1])):
-            active += delta
-            if active > capacity:
-                raise SchedulerError(
-                    "route lease concurrency exceeds resource capacity"
-                )
-
-    def _assign_resource_at(
-        self,
-        resource_id: str,
-        demands: Sequence[LeaseDemand],
-        route_start_us: int,
-    ) -> tuple[LeasePlan, ...] | None:
-        capacity = self._resources[resource_id].capacity
-        ordered = sorted(
-            demands,
-            key=lambda demand: (
-                demand.start_offset_us,
-                -demand.duration_upper_us,
-                demand.lease_id,
-            ),
-        )
-        tentative: dict[int, list[tuple[int, int]]] = {
-            lane: [] for lane in range(capacity)
-        }
-        plans: list[LeasePlan] = []
-        attempts = 0
-
-        def assign(index: int) -> bool:
-            nonlocal attempts
-            if index == len(ordered):
-                return True
-            demand = ordered[index]
-            start_us = route_start_us + demand.start_offset_us
-            reserved_until_us = start_us + demand.duration_upper_us
-            for lanes in itertools.combinations(range(capacity), demand.slots):
-                attempts += 1
-                if attempts > 100_000:
-                    raise SchedulerError("resource lease assignment search limit")
-                if not all(
-                    self._lane_is_free(
-                        resource_id,
-                        lane,
-                        start_us,
-                        reserved_until_us,
-                        tentative,
-                    )
-                    for lane in lanes
-                ):
-                    continue
-                for lane in lanes:
-                    tentative[lane].append((start_us, reserved_until_us))
-                plans.append(
-                    LeasePlan(
-                        lease_id=demand.lease_id,
-                        resource_id=resource_id,
-                        lanes=tuple(lanes),
-                        start_us=start_us,
-                        predicted_end_us=start_us + demand.duration_us,
-                        reserved_until_us=reserved_until_us,
-                    )
-                )
-                if assign(index + 1):
-                    return True
-                plans.pop()
-                for lane in lanes:
-                    tentative[lane].pop()
-            return False
-
-        if not assign(0):
-            return None
-        return tuple(sorted(plans, key=lambda plan: (plan.start_us, plan.lease_id)))
-
-    def _next_resource_start(
-        self,
-        resource_id: str,
-        demands: Sequence[LeaseDemand],
-        route_start_us: int,
-    ) -> int:
-        candidates: list[int] = []
-        for demand in demands:
-            start_us = route_start_us + demand.start_offset_us
-            end_us = start_us + demand.duration_upper_us
-            for lane in self._calendar[resource_id]:
-                for reservation in lane:
-                    if self._overlaps(start_us, end_us, reservation):
-                        candidate = reservation.end_us - demand.start_offset_us
-                        if candidate > route_start_us:
-                            candidates.append(candidate)
-        if not candidates:
-            raise SchedulerError("cannot advance resource lease calendar")
-        return min(candidates)
-
-    def _preview_resource(
-        self,
-        resource_id: str,
-        demands: Sequence[LeaseDemand],
-        not_before_us: int,
-    ) -> tuple[int, tuple[LeasePlan, ...]]:
-        self._validate_internal_capacity(resource_id, demands)
-        candidate = not_before_us
-        for _ in range(100_000):
-            plans = self._assign_resource_at(resource_id, demands, candidate)
-            if plans is not None:
-                return candidate, plans
-            candidate = self._next_resource_start(
-                resource_id, demands, candidate
-            )
-        raise SchedulerError("resource queue prediction did not converge")
-
-    def preview_leases(
-        self,
-        demands: Sequence[LeaseDemand],
-        arrival_us: int,
-        service_us: int,
-        service_upper_us: int,
-    ) -> LeasePreview:
-        _strict_int("lease preview arrival_us", arrival_us)
-        _strict_int("lease preview service_us", service_us, 1)
-        _strict_int("lease preview service_upper_us", service_upper_us, service_us)
-        if not demands:
-            raise SchedulerError("lease preview requires at least one lease")
-        grouped: dict[str, list[LeaseDemand]] = {}
-        lease_ids: set[str] = set()
-        for demand in demands:
-            if demand.lease_id in lease_ids:
-                raise SchedulerError("duplicate predicted resource lease id")
-            lease_ids.add(demand.lease_id)
-            resource = self._resources.get(demand.resource_id)
-            if resource is None:
-                raise SchedulerError("resource lease references an unknown resource")
-            if not self._ready[demand.resource_id]:
-                raise SchedulerError(f"resource is not ready: {demand.resource_id}")
-            _strict_int("predicted lease slots", demand.slots, 1)
-            _strict_int("predicted lease start offset", demand.start_offset_us)
-            _strict_int("predicted lease duration", demand.duration_us, 1)
-            _strict_int(
-                "predicted lease upper duration",
-                demand.duration_upper_us,
-                demand.duration_us,
-            )
-            grouped.setdefault(demand.resource_id, []).append(demand)
-
-        route_start_us = arrival_us
-        blockers: dict[str, int] = {}
-        final_plans: tuple[LeasePlan, ...] = ()
-        for _ in range(100_000):
-            plans: list[LeasePlan] = []
-            moved = False
-            for resource_id in sorted(grouped):
-                ready_start_us, resource_plans = self._preview_resource(
-                    resource_id,
-                    grouped[resource_id],
-                    route_start_us,
-                )
-                if ready_start_us > route_start_us:
-                    route_start_us = ready_start_us
-                    blockers[resource_id] = max(
-                        blockers.get(resource_id, 0),
-                        route_start_us - arrival_us,
-                    )
-                    moved = True
-                    break
-                plans.extend(resource_plans)
-            if not moved:
-                final_plans = tuple(
-                    sorted(
-                        plans,
-                        key=lambda plan: (
-                            plan.start_us,
-                            plan.resource_id,
-                            plan.lease_id,
-                        ),
-                    )
-                )
-                break
-        else:
-            raise SchedulerError("cross-resource queue prediction did not converge")
-
-        queue_by_resource = {
-            resource_id: blockers.get(resource_id, 0)
-            for resource_id in sorted(grouped)
-        }
-        return LeasePreview(
-            start_us=route_start_us,
-            finish_us=route_start_us + service_us,
-            finish_upper_us=route_start_us + service_upper_us,
-            plans=final_plans,
-            queue_by_resource_us=queue_by_resource,
-            blocking_resources=tuple(
-                resource_id
-                for resource_id, delay in queue_by_resource.items()
-                if delay > 0
-            ),
-        )
-
-    def preview(
-        self, resource_slots: Mapping[str, int], arrival_us: int, duration_us: int
-    ) -> tuple[int, int, Mapping[str, tuple[int, ...]]]:
-        demands = tuple(
-            LeaseDemand(
-                lease_id=f"{resource_id}-legacy",
-                resource_id=resource_id,
-                slots=count,
-                start_offset_us=0,
-                duration_us=duration_us,
-                duration_upper_us=duration_us,
-            )
-            for resource_id, count in sorted(resource_slots.items())
-        )
-        result = self.preview_leases(
-            demands,
-            arrival_us,
-            duration_us,
-            duration_us,
-        )
-        selected = {
-            plan.resource_id: plan.lanes
-            for plan in result.plans
-        }
-        return result.start_us, result.finish_us, selected
-
-    def commit(
-        self, selected: Mapping[str, tuple[int, ...]], finish_us: int
-    ) -> None:
-        _strict_int("legacy resource finish_us", finish_us)
-        for resource_id, lanes in selected.items():
-            for lane in lanes:
-                if self._calendar[resource_id][lane]:
-                    raise SchedulerError(
-                        "legacy commit cannot follow interval reservations"
-                    )
-                self._calendar[resource_id][lane].append(
-                    _CalendarReservation(
-                        token=f"legacy:{resource_id}:{lane}",
-                        owner_id="legacy",
-                        lease_id=f"{resource_id}-legacy",
-                        start_us=0,
-                        end_us=finish_us,
-                    )
-                )
-
-    def commit_leases(
-        self,
-        preview: LeasePreview,
-        owner_id: str,
-    ) -> tuple[LeaseRecord, ...]:
-        _text("lease owner_id", owner_id)
-        records: list[LeaseRecord] = []
-        for plan in preview.plans:
-            for lane in plan.lanes:
-                if any(
-                    self._overlaps(
-                        plan.start_us,
-                        plan.reserved_until_us,
-                        reservation,
-                    )
-                    for reservation in self._calendar[plan.resource_id][lane]
-                ):
-                    raise SchedulerError("resource lease changed before commit")
-
-        for plan in preview.plans:
-            token = f"lease-{self._next_token}"
-            self._next_token += 1
-            reservations: list[_CalendarReservation] = []
-            for lane in plan.lanes:
-                reservation = _CalendarReservation(
-                    token=token,
-                    owner_id=owner_id,
-                    lease_id=plan.lease_id,
-                    start_us=plan.start_us,
-                    end_us=plan.reserved_until_us,
-                )
-                self._calendar[plan.resource_id][lane].append(reservation)
-                self._calendar[plan.resource_id][lane].sort(
-                    key=lambda row: (row.start_us, row.end_us, row.token)
-                )
-                reservations.append(reservation)
-            self._tokens[token] = reservations
-            records.append(
-                LeaseRecord(
-                    token=token,
-                    owner_id=owner_id,
-                    lease_id=plan.lease_id,
-                    resource_id=plan.resource_id,
-                    lanes=plan.lanes,
-                    start_us=plan.start_us,
-                    predicted_end_us=plan.predicted_end_us,
-                    reserved_until_us=plan.reserved_until_us,
-                )
-            )
-        return tuple(records)
-
-    def release(self, token: str, actual_end_us: int) -> None:
-        token = _text("lease token", token)
-        reservations = self._tokens.get(token)
-        if reservations is None:
-            raise SchedulerError("unknown lease token")
-        _strict_int("lease actual_end_us", actual_end_us)
-        if any(
-            actual_end_us < reservation.start_us
-            or actual_end_us > reservation.end_us
-            for reservation in reservations
-        ):
-            raise SchedulerError("actual lease completion is outside reservation")
-        for reservation in reservations:
-            reservation.end_us = actual_end_us
-
-    def extend(self, token: str, reserved_until_us: int) -> int:
-        token = _text("lease token", token)
-        reservations = self._tokens.get(token)
-        if reservations is None:
-            raise SchedulerError("unknown lease token")
-        _strict_int("lease reserved_until_us", reserved_until_us)
-        current_end_us = reservations[0].end_us
-        if any(
-            reservation.end_us != current_end_us
-            for reservation in reservations
-        ):
-            raise SchedulerError("lease token has inconsistent lane ends")
-        if reserved_until_us < current_end_us:
-            raise SchedulerError("lease extension cannot shorten a reservation")
-        if reserved_until_us == current_end_us:
-            return current_end_us
-
-        owned = {id(reservation) for reservation in reservations}
-        for lanes in self._calendar.values():
-            for lane in lanes:
-                for reservation in lane:
-                    if id(reservation) not in owned:
-                        continue
-                    if any(
-                        other.token != token
-                        and self._overlaps(
-                            reservation.start_us,
-                            reserved_until_us,
-                            other,
-                        )
-                        for other in lane
-                    ):
-                        raise SchedulerError(
-                            "lease extension overlaps committed work"
-                        )
-        for reservation in reservations:
-            reservation.end_us = reserved_until_us
-        return current_end_us
-
-    def cancel_owner(self, owner_id: str, at_us: int) -> tuple[str, ...]:
-        owner_id = _text("cancelled lease owner_id", owner_id)
-        _strict_int("lease cancellation at_us", at_us)
-        cancelled: list[str] = []
-        for token, reservations in sorted(self._tokens.items()):
-            if not reservations or reservations[0].owner_id != owner_id:
-                continue
-            changed = False
-            for reservation in reservations:
-                if reservation.end_us <= at_us:
-                    continue
-                reservation.end_us = max(reservation.start_us, at_us)
-                changed = True
-            if changed:
-                cancelled.append(token)
-        return tuple(cancelled)
-
-    def revoke_resource(
-        self,
-        resource_id: str,
-        at_us: int,
-    ) -> tuple[str, ...]:
-        resource_id = _text("revoked resource_id", resource_id)
-        if resource_id not in self._resources:
-            raise SchedulerError("cannot revoke an unknown resource")
-        _strict_int("resource revocation at_us", at_us)
-        self._ready[resource_id] = False
-        affected: set[str] = set()
-        for lane in self._calendar[resource_id]:
-            for reservation in lane:
-                if reservation.end_us <= at_us:
-                    continue
-                if reservation.owner_id != "legacy":
-                    affected.add(reservation.owner_id)
-                reservation.end_us = max(reservation.start_us, at_us)
-        return tuple(sorted(affected))
-
-    def restore_resource(self, resource_id: str) -> None:
-        resource_id = _text("restored resource_id", resource_id)
-        if resource_id not in self._resources:
-            raise SchedulerError("cannot restore an unknown resource")
-        self._ready[resource_id] = True
-
-    def is_ready(self, resource_id: str) -> bool:
-        resource_id = _text("queried resource_id", resource_id)
-        if resource_id not in self._resources:
-            raise SchedulerError("cannot query an unknown resource")
-        return self._ready[resource_id]
-
-    def next_available_us(
-        self,
-        resource_id: str,
-        not_before_us: int,
-        duration_us: int = 1,
-        slots: int = 1,
-    ) -> int | None:
-        resource_id = _text("queried resource_id", resource_id)
-        resource = self._resources.get(resource_id)
-        if resource is None:
-            raise SchedulerError("cannot query an unknown resource")
-        _strict_int("resource availability not_before_us", not_before_us)
-        _strict_int("resource availability duration_us", duration_us, 1)
-        _strict_int("resource availability slots", slots, 1)
-        if slots > resource.capacity:
-            raise SchedulerError("resource availability exceeds capacity")
-        if not self._ready[resource_id]:
-            return None
-        demand = LeaseDemand(
-            lease_id=f"{resource_id}-availability-query",
-            resource_id=resource_id,
-            slots=slots,
-            start_offset_us=0,
-            duration_us=duration_us,
-            duration_upper_us=duration_us,
-        )
-        start_us, _ = self._preview_resource(
-            resource_id, (demand,), not_before_us
-        )
-        return start_us
-
-    def resource_snapshot(
-        self, at_us: int
-    ) -> Mapping[str, Mapping[str, object]]:
-        _strict_int("resource snapshot at_us", at_us)
-        result: dict[str, Mapping[str, object]] = {}
-        for resource_id, resource in sorted(self._resources.items()):
-            reservations = [
-                reservation
-                for lane in self._calendar[resource_id]
-                for reservation in lane
-                if reservation.end_us > at_us
-            ]
-            active = [
-                reservation
-                for reservation in reservations
-                if reservation.start_us <= at_us < reservation.end_us
-            ]
-            free_slots = sum(
-                not any(
-                    reservation.start_us <= at_us < reservation.end_us
-                    for reservation in lane
-                )
-                for lane in self._calendar[resource_id]
-            )
-            result[resource_id] = {
-                "ready": self._ready[resource_id],
-                "capacity": resource.capacity,
-                "free_slots": free_slots if self._ready[resource_id] else 0,
-                "next_free_us": self.next_available_us(resource_id, at_us),
-                "active_until_us": max(
-                    (reservation.end_us for reservation in active),
-                    default=at_us,
-                ),
-                "reserved_until_us": max(
-                    (reservation.end_us for reservation in reservations),
-                    default=at_us,
-                ),
-                "active_owners": sorted({
-                    reservation.owner_id for reservation in active
-                }),
-                "queued_owners": sorted({
-                    reservation.owner_id
-                    for reservation in reservations
-                    if reservation.start_us > at_us
-                }),
-            }
-        return result
-
-    def causal_state(self) -> Mapping[str, object]:
-        """Return the complete state that can affect a future lease commit."""
-        return {
-            "next_token": self._next_token,
-            "resources": {
-                resource_id: {
-                    "capacity": resource.capacity,
-                    "lanes": [
-                        [
-                            {
-                                "end_us": reservation.end_us,
-                                "lease_id": reservation.lease_id,
-                                "owner_id": reservation.owner_id,
-                                "start_us": reservation.start_us,
-                                "token": reservation.token,
-                            }
-                            for reservation in lane
-                        ]
-                        for lane in self._calendar[resource_id]
-                    ],
-                    "ready": self._ready[resource_id],
-                }
-                for resource_id, resource in sorted(
-                    self._resources.items()
-                )
-            },
-            "schema": "research-scheduler-resource-timeline-state-v1",
-        }
 
 
 class RoutePolicy:
@@ -2023,13 +1258,13 @@ class RoutePolicy:
             return "QUALITY_INSUFFICIENT"
         return None
 
-    def schedule(
+    def _schedule_baseline(
         self,
         request: Request,
-        runtime_now_us: int | None = None,
-        runtime_route_admissions: Mapping[str, str] | None = None,
-        marginal_system_context: MarginalSystemCostContext | None = None,
-    ) -> Decision:
+        runtime_now_us: int | None,
+        runtime_route_admissions: Mapping[str, str] | None,
+        marginal_system_context: MarginalSystemCostContext | None,
+    ) -> tuple[int, list[RouteProfile], RouteProfile, Candidate]:
         request.validate()
         if (
             runtime_now_us is not None
@@ -2070,357 +1305,329 @@ class RoutePolicy:
                 )
         baseline_route = next(route for route in routes if route.baseline)
         if runtime_route_admissions is not None:
-            baseline_admission = runtime_route_admissions.get(
-                baseline_route.route_id
-            )
-            if baseline_admission != "ADMITTED":
+            admission = runtime_route_admissions.get(baseline_route.route_id)
+            if admission != "ADMITTED":
                 raise SchedulerError(
                     "baseline is unusable: "
-                    + (
-                        "RUNTIME_COST_ABSENT"
-                        if baseline_admission is None
-                        else baseline_admission
-                    )
+                    + ("RUNTIME_COST_ABSENT" if admission is None else admission)
                 )
         baseline_gate = self._basic_gate(request, baseline_route)
         if baseline_gate is not None:
             raise SchedulerError(f"baseline is unusable: {baseline_gate}")
-        baseline_runtime_gate = self._runtime_gate(
+        runtime_gate = self._runtime_gate(
             request, baseline_route, runtime_now_us
         )
-        if baseline_runtime_gate is not None and not baseline_runtime_gate.admitted:
+        if runtime_gate is not None and not runtime_gate.admitted:
             raise SchedulerError(
-                f"baseline is unusable: {baseline_runtime_gate.reason}"
+                f"baseline is unusable: {runtime_gate.reason}"
             )
         baseline = self._candidate(
             request,
             baseline_route,
-            baseline_runtime_gate,
+            runtime_gate,
             earliest_start_us,
             marginal_system_context,
         )
+        return earliest_start_us, routes, baseline_route, baseline
 
-        if self.mode == "control":
-            selected = baseline
-            reason = "CONTROL_BASELINE"
-            rejected: list[tuple[str, str]] = []
-        else:
-            admitted: list[Candidate] = []
-            rejected = []
-            for route in routes:
-                if route.baseline:
-                    continue
-                if runtime_route_admissions is not None:
-                    admission = runtime_route_admissions.get(route.route_id)
-                    if admission != "ADMITTED":
-                        rejected.append((
-                            route.route_id,
-                            (
-                                "RUNTIME_COST_ABSENT"
-                                if admission is None else admission
-                            ),
-                        ))
-                        continue
-                gate = self._basic_gate(request, route)
-                if gate is not None:
-                    rejected.append((route.route_id, gate))
-                    continue
-                runtime_gate = self._runtime_gate(
-                    request, route, runtime_now_us
+    def _alternative_candidate(
+        self,
+        request: Request,
+        route: RouteProfile,
+        baseline: Candidate,
+        baseline_route: RouteProfile,
+        earliest_start_us: int,
+        runtime_now_us: int | None,
+        runtime_route_admissions: Mapping[str, str] | None,
+        marginal_system_context: MarginalSystemCostContext | None,
+    ) -> tuple[Candidate | None, str | None]:
+        if runtime_route_admissions is not None:
+            admission = runtime_route_admissions.get(route.route_id)
+            if admission != "ADMITTED":
+                return None, (
+                    "RUNTIME_COST_ABSENT" if admission is None else admission
                 )
-                if runtime_gate is not None and not runtime_gate.admitted:
-                    rejected.append((route.route_id, runtime_gate.reason))
-                    continue
-                try:
-                    candidate = self._candidate(
-                        request,
-                        route,
-                        runtime_gate,
-                        earliest_start_us,
-                        marginal_system_context,
-                    )
-                except SchedulerError as exc:
-                    rejected.append((route.route_id, str(exc)))
-                    continue
-                if route.finish_before_feature is not None:
-                    try:
-                        finish_before_us = request.feature(
-                            route.finish_before_feature
-                        )
-                    except SchedulerError:
-                        rejected.append(
-                            (route.route_id, "FINISH_WINDOW_MISSING")
-                        )
-                        continue
-                    if candidate.finish_upper_us > finish_before_us:
-                        rejected.append(
-                            (route.route_id, "FINISH_WINDOW_EXCEEDED")
-                        )
-                        continue
-                if (
-                    baseline.finish_upper_us <= request.deadline_us
-                    and candidate.finish_upper_us > request.deadline_us
-                ):
-                    rejected.append((route.route_id, "SLO_INFEASIBLE"))
-                    continue
-                if (
-                    baseline.finish_upper_us > request.deadline_us
-                    and candidate.finish_upper_us
-                        > baseline.finish_upper_us
-                ):
-                    rejected.append((
-                        route.route_id,
-                        "SLO_TARDINESS_REGRESSION",
-                    ))
-                    continue
-                baseline_elapsed_upper_us = (
-                    baseline.finish_upper_us - earliest_start_us
-                )
-                candidate_elapsed_upper_us = (
-                    candidate.finish_upper_us - earliest_start_us
-                )
-                limit = (
-                    baseline_elapsed_upper_us
-                    * self.profile.policy.latency_limit_ppm
-                    + 999_999
-                ) // 1_000_000
-                if candidate_elapsed_upper_us > limit:
-                    rejected.append((route.route_id, "LATENCY_LIMIT"))
-                    continue
-                if self.mode in {"enforce", "adaptive"}:
-                    if (
-                        baseline_route.energy.status != "measured"
-                        or route.energy.status != "measured"
-                        or baseline.energy_lower_uj is None
-                        or candidate.energy_upper_uj is None
-                    ):
-                        rejected.append((route.route_id, "ENERGY_NOT_MEASURED"))
-                        continue
-                    if (
-                        baseline_route.energy.boundary_id
-                        != route.energy.boundary_id
-                    ):
-                        rejected.append(
-                            (route.route_id, "ENERGY_BOUNDARY_MISMATCH")
-                        )
-                        continue
-                    if self.mode == "enforce":
-                        threshold = (
-                            baseline.energy_lower_uj
-                            * (1_000_000 - self.profile.policy.energy_saving_ppm)
-                        ) // 1_000_000
-                        if candidate.energy_upper_uj > threshold:
-                            rejected.append((route.route_id, "ENERGY_MARGIN"))
-                            continue
-                    requires_overlap = (
-                        route.granularity != "task"
-                        and len(route.resource_slots) > 1
-                    )
-                    if requires_overlap:
-                        wait_upper = route.overlap.upper_join_wait_ppm()
-                        if route.overlap.status != "measured" or wait_upper is None:
-                            rejected.append((route.route_id, "OVERLAP_NOT_MEASURED"))
-                            continue
-                        if wait_upper > self.profile.policy.max_exposed_join_wait_ppm:
-                            rejected.append((route.route_id, "OVERLAP_LIMIT"))
-                            continue
-                admitted.append(candidate)
-
-            if self.mode == "enforce":
-                ranked = [
-                    item for item in admitted if item.energy_upper_uj is not None
-                ]
-                if ranked:
-                    selected = min(
-                        ranked,
-                        key=lambda candidate: (
-                            candidate.energy_upper_uj,
-                            candidate.finish_us,
-                            candidate.route.route_id,
-                        ),
-                    )
-                    reason = "VERIFIED_ENERGY_SAVING"
-                else:
-                    selected = baseline
-                    reason = "FAIL_CLOSED_BASELINE"
-            elif self.mode == "adaptive":
-                if not admitted:
-                    selected = baseline
-                    reason = "ADAPTIVE_NO_QUALIFIED_ALTERNATIVE"
-                elif (
-                    self.profile.policy.offload_requires_baseline_queue
-                    and baseline.start_us == earliest_start_us
-                ):
-                    rejected.extend(
-                        (candidate.route.route_id, "BASELINE_NOT_QUEUED")
-                        for candidate in admitted
-                    )
-                    selected = baseline
-                    reason = "ADAPTIVE_BASELINE_AVAILABLE"
-                else:
-                    if self.profile.policy.offload_requires_baseline_queue:
-                        minimum = (
-                            self.profile.policy.offload_min_finish_saving_us
-                        )
-                        slower = [
-                            candidate
-                            for candidate in admitted
-                            if candidate.finish_upper_us + minimum
-                            > baseline.finish_upper_us
-                        ]
-                        rejected.extend(
-                            (candidate.route.route_id, "NO_FINISH_SAVING")
-                            for candidate in slower
-                        )
-                        admitted = [
-                            candidate
-                            for candidate in admitted
-                            if candidate.finish_upper_us + minimum
-                            <= baseline.finish_upper_us
-                        ]
-                    if not admitted:
-                        selected = baseline
-                        reason = "ADAPTIVE_NO_SYSTEM_BENEFIT"
-                        feasible = []
-                    else:
-                        feasible = [
-                            candidate
-                            for candidate in admitted
-                            if candidate.finish_upper_us <= request.deadline_us
-                        ]
-                    baseline_feasible = (
-                        baseline.finish_upper_us <= request.deadline_us
-                    )
-                    if admitted and baseline_feasible:
-                        threshold = (
-                            baseline.energy_lower_uj
-                            * (
-                                1_000_000
-                                - self.profile.policy.energy_saving_ppm
-                            )
-                        ) // 1_000_000
-                        saving = [
-                            candidate
-                            for candidate in feasible
-                            if candidate.energy_upper_uj is not None
-                            and candidate.energy_upper_uj <= threshold
-                        ]
-                        if saving:
-                            selected = min(
-                                saving,
-                                key=lambda candidate: (
-                                    candidate.energy_upper_uj,
-                                    candidate.finish_upper_us,
-                                    candidate.route.route_id,
-                                ),
-                            )
-                            reason = "ADAPTIVE_ENERGY_SAVING"
-                        else:
-                            selected = baseline
-                            reason = "ADAPTIVE_BASELINE_FEASIBLE"
-                    elif admitted and feasible:
-                        selected = min(
-                            feasible,
-                            key=lambda candidate: (
-                                candidate.energy_upper_uj,
-                                candidate.finish_upper_us,
-                                candidate.route.route_id,
-                            ),
-                        )
-                        reason = "ADAPTIVE_DEADLINE_RECOVERY"
-                    elif admitted:
-                        minimum = (
-                            self.profile.policy.offload_min_finish_saving_us
-                        )
-                        faster = [
-                            candidate
-                            for candidate in admitted
-                            if candidate.finish_upper_us + minimum
-                            <= baseline.finish_upper_us
-                        ]
-                        if faster:
-                            selected = min(
-                                faster,
-                                key=lambda candidate: (
-                                    candidate.finish_upper_us,
-                                    candidate.energy_upper_uj,
-                                    candidate.route.route_id,
-                                ),
-                            )
-                            reason = "ADAPTIVE_TARDINESS_REDUCTION"
-                        else:
-                            selected = baseline
-                            reason = "ADAPTIVE_NO_SYSTEM_BENEFIT"
-            elif self.mode == "capacity":
-                choices = [baseline, *admitted]
-                selected = min(
-                    choices,
-                    key=lambda candidate: (
-                        candidate.server_busy_us,
-                        candidate.route.server_memory_bytes,
-                        candidate.finish_us,
-                        candidate.route.route_id,
-                    ),
-                )
-                reason = (
-                    "MINIMUM_SERVER_CAPACITY_COST"
-                    if not selected.route.baseline
-                    else "CAPACITY_BASELINE"
-                )
-            else:
-                choices = [baseline, *admitted]
-                selected = min(
-                    choices,
-                    key=lambda candidate: (
-                        candidate.finish_us,
-                        candidate.service_us,
-                        candidate.route.route_id,
-                    ),
-                )
-                reason = (
-                    "SHADOW_FASTEST_QUALIFIED"
-                    if not selected.route.baseline
-                    else "SHADOW_BASELINE"
-                )
-
-        if selected.runtime_gate is not None:
-            final_gate = self._runtime_gate(
+        gate = self._basic_gate(request, route)
+        if gate is not None:
+            return None, gate
+        runtime_gate = self._runtime_gate(request, route, runtime_now_us)
+        if runtime_gate is not None and not runtime_gate.admitted:
+            return None, runtime_gate.reason
+        try:
+            candidate = self._candidate(
                 request,
-                selected.route,
-                runtime_now_us,
+                route,
+                runtime_gate,
+                earliest_start_us,
+                marginal_system_context,
             )
-            if final_gate is None or not final_gate.admitted:
-                if selected.route.baseline:
-                    reason_code = (
-                        "RUNTIME_GATE_DISAPPEARED"
-                        if final_gate is None
-                        else final_gate.reason
-                    )
-                    raise SchedulerError(
-                        f"baseline failed atomic runtime gate: {reason_code}"
-                    )
-                rejected.append((selected.route.route_id, "ATOMIC_RUNTIME_REVOKED"))
-                fallback_gate = self._runtime_gate(
-                    request,
-                    baseline_route,
-                    runtime_now_us,
-                )
-                if fallback_gate is not None and not fallback_gate.admitted:
-                    raise SchedulerError(
-                        f"fallback baseline is unusable: {fallback_gate.reason}"
-                    )
-                selected = self._candidate(
-                    request,
-                    baseline_route,
-                    fallback_gate,
-                    earliest_start_us,
-                    marginal_system_context,
-                )
-                reason = "ATOMIC_RUNTIME_FALLBACK"
+        except SchedulerError as exc:
+            return None, str(exc)
+        if route.finish_before_feature is not None:
+            try:
+                finish_before_us = request.feature(route.finish_before_feature)
+            except SchedulerError:
+                return None, "FINISH_WINDOW_MISSING"
+            if candidate.finish_upper_us > finish_before_us:
+                return None, "FINISH_WINDOW_EXCEEDED"
+        if (
+            baseline.finish_upper_us <= request.deadline_us
+            and candidate.finish_upper_us > request.deadline_us
+        ):
+            return None, "SLO_INFEASIBLE"
+        if (
+            baseline.finish_upper_us > request.deadline_us
+            and candidate.finish_upper_us > baseline.finish_upper_us
+        ):
+            return None, "SLO_TARDINESS_REGRESSION"
+        baseline_elapsed = baseline.finish_upper_us - earliest_start_us
+        candidate_elapsed = candidate.finish_upper_us - earliest_start_us
+        limit = (
+            baseline_elapsed * self.profile.policy.latency_limit_ppm + 999_999
+        ) // 1_000_000
+        if candidate_elapsed > limit:
+            return None, "LATENCY_LIMIT"
+        reason = self._alternative_energy_rejection(
+            route, baseline, baseline_route, candidate
+        )
+        return (candidate, None) if reason is None else (None, reason)
 
+    def _alternative_energy_rejection(
+        self,
+        route: RouteProfile,
+        baseline: Candidate,
+        baseline_route: RouteProfile,
+        candidate: Candidate,
+    ) -> str | None:
+        if self.mode not in {"enforce", "adaptive"}:
+            return None
+        if (
+            baseline_route.energy.status != "measured"
+            or route.energy.status != "measured"
+            or baseline.energy_lower_uj is None
+            or candidate.energy_upper_uj is None
+        ):
+            return "ENERGY_NOT_MEASURED"
+        if baseline_route.energy.boundary_id != route.energy.boundary_id:
+            return "ENERGY_BOUNDARY_MISMATCH"
+        if self.mode == "enforce":
+            threshold = (
+                baseline.energy_lower_uj
+                * (1_000_000 - self.profile.policy.energy_saving_ppm)
+            ) // 1_000_000
+            if candidate.energy_upper_uj > threshold:
+                return "ENERGY_MARGIN"
+        requires_overlap = (
+            route.granularity != "task" and len(route.resource_slots) > 1
+        )
+        if requires_overlap:
+            wait_upper = route.overlap.upper_join_wait_ppm()
+            if route.overlap.status != "measured" or wait_upper is None:
+                return "OVERLAP_NOT_MEASURED"
+            if wait_upper > self.profile.policy.max_exposed_join_wait_ppm:
+                return "OVERLAP_LIMIT"
+        return None
+
+    def _admitted_alternatives(
+        self,
+        request: Request,
+        routes: Sequence[RouteProfile],
+        baseline: Candidate,
+        baseline_route: RouteProfile,
+        earliest_start_us: int,
+        runtime_now_us: int | None,
+        runtime_route_admissions: Mapping[str, str] | None,
+        marginal_system_context: MarginalSystemCostContext | None,
+    ) -> tuple[list[Candidate], list[tuple[str, str]]]:
+        admitted = []
+        rejected = []
+        for route in routes:
+            if route.baseline:
+                continue
+            candidate, reason = self._alternative_candidate(
+                request,
+                route,
+                baseline,
+                baseline_route,
+                earliest_start_us,
+                runtime_now_us,
+                runtime_route_admissions,
+                marginal_system_context,
+            )
+            if candidate is None:
+                assert reason is not None
+                rejected.append((route.route_id, reason))
+            else:
+                admitted.append(candidate)
+        return admitted, rejected
+
+    def _select_adaptive_candidate(
+        self,
+        request: Request,
+        baseline: Candidate,
+        earliest_start_us: int,
+        admitted: list[Candidate],
+        rejected: list[tuple[str, str]],
+    ) -> tuple[Candidate, str]:
+        if not admitted:
+            return baseline, "ADAPTIVE_NO_QUALIFIED_ALTERNATIVE"
+        if (
+            self.profile.policy.offload_requires_baseline_queue
+            and baseline.start_us == earliest_start_us
+        ):
+            rejected.extend(
+                (candidate.route.route_id, "BASELINE_NOT_QUEUED")
+                for candidate in admitted
+            )
+            return baseline, "ADAPTIVE_BASELINE_AVAILABLE"
+        if self.profile.policy.offload_requires_baseline_queue:
+            minimum = self.profile.policy.offload_min_finish_saving_us
+            slower = [
+                candidate for candidate in admitted
+                if candidate.finish_upper_us + minimum > baseline.finish_upper_us
+            ]
+            rejected.extend(
+                (candidate.route.route_id, "NO_FINISH_SAVING")
+                for candidate in slower
+            )
+            admitted = [
+                candidate for candidate in admitted
+                if candidate.finish_upper_us + minimum <= baseline.finish_upper_us
+            ]
+        if not admitted:
+            return baseline, "ADAPTIVE_NO_SYSTEM_BENEFIT"
+        feasible = [
+            candidate for candidate in admitted
+            if candidate.finish_upper_us <= request.deadline_us
+        ]
+        baseline_feasible = baseline.finish_upper_us <= request.deadline_us
+        if baseline_feasible:
+            threshold = (
+                baseline.energy_lower_uj
+                * (1_000_000 - self.profile.policy.energy_saving_ppm)
+            ) // 1_000_000
+            saving = [
+                candidate for candidate in feasible
+                if candidate.energy_upper_uj is not None
+                and candidate.energy_upper_uj <= threshold
+            ]
+            if saving:
+                return min(saving, key=lambda row: (
+                    row.energy_upper_uj,
+                    row.finish_upper_us,
+                    row.route.route_id,
+                )), "ADAPTIVE_ENERGY_SAVING"
+            return baseline, "ADAPTIVE_BASELINE_FEASIBLE"
+        if feasible:
+            return min(feasible, key=lambda row: (
+                row.energy_upper_uj,
+                row.finish_upper_us,
+                row.route.route_id,
+            )), "ADAPTIVE_DEADLINE_RECOVERY"
+        minimum = self.profile.policy.offload_min_finish_saving_us
+        faster = [
+            candidate for candidate in admitted
+            if candidate.finish_upper_us + minimum <= baseline.finish_upper_us
+        ]
+        if faster:
+            return min(faster, key=lambda row: (
+                row.finish_upper_us,
+                row.energy_upper_uj,
+                row.route.route_id,
+            )), "ADAPTIVE_TARDINESS_REDUCTION"
+        return baseline, "ADAPTIVE_NO_SYSTEM_BENEFIT"
+
+    def _select_scheduled_candidate(
+        self,
+        request: Request,
+        baseline: Candidate,
+        earliest_start_us: int,
+        admitted: list[Candidate],
+        rejected: list[tuple[str, str]],
+    ) -> tuple[Candidate, str]:
+        if self.mode == "enforce":
+            ranked = [row for row in admitted if row.energy_upper_uj is not None]
+            if ranked:
+                return min(ranked, key=lambda row: (
+                    row.energy_upper_uj, row.finish_us, row.route.route_id
+                )), "VERIFIED_ENERGY_SAVING"
+            return baseline, "FAIL_CLOSED_BASELINE"
+        if self.mode == "adaptive":
+            return self._select_adaptive_candidate(
+                request, baseline, earliest_start_us, admitted, rejected
+            )
+        if self.mode == "capacity":
+            selected = min([baseline, *admitted], key=lambda row: (
+                row.server_busy_us,
+                row.route.server_memory_bytes,
+                row.finish_us,
+                row.route.route_id,
+            ))
+            reason = (
+                "MINIMUM_SERVER_CAPACITY_COST"
+                if not selected.route.baseline else "CAPACITY_BASELINE"
+            )
+            return selected, reason
+        selected = min([baseline, *admitted], key=lambda row: (
+            row.finish_us, row.service_us, row.route.route_id
+        ))
+        reason = (
+            "SHADOW_FASTEST_QUALIFIED"
+            if not selected.route.baseline else "SHADOW_BASELINE"
+        )
+        return selected, reason
+
+    def _atomic_runtime_selection(
+        self,
+        request: Request,
+        selected: Candidate,
+        reason: str,
+        baseline_route: RouteProfile,
+        earliest_start_us: int,
+        runtime_now_us: int | None,
+        marginal_system_context: MarginalSystemCostContext | None,
+        rejected: list[tuple[str, str]],
+    ) -> tuple[Candidate, str]:
+        if selected.runtime_gate is None:
+            return selected, reason
+        final_gate = self._runtime_gate(
+            request, selected.route, runtime_now_us
+        )
+        if final_gate is not None and final_gate.admitted:
+            return selected, reason
+        if selected.route.baseline:
+            reason_code = (
+                "RUNTIME_GATE_DISAPPEARED"
+                if final_gate is None else final_gate.reason
+            )
+            raise SchedulerError(
+                f"baseline failed atomic runtime gate: {reason_code}"
+            )
+        rejected.append((selected.route.route_id, "ATOMIC_RUNTIME_REVOKED"))
+        fallback_gate = self._runtime_gate(
+            request, baseline_route, runtime_now_us
+        )
+        if fallback_gate is not None and not fallback_gate.admitted:
+            raise SchedulerError(
+                f"fallback baseline is unusable: {fallback_gate.reason}"
+            )
+        return self._candidate(
+            request,
+            baseline_route,
+            fallback_gate,
+            earliest_start_us,
+            marginal_system_context,
+        ), "ATOMIC_RUNTIME_FALLBACK"
+
+    def _commit_schedule_decision(
+        self,
+        request: Request,
+        selected: Candidate,
+        reason: str,
+        rejected: Sequence[tuple[str, str]],
+    ) -> Decision:
         leases = self.timeline.commit_leases(
-            selected.lease_preview,
-            request.request_id,
+            selected.lease_preview, request.request_id
         )
         return Decision(
             request_id=request.request_id,
@@ -2445,6 +1652,60 @@ class RoutePolicy:
             rejected=tuple(sorted(rejected)),
             system_finish_upper_us=selected.system_finish_upper_us,
             marginal_system_cost=selected.marginal_system_cost,
+        )
+
+    def schedule(
+        self,
+        request: Request,
+        runtime_now_us: int | None = None,
+        runtime_route_admissions: Mapping[str, str] | None = None,
+        marginal_system_context: MarginalSystemCostContext | None = None,
+    ) -> Decision:
+        (
+            earliest_start_us,
+            routes,
+            baseline_route,
+            baseline,
+        ) = self._schedule_baseline(
+            request,
+            runtime_now_us,
+            runtime_route_admissions,
+            marginal_system_context,
+        )
+        if self.mode == "control":
+            selected = baseline
+            reason = "CONTROL_BASELINE"
+            rejected: list[tuple[str, str]] = []
+        else:
+            admitted, rejected = self._admitted_alternatives(
+                request,
+                routes,
+                baseline,
+                baseline_route,
+                earliest_start_us,
+                runtime_now_us,
+                runtime_route_admissions,
+                marginal_system_context,
+            )
+            selected, reason = self._select_scheduled_candidate(
+                request,
+                baseline,
+                earliest_start_us,
+                admitted,
+                rejected,
+            )
+        selected, reason = self._atomic_runtime_selection(
+            request,
+            selected,
+            reason,
+            baseline_route,
+            earliest_start_us,
+            runtime_now_us,
+            marginal_system_context,
+            rejected,
+        )
+        return self._commit_schedule_decision(
+            request, selected, reason, rejected
         )
 
 
@@ -2492,8 +1753,16 @@ def decision_to_json(decision: Decision) -> dict[str, object]:
         ),
         "energy_uj": decision.energy_uj,
         "energy_upper_uj": decision.energy_upper_uj,
-        "energy_breakdown": decision.energy_breakdown,
-        "marginal_system_cost": decision.marginal_system_cost,
+        "energy_breakdown": (
+            None
+            if decision.energy_breakdown is None
+            else dict(decision.energy_breakdown)
+        ),
+        "marginal_system_cost": (
+            None
+            if decision.marginal_system_cost is None
+            else dict(decision.marginal_system_cost)
+        ),
         "server_busy_us": decision.server_busy_us,
         "reason": decision.reason,
         "rejected": [

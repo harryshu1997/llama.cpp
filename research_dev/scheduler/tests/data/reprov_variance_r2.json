@@ -1,0 +1,284 @@
+{
+ "dormant_batch_plan": {
+  "r1": {
+   "001": {
+    "ffn_resident_columns": 17408,
+    "ffn_resident_layer_mask": 16777215,
+    "usb_batch_plan": "coalesced-batch"
+   },
+   "004": {
+    "ffn_resident_columns": 17408,
+    "ffn_resident_layer_mask": 16777215,
+    "usb_batch_plan": "coalesced-batch"
+   },
+   "011": {
+    "ffn_resident_columns": 17408,
+    "ffn_resident_layer_mask": 16777215,
+    "usb_batch_plan": "coalesced-batch"
+   }
+  },
+  "r2": {
+   "001": {
+    "ffn_resident_columns": 17408,
+    "ffn_resident_layer_mask": 16777215,
+    "usb_batch_plan": "coalesced-batch"
+   },
+   "004": {
+    "ffn_resident_columns": 17408,
+    "ffn_resident_layer_mask": 16777215,
+    "usb_batch_plan": "split-row"
+   },
+   "011": {
+    "ffn_resident_columns": 17408,
+    "ffn_resident_layer_mask": 16777215,
+    "usb_batch_plan": "split-row"
+   }
+  }
+ },
+ "qwen_artifact_sha256": "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718",
+ "r2_003_immutable": {
+  "attachment": {
+   "allowed_session_ids": [
+    "HTP0",
+    "HTP1"
+   ],
+   "completed_phone_calls": 1278,
+   "fraction_ppm": 1000000,
+   "phone_session_ids": [
+    "HTP0",
+    "HTP1"
+   ]
+  },
+  "gen5_envelope": {
+   "allowed_fractions_ppm": [
+    0,
+    250000,
+    500000,
+    750000,
+    1000000
+   ],
+   "assisted_layer_mask": 16519167,
+   "maximum_columns": 17408,
+   "phone_layout_generation": 5,
+   "phone_session_ids": [
+    "HTP0",
+    "HTP1"
+   ],
+   "resource_ids": [
+    "context:hot:desktop",
+    "coordinator:hot:desktop",
+    "coordinator:hot:phone-assisted:operator_split",
+    "cuda0",
+    "desktop-cpu",
+    "desktop-usb-root",
+    "link:pcie-d2h-fit",
+    "link:pcie-h2d-fit",
+    "link:pixel-adb-in",
+    "link:pixel-adb-out",
+    "link:usb-d2h-935d6c59eb8277ce",
+    "link:usb-h2d-935d6c59eb8277ce",
+    "op15-functionfs",
+    "op15-htp",
+    "op15-ncm",
+    "pixel-adb",
+    "pixel-cpu"
+   ]
+  },
+  "gen5_shards": [
+   {
+    "artifact_sha256": "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718",
+    "layer_mask": 63,
+    "maximum_columns": 17408,
+    "session_id": "HTP0"
+   },
+   {
+    "artifact_sha256": "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718",
+    "layer_mask": 4032,
+    "maximum_columns": 17408,
+    "session_id": "HTP1"
+   },
+   {
+    "artifact_sha256": "sha256:ed76f2183d2d1d65091986033023e6c78d27f6276c1b0c5826cc92acf73538cf",
+    "layer_mask": 16711680,
+    "maximum_columns": 15360,
+    "session_id": "HTP2"
+   }
+  ],
+  "gen6_envelope_r1": {
+   "allowed_fractions_ppm": [
+    0,
+    250000,
+    500000,
+    750000,
+    1000000
+   ],
+   "assisted_layer_mask": 16777215,
+   "maximum_columns": 17408,
+   "phone_layout_generation": 6,
+   "phone_session_ids": [
+    "HTP0",
+    "HTP1",
+    "HTP2"
+   ],
+   "resource_ids": [
+    "context:hot:desktop",
+    "coordinator:hot:desktop",
+    "coordinator:hot:phone-assisted:operator_split",
+    "cuda0",
+    "desktop-cpu",
+    "desktop-usb-root",
+    "link:pcie-d2h-fit",
+    "link:pcie-h2d-fit",
+    "link:pixel-adb-in",
+    "link:pixel-adb-out",
+    "link:usb-d2h-935d6c59eb8277ce",
+    "link:usb-h2d-935d6c59eb8277ce",
+    "op15-functionfs",
+    "op15-htp",
+    "op15-ncm",
+    "pixel-adb",
+    "pixel-cpu"
+   ]
+  },
+  "gen6_shards": [
+   {
+    "artifact_sha256": "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718",
+    "layer_mask": 63,
+    "maximum_columns": 17408,
+    "session_id": "HTP0"
+   },
+   {
+    "artifact_sha256": "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718",
+    "layer_mask": 4032,
+    "maximum_columns": 17408,
+    "session_id": "HTP1"
+   },
+   {
+    "artifact_sha256": "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718",
+    "layer_mask": 258048,
+    "maximum_columns": 17408,
+    "session_id": "HTP2"
+   }
+  ],
+  "observed_at_us": 536024583,
+  "reason": "request helper envelope identity is immutable"
+ },
+ "r2_gen10_proposal": {
+  "changed_session_ids": [
+   "HTP1"
+  ],
+  "not_ready_rejections": 163,
+  "preparing_replacement_sources": [],
+  "proposed_replacement_sources": [
+   "HTP1"
+  ],
+  "shards": [
+   {
+    "artifact_sha256": "sha256:ed76f2183d2d1d65091986033023e6c78d27f6276c1b0c5826cc92acf73538cf",
+    "layer_mask": 255,
+    "maximum_columns": 15360,
+    "session_id": "HTP0"
+   },
+   {
+    "artifact_sha256": "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718",
+    "layer_mask": 4032,
+    "maximum_columns": 17408,
+    "session_id": "HTP1"
+   },
+   {
+    "artifact_sha256": "sha256:ed76f2183d2d1d65091986033023e6c78d27f6276c1b0c5826cc92acf73538cf",
+    "layer_mask": 16711680,
+    "maximum_columns": 15360,
+    "session_id": "HTP2"
+   }
+  ],
+  "updated_replacement_sources": []
+ },
+ "r2_phase_c_no_opportunity": "ready layout produced no helper opportunity: (('auto:coordinated:physical:hot:phone-assisted:operator_split:750000:sessions:3:geometry:7bf55ae9bb49:ops:8daeb933ec2e:residency:cold', ('COLD_RESIDENCY_BREAK_EVEN', 'ROUTE_NOT_QUALIFIED')),)",
+ "r2_qwen_phase_b_launch": {
+  "candidates": [
+   {
+    "executor_id": "physical:hot:phone-assisted:operator_split",
+    "maturity": "SHADOW",
+    "rejection_reasons": [
+     "COLD_RESIDENCY_BREAK_EVEN",
+     "MARGINAL_SYSTEM_COST_UNKNOWN",
+     "MODEL_EPOCH_AUDIT_ONLY",
+     "PHONE_RESIDENCY_LAYOUT_NOT_SELECTED",
+     "ROUTE_NOT_QUALIFIED",
+     "THERMAL_LIMIT"
+    ],
+    "route_id": "auto:coordinated:physical:hot:phone-assisted:operator_split:750000:geometry:7d49cf437d5b:ops:4fbc11c7c01f:residency:cold"
+   },
+   {
+    "executor_id": "physical:hot:phone-assisted:operator_split",
+    "maturity": "SHADOW",
+    "rejection_reasons": [
+     "COLD_RESIDENCY_BREAK_EVEN",
+     "MARGINAL_SYSTEM_COST_UNKNOWN",
+     "MODEL_EPOCH_AUDIT_ONLY",
+     "PHONE_RESIDENCY_LAYOUT_NOT_SELECTED",
+     "ROUTE_NOT_QUALIFIED",
+     "THERMAL_LIMIT"
+    ],
+    "route_id": "auto:coordinated:physical:hot:phone-assisted:operator_split:750000:sessions:2:geometry:4a8e1575b8b9:ops:089414419462:residency:cold"
+   },
+   {
+    "executor_id": "physical:hot:phone-assisted:operator_split",
+    "maturity": "SHADOW",
+    "rejection_reasons": [
+     "COLD_RESIDENCY_BREAK_EVEN",
+     "MARGINAL_SYSTEM_COST_UNKNOWN",
+     "MODEL_EPOCH_AUDIT_ONLY",
+     "PHONE_RESIDENCY_LAYOUT_NOT_SELECTED",
+     "ROUTE_NOT_QUALIFIED",
+     "THERMAL_LIMIT"
+    ],
+    "route_id": "auto:coordinated:physical:hot:phone-assisted:operator_split:750000:sessions:3:geometry:7bf55ae9bb49:ops:8daeb933ec2e:residency:cold"
+   },
+   {
+    "executor_id": "physical:hot:phone-assisted:operator_split:coalesced-batch",
+    "maturity": "SHADOW",
+    "rejection_reasons": [
+     "COLD_RESIDENCY_BREAK_EVEN",
+     "MARGINAL_SYSTEM_COST_UNKNOWN",
+     "MODEL_EPOCH_AUDIT_ONLY",
+     "PHONE_RESIDENCY_LAYOUT_NOT_SELECTED",
+     "ROUTE_NOT_QUALIFIED",
+     "THERMAL_LIMIT"
+    ],
+    "route_id": "auto:coordinated:physical:hot:phone-assisted:operator_split:coalesced-batch:750000:geometry:7d49cf437d5b:ops:4fbc11c7c01f:residency:cold"
+   },
+   {
+    "executor_id": "physical:hot:phone-assisted:operator_split:coalesced-batch",
+    "maturity": "SHADOW",
+    "rejection_reasons": [
+     "COLD_RESIDENCY_BREAK_EVEN",
+     "MARGINAL_SYSTEM_COST_UNKNOWN",
+     "MODEL_EPOCH_AUDIT_ONLY",
+     "PHONE_RESIDENCY_LAYOUT_NOT_SELECTED",
+     "ROUTE_NOT_QUALIFIED",
+     "THERMAL_LIMIT"
+    ],
+    "route_id": "auto:coordinated:physical:hot:phone-assisted:operator_split:coalesced-batch:750000:sessions:2:geometry:4a8e1575b8b9:ops:089414419462:residency:cold"
+   },
+   {
+    "executor_id": "physical:hot:phone-assisted:operator_split:coalesced-batch",
+    "maturity": "SHADOW",
+    "rejection_reasons": [
+     "COLD_RESIDENCY_BREAK_EVEN",
+     "MARGINAL_SYSTEM_COST_UNKNOWN",
+     "MODEL_EPOCH_AUDIT_ONLY",
+     "PHONE_RESIDENCY_LAYOUT_NOT_SELECTED",
+     "ROUTE_NOT_QUALIFIED",
+     "THERMAL_LIMIT"
+    ],
+    "route_id": "auto:coordinated:physical:hot:phone-assisted:operator_split:coalesced-batch:750000:sessions:3:geometry:7bf55ae9bb49:ops:8daeb933ec2e:residency:cold"
+   }
+  ],
+  "decision_start_us": 1061883086,
+  "desktop_route_id": "auto:coordinated:physical:hot:desktop:residency:cold",
+  "ticket_id": "burstgpt_longtail_eval_v2:004:attempt:5"
+ },
+ "source": "scratchpad/reprov-variance/reprov_r{1,2}.json (OP15+Pixel per-device, longtail_eval_v2)"
+}

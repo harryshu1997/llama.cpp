@@ -23,7 +23,9 @@ fi
 mkdir "$output"
 "$host_cxx" -std=c++17 -O3 -Wall -Wextra -Werror \
     -I"$repo_root/examples/layersplit" \
-    "$here/phone_arbiter_bridge.cpp" "${libusb_flags[@]}" \
+    "$here/phone_arbiter_bridge.cpp" \
+    "$repo_root/examples/layersplit/ffn-split-usb-client.cpp" \
+    "${libusb_flags[@]}" \
     -o "$output/phone_arbiter_bridge-v1"
 "$host_cxx" -std=c++17 -O3 -Wall -Wextra -Werror -pthread \
     -I"$repo_root/examples/layersplit" \

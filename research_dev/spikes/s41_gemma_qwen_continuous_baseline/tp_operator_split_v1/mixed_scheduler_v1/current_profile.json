@@ -1,0 +1,222 @@
+{
+  "hardware": {
+    "cpu_ram_bytes": 32862289920,
+    "gpu": "NVIDIA GeForce RTX 4060 Ti",
+    "gpu_vram_bytes": 17175674880,
+    "phone": "OnePlus 15",
+    "phone_htp_resident_weight_budget_bytes": 3463438336
+  },
+  "models": {
+    "gemma-4-12b-it-q4_0": {
+      "file_bytes": 6975878176,
+      "layers": 48,
+      "sha256": "494518c2262a26e2a607af0e40bca11c4de5a0b108e7c21308906dbbfb1c6f8c"
+    },
+    "gemma-4-12b-it-f16-storage-proxy": {
+      "file_bytes": 23832065056,
+      "layers": 48,
+      "provenance": "F16 storage dequantized from the Q4_0 checkpoint",
+      "sha256": "ed76f2183d2d1d65091986033023e6c78d27f6276c1b0c5826cc92acf73538cf"
+    },
+    "qwen3-14b-q4_k_m": {
+      "file_bytes": 9001752960,
+      "layers": 40,
+      "sha256": "500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0"
+    },
+    "qwen3-14b-f16-storage-proxy": {
+      "file_bytes": 29543423360,
+      "layers": 40,
+      "provenance": "F16 storage dequantized from the Q4_K_M checkpoint",
+      "sha256": "d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718"
+    }
+  },
+  "operator_policies": {
+    "gemma_cpu_op15_gated_ffn": {
+      "backend": "op15_htp_dmabuf",
+      "max_resident_columns": 11136,
+      "m_to_columns": "1:9664,2:8192,4:6144,128:8192,512:11136",
+      "qualified": true,
+      "weight_format": "Q4_0"
+    },
+    "gemma_f16_cuda_cpu_op15_gated_ffn": {
+      "backend": "op15_htp_dmabuf_staged",
+      "eligible_cpu_layers": 23,
+      "layer_mask": "0x7fffff",
+      "max_resident_columns": 6144,
+      "m_to_columns": "1:6144,16:6144,512:0",
+      "phone_resident_weight_mib": 3105.05,
+      "qualified": true,
+      "split_io": "F16",
+      "weight_format": "F16"
+    },
+    "gemma_cuda_phone": {
+      "qualified": false,
+      "reason": "No winning measured CUDA staging route"
+    }
+  },
+  "routes": {
+    "dual_cuda_host_kv": {
+      "cold_46_of_49_loads": true,
+      "cold_46_of_49_runtime_safe": false,
+      "cold_46_of_49_vram_model_buffer_mib": 6276.8,
+      "cold_42_of_49_loads_and_runs": true,
+      "cold_42_of_49_vram_model_buffer_mib": 5786.12,
+      "cold_42_qwen_completed_at_abort": 47,
+      "cold_42_qwen_requests": 57,
+      "cold_42_qwen_server_elapsed_at_abort_s": 301.4,
+      "cold_42_vram_free_mib": 492,
+      "cold_42_qwen_decode_slot_tokens_s_range": [
+        0.88,
+        1.34
+      ],
+      "cold_48_of_49_loads": false,
+      "cold_48_of_49_vram_model_buffer_mib": 6517.39,
+      "full_cold_loads": false,
+      "qwen_free_after_load_mib": 6519,
+      "reason": "Full and 48-layer Gemma fail allocation; 46 layers load but leave too little CUDA runtime reserve; 42 layers run but host-KV stalls violate Qwen QoS"
+    },
+    "dual_cuda_compressed_kv": {
+      "cold_gpu_q8_24_layers": {
+        "cold_observed_output_tokens": 1959,
+        "cold_observed_s": 106.07428503036499,
+        "cold_observed_tokens_s": 18.468189528114316,
+        "gpu_memory_free_min_bytes": 641728512,
+        "projected_makespan_s": 478.24700139103163
+      },
+      "cold_host_kv_31_layers": {
+        "cold_observed_output_tokens": 1017,
+        "cold_observed_s": 222.32398104667664,
+        "cold_observed_tokens_s": 4.5744053125176904,
+        "gpu_memory_free_min_bytes": 466616320,
+        "projected_makespan_s": 1616.328150275417
+      },
+      "context_tokens": {
+        "cold": 16384,
+        "hot": 16384
+      },
+      "hot_q8_kv": {
+        "exact_request_tokens_samples": [
+          45,
+          42
+        ],
+        "hot_makespan_s_samples": [
+          103.78181314468384,
+          103.60280632972717
+        ],
+        "hot_slo_met": 55,
+        "hot_slo_total": 57,
+        "slowdown_pct_samples": [
+          2.974810607270828,
+          2.797195740956293
+        ]
+      },
+      "qualified": false,
+      "reason": "Q8 KV protects Qwen, but the safe 24-layer Gemma GPU-KV route is slower than the model-switch critical path"
+    },
+    "dual_cuda_f16_kv": {
+      "cold_gpu_f16_14_layers": {
+        "cold_observed_output_tokens": 1913,
+        "cold_observed_s": 160.55645442008972,
+        "cold_observed_tokens_s": 11.914812188083761,
+        "gpu_memory_free_min_bytes": 573571072,
+        "projected_makespan_s": 681.3594454353042,
+        "total_at_early_reject_s": 261.2101454734802
+      },
+      "context_tokens": {
+        "cold": 16384,
+        "hot": 16384
+      },
+      "hot_f16_kv": {
+        "hot_makespan_s": 100.6536910533905,
+        "hot_slo_met": 55,
+        "hot_slo_total": 57
+      },
+      "probe_16_layers_post_warm_free_bytes": 308281344,
+      "qualified": false,
+      "reason": "FP16 KV preserves Qwen speed but leaves room for only 14 safe Gemma CUDA layers, making the cold route slower than Q8 KV and the model switch"
+    },
+    "gemma_cpu": {
+      "burstgpt_cold_makespan_s": 733.729695278,
+      "burstgpt_output_tokens_s": 9.429903198041462,
+      "server_compute_device_energy_j": 136186.11725084722,
+      "slots": 8
+    },
+    "gemma_cpu_op15": {
+      "burstgpt_cold_makespan_s": 651.964225324,
+      "burstgpt_output_tokens_s": 10.612545491374982,
+      "server_compute_device_energy_j": 101421.26310722785,
+      "slots": 8
+    },
+    "gemma_cuda_full": {
+      "backlog_fifo_makespan_s": 71.838489766,
+      "backlog_fifo_output_tokens_s": 96.31327193176396,
+      "backlog_lpt_makespan_s": 72.688467992,
+      "gpu_memory_used_max_bytes": 11512315904,
+      "load_ms_samples": [
+        5426.166916964576,
+        5479.225524002686
+      ],
+      "slots": 8,
+      "warm_ms_samples": [
+        289.3736300757155,
+        292.2782499808818
+      ]
+    },
+    "gemma_f16_cuda_cpu_control": {
+      "backlog_makespan_s_samples": [
+        768.271901,
+        781.482744,
+        789.753448222
+      ],
+      "backlog_mean_makespan_s": 779.8337193333333,
+      "backlog_mean_output_tokens_s": 8.872404242682576,
+      "cuda_loads": 25,
+      "output_tokens": 6919,
+      "slots": 8
+    },
+    "gemma_f16_cuda_cpu_op15": {
+      "backlog_makespan_s": 712.861046283,
+      "backlog_output_tokens_s": 9.705958876666147,
+      "cold_time_reduction_vs_control_mean_pct": 8.588070942557751,
+      "cuda_loads": 25,
+      "output_tokens": 6919,
+      "server_compute_device_energy_j": 79656.31291200758,
+      "slots": 8,
+      "throughput_gain_vs_control_mean_pct": 9.394912711185754
+    },
+    "hierarchical_fp16_switch_op15": {
+      "cold_execution_s": 712.861046283,
+      "cold_load_ms": 38571.173783,
+      "cold_warm_ms": 8572.071584,
+      "full_trace_makespan_s": 2646.527956639,
+      "hot_execution_s": 1885.664784022,
+      "reconstructed_full_control_mean_s": 2684.64752662437,
+      "reconstructed_full_time_reduction_pct": 1.4199096755655316,
+      "unload_ms": 832.8966
+    },
+    "hierarchical_gpu_switch": {
+      "burstgpt_makespan_s": 183.226452496,
+      "burstgpt_output_tokens_s": 63.33692456471779,
+      "cold_gpu_service_tail_s": 75.292205222,
+      "cold_request_hold_p50_s": 86.084936574,
+      "gemma_load_ms": 6522.427822928876,
+      "gemma_warm_ms": 308.826888,
+      "qwen_makespan_s": 100.783689266,
+      "server_compute_device_energy_j": 41567.205377887745,
+      "unload_ms": 315.82082
+    },
+    "model_prefetch": {
+      "cold_file_page_resident_pct": 100.0,
+      "qualified": false,
+      "reason": "Trace validation hashes the complete model before admission; the measured switch is CUDA allocation and upload bound"
+    },
+    "qwen_cuda_full": {
+      "burstgpt_hot_makespan_s": 101.149322874,
+      "burstgpt_output_tokens_s": 46.32754690644119,
+      "gpu_memory_free_bytes": 2993684480,
+      "gpu_memory_used_bytes": 13729005568,
+      "slots": 4
+    }
+  },
+  "schema": "s41-mixed-scheduler-profile-v2"
+}

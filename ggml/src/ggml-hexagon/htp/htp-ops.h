@@ -22,6 +22,7 @@ enum htp_data_type {
     HTP_TYPE_Q4_0   = 2,
     HTP_TYPE_Q4_1   = 3,
     HTP_TYPE_Q8_0   = 8,
+    HTP_TYPE_Q6_K   = 14,
     HTP_TYPE_IQ4_NL = 20,
     HTP_TYPE_I32    = 26,
     HTP_TYPE_I64    = 27,
@@ -96,6 +97,7 @@ enum htp_op_code {
     HTP_OP_PAD,
     HTP_OP_NORM,
     HTP_OP_CONCAT,
+    HTP_OP_FFN_FUSED,
 
     HTP_OP_INVALID
 };
@@ -106,7 +108,7 @@ enum htp_op_code {
 #define HTP_OP_MAX_PARAMS  16   // aka GGML_MAX_OP_PARAMS
 #define HTP_OP_MAX_KERN_PARAMS 32
 
-#define HTP_OP_MAX_BUFS    16
+#define HTP_OP_MAX_BUFS    64   // host batch and DSP mapping capacity
 #define HTP_OP_MAX_REQS    256
 #define HTP_OP_MAX_TENSORS (HTP_OP_MAX_REQS * HTP_OP_MAX_INPUTS + HTP_OP_MAX_REQS)
 

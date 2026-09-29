@@ -30,6 +30,7 @@ add_library(llama
             llama-memory-hybrid.cpp
             llama-memory-hybrid-iswa.cpp
             llama-memory-recurrent.cpp
+            llama-fenced-tensor-loader.cpp
             llama-mmap.cpp
             llama-model-loader.cpp
             llama-model-saver.cpp

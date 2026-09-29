@@ -85,6 +85,17 @@ struct task_params {
     // realtime control (SERVER_TASK_TYPE_CONTROL)
     std::string        control_action;
     std::string        control_cmpl_id;
+    std::string        control_request_id;
+    std::string        control_policy_hash;
+    int32_t            control_slot_id = -1;
+    std::vector<std::string> control_request_ids;
+    std::vector<int32_t>     control_slot_ids;
+    uint64_t           control_plan_generation = 0;
+    uint64_t           control_ffn_layer_mask = 0;
+    uint32_t           control_ffn_columns = 0;
+    bool               control_ffn_enabled = false;
+
+    std::string        scheduler_request_id;
 
     // per-request parameters for chat parsing
     common_chat_parser_params chat_parser_params;
@@ -555,11 +566,29 @@ struct server_task_result_slot_erase : server_task_result {
 struct server_task_result_control : server_task_result {
     bool        success = false;
     std::string message; // optional detail when success is false
+    std::string policy_hash;
+    int32_t     slot_id = -1;
+    int32_t     applied_token_index = -1;
+    uint64_t    plan_generation = 0;
+    json        runtime_stats = nullptr;
+    json        cohort_members = nullptr;
 
     virtual json to_json() override {
         json out = json { { "success", success } };
         if (!message.empty()) {
             out["message"] = message;
+        }
+        if (slot_id >= 0) {
+            out["policy_hash"] = policy_hash;
+            out["slot_id"] = slot_id;
+            out["applied_token_index"] = applied_token_index;
+            out["plan_generation"] = plan_generation;
+        }
+        if (!runtime_stats.is_null()) {
+            out["runtime_stats"] = runtime_stats;
+        }
+        if (!cohort_members.is_null()) {
+            out["cohort_members"] = cohort_members;
         }
         return out;
     }

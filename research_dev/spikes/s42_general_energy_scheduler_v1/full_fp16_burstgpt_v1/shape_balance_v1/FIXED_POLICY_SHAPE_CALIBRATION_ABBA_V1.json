@@ -1,0 +1,38 @@
+{
+  "candidate_columns": [5120, 5632, 6144],
+  "alternate_columns": [5632],
+  "column_quantum": 1024,
+  "measurements": [
+    {"calls": 1725, "host_us": 7416, "phone_columns": 6144, "phone_compute_us": 2972, "phone_rpc_us": 4323, "tokens": 1, "total_columns": 15360},
+    {"calls": 1426, "host_us": 7463, "phone_columns": 6144, "phone_compute_us": 3028, "phone_rpc_us": 4724, "tokens": 2, "total_columns": 15360},
+    {"calls": 4991, "host_us": 7498, "phone_columns": 6144, "phone_compute_us": 3072, "phone_rpc_us": 5049, "tokens": 3, "total_columns": 15360},
+    {"calls": 391, "host_us": 7590, "phone_columns": 6144, "phone_compute_us": 3211, "phone_rpc_us": 5502, "tokens": 4, "total_columns": 15360},
+    {"calls": 989, "host_us": 7565, "phone_columns": 6144, "phone_compute_us": 6082, "phone_rpc_us": 8220, "tokens": 5, "total_columns": 15360},
+    {"calls": 1058, "host_us": 7600, "phone_columns": 6144, "phone_compute_us": 6075, "phone_rpc_us": 8522, "tokens": 6, "total_columns": 15360},
+    {"calls": 4715, "host_us": 7650, "phone_columns": 6144, "phone_compute_us": 6182, "phone_rpc_us": 9078, "tokens": 7, "total_columns": 15360},
+    {"calls": 30728, "host_us": 7655, "phone_columns": 6144, "phone_compute_us": 6164, "phone_rpc_us": 9033, "tokens": 8, "total_columns": 15360},
+    {"calls": 414, "host_us": 7824, "phone_columns": 6144, "phone_compute_us": 6935, "phone_rpc_us": 10761, "tokens": 11, "total_columns": 15360},
+    {"calls": 23, "host_us": 8132, "phone_columns": 6144, "phone_compute_us": 7031, "phone_rpc_us": 11273, "tokens": 14, "total_columns": 15360},
+    {"calls": 23, "host_us": 8305, "phone_columns": 6144, "phone_compute_us": 7051, "phone_rpc_us": 12128, "tokens": 16, "total_columns": 15360}
+  ],
+  "minimum_saving_ppm": 10000,
+  "physical_max_tokens": 16,
+  "policy_max_tokens": 512,
+  "resident_phone_columns": 6144,
+  "schema": "s42-full-fp16-gemma-fixed-shape-calibration-v1",
+  "source_runs": [
+    {
+      "plan_sha256": "a55806a14c5808e442c31831b7afc6a68f7f195813343176c28b0f5f0641cc3b",
+      "repeat_index": 1,
+      "result_sha256": "acb3c13f5c5bed83bda302dcca1287bb2e662a31c9286296ddd1caa91873b724",
+      "server_log_sha256": "69dc8e3b4f6b5298f2e4e404cadf50a84f2411c3db798ed708b8da5dbdf712c5"
+    },
+    {
+      "plan_sha256": "a55806a14c5808e442c31831b7afc6a68f7f195813343176c28b0f5f0641cc3b",
+      "repeat_index": 2,
+      "result_sha256": "6b530868c7d3a01f01624c2c5c191990a84b0c6350fc319ee516c92463c7c2a1",
+      "server_log_sha256": "3d7b7f55b9f26b3d54cab327cff858bef2045e6635f587edd2f424c14333e24f"
+    }
+  ],
+  "status": "PASS"
+}

@@ -18,6 +18,9 @@
 #include "ggml-backend.h"         // ggml_backend_dev_* for the HTP+Adreno device split
 #include "common.h"               // common_tokenize / common_token_to_piece
 #include "chat.h"                 // [plan-a port] common_chat_templates_* for --chat prompt formatting
+#include "ffn-split-client.h"
+#include "lm-head-split-client.h"
+#include "moe-split-client.h"
 #include "../../src/llama-ext.h" // staging header: llama_set/get_embeddings_nextn
 #include <nlohmann/json.hpp>
 
@@ -39,6 +42,7 @@
 #include <iostream>
 #include <mutex>
 #include <map>
+#include <memory>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -69,6 +73,48 @@ static bool parse_i32(const char * text, int & value) {
     return true;
 }
 
+static bool parse_layer_mask(const char * text, uint64_t & mask) {
+    if (text == nullptr || *text == '\0') {
+        return false;
+    }
+    uint64_t parsed_mask = 0;
+    std::string remaining(text);
+    while (!remaining.empty()) {
+        const size_t comma = remaining.find(',');
+        const std::string item = remaining.substr(0, comma);
+        const size_t dash = item.find('-');
+        int first = -1;
+        int last = -1;
+        if (item.empty()) {
+            return false;
+        }
+        if (dash == std::string::npos) {
+            if (!parse_i32(item.c_str(), first)) {
+                return false;
+            }
+            last = first;
+        } else {
+            if (item.find('-', dash + 1) != std::string::npos ||
+                !parse_i32(item.substr(0, dash).c_str(), first) ||
+                !parse_i32(item.substr(dash + 1).c_str(), last)) {
+                return false;
+            }
+        }
+        if (first < 0 || last < first || last >= 64) {
+            return false;
+        }
+        for (int layer = first; layer <= last; ++layer) {
+            parsed_mask |= UINT64_C(1) << layer;
+        }
+        if (comma == std::string::npos) {
+            break;
+        }
+        remaining.erase(0, comma + 1);
+    }
+    mask = parsed_mask;
+    return mask != 0;
+}
+
 static bool parse_layer_env(const char * name, int default_value, int & value) {
     const char * text = getenv(name);
     if (!text) {
@@ -76,6 +122,14 @@ static bool parse_layer_env(const char * name, int default_value, int & value) {
         return true;
     }
     return parse_i32(text, value) && value >= 0;
+}
+
+static bool set_ffn_runtime_columns(int columns) {
+    if (columns < 0) {
+        return true;
+    }
+    const std::string text = std::to_string(columns);
+    return setenv("LLAMA_FFN_SPLIT_COLUMNS", text.c_str(), 1) == 0;
 }
 
 // [S15 persistence] Version of the opt-in persistent-session protocol (DETACH/STOP
@@ -144,6 +198,37 @@ static bool placement_eval_cb(struct ggml_tensor * t, bool ask, void * user_data
 }
 
 static placement_tally g_placement;
+
+struct combined_eval_state {
+    placement_tally * placement = nullptr;
+    ffn_split::client * ffn = nullptr;
+    lm_head_split::client * lm_head = nullptr;
+    moe_split::client * moe = nullptr;
+};
+
+static bool combined_eval_cb(struct ggml_tensor * t, bool ask, void * user_data) {
+    combined_eval_state * state = static_cast<combined_eval_state *>(user_data);
+    if (state == nullptr) {
+        return false;
+    }
+    if (ask && state->placement != nullptr) {
+        placement_eval_cb(t, true, state->placement);
+    }
+    bool result = ask ? false : true;
+    if (state->ffn != nullptr) {
+        const bool current = state->ffn->eval(t, ask);
+        result = ask ? result || current : result && current;
+    }
+    if (state->lm_head != nullptr) {
+        const bool current = state->lm_head->eval(t, ask);
+        result = ask ? result || current : result && current;
+    }
+    if (state->moe != nullptr) {
+        const bool current = state->moe->eval(t, ask);
+        result = ask ? result || current : result && current;
+    }
+    return result;
+}
 
 static void emit_placement_cert(const char * role, const std::string & mode,
                                 int layer_start, int layer_end, int n_layer,
@@ -286,7 +371,7 @@ static void emit_session_cert(int session_id, const char * session_end,
 
 static void print_usage(int, char ** argv) {
     fprintf(stderr,
-        "\nusage: %s -m <model> --mode <mono|head|mid|tail|tailnet|headnet|stagenet|tailv3|monov3> [opts]\n"
+        "\nusage: %s -m <model> --mode <mono|head|mid|tail|tailnet|headnet|stagenet|tailv3|monov3|overlapdriver> [opts]\n"
         "  mono    : full model on the prompt, print last-token top-1 + top-5\n"
         "  head    : run layers [0,LLAMA_LAYER_END), dump N cut activations + token ids to --act-file\n"
         "  mid     : env LLAMA_LAYER_START=k2 LLAMA_LAYER_END=k3 ; inject --act-file, run [k2,k3) head-less, relay to --act-out\n"
@@ -298,16 +383,22 @@ static void print_usage(int, char ** argv) {
         "  tailv3    : --port P ; V3 terminal stage (env LLAMA_LAYER_START), returns greedy token ids\n"
         "  monov3    : --port P --devices D ; V3 full-model oracle, returns greedy token ids\n"
         "  monodriver: -p PROMPT -n NGEN ; resident full-model control using the pipedriver decode loop\n"
+        "  overlapdriver: monodriver plus concurrent FFN, MoE, or LM-head workers\n"
         "  pipedriver: --host H --port A [--port2 B] -p PROMPT -n NGEN ; host tail drives one or two\n"
         "              --parallel-heads requires --port2 and B=2; two equal head cuts feed one batched tail\n"
         "              --parallel-tail-batch 1 keeps the shared tail exact but serial; default is 2\n"
         "              persistent phone stages over TCP/USB, incremental decode\n"
         "  driver opts: [--driver-requests N] [--driver-warmup N] [--driver-batch B]\n"
-        "               [--driver-context N] [--driver-max-prefill N] [--wait-for-go]\n"
+        "               [--driver-context N] [--driver-max-prefill N] [--driver-ubatch N] [--wait-for-go]\n"
+        "               [--driver-stream-prefill] (async pipeline prefill in driver-ubatch chunks)\n"
+        "               [--driver-sync-prefill] (diagnostic synchronous prefill in the same chunks)\n"
         "               [--prompt-after-load] (pipedriver reads one prompt line from stdin)\n"
         "               [--persistent-jsonl] (batched mono/pipedriver; model/context stay resident)\n"
         "  prefill: mono/head take -p PROMPT (multi-token) or --tok <int> (single); tail/mid read N from --act-file\n"
-        "  common opts: [-p <prompt>] [--tok <int>] [--act-file <path>] [--act-out <path>] [-ngl <int>]\n\n",
+        "  overlap opts: --host H [--ffn-host H --ffn-port P] [--port P (--ffn-layer N | --ffn-layers SPEC) --ffn-columns N [--ffn-f16-io] [--ffn-timeout-ms N]]\n"
+        "                [--moe-port P (--moe-layer N | --moe-layers SPEC) [--moe-f16-io]]\n"
+        "                [--lm-head-host H --lm-head-port P --lm-head-rows N --lm-head-top-k N [--lm-head-f16-io]]\n"
+        "  common opts: [-p <prompt>] [--tok <int>] [--act-file <path>] [--act-out <path>] [-ngl <int>] [-t N] [-tb N] [--no-repack]\n\n",
         argv[0]);
 }
 
@@ -456,9 +547,10 @@ static int peek_actfile_ntokens(const std::string & path) {
 
 // monogen: whole-model greedy reference for the correctness oracle. Generates n_gen tokens
 // from `tok` (greedy argmax, feeding back) and prints the token-id sequence. Run with NO
-// LLAMA_LAYER_START/END (full 48 L) → this is the ground truth the head∥tail relay must match.
+// LLAMA_LAYER_START/END (full 48 L) -> this is the ground truth the head/tail relay must match.
 static int run_monogen(llama_context * ctx, const llama_vocab * vocab,
                        int n_vocab, llama_token tok, int n_gen) {
+    (void) vocab; // kept for signature parity with the other run_* entry points
     llama_batch batch = llama_batch_init(1, 0, 1);
     printf("MONOGEN");
     int rc = 0;
@@ -756,6 +848,7 @@ static void set_nodelay(int fd) {
 //   send back { int32 token }.
 static int run_tailnet(llama_context * ctx, const llama_vocab * vocab,
                        int n_embd, int n_vocab, int port) {
+    (void) vocab; // kept for signature parity with the other run_* entry points
     int srv = socket(AF_INET, SOCK_STREAM, 0);
     if (srv < 0) { fprintf(stderr, "error: socket() failed: %s\n", strerror(errno)); return 3; }
     int one = 1;
@@ -1010,12 +1103,12 @@ done:
 
 // ---------------------------------------------------------------------------
 // [plan-a port] Persistent 3-stage pipeline over TCP (adb-forwarded USB).
-// HUB-AND-SPOKE (phones can't peer): each phone runs a `stagenet` — a persistent
+// HUB-AND-SPOKE (phones can't peer): each phone runs a `stagenet` - a persistent
 // HEAD-LESS layer-range server holding its own KV; the host runs `pipedriver`,
 // which owns the terminal tail stage inline and drives the loop, calling stage A
 // (op15 [0,k2)) then stage B (op12 [k2,k3)) then the local tail [k3,n) per token.
 // Unlike tailnet/headnet, the frame carries the token id and each stage injects a
-// DUAL batch (relayed token + injected residual) — required for gemma-3n per-layer
+// DUAL batch (relayed token + injected residual) - required for gemma-3n per-layer
 // embeddings. KV persists across steps, so this decodes incrementally (no re-prefill).
 // ---------------------------------------------------------------------------
 static int connect_to(const std::string & host, int port) {
@@ -1260,8 +1353,8 @@ static bool validate_stage_chain(
         a.n_layer != n_layer || a.n_embd != n_embd ||
         a.n_seq_max != (int32_t) llama_n_seq_max(ctx) ||
         a.n_ctx_seq != (int32_t) llama_n_ctx_seq(ctx) ||
-        a.n_batch != (int32_t) llama_n_batch(ctx) ||
-        a.n_ubatch != (int32_t) llama_n_ubatch(ctx)) {
+        a.n_batch < (int32_t) llama_n_batch(ctx) ||
+        a.n_ubatch <= 0) {
         fprintf(stderr,
                 "error: stage A topology/capability mismatch range=[%d,%d)\n",
                 a.layer_start, a.layer_end);
@@ -1285,8 +1378,8 @@ static bool validate_stage_chain(
         b.n_layer != n_layer || b.n_embd != n_embd ||
         b.n_seq_max != (int32_t) llama_n_seq_max(ctx) ||
         b.n_ctx_seq != (int32_t) llama_n_ctx_seq(ctx) ||
-        b.n_batch != (int32_t) llama_n_batch(ctx) ||
-        b.n_ubatch != (int32_t) llama_n_ubatch(ctx)) {
+        b.n_batch < (int32_t) llama_n_batch(ctx) ||
+        b.n_ubatch <= 0) {
         fprintf(stderr,
                 "error: stage B topology/capability mismatch range=[%d,%d) expected=[%d,%d)\n",
                 b.layer_start, b.layer_end, a.layer_end, host_layer_start);
@@ -2024,7 +2117,7 @@ static int run_stagenet(
 // pipedriver: host orchestrator + inline tail. Stage B is optional, which allows the
 // same driver to run server->op15->server while op12 is unavailable.
 // [plan-a port] format a single user message with the model's chat template (Jinja). gemma-4-it
-// needs its channel-based template — raw prompts are out-of-distribution and generate degenerately.
+// needs its channel-based template - raw prompts are out-of-distribution and generate degenerately.
 static std::string apply_chat_template(const llama_model * model, const std::string & user_msg) {
     common_chat_templates_ptr tmpls = common_chat_templates_init(model, "");
     common_chat_templates_inputs in;
@@ -2289,6 +2382,8 @@ static int run_monodriver(
 
 struct monobatch_result {
     std::vector<std::vector<llama_token>> token_ids;
+    int64_t prefill_us = 0;
+    int64_t decode_us = 0;
     int64_t wall_us = 0;
 };
 
@@ -2304,13 +2399,37 @@ static int run_monobatchdriver(
         bool wait_for_go,
         int batch_size,
         monobatch_result * result = nullptr,
-        bool print_generated = true) {
+        bool print_generated = true,
+        const std::vector<llama_token> * supplied_prompt_tokens = nullptr,
+        bool ignore_eog = false,
+        int ffn_prefill_columns = -1,
+        int ffn_decode_columns = -1) {
     if (result) {
         result->token_ids.clear();
+        result->prefill_us = 0;
+        result->decode_us = 0;
         result->wall_us = 0;
     }
-    const std::string effective = chat_mode ? apply_chat_template(llama_get_model(ctx), prompt) : prompt;
-    std::vector<llama_token> prompt_tokens = common_tokenize(vocab, effective, true, true);
+    std::vector<llama_token> prompt_tokens;
+    if (supplied_prompt_tokens != nullptr) {
+        if (chat_mode) {
+            fprintf(stderr, "error: pretokenized prompt cannot use --chat\n");
+            return 3;
+        }
+        prompt_tokens = *supplied_prompt_tokens;
+        if (std::any_of(
+                    prompt_tokens.begin(), prompt_tokens.end(),
+                    [n_vocab](llama_token token) {
+                        return token < 0 || token >= n_vocab;
+                    })) {
+            fprintf(stderr, "error: pretokenized prompt contains an invalid token\n");
+            return 3;
+        }
+    } else {
+        const std::string effective =
+                chat_mode ? apply_chat_template(llama_get_model(ctx), prompt) : prompt;
+        prompt_tokens = common_tokenize(vocab, effective, true, true);
+    }
     if (prompt_tokens.empty()) {
         fprintf(stderr, "error: prompt -> 0 tokens\n");
         return 3;
@@ -2355,6 +2474,10 @@ static int run_monobatchdriver(
         const int64_t group_start_us = driver_now_us();
 
         const int64_t prefill_start_us = driver_now_us();
+        if (!set_ffn_runtime_columns(ffn_prefill_columns)) {
+            fprintf(stderr, "error: cannot set prefill FFN split width\n");
+            return false;
+        }
         if (llama_decode(ctx, prefill) != 0) {
             fprintf(stderr, "error: monobatch prefill\n");
             return false;
@@ -2370,6 +2493,11 @@ static int run_monobatchdriver(
         }
         prefill_us = driver_now_us() - prefill_start_us;
 
+        if (!set_ffn_runtime_columns(ffn_decode_columns)) {
+            fprintf(stderr, "error: cannot set decode FFN split width\n");
+            return false;
+        }
+
         for (int g = 0; g < n_gen; ++g) {
             for (int s = 0; s < batch_size; ++s) {
                 if (!active[s]) {
@@ -2377,8 +2505,10 @@ static int run_monobatchdriver(
                 }
                 generated[s].push_back(next[s]);
                 if (llama_vocab_is_eog(vocab, next[s])) {
-                    active[s] = 0;
                     eog[s] = 1;
+                    if (!ignore_eog) {
+                        active[s] = 0;
+                    }
                 }
             }
             if (g + 1 >= n_gen) {
@@ -2428,6 +2558,8 @@ static int run_monobatchdriver(
             if (result) {
                 result->token_ids.insert(
                     result->token_ids.end(), generated.begin(), generated.end());
+                result->prefill_us += prefill_us;
+                result->decode_us += decode_us;
                 result->wall_us += group_wall_us;
             }
             if (!print_generated) {
@@ -3128,7 +3260,16 @@ done_parallel:
 
 struct pipebatch_result {
     std::vector<std::vector<llama_token>> token_ids;
+    int64_t prefill_us = 0;
+    int64_t prefill_stage_us = 0;
+    int64_t prefill_tail_us = 0;
+    int64_t prefill_pipeline_wall_us = 0;
+    int64_t prefill_overlap_us = 0;
+    int64_t decode_us = 0;
     int64_t wall_us = 0;
+    int prefill_chunks = 0;
+    int prefill_chunk_tokens = 0;
+    int prefill_max_ready_depth = 0;
 };
 
 static int run_pipebatchdriver(
@@ -3149,7 +3290,26 @@ static int run_pipebatchdriver(
         int host_layer_start,
         int session_end,
         pipebatch_result * result = nullptr,
-        bool print_generated = true) {
+        bool print_generated = true,
+        const std::vector<llama_token> * supplied_prompt_tokens = nullptr,
+        bool ignore_eog = false,
+        int ffn_prefill_columns = -1,
+        int ffn_decode_columns = -1,
+        int prefill_chunk_tokens = 0,
+        bool stream_prefill = false) {
+    if (result != nullptr) {
+        result->token_ids.clear();
+        result->prefill_us = 0;
+        result->prefill_stage_us = 0;
+        result->prefill_tail_us = 0;
+        result->prefill_pipeline_wall_us = 0;
+        result->prefill_overlap_us = 0;
+        result->decode_us = 0;
+        result->wall_us = 0;
+        result->prefill_chunks = 0;
+        result->prefill_chunk_tokens = 0;
+        result->prefill_max_ready_depth = 0;
+    }
     int fdA = connect_to(host, portA);
     if (fdA < 0) {
         fprintf(stderr, "error: connect A %s:%d failed\n", host.c_str(), portA);
@@ -3179,8 +3339,34 @@ static int run_pipebatchdriver(
     }
     fprintf(stderr, "\n");
 
-    const std::string effective = chat_mode ? apply_chat_template(llama_get_model(ctx), prompt) : prompt;
-    std::vector<llama_token> prompt_tokens = common_tokenize(vocab, effective, true, true);
+    std::vector<llama_token> prompt_tokens;
+    if (supplied_prompt_tokens != nullptr) {
+        if (chat_mode) {
+            fprintf(stderr, "error: pretokenized pipeline prompt cannot use --chat\n");
+            close(fdA);
+            if (fdB >= 0) {
+                close(fdB);
+            }
+            return 3;
+        }
+        prompt_tokens = *supplied_prompt_tokens;
+        if (std::any_of(
+                    prompt_tokens.begin(), prompt_tokens.end(),
+                    [n_vocab](llama_token token) {
+                        return token < 0 || token >= n_vocab;
+                    })) {
+            fprintf(stderr, "error: pretokenized pipeline prompt contains an invalid token\n");
+            close(fdA);
+            if (fdB >= 0) {
+                close(fdB);
+            }
+            return 3;
+        }
+    } else {
+        const std::string effective =
+                chat_mode ? apply_chat_template(llama_get_model(ctx), prompt) : prompt;
+        prompt_tokens = common_tokenize(vocab, effective, true, true);
+    }
     if (prompt_tokens.empty()) {
         fprintf(stderr, "error: prompt -> 0 tokens\n");
         close(fdA);
@@ -3190,9 +3376,11 @@ static int run_pipebatchdriver(
         return 3;
     }
     const int n_prompt = (int) prompt_tokens.size();
-    const int64_t n_prefill_rows64 = (int64_t) n_prompt * batch_size;
-    if (n_prefill_rows64 > llama_n_batch(ctx) ||
-        n_prefill_rows64 > llama_n_ubatch(ctx) ||
+    const int effective_prefill_chunk_tokens = prefill_chunk_tokens > 0 ?
+            std::min(prefill_chunk_tokens, n_prompt) : n_prompt;
+    const int64_t max_prefill_rows64 =
+            (int64_t) effective_prefill_chunk_tokens * batch_size;
+    if (max_prefill_rows64 > llama_n_batch(ctx) ||
         n_prompt + n_gen > (int) llama_n_ctx_seq(ctx)) {
         fprintf(stderr,
                 "error: batched pipeline shape exceeds context (B=%d prompt=%d n_batch=%u n_ubatch=%u n_ctx_seq=%u)\n",
@@ -3206,33 +3394,18 @@ static int run_pipebatchdriver(
     }
     (void) common_token_to_piece(ctx, prompt_tokens[0], true);
 
-    const int n_prefill_rows = (int) n_prefill_rows64;
-    std::vector<llama_token> flat_prompt((size_t) n_prefill_rows);
-    for (int s = 0; s < batch_size; ++s) {
-        memcpy(flat_prompt.data() + (size_t) s * n_prompt,
-               prompt_tokens.data(), (size_t) n_prompt * sizeof(llama_token));
-    }
+    const int max_prefill_rows = (int) max_prefill_rows64;
 
     llama_batch tail = llama_batch_init(batch_size, n_embd, 1);
     tail.token = (llama_token *) malloc((size_t) batch_size * sizeof(llama_token));
-    llama_batch tail_prefill = llama_batch_init(n_prefill_rows, n_embd, 1);
-    tail_prefill.token = (llama_token *) malloc((size_t) n_prefill_rows * sizeof(llama_token));
-    tail_prefill.n_tokens = n_prefill_rows;
-    for (int s = 0; s < batch_size; ++s) {
-        for (int i = 0; i < n_prompt; ++i) {
-            const int row = s * n_prompt + i;
-            tail_prefill.token[row] = prompt_tokens[i];
-            tail_prefill.pos[row] = i;
-            tail_prefill.n_seq_id[row] = 1;
-            tail_prefill.seq_id[row][0] = s;
-            tail_prefill.logits[row] = i + 1 == n_prompt;
-        }
-    }
+    llama_batch tail_prefill = llama_batch_init(max_prefill_rows, n_embd, 1);
+    tail_prefill.token = (llama_token *) malloc(
+        (size_t) max_prefill_rows * sizeof(llama_token));
 
     std::vector<float> hh((size_t) batch_size * n_embd);
     std::vector<float> hm((size_t) batch_size * n_embd);
-    std::vector<float> hh_prefill((size_t) n_prefill_rows * n_embd);
-    std::vector<float> hm_prefill((size_t) n_prefill_rows * n_embd);
+    std::vector<float> hh_prefill((size_t) max_prefill_rows * n_embd);
+    std::vector<float> hm_prefill((size_t) max_prefill_rows * n_embd);
     llama_memory_t tail_mem = llama_get_memory(ctx);
 
     auto reset_stage = [&](int fd) -> bool {
@@ -3242,10 +3415,24 @@ static int run_pipebatchdriver(
                recv_all(fd, &ack, sizeof(ack)) && ack == 0;
     };
 
-    auto stage_batch_prefill = [&](int fd, const float * hin, int32_t nh, float * hout) -> bool {
+    auto stage_batch_prefill = [&](
+            int fd,
+            int token_offset,
+            int token_count,
+            const float * hin,
+            int32_t nh,
+            float * hout) -> bool {
         int32_t command = STAGE_BATCH_PREFILL;
         int32_t streams = batch_size;
-        int32_t tokens = n_prompt;
+        int32_t tokens = token_count;
+        const int32_t rows = streams * tokens;
+        std::vector<llama_token> flat_prompt((size_t) rows);
+        for (int s = 0; s < streams; ++s) {
+            memcpy(
+                flat_prompt.data() + (size_t) s * tokens,
+                prompt_tokens.data() + token_offset,
+                (size_t) tokens * sizeof(llama_token));
+        }
         if (!send_all(fd, &command, sizeof(command)) ||
             !send_all(fd, &streams, sizeof(streams)) ||
             !send_all(fd, &tokens, sizeof(tokens)) ||
@@ -3254,16 +3441,16 @@ static int run_pipebatchdriver(
             return false;
         }
         if (nh > 0 &&
-            !send_all(fd, hin, (size_t) n_prefill_rows * nh * sizeof(float))) {
+            !send_all(fd, hin, (size_t) rows * nh * sizeof(float))) {
             return false;
         }
         int32_t output_rows = 0, ne = 0;
         if (!recv_all(fd, &output_rows, sizeof(output_rows)) ||
             !recv_all(fd, &ne, sizeof(ne)) ||
-            output_rows != n_prefill_rows || ne != n_embd) {
+            output_rows != rows || ne != n_embd) {
             return false;
         }
-        return recv_all(fd, hout, (size_t) n_prefill_rows * n_embd * sizeof(float));
+        return recv_all(fd, hout, (size_t) rows * n_embd * sizeof(float));
     };
 
     auto stage_batch_decode = [&](
@@ -3318,40 +3505,205 @@ static int run_pipebatchdriver(
         int64_t decode_a_us = 0, decode_b_us = 0, decode_t_us = 0;
         const int64_t group_start_us = driver_now_us();
 
-        int64_t start_us = driver_now_us();
-        if (!stage_batch_prefill(fdA, nullptr, 0, hh_prefill.data())) {
-            fprintf(stderr, "error: batch prefill stage A\n");
+        if (!set_ffn_runtime_columns(ffn_prefill_columns)) {
+            fprintf(stderr, "error: cannot set pipeline prefill FFN split width\n");
             return false;
         }
-        int64_t after_a_us = driver_now_us();
-        const float * tail_prefill_input = hh_prefill.data();
-        if (fdB >= 0) {
-            if (!stage_batch_prefill(fdB, hh_prefill.data(), n_embd, hm_prefill.data())) {
-                fprintf(stderr, "error: batch prefill stage B\n");
+
+        const int prefill_chunk_count =
+                (n_prompt + effective_prefill_chunk_tokens - 1) /
+                effective_prefill_chunk_tokens;
+        const int64_t prefill_pipeline_start_us = driver_now_us();
+        int prefill_max_ready_depth = 0;
+
+        const auto run_tail_prefill = [&](
+                int token_offset,
+                int token_count,
+                const float * tail_prefill_input) -> bool {
+            const int chunk_rows = token_count * batch_size;
+            tail_prefill.n_tokens = chunk_rows;
+            for (int s = 0; s < batch_size; ++s) {
+                for (int i = 0; i < token_count; ++i) {
+                    const int row = s * token_count + i;
+                    const int position = token_offset + i;
+                    tail_prefill.token[row] = prompt_tokens[position];
+                    tail_prefill.pos[row] = position;
+                    tail_prefill.n_seq_id[row] = 1;
+                    tail_prefill.seq_id[row][0] = s;
+                    tail_prefill.logits[row] = position + 1 == n_prompt;
+                }
+            }
+            memcpy(
+                tail_prefill.embd, tail_prefill_input,
+                (size_t) chunk_rows * n_embd * sizeof(float));
+            const int64_t tail_start_us = driver_now_us();
+            if (llama_decode(ctx, tail_prefill) != 0) {
+                fprintf(stderr, "error: batch tail prefill\n");
                 return false;
             }
-            tail_prefill_input = hm_prefill.data();
+            prefill_t_us += driver_now_us() - tail_start_us;
+
+            if (token_offset + token_count == n_prompt) {
+                for (int s = 0; s < batch_size; ++s) {
+                    const int row = s * token_count + token_count - 1;
+                    const float * logits = llama_get_logits_ith(ctx, row);
+                    if (!logits) {
+                        fprintf(stderr,
+                                "error: batch tail prefill logits NULL stream=%d\n",
+                                s);
+                        return false;
+                    }
+                    next[s] = driver_argmax(logits, n_vocab);
+                }
+            }
+            return true;
+        };
+
+        if (!stream_prefill) {
+            if (prefill_chunk_tokens > 0) {
+                prefill_max_ready_depth = 1;
+            }
+            for (int token_offset = 0; token_offset < n_prompt;
+                 token_offset += effective_prefill_chunk_tokens) {
+                const int token_count = std::min(
+                    effective_prefill_chunk_tokens, n_prompt - token_offset);
+                const int64_t start_us = driver_now_us();
+                if (!stage_batch_prefill(
+                        fdA, token_offset, token_count, nullptr, 0,
+                        hh_prefill.data())) {
+                    fprintf(stderr, "error: batch prefill stage A\n");
+                    return false;
+                }
+                const int64_t after_a_us = driver_now_us();
+                const float * tail_prefill_input = hh_prefill.data();
+                if (fdB >= 0) {
+                    if (!stage_batch_prefill(
+                            fdB, token_offset, token_count, hh_prefill.data(),
+                            n_embd, hm_prefill.data())) {
+                        fprintf(stderr, "error: batch prefill stage B\n");
+                        return false;
+                    }
+                    tail_prefill_input = hm_prefill.data();
+                }
+                const int64_t after_b_us =
+                        fdB >= 0 ? driver_now_us() : after_a_us;
+                prefill_a_us += after_a_us - start_us;
+                prefill_b_us += after_b_us - after_a_us;
+                if (!run_tail_prefill(
+                        token_offset, token_count, tail_prefill_input)) {
+                    return false;
+                }
+            }
+        } else {
+            struct staged_prefill_chunk {
+                int token_offset = 0;
+                int token_count = 0;
+                std::vector<float> output;
+                bool ready = false;
+            };
+            std::vector<staged_prefill_chunk> staged(
+                    (size_t) prefill_chunk_count);
+            std::mutex staged_mutex;
+            std::condition_variable staged_cv;
+            bool stage_failed = false;
+            int produced = 0;
+            int consumed = 0;
+
+            std::thread producer([&]() {
+                for (int index = 0; index < prefill_chunk_count; ++index) {
+                    const int token_offset =
+                            index * effective_prefill_chunk_tokens;
+                    const int token_count = std::min(
+                        effective_prefill_chunk_tokens,
+                        n_prompt - token_offset);
+                    const int chunk_rows = token_count * batch_size;
+                    std::vector<float> stage_a(
+                            (size_t) chunk_rows * n_embd);
+                    std::vector<float> stage_output(
+                            (size_t) chunk_rows * n_embd);
+                    const int64_t start_us = driver_now_us();
+                    if (!stage_batch_prefill(
+                            fdA, token_offset, token_count, nullptr, 0,
+                            fdB >= 0 ? stage_a.data() :
+                                    stage_output.data())) {
+                        std::lock_guard<std::mutex> lock(staged_mutex);
+                        stage_failed = true;
+                        staged_cv.notify_all();
+                        return;
+                    }
+                    const int64_t after_a_us = driver_now_us();
+                    if (fdB >= 0 && !stage_batch_prefill(
+                            fdB, token_offset, token_count, stage_a.data(),
+                            n_embd, stage_output.data())) {
+                        std::lock_guard<std::mutex> lock(staged_mutex);
+                        stage_failed = true;
+                        staged_cv.notify_all();
+                        return;
+                    }
+                    const int64_t after_b_us =
+                            fdB >= 0 ? driver_now_us() : after_a_us;
+                    prefill_a_us += after_a_us - start_us;
+                    prefill_b_us += after_b_us - after_a_us;
+                    {
+                        std::lock_guard<std::mutex> lock(staged_mutex);
+                        staged[index].token_offset = token_offset;
+                        staged[index].token_count = token_count;
+                        staged[index].output = std::move(stage_output);
+                        staged[index].ready = true;
+                        ++produced;
+                        prefill_max_ready_depth = std::max(
+                                prefill_max_ready_depth, produced - consumed);
+                    }
+                    staged_cv.notify_all();
+                }
+            });
+
+            const auto stop_producer = [&]() {
+                shutdown(fdA, SHUT_RDWR);
+                if (fdB >= 0) {
+                    shutdown(fdB, SHUT_RDWR);
+                }
+                producer.join();
+            };
+            for (int index = 0; index < prefill_chunk_count; ++index) {
+                std::unique_lock<std::mutex> lock(staged_mutex);
+                staged_cv.wait(lock, [&]() {
+                    return staged[index].ready || stage_failed;
+                });
+                if (!staged[index].ready) {
+                    lock.unlock();
+                    producer.join();
+                    fprintf(stderr, "error: streamed batch prefill stage\n");
+                    return false;
+                }
+                const int token_offset = staged[index].token_offset;
+                const int token_count = staged[index].token_count;
+                std::vector<float> output = std::move(staged[index].output);
+                ++consumed;
+                lock.unlock();
+                if (!run_tail_prefill(
+                        token_offset, token_count, output.data())) {
+                    stop_producer();
+                    return false;
+                }
+            }
+            producer.join();
+            if (stage_failed) {
+                fprintf(stderr, "error: streamed batch prefill stage\n");
+                return false;
+            }
         }
-        int64_t after_b_us = fdB >= 0 ? driver_now_us() : after_a_us;
-        memcpy(tail_prefill.embd, tail_prefill_input,
-               (size_t) n_prefill_rows * n_embd * sizeof(float));
-        if (llama_decode(ctx, tail_prefill) != 0) {
-            fprintf(stderr, "error: batch tail prefill\n");
+        const int64_t prefill_pipeline_wall_us =
+                driver_now_us() - prefill_pipeline_start_us;
+        const int64_t prefill_overlap_us = std::max<int64_t>(
+                0,
+                prefill_a_us + prefill_b_us + prefill_t_us -
+                        prefill_pipeline_wall_us);
+
+        if (!set_ffn_runtime_columns(ffn_decode_columns)) {
+            fprintf(stderr, "error: cannot set pipeline decode FFN split width\n");
             return false;
         }
-        for (int s = 0; s < batch_size; ++s) {
-            const int row = s * n_prompt + n_prompt - 1;
-            const float * logits = llama_get_logits_ith(ctx, row);
-            if (!logits) {
-                fprintf(stderr, "error: batch tail prefill logits NULL stream=%d\n", s);
-                return false;
-            }
-            next[s] = driver_argmax(logits, n_vocab);
-        }
-        const int64_t after_tail_us = driver_now_us();
-        prefill_a_us = after_a_us - start_us;
-        prefill_b_us = after_b_us - after_a_us;
-        prefill_t_us = after_tail_us - after_b_us;
 
         for (int g = 0; g < n_gen; ++g) {
             for (int s = 0; s < batch_size; ++s) {
@@ -3360,8 +3712,10 @@ static int run_pipebatchdriver(
                 }
                 generated[s].push_back(next[s]);
                 if (llama_vocab_is_eog(vocab, next[s])) {
-                    active[s] = 0;
                     eog[s] = 1;
+                    if (!ignore_eog) {
+                        active[s] = 0;
+                    }
                 }
             }
             if (g + 1 >= n_gen) {
@@ -3386,13 +3740,13 @@ static int run_pipebatchdriver(
                 break;
             }
 
-            start_us = driver_now_us();
+            const int64_t start_us = driver_now_us();
             if (!stage_batch_decode(
                     fdA, seq_ids, positions, tokens, nullptr, 0, hh.data())) {
                 fprintf(stderr, "error: batch decode stage A step=%d\n", g);
                 return false;
             }
-            after_a_us = driver_now_us();
+            const int64_t after_a_us = driver_now_us();
             const float * tail_input = hh.data();
             if (fdB >= 0) {
                 if (!stage_batch_decode(
@@ -3402,7 +3756,8 @@ static int run_pipebatchdriver(
                 }
                 tail_input = hm.data();
             }
-            after_b_us = fdB >= 0 ? driver_now_us() : after_a_us;
+            const int64_t after_b_us =
+                    fdB >= 0 ? driver_now_us() : after_a_us;
 
             tail.n_tokens = n_active;
             for (int row = 0; row < n_active; ++row) {
@@ -3435,13 +3790,24 @@ static int run_pipebatchdriver(
 
         const int64_t group_wall_us = driver_now_us() - group_start_us;
         if (emit) {
+            const int64_t prefill_us = prefill_a_us + prefill_b_us + prefill_t_us;
+            const int64_t decode_us = decode_a_us + decode_b_us + decode_t_us;
             if (result != nullptr) {
                 result->wall_us += group_wall_us;
+                result->prefill_us += prefill_us;
+                result->prefill_stage_us += prefill_a_us + prefill_b_us;
+                result->prefill_tail_us += prefill_t_us;
+                result->prefill_pipeline_wall_us += prefill_pipeline_wall_us;
+                result->prefill_overlap_us += prefill_overlap_us;
+                result->decode_us += decode_us;
+                result->prefill_chunks += prefill_chunk_count;
+                result->prefill_chunk_tokens = effective_prefill_chunk_tokens;
+                result->prefill_max_ready_depth = std::max(
+                        result->prefill_max_ready_depth,
+                        prefill_max_ready_depth);
                 result->token_ids.insert(
                     result->token_ids.end(), generated.begin(), generated.end());
             }
-            const int64_t prefill_us = prefill_a_us + prefill_b_us + prefill_t_us;
-            const int64_t decode_us = decode_a_us + decode_b_us + decode_t_us;
             for (int s = 0; s < batch_size; ++s) {
                 const int request_index = batch_index * batch_size + s;
                 if (print_generated) {
@@ -3537,9 +3903,12 @@ done:
 struct persistent_driver_command {
     int64_t launch_id = 0;
     std::string prompt;
+    std::vector<llama_token> prompt_tokens;
     int n_gen = 0;
     int request_count = 0;
     int session_end = 0;
+    int ffn_prefill_columns = -1;
+    int ffn_decode_columns = -1;
 };
 
 static bool parse_persistent_driver_command(
@@ -3549,8 +3918,15 @@ static bool parse_persistent_driver_command(
         int batch_size,
         persistent_driver_command & command,
         std::string & error) {
-    static const std::set<std::string> expected_keys = {
+    static const std::set<std::string> expected_v1_keys = {
         "schema", "launch_id", "prompt", "n_gen", "request_count", "session_end",
+    };
+    static const std::set<std::string> expected_v2_keys = {
+        "schema", "launch_id", "prompt_tokens", "n_gen", "request_count", "session_end",
+    };
+    static const std::set<std::string> expected_v3_keys = {
+        "schema", "launch_id", "prompt_tokens", "n_gen", "request_count", "session_end",
+        "ffn_prefill_columns", "ffn_decode_columns",
     };
     if (line.empty() || line.size() > 64 * 1024) {
         error = "persistent command has an invalid byte length";
@@ -3570,11 +3946,18 @@ static bool parse_persistent_driver_command(
         };
         const nlohmann::ordered_json value =
             nlohmann::ordered_json::parse(line, callback, true, false);
-        if (!value.is_object() || observed_keys != expected_keys || value.size() != expected_keys.size()) {
+        if (!value.is_object() || !value["schema"].is_string()) {
             throw std::runtime_error("persistent command has missing or unknown fields");
         }
-        if (!value["schema"].is_string() ||
-            value["schema"].get<std::string>() != "layersplit-persistent-command-v1") {
+        const std::string schema = value["schema"].get<std::string>();
+        const bool dynamic_split =
+                schema == "layersplit-persistent-command-v3";
+        const bool pretokenized = dynamic_split ||
+                schema == "layersplit-persistent-command-v2";
+        const std::set<std::string> & expected_keys = dynamic_split ?
+                expected_v3_keys : (pretokenized ? expected_v2_keys : expected_v1_keys);
+        if ((schema != "layersplit-persistent-command-v1" && !pretokenized) ||
+            observed_keys != expected_keys || value.size() != expected_keys.size()) {
             throw std::runtime_error("persistent command schema mismatch");
         }
         if ((!value["launch_id"].is_number_integer() &&
@@ -3588,6 +3971,22 @@ static bool parse_persistent_driver_command(
         const int64_t launch_id = value["launch_id"].get<int64_t>();
         const int64_t requested_n_gen = value["n_gen"].get<int64_t>();
         const int64_t request_count = value["request_count"].get<int64_t>();
+        int64_t ffn_prefill_columns = -1;
+        int64_t ffn_decode_columns = -1;
+        if (dynamic_split) {
+            if ((!value["ffn_prefill_columns"].is_number_integer() &&
+                 !value["ffn_prefill_columns"].is_number_unsigned()) ||
+                (!value["ffn_decode_columns"].is_number_integer() &&
+                 !value["ffn_decode_columns"].is_number_unsigned())) {
+                throw std::runtime_error("persistent FFN split widths must be integers");
+            }
+            ffn_prefill_columns = value["ffn_prefill_columns"].get<int64_t>();
+            ffn_decode_columns = value["ffn_decode_columns"].get<int64_t>();
+            if (ffn_prefill_columns < 0 || ffn_prefill_columns > INT_MAX ||
+                ffn_decode_columns < 0 || ffn_decode_columns > INT_MAX) {
+                throw std::runtime_error("persistent FFN split width is out of range");
+            }
+        }
         if (launch_id <= previous_launch_id) {
             throw std::runtime_error("persistent launch_id is stale or duplicated");
         }
@@ -3597,12 +3996,33 @@ static bool parse_persistent_driver_command(
         if (request_count != batch_size) {
             throw std::runtime_error("persistent request_count must equal --driver-batch");
         }
-        if (!value["prompt"].is_string()) {
-            throw std::runtime_error("persistent prompt must be a string");
-        }
-        const std::string prompt = value["prompt"].get<std::string>();
-        if (prompt.empty() || prompt.size() > 16 * 1024) {
-            throw std::runtime_error("persistent prompt has an invalid byte length");
+        std::string prompt;
+        std::vector<llama_token> prompt_tokens;
+        if (pretokenized) {
+            if (!value["prompt_tokens"].is_array() ||
+                value["prompt_tokens"].empty() ||
+                value["prompt_tokens"].size() > 4096) {
+                throw std::runtime_error("persistent token prompt has an invalid length");
+            }
+            prompt_tokens.reserve(value["prompt_tokens"].size());
+            for (const auto & item : value["prompt_tokens"]) {
+                if ((!item.is_number_integer() && !item.is_number_unsigned())) {
+                    throw std::runtime_error("persistent token prompt must contain integers");
+                }
+                const int64_t token = item.get<int64_t>();
+                if (token < 0 || token > INT_MAX) {
+                    throw std::runtime_error("persistent token prompt is out of range");
+                }
+                prompt_tokens.push_back((llama_token) token);
+            }
+        } else {
+            if (!value["prompt"].is_string()) {
+                throw std::runtime_error("persistent prompt must be a string");
+            }
+            prompt = value["prompt"].get<std::string>();
+            if (prompt.empty() || prompt.size() > 16 * 1024) {
+                throw std::runtime_error("persistent prompt has an invalid byte length");
+            }
         }
         if (!value["session_end"].is_string()) {
             throw std::runtime_error("persistent session_end must be a string");
@@ -3612,10 +4032,13 @@ static bool parse_persistent_driver_command(
             throw std::runtime_error("persistent session_end must be DETACH or STOP");
         }
         command.launch_id = launch_id;
-        command.prompt = prompt;
+        command.prompt = std::move(prompt);
+        command.prompt_tokens = std::move(prompt_tokens);
         command.n_gen = (int) requested_n_gen;
         command.request_count = (int) request_count;
         command.session_end = session_end == "DETACH" ? 1 : 0;
+        command.ffn_prefill_columns = (int) ffn_prefill_columns;
+        command.ffn_decode_columns = (int) ffn_decode_columns;
         return true;
     } catch (const std::exception & exc) {
         error = exc.what();
@@ -3630,7 +4053,10 @@ static int run_persistent_monobatchdriver(
         int max_n_gen,
         bool chat_mode,
         int batch_size,
-        int n_layer) {
+        int n_layer,
+        int ffn_max_columns,
+        const char * placement_role,
+        const char * placement_mode) {
     fprintf(stderr,
             "PERSISTENT_DRIVER_READY {\"batch_size\":%d,\"host_pid\":%d,"
             "\"max_n_gen\":%d,\"schema\":\"layersplit-persistent-driver-v1\"}\n",
@@ -3651,13 +4077,22 @@ static int run_persistent_monobatchdriver(
             fprintf(stderr, "error: %s\n", error.c_str());
             return 3;
         }
+        if (command.ffn_prefill_columns > ffn_max_columns ||
+            command.ffn_decode_columns > ffn_max_columns) {
+            fprintf(stderr, "error: persistent FFN split width exceeds the resident suffix\n");
+            return 3;
+        }
 
         g_placement = placement_tally();
         monobatch_result result;
+        const bool pretokenized = !command.prompt_tokens.empty();
         const int64_t start_us = driver_now_us();
         int rc = run_monobatchdriver(
             ctx, vocab, n_vocab, command.prompt, command.n_gen, chat_mode,
-            command.request_count, 0, false, batch_size, &result, false);
+            command.request_count, 0, false, batch_size, &result, false,
+            command.prompt_tokens.empty() ? nullptr : &command.prompt_tokens,
+            !command.prompt_tokens.empty(), command.ffn_prefill_columns,
+            command.ffn_decode_columns);
         const int64_t elapsed_us = driver_now_us() - start_us;
         if (rc == 0 &&
             (result.token_ids.size() != (size_t) command.request_count ||
@@ -3666,7 +4101,8 @@ static int run_persistent_monobatchdriver(
             fprintf(stderr, "error: persistent result or host placement is incomplete\n");
             rc = 3;
         }
-        emit_placement_cert("monodriver", "monodriver", 0, n_layer, n_layer, rc);
+        emit_placement_cert(
+            placement_role, placement_mode, 0, n_layer, n_layer, rc);
 
         nlohmann::ordered_json reply = {
             {"batch_size", batch_size},
@@ -3677,11 +4113,22 @@ static int run_persistent_monobatchdriver(
             {"outcome", rc == 0 ? "completed" : "error"},
             {"request_count", command.request_count},
             {"route_wall_us", result.wall_us},
-            {"schema", "layersplit-persistent-result-v1"},
+            {"schema", command.ffn_prefill_columns >= 0 ?
+                    "layersplit-persistent-result-v3" :
+                    (pretokenized ? "layersplit-persistent-result-v2"
+                                  : "layersplit-persistent-result-v1")},
             {"session_end", command.session_end == 1 ? "DETACH" : "STOP"},
             {"token_ids", rc == 0 ? nlohmann::ordered_json(result.token_ids)
                                     : nlohmann::ordered_json::array()},
         };
+        if (pretokenized) {
+            reply["prefill_us"] = result.prefill_us;
+            reply["decode_us"] = result.decode_us;
+        }
+        if (command.ffn_prefill_columns >= 0) {
+            reply["ffn_prefill_columns"] = command.ffn_prefill_columns;
+            reply["ffn_decode_columns"] = command.ffn_decode_columns;
+        }
         fprintf(stderr,
                 "PERSISTENT_DRIVER_EXCHANGE_END {\"launch_id\":%lld}\n",
                 (long long) command.launch_id);
@@ -3709,11 +4156,19 @@ static int run_persistent_pipebatchdriver(
         bool chat_mode,
         int batch_size,
         int host_layer_start,
-        int n_layer) {
+        int n_layer,
+        int ffn_max_columns,
+        int prefill_chunk_tokens,
+        bool stream_prefill) {
+    const char * prefill_mode = prefill_chunk_tokens <= 0 ? "whole" :
+            (stream_prefill ? "async_stream" : "sync_chunked");
     fprintf(stderr,
             "PERSISTENT_DRIVER_READY {\"batch_size\":%d,\"host_pid\":%d,"
-            "\"max_n_gen\":%d,\"schema\":\"layersplit-persistent-driver-v1\"}\n",
-            batch_size, (int) getpid(), max_n_gen);
+            "\"max_n_gen\":%d,\"prefill_chunk_tokens\":%d,"
+            "\"prefill_mode\":\"%s\","
+            "\"schema\":\"layersplit-persistent-driver-v1\"}\n",
+            batch_size, (int) getpid(), max_n_gen, prefill_chunk_tokens,
+            prefill_mode);
     fflush(stderr);
 
     int64_t previous_launch_id = 0;
@@ -3732,19 +4187,40 @@ static int run_persistent_pipebatchdriver(
             stop_detached_stage(host, port);
             return 3;
         }
+        if (command.ffn_prefill_columns > ffn_max_columns ||
+            command.ffn_decode_columns > ffn_max_columns) {
+            fprintf(stderr, "error: persistent FFN split width exceeds the resident suffix\n");
+            stop_detached_stage(host, port);
+            return 3;
+        }
 
         g_placement = placement_tally();
         pipebatch_result result;
+        const bool pretokenized = !command.prompt_tokens.empty();
         const int64_t start_us = driver_now_us();
         int rc = run_pipebatchdriver(
             ctx, vocab, n_embd, n_vocab, host, port, 0, command.prompt,
             command.n_gen, chat_mode, command.request_count, 0, false,
-            batch_size, host_layer_start, command.session_end, &result, false);
+            batch_size, host_layer_start, command.session_end, &result, false,
+            pretokenized ? &command.prompt_tokens : nullptr, pretokenized,
+            command.ffn_prefill_columns, command.ffn_decode_columns,
+            prefill_chunk_tokens, stream_prefill);
         const int64_t elapsed_us = driver_now_us() - start_us;
         if (rc == 0 &&
             (result.token_ids.size() != (size_t) command.request_count ||
              result.wall_us <= 0 || g_placement.compute_nodes == 0 ||
-             g_placement.missing_buffer_compute_nodes != 0)) {
+             g_placement.missing_buffer_compute_nodes != 0 ||
+             (prefill_chunk_tokens > 0 &&
+              (result.prefill_chunks <= 0 ||
+               result.prefill_chunk_tokens <= 0 ||
+               result.prefill_stage_us <= 0 ||
+               result.prefill_tail_us <= 0 ||
+               result.prefill_pipeline_wall_us <= 0 ||
+               result.prefill_us !=
+                       result.prefill_stage_us + result.prefill_tail_us ||
+               result.prefill_overlap_us < 0 ||
+               result.prefill_max_ready_depth <= 0 ||
+               result.prefill_max_ready_depth > result.prefill_chunks)))) {
             fprintf(stderr, "error: persistent result or host placement is incomplete\n");
             if (command.session_end == 1) {
                 stop_detached_stage(host, port);
@@ -3763,11 +4239,34 @@ static int run_persistent_pipebatchdriver(
             {"outcome", rc == 0 ? "completed" : "error"},
             {"request_count", command.request_count},
             {"route_wall_us", result.wall_us},
-            {"schema", "layersplit-persistent-result-v1"},
+            {"schema", command.ffn_prefill_columns >= 0 ?
+                    "layersplit-persistent-result-v3" :
+                    (pretokenized ? "layersplit-persistent-result-v2"
+                                  : "layersplit-persistent-result-v1")},
             {"session_end", command.session_end == 1 ? "DETACH" : "STOP"},
             {"token_ids", rc == 0 ? nlohmann::ordered_json(result.token_ids)
                                     : nlohmann::ordered_json::array()},
         };
+        if (pretokenized) {
+            reply["prefill_us"] = result.prefill_us;
+            reply["decode_us"] = result.decode_us;
+        }
+        if (command.ffn_prefill_columns >= 0) {
+            reply["ffn_prefill_columns"] = command.ffn_prefill_columns;
+            reply["ffn_decode_columns"] = command.ffn_decode_columns;
+        }
+        if (prefill_chunk_tokens > 0) {
+            reply["prefill_mode"] = prefill_mode;
+            reply["prefill_chunks"] = result.prefill_chunks;
+            reply["prefill_chunk_tokens"] = result.prefill_chunk_tokens;
+            reply["prefill_stage_us"] = result.prefill_stage_us;
+            reply["prefill_tail_us"] = result.prefill_tail_us;
+            reply["prefill_pipeline_wall_us"] =
+                    result.prefill_pipeline_wall_us;
+            reply["prefill_overlap_us"] = result.prefill_overlap_us;
+            reply["prefill_max_ready_depth"] =
+                    result.prefill_max_ready_depth;
+        }
         fprintf(stderr,
                 "PERSISTENT_DRIVER_EXCHANGE_END {\"launch_id\":%lld}\n",
                 (long long) command.launch_id);
@@ -3785,16 +4284,17 @@ static int run_persistent_pipebatchdriver(
 }
 
 // ===========================================================================
-// STREAMING multi-caption relay (tailstream / headstream) — replays a trace.
+// STREAMING multi-caption relay (tailstream / headstream) - replays a trace.
 // Opcodes (int32, head->tail):  RESET=3 clear KV + ack ; DECODE=2 {pos,n_embd,h}
 //   -> reply {token} ; SHUTDOWN=4 exit. Each caption = N decode steps then RESET.
 // Reuses the validated single-token relay; decode runs from a short context (KV-size
-// affects decode energy <2% vs the 6.5GB/tok weight stream — prefill measured separately).
+// affects decode energy <2% vs the 6.5GB/tok weight stream - prefill measured separately).
 // ===========================================================================
 enum { OP_DECODE = 2, OP_RESET = 3, OP_SHUTDOWN = 4 };
 
 static int run_tailstream(llama_context * ctx, const llama_vocab * vocab,
                           int n_embd, int n_vocab, int port) {
+    (void) vocab; // kept for signature parity with the other run_* entry points
     int srv = socket(AF_INET, SOCK_STREAM, 0);
     if (srv < 0) { fprintf(stderr, "error: socket(): %s\n", strerror(errno)); return 3; }
     int one = 1; setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
@@ -4001,12 +4501,12 @@ done2:
 
 // ===========================================================================
 // [plan-a M4] dualengine: ONE process, TWO backends, ONE session (requirement 1).
-// Loads the SAME layer shard on two devices — a PREFILL engine (GPU/xmem, runs prompts
-// one-by-one) and a DECODE engine (NPU/HMX, static-batched) — and runs them on two threads
+// Loads the SAME layer shard on two devices - a PREFILL engine (GPU/xmem, runs prompts
+// one-by-one) and a DECODE engine (NPU/HMX, static-batched) - and runs them on two threads
 // concurrently. The decode engine ACCUMULATES B injected requests then fires ONE B-way forward
 // (requirement 2: static batch, clears the HMX B>=5 gate); prefill stays one-request-at-a-time.
 // Weights are loaded per-engine for now (2x shard RAM); requirement 3 collapses that to a single
-// shared copy once the shared-dmabuf buffer-type lands (Build 3 / spike S2) — NOT here.
+// shared copy once the shared-dmabuf buffer-type lands (Build 3 / spike S2) - NOT here.
 //
 // This is a self-contained correctness + concurrency harness (no sockets, host-testable):
 //   (A) CORRECTNESS: proves the B-way batched decode is bit-for-bit identical to B single-seq
@@ -4709,10 +5209,30 @@ int main(int argc, char ** argv) {
     int  driver_batch = 1;
     int  driver_context = 4096;
     int  driver_max_prefill = 512;
+    int  driver_ubatch = 512;
+    int  n_threads = GGML_DEFAULT_N_THREADS;
+    int  n_threads_batch = GGML_DEFAULT_N_THREADS;
+    std::string ffn_host;
+    int  ffn_port = 0;
+    uint64_t ffn_layer_mask = 0;
+    int  ffn_columns = 0;
+    int  ffn_timeout_ms = 5000;
+    bool ffn_f16_io = false;
+    uint64_t moe_layer_mask = 0;
+    int  moe_port = 0;
+    bool moe_f16_io = false;
+    std::string lm_head_host;
+    int  lm_head_port = 0;
+    int  lm_head_rows = 0;
+    int  lm_head_top_k = 0;
+    bool lm_head_f16_io = false;
     bool wait_for_go = false;
     bool prompt_after_load = false;
     bool persistent_jsonl = false;
+    bool driver_stream_prefill = false;
+    bool driver_sync_prefill = false;
     bool parallel_heads = false;
+    bool no_repack = false;
     int  parallel_tail_batch = 2;
     int  session_end = 0;   // 0=STOP (legacy), 1=DETACH
     bool session_end_set = false;
@@ -4788,6 +5308,101 @@ int main(int argc, char ** argv) {
                 fprintf(stderr, "error: invalid --driver-max-prefill value\n");
                 return 1;
             }
+        } else if (strcmp(argv[i], "--driver-ubatch") == 0 && i + 1 < argc) {
+            if (!parse_i32(argv[++i], driver_ubatch)) {
+                fprintf(stderr, "error: invalid --driver-ubatch value\n");
+                return 1;
+            }
+        } else if (strcmp(argv[i], "--driver-stream-prefill") == 0) {
+            driver_stream_prefill = true;
+        } else if (strcmp(argv[i], "--driver-sync-prefill") == 0) {
+            driver_sync_prefill = true;
+        } else if (strcmp(argv[i], "-t") == 0 && i + 1 < argc) {
+            if (!parse_i32(argv[++i], n_threads) || n_threads <= 0) {
+                fprintf(stderr, "error: invalid -t value\n");
+                return 1;
+            }
+        } else if (strcmp(argv[i], "-tb") == 0 && i + 1 < argc) {
+            if (!parse_i32(argv[++i], n_threads_batch) || n_threads_batch <= 0) {
+                fprintf(stderr, "error: invalid -tb value\n");
+                return 1;
+            }
+        } else if (strcmp(argv[i], "--ffn-host") == 0 && i + 1 < argc) {
+            ffn_host = argv[++i];
+        } else if (strcmp(argv[i], "--ffn-port") == 0 && i + 1 < argc) {
+            if (!parse_i32(argv[++i], ffn_port) ||
+                ffn_port <= 0 || ffn_port > 65535) {
+                fprintf(stderr, "error: invalid --ffn-port value\n");
+                return 1;
+            }
+        } else if (strcmp(argv[i], "--ffn-layer") == 0 && i + 1 < argc) {
+            int layer = -1;
+            if (ffn_layer_mask != 0 || !parse_i32(argv[++i], layer) ||
+                layer < 0 || layer >= 64) {
+                fprintf(stderr, "error: invalid --ffn-layer value\n");
+                return 1;
+            }
+            ffn_layer_mask = UINT64_C(1) << layer;
+        } else if (strcmp(argv[i], "--ffn-layers") == 0 && i + 1 < argc) {
+            if (ffn_layer_mask != 0 ||
+                !parse_layer_mask(argv[++i], ffn_layer_mask)) {
+                fprintf(stderr, "error: invalid --ffn-layers value\n");
+                return 1;
+            }
+        } else if (strcmp(argv[i], "--ffn-columns") == 0 && i + 1 < argc) {
+            if (!parse_i32(argv[++i], ffn_columns) || ffn_columns <= 0) {
+                fprintf(stderr, "error: invalid --ffn-columns value\n");
+                return 1;
+            }
+        } else if (strcmp(argv[i], "--ffn-f16-io") == 0) {
+            ffn_f16_io = true;
+        } else if (strcmp(argv[i], "--ffn-timeout-ms") == 0 && i + 1 < argc) {
+            if (!parse_i32(argv[++i], ffn_timeout_ms) ||
+                ffn_timeout_ms <= 0 || ffn_timeout_ms > 600000) {
+                fprintf(stderr, "error: invalid --ffn-timeout-ms value\n");
+                return 1;
+            }
+        } else if (strcmp(argv[i], "--moe-layer") == 0 && i + 1 < argc) {
+            int layer = -1;
+            if (moe_layer_mask != 0 || !parse_i32(argv[++i], layer) ||
+                layer < 0 || layer >= 64) {
+                fprintf(stderr, "error: invalid --moe-layer value\n");
+                return 1;
+            }
+            moe_layer_mask = UINT64_C(1) << layer;
+        } else if (strcmp(argv[i], "--moe-layers") == 0 && i + 1 < argc) {
+            if (moe_layer_mask != 0 ||
+                !parse_layer_mask(argv[++i], moe_layer_mask)) {
+                fprintf(stderr, "error: invalid --moe-layers value\n");
+                return 1;
+            }
+        } else if (strcmp(argv[i], "--moe-port") == 0 && i + 1 < argc) {
+            if (!parse_i32(argv[++i], moe_port) || moe_port <= 0 || moe_port > 65535) {
+                fprintf(stderr, "error: invalid --moe-port value\n");
+                return 1;
+            }
+        } else if (strcmp(argv[i], "--moe-f16-io") == 0) {
+            moe_f16_io = true;
+        } else if (strcmp(argv[i], "--lm-head-host") == 0 && i + 1 < argc) {
+            lm_head_host = argv[++i];
+        } else if (strcmp(argv[i], "--lm-head-port") == 0 && i + 1 < argc) {
+            if (!parse_i32(argv[++i], lm_head_port) ||
+                lm_head_port <= 0 || lm_head_port > 65535) {
+                fprintf(stderr, "error: invalid --lm-head-port value\n");
+                return 1;
+            }
+        } else if (strcmp(argv[i], "--lm-head-rows") == 0 && i + 1 < argc) {
+            if (!parse_i32(argv[++i], lm_head_rows) || lm_head_rows <= 0) {
+                fprintf(stderr, "error: invalid --lm-head-rows value\n");
+                return 1;
+            }
+        } else if (strcmp(argv[i], "--lm-head-top-k") == 0 && i + 1 < argc) {
+            if (!parse_i32(argv[++i], lm_head_top_k) || lm_head_top_k <= 0) {
+                fprintf(stderr, "error: invalid --lm-head-top-k value\n");
+                return 1;
+            }
+        } else if (strcmp(argv[i], "--lm-head-f16-io") == 0) {
+            lm_head_f16_io = true;
         } else if (strcmp(argv[i], "--wait-for-go") == 0) {
             wait_for_go = true;
         } else if (strcmp(argv[i], "--prompt-after-load") == 0) {
@@ -4796,6 +5411,8 @@ int main(int argc, char ** argv) {
             persistent_jsonl = true;
         } else if (strcmp(argv[i], "--parallel-heads") == 0) {
             parallel_heads = true;
+        } else if (strcmp(argv[i], "--no-repack") == 0) {
+            no_repack = true;
         } else if (strcmp(argv[i], "--parallel-tail-batch") == 0 && i + 1 < argc) {
             if (!parse_i32(argv[++i], parallel_tail_batch)) {
                 fprintf(stderr, "error: invalid --parallel-tail-batch value\n");
@@ -4834,6 +5451,7 @@ int main(int argc, char ** argv) {
     const bool is_mono     = (mode == "mono");
     const bool is_monogen  = (mode == "monogen");
     const bool is_monodriver = (mode == "monodriver");
+    const bool is_overlapdriver = (mode == "overlapdriver");
     const bool is_kvsave   = (mode == "kvsave");
     const bool is_kvload   = (mode == "kvload");
     const bool is_kvserver = (mode == "kvserver");
@@ -4855,7 +5473,7 @@ int main(int argc, char ** argv) {
     if ((is_kvsave || is_kvload) && act_file.empty()) { fprintf(stderr, "error: --act-file (blob path) required for %s\n", mode.c_str()); return 1; }
     if (is_kvserver && port <= 0) { fprintf(stderr, "error: --port required for kvserver\n"); return 1; }
     if (is_kvclient && (host.empty() || port <= 0)) { fprintf(stderr, "error: --host --port required for kvclient\n"); return 1; }
-    if (!is_mono && !is_monogen && !is_monodriver && !is_kvsave && !is_kvload && !is_kvserver && !is_kvclient && !is_head && !is_tail && !is_mid && !is_tailnet && !is_headnet && !is_tailbench
+    if (!is_mono && !is_monogen && !is_monodriver && !is_overlapdriver && !is_kvsave && !is_kvload && !is_kvserver && !is_kvclient && !is_head && !is_tail && !is_mid && !is_tailnet && !is_headnet && !is_tailbench
         && !is_tailstream && !is_headstream && !is_stagenet && !is_tailv3 && !is_monov3 &&
         !is_pipedriver && !is_dualengine) {
         fprintf(stderr, "error: unsupported --mode '%s'\n", mode.c_str());
@@ -4879,16 +5497,29 @@ int main(int argc, char ** argv) {
         fprintf(stderr, "error: --prompt-after-load requires pipedriver and forbids -p\n"); return 1;
     }
     if (persistent_jsonl &&
-        ((!is_pipedriver && !is_monodriver) || !prompt.empty() || prompt_after_load ||
+        ((!is_pipedriver && !is_monodriver && !is_overlapdriver) ||
+         !prompt.empty() || prompt_after_load ||
          parallel_heads || port2 > 0 ||
-         driver_batch <= 1 || driver_warmup != 0 || wait_for_go || session_end_set)) {
+         driver_batch <= 0 ||
+         driver_warmup != 0 || wait_for_go || session_end_set)) {
         fprintf(stderr,
-                "error: --persistent-jsonl requires a batched mono or single-stage pipedriver, stdin commands,"
+                "error: --persistent-jsonl requires mono, overlap, or single-stage pipeline stdin commands,"
                 " zero warmup, and no --session-end/--wait-for-go\n");
         return 1;
     }
     if (persistent_jsonl && getenv("LAYERSPLIT_PLACEMENT_CERT") == nullptr) {
         fprintf(stderr, "error: --persistent-jsonl requires LAYERSPLIT_PLACEMENT_CERT=1\n");
+        return 1;
+    }
+    if (driver_stream_prefill && driver_sync_prefill) {
+        fprintf(stderr,
+                "error: choose only one driver prefill execution mode\n");
+        return 1;
+    }
+    if ((driver_stream_prefill || driver_sync_prefill) &&
+        (!is_pipedriver || !persistent_jsonl || driver_batch != 1)) {
+        fprintf(stderr,
+                "error: chunked driver prefill requires persistent single-stream pipedriver\n");
         return 1;
     }
     if (parallel_heads && (!is_pipedriver || port2 <= 0 || driver_batch != 2)) {
@@ -4903,23 +5534,49 @@ int main(int argc, char ** argv) {
     if (is_monodriver && prompt.empty() && !persistent_jsonl) {
         fprintf(stderr, "error: -p PROMPT required for monodriver\n"); return 1;
     }
-    if ((is_monodriver || is_pipedriver) &&
+    if (is_overlapdriver &&
+        ((!persistent_jsonl && prompt.empty()) || host.empty() || driver_batch != 1 ||
+         (ffn_layer_mask == 0 && moe_layer_mask == 0 && lm_head_rows == 0) ||
+         ((ffn_layer_mask == 0) != (ffn_columns == 0)) ||
+         (ffn_layer_mask != 0 && port <= 0 && ffn_port <= 0) ||
+         ((moe_layer_mask == 0) != (moe_port == 0)) ||
+         ((lm_head_rows == 0) != (lm_head_top_k == 0)) ||
+         (lm_head_rows != 0 && lm_head_port <= 0))) {
+        fprintf(stderr,
+                "error: overlapdriver requires -p, --host, at least one complete "
+                "FFN, MoE, or LM-head route, batch 1, and non-persistent input\n");
+        return 1;
+    }
+    if (is_pipedriver &&
+        (((ffn_layer_mask == 0) != (ffn_columns == 0)) ||
+         (ffn_layer_mask != 0 && ffn_port <= 0))) {
+        fprintf(stderr,
+                "error: pipedriver FFN offload requires --ffn-port, layers, and columns\n");
+        return 1;
+    }
+    if (!is_overlapdriver && !is_pipedriver &&
+        (ffn_layer_mask != 0 || ffn_columns != 0 || ffn_port != 0 || !ffn_host.empty())) {
+        fprintf(stderr, "error: FFN offload is only supported by overlapdriver or pipedriver\n");
+        return 1;
+    }
+    if ((is_monodriver || is_overlapdriver || is_pipedriver) &&
         (n_gen <= 0 || driver_requests <= 0 || driver_warmup < 0)) {
         fprintf(stderr, "error: driver counts require -n > 0, --driver-requests > 0, --driver-warmup >= 0\n");
         return 1;
     }
-    if ((is_monodriver || is_pipedriver || is_stagenet || is_tailv3 || is_monov3) &&
+    if ((is_monodriver || is_overlapdriver || is_pipedriver || is_stagenet || is_tailv3 || is_monov3) &&
         (driver_batch <= 0 || driver_batch > 64 ||
-         driver_context <= 0 || driver_max_prefill <= 0 || driver_max_prefill > 512)) {
-        fprintf(stderr, "error: driver bounds require batch 1..64, context > 0, max-prefill 1..512\n");
+         driver_context <= 0 || driver_max_prefill <= 0 || driver_max_prefill > 4096 ||
+         driver_ubatch <= 0 || driver_ubatch > 512)) {
+        fprintf(stderr, "error: driver bounds require batch 1..64, context > 0, max-prefill 1..4096, ubatch 1..512\n");
         return 1;
     }
-    if ((is_monodriver || is_pipedriver) && !persistent_jsonl &&
+    if ((is_monodriver || is_overlapdriver || is_pipedriver) && !persistent_jsonl &&
         driver_requests % driver_batch != 0) {
         fprintf(stderr, "error: --driver-requests must be divisible by --driver-batch\n");
         return 1;
     }
-    if ((is_monodriver || is_pipedriver || is_stagenet || is_tailv3 || is_monov3) &&
+    if ((is_monodriver || is_overlapdriver || is_pipedriver || is_stagenet || is_tailv3 || is_monov3) &&
         (int64_t) driver_context < (int64_t) driver_max_prefill + n_gen) {
         fprintf(stderr, "error: --driver-context must cover max-prefill + generated tokens\n");
         return 1;
@@ -4953,6 +5610,23 @@ int main(int argc, char ** argv) {
         return 1;
     }
 
+    if (is_overlapdriver || (is_pipedriver && ffn_layer_mask != 0)) {
+        const std::string layer_text = std::to_string(ffn_layer_mask);
+        const std::string columns_text = std::to_string(ffn_columns);
+        const std::string moe_layer_text = std::to_string(moe_layer_mask);
+        const std::string head_rows_text = std::to_string(lm_head_rows);
+        const std::string head_top_k_text = std::to_string(lm_head_top_k);
+        if (setenv("LLAMA_FFN_SPLIT_LAYER_MASK", layer_text.c_str(), 1) != 0 ||
+            setenv("LLAMA_FFN_SPLIT_COLUMNS", columns_text.c_str(), 1) != 0 ||
+            (is_overlapdriver &&
+             (setenv("LLAMA_MOE_SPLIT_LAYER_MASK", moe_layer_text.c_str(), 1) != 0 ||
+              setenv("LLAMA_LM_HEAD_SPLIT_ROWS", head_rows_text.c_str(), 1) != 0 ||
+              setenv("LLAMA_LM_HEAD_SPLIT_TOP_K", head_top_k_text.c_str(), 1) != 0))) {
+            fprintf(stderr, "error: cannot configure overlap graph\n");
+            return 1;
+        }
+    }
+
     ggml_backend_load_all();
 
     // [plan-a M4] dualengine owns its own two models + two contexts (one per engine/device);
@@ -4968,6 +5642,11 @@ int main(int argc, char ** argv) {
 
     llama_model_params model_params = llama_model_default_params();
     model_params.n_gpu_layers = ngl;
+    model_params.use_extra_bufts = !no_repack;
+    if ((is_overlapdriver || is_pipedriver) && ffn_layer_mask != 0) {
+        // FFN submatrix views are not compatible with shape-dependent CPU repacking.
+        model_params.use_extra_bufts = false;
+    }
 
     // optional device split (e.g. op15 HTP+Adreno): --devices HTP0,GPUOpenCL --tsplit 24,24
     static std::vector<ggml_backend_dev_t> devs;
@@ -5030,6 +5709,13 @@ int main(int argc, char ** argv) {
         llama_model_free(model);
         return 1;
     }
+    if (is_overlapdriver &&
+        (layer_start != 0 || effective_layer_end != n_layer || n_layer > 64 ||
+         (n_layer < 64 && ((ffn_layer_mask | moe_layer_mask) >> n_layer) != 0))) {
+        fprintf(stderr, "error: overlapdriver requires a valid layer in the full model\n");
+        llama_model_free(model);
+        return 1;
+    }
     if (is_pipedriver && (layer_start <= 0 || effective_layer_end != n_layer)) {
         fprintf(stderr, "error: pipedriver requires a nonempty terminal tail layer range\n");
         llama_model_free(model);
@@ -5039,6 +5725,14 @@ int main(int argc, char ** argv) {
     const llama_vocab * vocab = llama_model_get_vocab(model);
     const int n_vocab = llama_vocab_n_tokens(vocab);
     const int n_embd  = llama_model_n_embd(model);
+
+    if (is_overlapdriver &&
+        (lm_head_rows >= n_vocab || lm_head_top_k > lm_head_rows ||
+         (lm_head_rows > 0 && lm_head_top_k > n_vocab - lm_head_rows))) {
+        fprintf(stderr, "error: invalid LM-head split for model vocabulary\n");
+        llama_model_free(model);
+        return 1;
+    }
 
     if (!tok_set) {
         tok = (int) llama_vocab_bos(vocab);
@@ -5065,12 +5759,71 @@ int main(int argc, char ** argv) {
         if (n_prefill <= 0) { fprintf(stderr, "error: cannot read n_tokens from act-file '%s'\n", act_file.c_str()); llama_model_free(model); return 1; }
     }
 
+    std::unique_ptr<ffn_split::client> ffn_client;
+    if ((is_overlapdriver || is_pipedriver) && ffn_layer_mask != 0) {
+        ffn_split::client_config config;
+        config.host = ffn_host.empty() ? host : ffn_host;
+        config.port = ffn_port > 0 ? ffn_port : port;
+        config.layer_mask = ffn_layer_mask;
+        config.max_columns = static_cast<uint32_t>(ffn_columns);
+        config.n_embd = static_cast<uint32_t>(n_embd);
+        config.max_tokens = static_cast<uint16_t>(
+            std::min(driver_max_prefill, 512));
+        config.f16_io = ffn_f16_io;
+        config.timeout_ms = ffn_timeout_ms;
+        ffn_client = std::make_unique<ffn_split::client>(std::move(config));
+        std::string error;
+        if (!ffn_client->connect(error)) {
+            fprintf(stderr, "error: %s\n", error.c_str());
+            llama_model_free(model);
+            return 1;
+        }
+    }
+
+    std::unique_ptr<lm_head_split::client> lm_head_client;
+    if (is_overlapdriver && lm_head_rows != 0) {
+        lm_head_split::client_config config;
+        config.host = lm_head_host.empty() ? host : lm_head_host;
+        config.port = lm_head_port;
+        config.rows = static_cast<uint32_t>(lm_head_rows);
+        config.top_k = static_cast<uint32_t>(lm_head_top_k);
+        config.n_embd = static_cast<uint32_t>(n_embd);
+        config.n_vocab = static_cast<uint32_t>(n_vocab);
+        config.f16_io = lm_head_f16_io;
+        lm_head_client = std::make_unique<lm_head_split::client>(std::move(config));
+        std::string error;
+        if (!lm_head_client->connect(error)) {
+            fprintf(stderr, "error: %s\n", error.c_str());
+            llama_model_free(model);
+            return 1;
+        }
+    }
+
+    std::unique_ptr<moe_split::client> moe_client;
+    if (is_overlapdriver && moe_layer_mask != 0) {
+        moe_split::client_config config;
+        config.host = host;
+        config.port = moe_port;
+        config.layer_mask = moe_layer_mask;
+        config.n_embd = static_cast<uint32_t>(n_embd);
+        config.f16_io = moe_f16_io;
+        moe_client = std::make_unique<moe_split::client>(std::move(config));
+        std::string error;
+        if (!moe_client->connect(error)) {
+            fprintf(stderr, "error: %s\n", error.c_str());
+            llama_model_free(model);
+            return 1;
+        }
+    }
+
     llama_context_params ctx_params = llama_context_default_params();
+    ctx_params.n_threads = n_threads;
+    ctx_params.n_threads_batch = n_threads_batch;
     // net modes advance KV one position per token (prompt + n_gen); size generously.
-    ctx_params.n_ctx   = (is_tailnet || is_headnet || is_tailstream || is_headstream || is_stagenet || is_tailv3 || is_monov3 || is_pipedriver || is_monodriver) ? 4096 :
+    ctx_params.n_ctx   = (is_tailnet || is_headnet || is_tailstream || is_headstream || is_stagenet || is_tailv3 || is_monov3 || is_pipedriver || is_monodriver || is_overlapdriver) ? 4096 :
                          (is_kvsave || is_kvload || is_kvserver || is_kvclient) ? (uint32_t)(prompt_len + n_gen + 64) : 64;
     ctx_params.n_batch = 8;
-    if (is_stagenet || is_tailv3 || is_monov3 || is_pipedriver || is_monodriver) {
+    if (is_stagenet || is_tailv3 || is_monov3 || is_pipedriver || is_monodriver || is_overlapdriver) {
         const uint64_t n_ctx_total = (uint64_t) driver_context * driver_batch;
         const uint64_t n_batch_total = (uint64_t) driver_max_prefill * driver_batch;
         if (n_ctx_total > UINT32_MAX || n_batch_total > UINT32_MAX) {
@@ -5081,9 +5834,8 @@ int main(int argc, char ** argv) {
         ctx_params.n_seq_max = (uint32_t) driver_batch;
         ctx_params.n_ctx = (uint32_t) n_ctx_total;
         ctx_params.n_batch = (uint32_t) std::max<uint64_t>(n_batch_total, driver_batch);
-        // Keep the bounded B x prompt prefill in one ubatch. Splitting an unmasked
-        // nextn buffer while selecting sparse output rows loses the dense row order.
-        ctx_params.n_ubatch = (uint32_t) std::min<uint64_t>(ctx_params.n_batch, 512);
+        ctx_params.n_ubatch = (uint32_t) std::min<uint64_t>(
+                ctx_params.n_batch, (uint64_t) driver_ubatch);
 
         const char * kv_unified = getenv("LAYERSPLIT_KV_UNIFIED");
         if (kv_unified != nullptr) {
@@ -5121,11 +5873,18 @@ int main(int argc, char ** argv) {
     // (phone stage / host tail / mono control) when the harness asks for a cert.
     const bool placement_cert =
         (is_head || is_tail || is_headnet || is_tailnet ||
-         is_stagenet || is_tailv3 || is_monov3 || is_pipedriver || is_monodriver) &&
+         is_stagenet || is_tailv3 || is_monov3 || is_pipedriver || is_monodriver ||
+         is_overlapdriver) &&
         getenv("LAYERSPLIT_PLACEMENT_CERT") != nullptr;
-    if (placement_cert) {
-        ctx_params.cb_eval           = placement_eval_cb;
-        ctx_params.cb_eval_user_data = &g_placement;
+    combined_eval_state eval_state;
+    eval_state.placement = placement_cert ? &g_placement : nullptr;
+    eval_state.ffn = ffn_client.get();
+    eval_state.lm_head = lm_head_client.get();
+    eval_state.moe = moe_client.get();
+    if (eval_state.placement != nullptr || eval_state.ffn != nullptr ||
+        eval_state.lm_head != nullptr || eval_state.moe != nullptr) {
+        ctx_params.cb_eval           = combined_eval_cb;
+        ctx_params.cb_eval_user_data = &eval_state;
     }
 
     llama_context * ctx = llama_init_from_model(model, ctx_params);
@@ -5134,8 +5893,8 @@ int main(int argc, char ** argv) {
         llama_model_free(model);
         return 1;
     }
-    if (is_monov3 && getenv("LAYERSPLIT_MEMORY_CERT") != nullptr) {
-        emit_memory_cert(ctx, "monov3");
+    if ((is_stagenet || is_monov3) && getenv("LAYERSPLIT_MEMORY_CERT") != nullptr) {
+        emit_memory_cert(ctx, is_stagenet ? "stagenet" : "monov3");
     }
 
     if (prompt_after_load && !driver_read_prompt_after_load(prompt)) {
@@ -5155,15 +5914,21 @@ int main(int argc, char ** argv) {
         rc = run_kvclient(ctx, n_vocab, host, port, prompt_len, n_gen);
     } else if (is_monogen) {
         rc = run_monogen(ctx, vocab, n_vocab, (llama_token) tok, n_gen);
-    } else if (is_monodriver && persistent_jsonl) {
+    } else if ((is_monodriver || is_overlapdriver) && persistent_jsonl) {
         rc = run_persistent_monobatchdriver(
-            ctx, vocab, n_vocab, n_gen, chat_mode, driver_batch, n_layer);
+            ctx, vocab, n_vocab, n_gen, chat_mode, driver_batch, n_layer,
+            ffn_columns,
+            is_overlapdriver ? "overlapdriver" : "monodriver",
+            is_overlapdriver ? "overlapdriver" : "monodriver");
     } else if (is_monodriver) {
         rc = driver_batch == 1 ?
             run_monodriver(ctx, vocab, n_vocab, prompt, n_gen, chat_mode,
                            driver_requests, driver_warmup, wait_for_go) :
             run_monobatchdriver(ctx, vocab, n_vocab, prompt, n_gen, chat_mode,
                                 driver_requests, driver_warmup, wait_for_go, driver_batch);
+    } else if (is_overlapdriver) {
+        rc = run_monodriver(ctx, vocab, n_vocab, prompt, n_gen, chat_mode,
+                            driver_requests, driver_warmup, wait_for_go);
     } else if (is_headstream) {
         rc = run_headstream(ctx, n_embd, host, port, sched_file);
     } else if (is_tailbench) {
@@ -5176,7 +5941,9 @@ int main(int argc, char ** argv) {
     } else if (is_pipedriver && persistent_jsonl) {
         rc = run_persistent_pipebatchdriver(
             ctx, vocab, n_embd, n_vocab, host, port, n_gen, chat_mode,
-            driver_batch, layer_start, n_layer);
+            driver_batch, layer_start, n_layer, ffn_columns,
+            (driver_stream_prefill || driver_sync_prefill) ? driver_ubatch : 0,
+            driver_stream_prefill);
     } else if (is_pipedriver) {
         rc = parallel_heads ?
             run_parallel_head_driver(ctx, vocab, n_embd, n_vocab, host, port, port2,
@@ -5201,6 +5968,128 @@ int main(int argc, char ** argv) {
         rc = run_mono_or_head(ctx, vocab, n_embd, n_vocab, toks, is_head, act_file);
     }
 
+    if (ffn_client != nullptr) {
+        ffn_client->finish();
+        const ffn_split::client_summary summary = ffn_client->summary();
+        const bool valid = !ffn_client->failed() && summary.calls > 0;
+        nlohmann::ordered_json shapes = nlohmann::ordered_json::array();
+        for (const ffn_split::client_shape_summary & shape : summary.shapes) {
+            shapes.push_back({
+                {"tokens", shape.tokens},
+                {"columns", shape.columns},
+                {"calls", shape.calls},
+                {"rpc_mean_ms", shape.rpc_mean_ms},
+                {"rpc_p50_ms", shape.rpc_p50_ms},
+                {"phone_compute_mean_ms", shape.compute_mean_ms},
+                {"phone_compute_p50_ms", shape.compute_p50_ms},
+                {"host_branch_mean_ms", shape.host_branch_mean_ms},
+                {"wait_mean_ms", shape.wait_mean_ms},
+                {"overlap_mean_ms", shape.overlap_mean_ms},
+                {"overlap_p50_ms", shape.overlap_p50_ms},
+            });
+        }
+        nlohmann::ordered_json record = {
+            {"schema", "layersplit-ffn-overlap-v2"},
+            {"status", valid ? "FFN_OVERLAP_OK" : "FFN_OVERLAP_FAILED"},
+            {"layer_mask", ffn_client->layer_mask()},
+            {"layer_count", ffn_client->layer_count()},
+            {"max_columns", ffn_client->max_columns()},
+            {"column_quantum", ffn_client->column_quantum()},
+            {"alternate_columns", ffn_client->alternate_columns()},
+            {"max_tokens", ffn_client->max_tokens()},
+            {"offset", ffn_client->offset()},
+            {"n_ff", ffn_client->n_ff()},
+            {"io", ffn_f16_io ? "f16" : "f32"},
+            {"calls", summary.calls},
+            {"decode_calls", summary.decode_calls},
+            {"prefill_calls", summary.prefill_calls},
+            {"upload_bytes", summary.upload_bytes},
+            {"download_bytes", summary.download_bytes},
+            {"rpc_mean_ms", summary.rpc_mean_ms},
+            {"rpc_p50_ms", summary.rpc_p50_ms},
+            {"rpc_p90_ms", summary.rpc_p90_ms},
+            {"phone_compute_mean_ms", summary.compute_mean_ms},
+            {"phone_compute_p50_ms", summary.compute_p50_ms},
+            {"host_branch_mean_ms", summary.host_branch_mean_ms},
+            {"host_branch_p50_ms", summary.host_branch_p50_ms},
+            {"wait_mean_ms", summary.wait_mean_ms},
+            {"wait_p50_ms", summary.wait_p50_ms},
+            {"overlap_mean_ms", summary.overlap_mean_ms},
+            {"overlap_p50_ms", summary.overlap_p50_ms},
+            {"decode_rpc_p50_ms", summary.decode_rpc_p50_ms},
+            {"decode_phone_compute_p50_ms", summary.decode_compute_p50_ms},
+            {"decode_overlap_p50_ms", summary.decode_overlap_p50_ms},
+            {"prefill_rpc_p50_ms", summary.prefill_rpc_p50_ms},
+            {"prefill_phone_compute_p50_ms", summary.prefill_compute_p50_ms},
+            {"prefill_overlap_p50_ms", summary.prefill_overlap_p50_ms},
+            {"shapes", std::move(shapes)},
+            {"weight_hash", ffn_client->weight_hash()},
+            {"error", ffn_client->error()},
+        };
+        fprintf(stderr, "FFNSPLIT %s\n", record.dump(-1, ' ', true).c_str());
+        if (!valid) {
+            rc = rc == 0 ? 3 : rc;
+        }
+    }
+
+    if (moe_client != nullptr) {
+        moe_client->finish();
+        const moe_split::client_summary summary = moe_client->summary();
+        const bool valid = !moe_client->failed() && summary.calls > 0;
+        nlohmann::ordered_json record = {
+            {"schema", "layersplit-moe-overlap-v1"},
+            {"status", valid ? "MOE_OVERLAP_OK" : "MOE_OVERLAP_FAILED"},
+            {"layer_mask", moe_client->layer_mask()},
+            {"layer_count", moe_client->layer_count()},
+            {"n_ff_exp", moe_client->n_ff_exp()},
+            {"n_expert", moe_client->n_expert()},
+            {"n_expert_used", moe_client->n_expert_used()},
+            {"io", moe_f16_io ? "f16" : "f32"},
+            {"calls", summary.calls},
+            {"rpc_p50_ms", summary.rpc_p50_ms},
+            {"rpc_p90_ms", summary.rpc_p90_ms},
+            {"phone_compute_p50_ms", summary.compute_p50_ms},
+            {"host_branch_p50_ms", summary.host_branch_p50_ms},
+            {"wait_p50_ms", summary.wait_p50_ms},
+            {"overlap_p50_ms", summary.overlap_p50_ms},
+            {"weight_hash", moe_client->weight_hash()},
+            {"error", moe_client->error()},
+        };
+        fprintf(stderr, "MOESPLIT %s\n", record.dump(-1, ' ', true).c_str());
+        if (!valid) {
+            rc = rc == 0 ? 5 : rc;
+        }
+    }
+
+    if (lm_head_client != nullptr) {
+        lm_head_client->finish();
+        const lm_head_split::client_summary summary = lm_head_client->summary();
+        const bool valid = !lm_head_client->failed() && summary.calls > 0;
+        nlohmann::ordered_json record = {
+            {"schema", "layersplit-lm-head-overlap-v1"},
+            {"status", valid ? "LM_HEAD_OVERLAP_OK" : "LM_HEAD_OVERLAP_FAILED"},
+            {"rows", lm_head_rows},
+            {"offset", lm_head_client->offset()},
+            {"top_k", lm_head_top_k},
+            {"io", lm_head_f16_io ? "f16" : "f32"},
+            {"calls", summary.calls},
+            {"rpc_p50_ms", summary.rpc_p50_ms},
+            {"rpc_p90_ms", summary.rpc_p90_ms},
+            {"phone_compute_p50_ms", summary.compute_p50_ms},
+            {"phone_reduce_p50_ms", summary.reduce_p50_ms},
+            {"host_branch_p50_ms", summary.host_branch_p50_ms},
+            {"wait_p50_ms", summary.wait_p50_ms},
+            {"rescore_p50_ms", summary.rescore_p50_ms},
+            {"score_error_max", summary.score_error_max},
+            {"weight_hash", lm_head_client->weight_hash()},
+            {"error", lm_head_client->error()},
+        };
+        fprintf(stderr, "LMHEADSPLIT %s\n", record.dump(-1, ' ', true).c_str());
+        if (!valid) {
+            rc = rc == 0 ? 4 : rc;
+        }
+    }
+
     // [S11-E0 CP1.5] one machine-readable executed-placement certificate per run.
     if (placement_cert && !persistent_jsonl) {
         const char * role = is_head || is_headnet ? "phone_head"
@@ -5208,7 +6097,8 @@ int main(int argc, char ** argv) {
                           : is_stagenet ? "phone_stage"
                           : is_tailv3 ? "host_tail_v3"
                           : is_monov3 ? "monov3"
-                          : is_monodriver ? "monodriver" : "host_tail";
+                          : is_monodriver ? "monodriver"
+                          : is_overlapdriver ? "overlapdriver" : "host_tail";
         const int cert_layer_end =
             (is_head || is_headnet || is_stagenet || is_tailv3 || is_monov3) ?
             effective_layer_end : (int) n_layer;

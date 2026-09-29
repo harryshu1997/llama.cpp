@@ -1,0 +1,134 @@
+{
+  "campaign": {
+    "aggregate_file_sha256": "d4e4586125b27eecea0c2e02af903f6ef52922a2a29457eaff715d4312094da0",
+    "aggregate_record_sha256": "5d144dd797511b4f3aa15f356ef1a8d6bbdacae81abbec82807622f02dc4df42",
+    "gates": {
+      "all_pairs_reduce_fleet_energy": true,
+      "all_pairs_reduce_makespan": true,
+      "fleet_energy_saving_at_least_10_percent": true,
+      "mean_join_wait_at_most_5_percent": true,
+      "mmlu64_absolute_floor": true,
+      "mmlu64_regression_at_most_one": true,
+      "slo_count_not_lower": true,
+      "three_alternating_pairs": true,
+      "zero_bridge_recoveries": true
+    },
+    "phone_work": {
+      "calls": 52320,
+      "download_bytes": 6876610560,
+      "eligible_ffn_mac_fraction": 0.7682374369800197,
+      "mean_exposed_join_wait_fraction": 0.0267137339418705,
+      "phone_macs": 88245054996480,
+      "reset_recoveries": 0,
+      "upload_bytes": 6876610560
+    },
+    "repetitions": 3,
+    "trace_sha256": "b20a9ba66ee3558d835a0e19ed3cfa4c31a4a9e8b4f9c085b29a14f80250a0ff",
+    "verdict": "PASS"
+  },
+  "certificate_set_id": "rtx4060ti-op15-i3-cohort-certificates-v1",
+  "graphs": {
+    "gemma": {
+      "file_sha256": "64d8f80c5e9bf58b18b0ff6662b4024c685fc2f1c692243000fbb18801c8b6a2",
+      "manifest_sha256": "1203809693999d3f1117c09760ea90f66e5a50323407cd7ae0b08a38baf8fd00",
+      "model_binding": "cold"
+    },
+    "qwen": {
+      "file_sha256": "15d926f6837f188d519192dfd143367ebb62ec166c270be02b8c22fe87a50a61",
+      "manifest_sha256": "d515fb7e645618bab8c17660e557a34bb5966590e75393efdc50c7d482cc177b",
+      "model_binding": "hot"
+    }
+  },
+  "profile": {
+    "file_sha256": "fbc2375c9fea20c39c783778d27a0433d88f5c432f19a370684e36559da1092e",
+    "profile_id": "4060ti-op15-kernel-energy-v1"
+  },
+  "required_epoch_binding_sha256": "27d004d2958af9df39e4543eda7853cca68f9293df7aba3515bed3585775a1e5",
+  "routes": [
+    {
+      "dispatch_contract": {
+        "cold_model": "cpu",
+        "hot_model": "cuda",
+        "phone_dense_ffn_split": false,
+        "route_mode": "cpu-control"
+      },
+      "fallback_route_id": null,
+      "quality": {
+        "class": "exact",
+        "claim": "local llama.cpp execution without numerical offload"
+      },
+      "repeats": [
+        {
+          "duration_s": 737.289654554,
+          "fleet_j": 137563.5442689086,
+          "phone_energy_sha256": "a549c54504df4817cfff8e599208491267d3601f64cadc8e3688aec55af4a6a9",
+          "repeat_index": 1,
+          "result_sha256": "5a2ee5dfb451c6fa22fdc8775d21d3210b962e377d77160443712a323449479f"
+        },
+        {
+          "duration_s": 737.309565064,
+          "fleet_j": 137418.68398578442,
+          "phone_energy_sha256": "6b0de6ace0616cc78f59527c7431e0aac9bb81bd703abe7160b9732b56afc37b",
+          "repeat_index": 2,
+          "result_sha256": "40a09b20843e7f6ce8e906892e3c725de5c6bb9abce484fd9d21c141619a6252"
+        },
+        {
+          "duration_s": 734.803969951,
+          "fleet_j": 136670.2475212508,
+          "phone_energy_sha256": "a8cb15ccf1103b317c3a2be88ac7d1f7aef71d0fdb425529c248f08b9df15583",
+          "repeat_index": 3,
+          "result_sha256": "bc6494fbc678bf5f52c25f946cc36e3ebf43cb087dffd5801884579f6c51f416"
+        }
+      ],
+      "role": "control",
+      "route_id": "i3-cold-cpu-control-v1",
+      "scope": "task"
+    },
+    {
+      "dispatch_contract": {
+        "cold_model": "cpu-plus-op15-htp",
+        "hot_model": "cuda",
+        "operator_family": "gemma4-dense-ffn-swiglu",
+        "phone_dense_ffn_split": true,
+        "policy_id": "i3-hidden-wait",
+        "route_mode": "cpu-htp-operator-split",
+        "split_table": "1:9664,3:8192,8:4096,128:8192,512:11136",
+        "transport": "functionfs-dmabuf-f16"
+      },
+      "fallback_route_id": "i3-cold-cpu-control-v1",
+      "quality": {
+        "class": "approximate",
+        "claim": "bounded cohort task quality; no exact-token claim",
+        "mmlu64_control_correct": 27,
+        "mmlu64_treatment_correct": 27
+      },
+      "repeats": [
+        {
+          "duration_s": 626.188986034,
+          "fleet_j": 114516.34474480324,
+          "phone_energy_sha256": "c1f6c15c3e7aed95654798d7a3dab5f9d73a0800d30080aed08c72c1c16eddea",
+          "repeat_index": 1,
+          "result_sha256": "fcba79e95866a21751661e77caff2c7b4a5fab1e5e5989feac755010ed3f9f6d"
+        },
+        {
+          "duration_s": 632.916264563,
+          "fleet_j": 113865.56557493864,
+          "phone_energy_sha256": "b42cd4d5e547758f997b0fad275067d42940b70def26c6bca23f93d6678412a8",
+          "repeat_index": 2,
+          "result_sha256": "5bc6b5b13c2aceff34f80c723ffdcdc040ac4f2e3ccd881113a06efb5a2f1ffd"
+        },
+        {
+          "duration_s": 632.677240018,
+          "fleet_j": 114269.13967588972,
+          "phone_energy_sha256": "d268d28938c504e4d5aa26654ca6103a168295499c1834e3bd2cbb58ac8d29a4",
+          "repeat_index": 3,
+          "result_sha256": "a3669f9c4e0eba1a0187d5fc3603f7609453106e1fc591cbeb3189d64ba657ce"
+        }
+      ],
+      "role": "treatment",
+      "route_id": "i3-cold-cpu-op15-ffn-v1",
+      "scope": "operator"
+    }
+  ],
+  "schema": "s42-route-certificates-v1"
+}

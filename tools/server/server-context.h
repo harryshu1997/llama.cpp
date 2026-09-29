@@ -7,10 +7,20 @@
 #include <nlohmann/json_fwd.hpp>
 
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <set>
 
 struct server_context_impl; // private implementation
+
+struct server_ffn_dormant_state {
+    bool     enabled = false;
+    uint64_t layer_mask = 0;
+    uint32_t host_columns = 0;
+    uint64_t release_generation = 0;
+    size_t   released_bytes = 0;
+    int64_t  release_elapsed_us = 0;
+};
 
 struct server_context_meta {
     std::string build_info;
@@ -78,6 +88,23 @@ static server_state server_state_from_str(const std::string & str) {
 }
 
 using server_state_callback_t = std::function<void(server_state, json /* payload */)>;
+using server_ffn_split_apply_callback_t = std::function<bool(
+        uint64_t, uint32_t, std::string &)>;
+struct server_ffn_split_runtime_context {
+    std::string request_id;
+    int32_t slot_id = -1;
+    uint32_t rows = 0;
+    uint64_t plan_generation = 0;
+    std::vector<uint32_t> ubatch_rows;
+    std::vector<int32_t> positions;
+    int32_t decoded_token_index = -1;
+    int32_t applied_token_index = -1;
+};
+using server_ffn_split_context_callback_t = std::function<bool(
+        const std::vector<server_ffn_split_runtime_context> &,
+        std::string &)>;
+using server_ffn_split_stats_callback_t = std::function<json(
+        const std::vector<std::string> &)>;
 
 struct server_context {
     std::unique_ptr<server_context_impl> impl;
@@ -108,6 +135,24 @@ struct server_context {
 
     // note: must be set before load_model() is called
     void set_state_callback(server_state_callback_t callback);
+
+    // Layers whose FFN weights exist only on the phone: controls may never target them.
+    void configure_ffn_remote_resident(uint64_t remote_resident_layer_mask);
+    // S42 dormant host share: release the phone-executed FFN column suffix while every processing
+    // slot decodes, populate it again before any prompt processing (needs runtime control).
+    void configure_ffn_dormant_host_share(bool enabled, bool drop_cache = true, bool populate = true, uint32_t row_diagnostic_steps = 0);
+    // current dormant host share state: the release generation counts decode-phase releases since
+    // launch, released_bytes is 0 while the share is resident (populated)
+    server_ffn_dormant_state ffn_dormant_state() const;
+
+    // Configure the maximum preloaded dense FFN helper slice.
+    void configure_ffn_split_runtime(
+            uint64_t layer_mask,
+            uint32_t max_columns,
+            uint32_t column_quantum,
+            server_ffn_split_apply_callback_t apply_callback,
+            server_ffn_split_context_callback_t context_callback,
+            server_ffn_split_stats_callback_t stats_callback);
 };
 
 

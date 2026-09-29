@@ -1,0 +1,191 @@
+{
+  "activation_formats": {
+    "f16": 2,
+    "f32": 4,
+    "i8": 1
+  },
+  "evidence": {
+    "aoa_and_complete_ffn": "../RESULTS_CPU_PHONE_OPERATOR_OFFLOAD_V1.md",
+    "ncm": "../RESULTS_NCM_OPERATOR_TRANSPORT_V1.md",
+    "opencl_queue": "../RESULTS_OPENCL_QUEUE_V1.md",
+    "persistent_model_ops": "../RESULTS_PERSISTENT_MODEL_OPS_V1.md",
+    "q4_ffn_dmabuf_f16_packed": "../RESULTS_FFN_DMABUF_F16_PACKED_V1.md",
+    "q4_ffn_dmabuf_fastpath": "../RESULTS_FFN_DMABUF_Q4_FASTPATH_V1.md",
+    "summary": "../RESULTS.md"
+  },
+  "hosts": {
+    "cpu_engine": {
+      "activation_location": "ram",
+      "compute_gflops": 300.0,
+      "dispatch_ms": 0.0,
+      "memory_gbps": 29.7,
+      "p90_multiplier": 1.08,
+      "shape_model": {
+        "kind": "flat"
+      }
+    },
+    "cpu_isolated": {
+      "activation_location": "ram",
+      "compute_gflops": 500.0,
+      "dispatch_ms": 0.0,
+      "memory_gbps": 50.0,
+      "p90_multiplier": 1.05,
+      "shape_model": {
+        "kind": "flat"
+      }
+    },
+    "rtx4060": {
+      "activation_location": "vram",
+      "compute_gflops": 22000.0,
+      "dispatch_ms": 0.01,
+      "memory_gbps": 269.0,
+      "p90_multiplier": 1.03,
+      "phone_staging": {
+        "complete": false,
+        "d2h": null,
+        "h2d": null
+      },
+      "shape_model": {
+        "kind": "flat"
+      }
+    }
+  },
+  "merge": {
+    "base_ms": 0.004,
+    "memory_gbps": 50.0,
+    "p90_multiplier": 1.2
+  },
+  "name": "2026-08-03 desktop-OP15 screening profile",
+  "phone_backends": {
+    "op15_gpu_opencl": {
+      "compute_gflops": 1800.0,
+      "dispatch_ms": 0.532,
+      "family_overrides": {
+        "ffn": {
+          "compute_gflops": 20.0,
+          "memory_gbps": 10.0
+        },
+        "moe": {
+          "compute_gflops": 20.0,
+          "memory_gbps": 10.0
+        }
+      },
+      "memory_gbps": 70.0,
+      "p90_multiplier": 1.25,
+      "qualified": true,
+      "qualified_quantizations": [
+        "q8_0"
+      ],
+      "qualified_workloads": [
+        "chain",
+        "ffn",
+        "matmul",
+        "moe"
+      ],
+      "resident_budget_mib": 8192.0,
+      "shape_model": {
+        "batched_saturation_m": 64,
+        "batched_saturation_n": 4096,
+        "efficiency_floor": 0.2,
+        "kind": "screening_roofline",
+        "m1_saturation_n": 512,
+        "max_profiled_batch": 1
+      },
+      "supported_quantizations": [
+        "f16",
+        "q4_0",
+        "q8_0"
+      ]
+    },
+    "op15_gpu_persistent": {
+      "compute_gflops": 1800.0,
+      "dispatch_ms": 0.00682,
+      "memory_gbps": 70.0,
+      "p90_multiplier": 1.1,
+      "qualified": false,
+      "qualified_quantizations": [],
+      "qualified_workloads": [],
+      "resident_budget_mib": 8192.0,
+      "shape_model": {
+        "batched_saturation_m": 64,
+        "batched_saturation_n": 4096,
+        "efficiency_floor": 0.2,
+        "kind": "screening_roofline",
+        "m1_saturation_n": 512,
+        "max_profiled_batch": 1
+      },
+      "supported_quantizations": [
+        "f16",
+        "q4_0",
+        "q8_0"
+      ]
+    },
+    "op15_htp": {
+      "compute_gflops": 90.6,
+      "dispatch_ms": 0.091,
+      "memory_gbps": 54.0,
+      "p90_multiplier": 1.125,
+      "qualified": true,
+      "qualified_quantizations": [
+        "q4_0",
+        "q8_0"
+      ],
+      "qualified_workloads": [
+        "chain",
+        "ffn",
+        "matmul",
+        "moe"
+      ],
+      "resident_budget_mib": 8192.0,
+      "shape_model": {
+        "batched_saturation_m": 64,
+        "batched_saturation_n": 4096,
+        "efficiency_floor": 0.2,
+        "kind": "screening_roofline",
+        "m1_saturation_n": 512,
+        "max_profiled_batch": 1
+      },
+      "supported_quantizations": [
+        "f16",
+        "q4_0",
+        "q8_0"
+      ]
+    }
+  },
+  "schema": "s41-offload-hardware-profile-v1",
+  "transports": {
+    "aoa": {
+      "base_median_ms": 0.16,
+      "base_p90_ms": 0.205,
+      "gap_penalty_median_ms": 0.19,
+      "gap_penalty_p90_ms": 0.24,
+      "gap_threshold_ms": 1.5,
+      "per_kib_median_ms": 0.0086,
+      "per_kib_p90_ms": 0.01
+    },
+    "ncm": {
+      "base_median_ms": 1.75,
+      "base_p90_ms": 1.9,
+      "per_kib_median_ms": 0.00256,
+      "per_kib_p90_ms": 0.0035
+    }
+  },
+  "weight_formats": {
+    "f16": {
+      "block_bytes": 2,
+      "block_elements": 1
+    },
+    "f32": {
+      "block_bytes": 4,
+      "block_elements": 1
+    },
+    "q4_0": {
+      "block_bytes": 18,
+      "block_elements": 32
+    },
+    "q8_0": {
+      "block_bytes": 34,
+      "block_elements": 32
+    }
+  }
+}

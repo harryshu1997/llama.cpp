@@ -1,0 +1,82 @@
+{
+  "memory_capacity_bytes": 15846404096,
+  "memory_resource_id": "op15-dram",
+  "minimum_available_bytes": 2147483648,
+  "phone_serial": "3C15AU002CL00000",
+  "plan_id": "op15-gemma-qwen-three-session-v1",
+  "reset_generation": 0,
+  "schema": "research-scheduler-phone-residency-v1",
+  "sessions": [
+    {
+      "compute_backend": "HTP0",
+      "mapping_limit_bytes": 3489660928,
+      "session_id": "htp0",
+      "slices": [
+        {
+          "evidence_ids": [
+            "op15-resident-triple-full-v3",
+            "qwen-full-ffn-energy-screen-r1-r2",
+            "qwen-full-ffn-m1-m4-energy-screen-abba-v2"
+          ],
+          "model_hash": "sha256:ed76f2183d2d1d65091986033023e6c78d27f6276c1b0c5826cc92acf73538cf",
+          "model_id": "gemma-4-12b-f16-proxy",
+          "operator_family": "dense_ffn_geglu_suffix",
+          "physical_m_max": 16,
+          "physical_m_min": 1,
+          "resident_bytes": 3255877632,
+          "slice_id": "gemma-ffn-layers-0-22-suffix-6144",
+          "weight_hash": "sha256:e11e4c136f37fbd92eb12a8aefe21d801b27cc0c4db343bb5df3ffc0b27d4524"
+        }
+      ]
+    },
+    {
+      "compute_backend": "HTP1",
+      "mapping_limit_bytes": 3489660928,
+      "session_id": "htp1",
+      "slices": [
+        {
+          "evidence_ids": [
+            "op15-resident-triple-full-v3",
+            "qwen-full-ffn-energy-screen-r1-r2",
+            "qwen-full-ffn-m1-m4-energy-screen-abba-v2"
+          ],
+          "model_hash": "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718",
+          "model_id": "qwen3-14b-f16-proxy",
+          "operator_family": "dense_ffn_swiglu_full_replacement",
+          "physical_m_max": 4,
+          "physical_m_min": 1,
+          "resident_bytes": 3208646656,
+          "slice_id": "qwen-ffn-layers-0-5-full",
+          "weight_hash": "sha256:712fa1e4417542fc4ff1725185fd8da4bc7a2d78167944c9f24464b93706ca3f"
+        }
+      ]
+    },
+    {
+      "compute_backend": "HTP2",
+      "mapping_limit_bytes": 3489660928,
+      "session_id": "htp2",
+      "slices": [
+        {
+          "evidence_ids": [
+            "op15-resident-triple-full-v3",
+            "qwen-full-ffn-energy-screen-r1-r2",
+            "qwen-full-ffn-m1-m4-energy-screen-abba-v2"
+          ],
+          "model_hash": "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718",
+          "model_id": "qwen3-14b-f16-proxy",
+          "operator_family": "dense_ffn_swiglu_full_replacement",
+          "physical_m_max": 4,
+          "physical_m_min": 1,
+          "resident_bytes": 3208646656,
+          "slice_id": "qwen-ffn-layers-6-11-full",
+          "weight_hash": "sha256:0dbe02d29cf35e17da2868088fec6a70d433f01f340ab0c5fd7b3893a50fc33b"
+        }
+      ]
+    }
+  ],
+  "shared_compute_resource_id": "op15-htp",
+  "transport_resource_ids": [
+    "op15-functionfs",
+    "desktop-usb-root"
+  ]
+}

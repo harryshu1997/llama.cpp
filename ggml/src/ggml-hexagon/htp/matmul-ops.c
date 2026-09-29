@@ -19,6 +19,7 @@
 #include "htp-ctx.h"
 #include "htp-ops.h"
 #include "matmul-ops.h"
+#include "ffn-fused-ops.h"
 #include "vtcm-utils.h"
 
 typedef struct {
@@ -1080,12 +1081,14 @@ static void hvx_mm_ffn_2d_repacked_##SUFFIX(unsigned int nth, unsigned int ith, 
 MATMUL_2D_REPACKED_IMPL(q4_0,       576,  tiled_vec_dot_q4_0_32x2,  tiled_vec_dot_q4_0_32x1)
 MATMUL_2D_REPACKED_IMPL(q4_1,       640,  tiled_vec_dot_q4_1_32x2,  tiled_vec_dot_q4_1_32x1)
 MATMUL_2D_REPACKED_IMPL(q8_0,       1088, tiled_vec_dot_q8_0_32x2,  tiled_vec_dot_q8_0_32x1)
+MATMUL_2D_REPACKED_IMPL(q6_k,       1280, tiled_vec_dot_q6_k_32x2,  tiled_vec_dot_q6_k_32x1)
 MATMUL_2D_REPACKED_IMPL(iq4nl,      576,  tiled_vec_dot_iq4nl_32x2, tiled_vec_dot_iq4nl_32x1)
 MATMUL_2D_REPACKED_IMPL(mxfp4,      544,  tiled_vec_dot_mxfp4_32x2, tiled_vec_dot_mxfp4_32x1)
 
 MATMUL_2D_REPACKED_IMPL(q4_0_flat,  576,  flat_vec_dot_q4_0_32x2,   flat_vec_dot_q4_0_32x1)
 MATMUL_2D_REPACKED_IMPL(q4_1_flat,  640,  flat_vec_dot_q4_1_32x2,   flat_vec_dot_q4_1_32x1)
 MATMUL_2D_REPACKED_IMPL(q8_0_flat,  1088, flat_vec_dot_q8_0_32x2,   flat_vec_dot_q8_0_32x1)
+MATMUL_2D_REPACKED_IMPL(q6_k_flat,  1280, flat_vec_dot_q6_k_32x2,   flat_vec_dot_q6_k_32x1)
 MATMUL_2D_REPACKED_IMPL(iq4nl_flat, 576,  flat_vec_dot_iq4nl_32x2,  flat_vec_dot_iq4nl_32x1)
 MATMUL_2D_REPACKED_IMPL(mxfp4_flat, 544,  flat_vec_dot_mxfp4_32x2,  flat_vec_dot_mxfp4_32x1)
 
@@ -1180,12 +1183,14 @@ static void quantize_f32_q8_1_tiled_block(unsigned int nth, unsigned int ith, vo
 MATVEC_2D_REPACKED_IMPL(q4_0,       576,  tiled_vec_dot_q4_0_32x1)
 MATVEC_2D_REPACKED_IMPL(q4_1,       640,  tiled_vec_dot_q4_1_32x1)
 MATVEC_2D_REPACKED_IMPL(q8_0,       1088, tiled_vec_dot_q8_0_32x1)
+MATVEC_2D_REPACKED_IMPL(q6_k,       1280, tiled_vec_dot_q6_k_32x1)
 MATVEC_2D_REPACKED_IMPL(iq4nl,      576,  tiled_vec_dot_iq4nl_32x1)
 MATVEC_2D_REPACKED_IMPL(mxfp4,      544,  tiled_vec_dot_mxfp4_32x1)
 
 MATVEC_2D_REPACKED_IMPL(q4_0_flat,  576,  flat_vec_dot_q4_0_32x1)
 MATVEC_2D_REPACKED_IMPL(q4_1_flat,  640,  flat_vec_dot_q4_1_32x1)
 MATVEC_2D_REPACKED_IMPL(q8_0_flat,  1088, flat_vec_dot_q8_0_32x1)
+MATVEC_2D_REPACKED_IMPL(q6_k_flat,  1280, flat_vec_dot_q6_k_32x1)
 MATVEC_2D_REPACKED_IMPL(iq4nl_flat, 576,  flat_vec_dot_iq4nl_32x1)
 MATVEC_2D_REPACKED_IMPL(mxfp4_flat, 544,  flat_vec_dot_mxfp4_32x1)
 
@@ -1193,12 +1198,14 @@ MATVEC_2D_REPACKED_IMPL(mxfp4_flat, 544,  flat_vec_dot_mxfp4_32x1)
 MATMUL_QKV_2D_REPACKED_IMPL(q4_0,       576,  tiled_vec_dot_q4_0_32x2,  tiled_vec_dot_q4_0_32x1)
 MATMUL_QKV_2D_REPACKED_IMPL(q4_1,       640,  tiled_vec_dot_q4_1_32x2,  tiled_vec_dot_q4_1_32x1)
 MATMUL_QKV_2D_REPACKED_IMPL(q8_0,       1088, tiled_vec_dot_q8_0_32x2,  tiled_vec_dot_q8_0_32x1)
+MATMUL_QKV_2D_REPACKED_IMPL(q6_k,       1280, tiled_vec_dot_q6_k_32x2,  tiled_vec_dot_q6_k_32x1)
 MATMUL_QKV_2D_REPACKED_IMPL(iq4nl,      576,  tiled_vec_dot_iq4nl_32x2, tiled_vec_dot_iq4nl_32x1)
 MATMUL_QKV_2D_REPACKED_IMPL(mxfp4,      544,  tiled_vec_dot_mxfp4_32x2, tiled_vec_dot_mxfp4_32x1)
 
 MATMUL_QKV_2D_REPACKED_IMPL(q4_0_flat,  576,  flat_vec_dot_q4_0_32x2,   flat_vec_dot_q4_0_32x1)
 MATMUL_QKV_2D_REPACKED_IMPL(q4_1_flat,  640,  flat_vec_dot_q4_1_32x2,   flat_vec_dot_q4_1_32x1)
 MATMUL_QKV_2D_REPACKED_IMPL(q8_0_flat,  1088, flat_vec_dot_q8_0_32x2,   flat_vec_dot_q8_0_32x1)
+MATMUL_QKV_2D_REPACKED_IMPL(q6_k_flat,  1280, flat_vec_dot_q6_k_32x2,   flat_vec_dot_q6_k_32x1)
 MATMUL_QKV_2D_REPACKED_IMPL(iq4nl_flat, 576,  flat_vec_dot_iq4nl_32x2,  flat_vec_dot_iq4nl_32x1)
 MATMUL_QKV_2D_REPACKED_IMPL(mxfp4_flat, 544,  flat_vec_dot_mxfp4_32x2,  flat_vec_dot_mxfp4_32x1)
 
@@ -1206,12 +1213,14 @@ MATMUL_QKV_2D_REPACKED_IMPL(mxfp4_flat, 544,  flat_vec_dot_mxfp4_32x2,  flat_vec
 MATMUL_FFN_2D_REPACKED_IMPL(q4_0,       576,  tiled_vec_dot_q4_0_32x2,  tiled_vec_dot_q4_0_32x1)
 MATMUL_FFN_2D_REPACKED_IMPL(q4_1,       640,  tiled_vec_dot_q4_1_32x2,  tiled_vec_dot_q4_1_32x1)
 MATMUL_FFN_2D_REPACKED_IMPL(q8_0,       1088, tiled_vec_dot_q8_0_32x2,  tiled_vec_dot_q8_0_32x1)
+MATMUL_FFN_2D_REPACKED_IMPL(q6_k,       1280, tiled_vec_dot_q6_k_32x2,  tiled_vec_dot_q6_k_32x1)
 MATMUL_FFN_2D_REPACKED_IMPL(iq4nl,      576,  tiled_vec_dot_iq4nl_32x2, tiled_vec_dot_iq4nl_32x1)
 MATMUL_FFN_2D_REPACKED_IMPL(mxfp4,      544,  tiled_vec_dot_mxfp4_32x2, tiled_vec_dot_mxfp4_32x1)
 
 MATMUL_FFN_2D_REPACKED_IMPL(q4_0_flat,  576,  flat_vec_dot_q4_0_32x2,   flat_vec_dot_q4_0_32x1)
 MATMUL_FFN_2D_REPACKED_IMPL(q4_1_flat,  640,  flat_vec_dot_q4_1_32x2,   flat_vec_dot_q4_1_32x1)
 MATMUL_FFN_2D_REPACKED_IMPL(q8_0_flat,  1088, flat_vec_dot_q8_0_32x2,   flat_vec_dot_q8_0_32x1)
+MATMUL_FFN_2D_REPACKED_IMPL(q6_k_flat,  1280, flat_vec_dot_q6_k_32x2,   flat_vec_dot_q6_k_32x1)
 MATMUL_FFN_2D_REPACKED_IMPL(iq4nl_flat, 576,  flat_vec_dot_iq4nl_32x2,  flat_vec_dot_iq4nl_32x1)
 MATMUL_FFN_2D_REPACKED_IMPL(mxfp4_flat, 544,  flat_vec_dot_mxfp4_32x2,  flat_vec_dot_mxfp4_32x1)
 
@@ -1581,6 +1590,10 @@ static int hvx_mm_init_vec_dot(struct htp_mm_context * mmctx, enum htp_data_type
             mmctx->type         = "q8_0_tiled-f32";
             mmctx->vec_dot_32x1 = tiled_vec_dot_q8_0_32x1;
             return 0;
+        case HTP_TYPE_Q6_K:
+            mmctx->type         = "q6_k_tiled-f32";
+            mmctx->vec_dot_32x1 = tiled_vec_dot_q6_k_32x1;
+            return 0;
         case HTP_TYPE_IQ4_NL:
             mmctx->type         = "iq4nl_tiled-f32";
             mmctx->vec_dot_32x1 = tiled_vec_dot_iq4nl_32x1;
@@ -1607,7 +1620,7 @@ static int hvx_mm_matmul(struct htp_ops_context * octx) {
     const uint32_t src1_nrows = ne11 * ne12 * ne13;
 
     bool is_repacked = (src0->type == HTP_TYPE_Q4_0 || src0->type == HTP_TYPE_Q4_1 ||
-                        src0->type == HTP_TYPE_Q8_0 || src0->type == HTP_TYPE_IQ4_NL ||
+                        src0->type == HTP_TYPE_Q8_0 || src0->type == HTP_TYPE_Q6_K || src0->type == HTP_TYPE_IQ4_NL ||
                         src0->type == HTP_TYPE_MXFP4);
 
     // Compute src0_nrows_per_thread
@@ -1634,6 +1647,7 @@ static int hvx_mm_matmul(struct htp_ops_context * octx) {
                 case HTP_TYPE_Q4_0:   matmul_job_func = hvx_mm_2d_repacked_q4_0;   break;
                 case HTP_TYPE_Q4_1:   matmul_job_func = hvx_mm_2d_repacked_q4_1;   break;
                 case HTP_TYPE_Q8_0:   matmul_job_func = hvx_mm_2d_repacked_q8_0;   break;
+                case HTP_TYPE_Q6_K:   matmul_job_func = hvx_mm_2d_repacked_q6_k;   break;
                 case HTP_TYPE_IQ4_NL: matmul_job_func = hvx_mm_2d_repacked_iq4nl;  break;
                 case HTP_TYPE_MXFP4:  matmul_job_func = hvx_mm_2d_repacked_mxfp4;  break;
                 default:              return HTP_STATUS_NO_SUPPORT;
@@ -1647,6 +1661,7 @@ static int hvx_mm_matmul(struct htp_ops_context * octx) {
                 case HTP_TYPE_Q4_0:   matmul_job_func = hvx_mv_2d_repacked_q4_0;   break;
                 case HTP_TYPE_Q4_1:   matmul_job_func = hvx_mv_2d_repacked_q4_1;   break;
                 case HTP_TYPE_Q8_0:   matmul_job_func = hvx_mv_2d_repacked_q8_0;   break;
+                case HTP_TYPE_Q6_K:   matmul_job_func = hvx_mv_2d_repacked_q6_k;   break;
                 case HTP_TYPE_IQ4_NL: matmul_job_func = hvx_mv_2d_repacked_iq4nl;  break;
                 case HTP_TYPE_MXFP4:  matmul_job_func = hvx_mv_2d_repacked_mxfp4;  break;
                 default:              return HTP_STATUS_NO_SUPPORT;
@@ -1726,6 +1741,7 @@ static int hvx_mm_matmul(struct htp_ops_context * octx) {
                     case HTP_TYPE_Q4_0:   matmul_job_func = hvx_mm_2d_repacked_q4_0_flat;   break;
                     case HTP_TYPE_Q4_1:   matmul_job_func = hvx_mm_2d_repacked_q4_1_flat;   break;
                     case HTP_TYPE_Q8_0:   matmul_job_func = hvx_mm_2d_repacked_q8_0_flat;   break;
+                    case HTP_TYPE_Q6_K:   matmul_job_func = hvx_mm_2d_repacked_q6_k_flat;   break;
                     case HTP_TYPE_IQ4_NL: matmul_job_func = hvx_mm_2d_repacked_iq4nl_flat;  break;
                     case HTP_TYPE_MXFP4:  matmul_job_func = hvx_mm_2d_repacked_mxfp4_flat;  break;
                     default:              return HTP_STATUS_NO_SUPPORT;
@@ -1735,6 +1751,7 @@ static int hvx_mm_matmul(struct htp_ops_context * octx) {
                     case HTP_TYPE_Q4_0:   matmul_job_func = hvx_mv_2d_repacked_q4_0_flat;   break;
                     case HTP_TYPE_Q4_1:   matmul_job_func = hvx_mv_2d_repacked_q4_1_flat;   break;
                     case HTP_TYPE_Q8_0:   matmul_job_func = hvx_mv_2d_repacked_q8_0_flat;   break;
+                    case HTP_TYPE_Q6_K:   matmul_job_func = hvx_mv_2d_repacked_q6_k_flat;   break;
                     case HTP_TYPE_IQ4_NL: matmul_job_func = hvx_mv_2d_repacked_iq4nl_flat;  break;
                     case HTP_TYPE_MXFP4:  matmul_job_func = hvx_mv_2d_repacked_mxfp4_flat;  break;
                     default:              return HTP_STATUS_NO_SUPPORT;
@@ -2380,6 +2397,34 @@ static void transfer_activation_chunk_threaded(
         int n_tasks = hex_smin((int) state.n_tasks, n_threads);
         worker_pool_run_func(ctx->worker_pool, transfer_activation_chunk_worker_fn, &state, n_tasks);
     }
+}
+
+void htp_mm_f16_input(struct htp_context * ctx, const struct htp_ffn_fused_params * p,
+                      const float * src, uint32_t rows, uint32_t k, uint32_t stride) {
+    hmx_init_column_scales((__fp16 *) (ctx->vtcm_base + p->scales), Q6_V_vsplat_R(0x3c00));
+    transfer_activation_chunk_threaded(ctx, (__fp16 *) (ctx->vtcm_base + p->input),
+        src, rows, k, stride, p->n_threads, k, (float *) (ctx->vtcm_base + p->input_tmp));
+}
+
+void htp_mm_f16_weights(struct htp_context * ctx, const struct htp_ffn_fused_params * p,
+                        uint32_t slot, uint32_t cols, uint32_t k) {
+    uint8_t * base = ctx->vtcm_base;
+    dequantize_tiled_weight_chunk_to_fp16_tiles(ctx, (__fp16 *) (base + p->weights[slot]), base + p->raw,
+        cols, k, k * sizeof(__fp16), HTP_TYPE_F16, k / 32, init_fastdiv_values(k / 32),
+        convert_f16_worker_loop, p->n_threads);
+}
+
+bool htp_mm_f16_submit(struct htp_context * ctx, const struct htp_ffn_fused_params * p,
+                       hmx_matmul_job_t * job, uint32_t index, uint32_t rows, uint32_t cols, uint32_t k) {
+    uint8_t * base = ctx->vtcm_base;
+    hmx_matmul_job_init(job, (__fp16 *) (base + p->projections[index % 3]),
+        (__fp16 *) (base + p->input), (__fp16 *) (base + p->weights[index % 2]),
+        (__fp16 *) (base + p->scales), hmx_ceil_div(rows, 32), cols / 32, k / 32);
+    return hmx_queue_push(ctx->hmx_queue, hmx_queue_make_desc(hmx_matmul_worker_fn, job));
+}
+
+void htp_mm_f16_rows(float * dst, const void * tiles, uint32_t row, uint32_t rows, uint32_t cols) {
+    transfer_output_chunk_fp16_to_fp32(dst, tiles, row, rows, cols, cols, cols);
 }
 
 static int hmx_mm_2d_f32(struct htp_context *ctx,
@@ -3342,7 +3387,7 @@ int op_matmul_qkv(struct htp_ops_context * octx) {
     const struct htp_tensor * restrict dst_q = octx->dsts[2];
 
     bool is_repacked = (src0->type == HTP_TYPE_Q4_0 || src0->type == HTP_TYPE_Q4_1 ||
-                        src0->type == HTP_TYPE_Q8_0 || src0->type == HTP_TYPE_IQ4_NL ||
+                        src0->type == HTP_TYPE_Q8_0 || src0->type == HTP_TYPE_Q6_K || src0->type == HTP_TYPE_IQ4_NL ||
                         src0->type == HTP_TYPE_MXFP4);
 
     struct htp_mm_context mmctx_struct = {0};
@@ -3456,6 +3501,7 @@ int op_matmul_qkv(struct htp_ops_context * octx) {
                 case HTP_TYPE_Q4_0:   matmul_job_func = hvx_mm_qkv_2d_repacked_q4_0_flat;   break;
                 case HTP_TYPE_Q4_1:   matmul_job_func = hvx_mm_qkv_2d_repacked_q4_1_flat;   break;
                 case HTP_TYPE_Q8_0:   matmul_job_func = hvx_mm_qkv_2d_repacked_q8_0_flat;   break;
+                case HTP_TYPE_Q6_K:   matmul_job_func = hvx_mm_qkv_2d_repacked_q6_k_flat;   break;
                 case HTP_TYPE_IQ4_NL: matmul_job_func = hvx_mm_qkv_2d_repacked_iq4nl_flat;  break;
                 case HTP_TYPE_MXFP4:  matmul_job_func = hvx_mm_qkv_2d_repacked_mxfp4_flat;  break;
                 default:              return HTP_STATUS_NO_SUPPORT;
@@ -3465,6 +3511,7 @@ int op_matmul_qkv(struct htp_ops_context * octx) {
                 case HTP_TYPE_Q4_0:   matmul_job_func = hvx_mm_qkv_2d_repacked_q4_0;   break;
                 case HTP_TYPE_Q4_1:   matmul_job_func = hvx_mm_qkv_2d_repacked_q4_1;   break;
                 case HTP_TYPE_Q8_0:   matmul_job_func = hvx_mm_qkv_2d_repacked_q8_0;   break;
+                case HTP_TYPE_Q6_K:   matmul_job_func = hvx_mm_qkv_2d_repacked_q6_k;   break;
                 case HTP_TYPE_IQ4_NL: matmul_job_func = hvx_mm_qkv_2d_repacked_iq4nl;  break;
                 case HTP_TYPE_MXFP4:  matmul_job_func = hvx_mm_qkv_2d_repacked_mxfp4;  break;
                 default:              return HTP_STATUS_NO_SUPPORT;
@@ -3486,7 +3533,7 @@ int op_matmul_ffn(struct htp_ops_context * octx) {
     const struct htp_tensor * restrict dst_up = octx->dsts[1];
 
     bool is_repacked = (src0->type == HTP_TYPE_Q4_0 || src0->type == HTP_TYPE_Q4_1 ||
-                        src0->type == HTP_TYPE_Q8_0 || src0->type == HTP_TYPE_IQ4_NL ||
+                        src0->type == HTP_TYPE_Q8_0 || src0->type == HTP_TYPE_Q6_K || src0->type == HTP_TYPE_IQ4_NL ||
                         src0->type == HTP_TYPE_MXFP4);
 
     struct htp_mm_context mmctx_struct = {0};
@@ -3593,6 +3640,7 @@ int op_matmul_ffn(struct htp_ops_context * octx) {
                 case HTP_TYPE_Q4_0:   matmul_job_func = hvx_mm_ffn_2d_repacked_q4_0_flat;   break;
                 case HTP_TYPE_Q4_1:   matmul_job_func = hvx_mm_ffn_2d_repacked_q4_1_flat;   break;
                 case HTP_TYPE_Q8_0:   matmul_job_func = hvx_mm_ffn_2d_repacked_q8_0_flat;   break;
+                case HTP_TYPE_Q6_K:   matmul_job_func = hvx_mm_ffn_2d_repacked_q6_k_flat;   break;
                 case HTP_TYPE_IQ4_NL: matmul_job_func = hvx_mm_ffn_2d_repacked_iq4nl_flat;  break;
                 case HTP_TYPE_MXFP4:  matmul_job_func = hvx_mm_ffn_2d_repacked_mxfp4_flat;  break;
                 default:              return HTP_STATUS_NO_SUPPORT;
@@ -3602,6 +3650,7 @@ int op_matmul_ffn(struct htp_ops_context * octx) {
                 case HTP_TYPE_Q4_0:   matmul_job_func = hvx_mm_ffn_2d_repacked_q4_0;   break;
                 case HTP_TYPE_Q4_1:   matmul_job_func = hvx_mm_ffn_2d_repacked_q4_1;   break;
                 case HTP_TYPE_Q8_0:   matmul_job_func = hvx_mm_ffn_2d_repacked_q8_0;   break;
+                case HTP_TYPE_Q6_K:   matmul_job_func = hvx_mm_ffn_2d_repacked_q6_k;   break;
                 case HTP_TYPE_IQ4_NL: matmul_job_func = hvx_mm_ffn_2d_repacked_iq4nl;  break;
                 case HTP_TYPE_MXFP4:  matmul_job_func = hvx_mm_ffn_2d_repacked_mxfp4;  break;
                 default:              return HTP_STATUS_NO_SUPPORT;

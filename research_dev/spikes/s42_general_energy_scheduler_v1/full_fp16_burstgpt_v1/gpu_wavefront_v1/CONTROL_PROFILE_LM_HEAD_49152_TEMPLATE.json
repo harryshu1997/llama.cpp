@@ -1,0 +1,71 @@
+{
+  "admission": "mechanics",
+  "bubble": {
+    "guard_us": 10000,
+    "protected_ready_lower_us": 1000000,
+    "runtime_verified": false
+  },
+  "candidate": {
+    "accounting_scope": "qwen-shape-cohort-plus-gemma-request",
+    "avoided_energy_uj": {
+      "lower": 900,
+      "mean": 1000,
+      "measured": false,
+      "sample_count": 0,
+      "upper": 1100
+    },
+    "backfill_energy_uj": {
+      "lower": 400,
+      "mean": 500,
+      "measured": false,
+      "sample_count": 0,
+      "upper": 600
+    },
+    "energy_boundary_id": "cpu-package+gpu-board+whole-phone",
+    "minimum_energy_saving_ppm": 50000,
+    "restore_latency_us": {
+      "lower": 500,
+      "mean": 1000,
+      "measured": false,
+      "sample_count": 0,
+      "upper": 2000
+    },
+    "service_latency_us": {
+      "lower": 100000,
+      "mean": 250000,
+      "measured": false,
+      "sample_count": 0,
+      "upper": 500000
+    },
+    "workspace_bytes": 1
+  },
+  "evidence_ids": [
+    "control-only-unqualified-placeholder"
+  ],
+  "memory": {
+    "free_bytes": 0,
+    "gpu_uuid": "GPU-runtime-placeholder",
+    "reserve_bytes": 536870912,
+    "total_bytes": 0
+  },
+  "model": {
+    "lm_head_resident_bytes": 377487360,
+    "lm_head_weight_sha256": "runtime-placeholder",
+    "sha256": "ed76f2183d2d1d65091986033023e6c78d27f6276c1b0c5826cc92acf73538cf"
+  },
+  "producer_resource_ids": [
+    "cpu"
+  ],
+  "profile_id": "fp16-wavefront-control-lm-head-49152-v1",
+  "schema": "s42-fp16-burstgpt-gpu-wavefront-profile-v1",
+  "valid_for_us": 7200000000,
+  "worker": {
+    "flags": 1,
+    "n_embd": 3840,
+    "n_vocab": 262144,
+    "offset": 212992,
+    "rows": 49152,
+    "top_k": 32,
+    "weight_hash64": "runtime-placeholder"
+  }
+}

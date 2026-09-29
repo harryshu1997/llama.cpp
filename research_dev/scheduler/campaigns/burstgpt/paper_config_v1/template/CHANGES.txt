@@ -1,0 +1,9 @@
+deploy paths /mnt/storage/s42-trace-v2-20260921-prep -> /mnt/storage/s42-trace-v2-20260921-prep
+replay schedule /mnt/storage/burstgpt-source/longtail_eval_v2/burstgpt_longtail_eval_v2.json
+trace manifest /mnt/storage/burstgpt-source/longtail_eval_v2/TRACE_MANIFEST.json
+qwen3-14b-q4km-dequant-f16: drop_cache=0 populate=1
+gemma-4-12b-q40-dequant-f16: drop_cache=0 populate=1
+transport identity path points at the new inputs; materialize it before preflight
+2026-09-27: continuous_join gate template = template-eval2 + dispatch_policy.continuous_join=true, max_barrier_extension_s=120 (Gemma parallel stays 2, Qwen 4).
+2026-09-28: step-1 gate = template-eval2-cj + residency_hysteresis_s 20 + late_helper_adoption (min 24 tokens) + early_on_transition + count_queued_demand.
+2026-09-28: s2 = s1 + batch_growth_verdict_inheritance (keep the phone policy through a join).

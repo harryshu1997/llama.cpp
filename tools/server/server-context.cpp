@@ -11,6 +11,7 @@
 #include "common.h"
 #include "fit.h"
 #include "llama.h"
+#include "src/llama-ext.h"
 #include "log.h"
 #include "sampling.h"
 #include "speculative.h"
@@ -20,8 +21,13 @@
 #include <algorithm>
 #include <cstddef>
 #include <cinttypes>
+#include <cstdio>
+#include <cstdlib>
 #include <exception>
 #include <memory>
+#include <map>
+#include <set>
+#include <stdexcept>
 #include <filesystem>
 #include <utility>
 #include <fstream>
@@ -62,6 +68,19 @@ enum slot_state {
     SLOT_STATE_PROCESSING_PROMPT,
     SLOT_STATE_DONE_PROMPT,
     SLOT_STATE_GENERATING,
+};
+
+struct server_ffn_split_policy {
+    std::string request_id;
+    std::string policy_hash;
+    uint64_t plan_generation = 0;
+    uint64_t layer_mask = 0;
+    uint32_t columns = 0;
+    int32_t applied_token_index = -1;
+
+    bool operator==(const server_ffn_split_policy & other) const {
+        return layer_mask == other.layer_mask && columns == other.columns;
+    }
 };
 
 struct server_slot; // forward declaration
@@ -191,6 +210,8 @@ struct server_slot {
     int32_t n_remaining = -1;
     int32_t i_batch     = -1;
 
+    server_ffn_split_policy ffn_split_policy;
+
     int32_t n_prompt_tokens_cache     = 0;
     int32_t n_prompt_tokens_processed = 0;
 
@@ -309,6 +330,7 @@ struct server_slot {
         stop           = STOP_TYPE_NONE;
         stopping_word  = "";
         n_sent_text    = 0;
+        ffn_split_policy = {};
 
         if (can_speculate()) {
             spec_draft.clear();
@@ -385,7 +407,9 @@ struct server_slot {
     bool can_batch_with(server_slot & other_slot) const {
         GGML_ASSERT(task);
 
-        return task->type == other_slot.task->type && are_lora_equal(lora, other_slot.lora);
+        return task->type == other_slot.task->type &&
+                are_lora_equal(lora, other_slot.lora) &&
+                ffn_split_policy == other_slot.ffn_split_policy;
     }
 
     bool has_budget(const common_params & global_params) {
@@ -889,6 +913,26 @@ private:
     // use server_context methods instead
 
     common_params params_base;
+    std::unique_ptr<FILE, decltype(&std::fclose)> logits_trace{nullptr, &std::fclose};
+
+    uint64_t ffn_split_max_layer_mask = 0;
+    uint64_t ffn_remote_resident_layer_mask = 0;
+    uint32_t ffn_split_max_columns = 0;
+    uint32_t ffn_split_column_quantum = 0;
+    bool     ffn_dormant_host_share = false;
+    bool     ffn_dormant_drop_cache = true;
+    bool     ffn_dormant_populate = true;
+    uint32_t ffn_row_diagnostic_steps = 0;
+    uint64_t ffn_dormant_layer_mask = 0;
+    uint32_t ffn_dormant_host_columns = 0;
+    // release accounting exposed in the runtime stats of every control acknowledgement
+    uint64_t ffn_dormant_release_generation = 0;
+    uint64_t ffn_dormant_release_skipped_mixed = 0;
+    size_t   ffn_dormant_released_bytes = 0;
+    int64_t  ffn_dormant_release_elapsed_us = 0;
+    server_ffn_split_apply_callback_t ffn_split_apply_callback;
+    server_ffn_split_context_callback_t ffn_split_context_callback;
+    server_ffn_split_stats_callback_t ffn_split_stats_callback;
 
     // note: keep these alive - they determine the lifetime of the model, context, etc.
     common_init_result_ptr llama_init;
@@ -915,6 +959,7 @@ private:
 
     // slots / clients
     std::vector<server_slot> slots;
+    size_t batch_slot_cursor = 0;
 
     int trace = 0;
     int slots_debug = 0;
@@ -1015,6 +1060,23 @@ private:
                                         params_base.speculative.types.end(),
                                         COMMON_SPECULATIVE_TYPE_DRAFT_MTP) != params_base.speculative.types.end();
         const bool has_spec = has_draft || spec_mtp;
+
+        if (const char * path = std::getenv("S41_SERVER_LOGITS_TRACE")) {
+            const uint32_t endian = 1;
+            const bool ordinary = std::all_of(params.speculative.types.begin(), params.speculative.types.end(),
+                    [](common_speculative_type type) { return type == COMMON_SPECULATIVE_TYPE_NONE; });
+            if (path[0] != '/' || has_spec || !ordinary || params.embedding || params.sleep_idle_seconds >= 0 || is_resume ||
+                    *reinterpret_cast<const uint8_t *>(&endian) != 1) {
+                SRV_ERR("%s", "raw logits trace requires an absolute path, little endian and ordinary awake completion\n");
+                return false;
+            }
+            logits_trace.reset(std::fopen(path, "wbx"));
+            if (!logits_trace || std::fwrite("S41LOG1\0", 1, 8, logits_trace.get()) != 8 || std::fflush(logits_trace.get()) != 0) {
+                SRV_ERR("%s", "cannot create raw logits trace\n");
+                return false;
+            }
+            SRV_INF("S41SERVERLOGITS schema=s41-logits-v1 path=%s\n", path);
+        }
 
         if (callback_state) {
             std::vector<std::string> stages = {"text_model"};
@@ -1167,6 +1229,21 @@ private:
         if (model_tgt == nullptr) {
             SRV_ERR("failed to load model, '%s'\n", params_base.model.path.c_str());
             return false;
+        }
+        if (ffn_dormant_host_share && !llama_model_ffn_host_share_configure(
+                model_tgt, ffn_dormant_drop_cache, ffn_dormant_populate)) {
+            SRV_ERR("%s\n", "dormant host share policy is unsupported by the model backing or platform");
+            return false;
+        }
+        if (ffn_dormant_host_share) {
+            SRV_INF("S41SERVERFFN dormant_policy drop_cache=%d populate=%d\n", ffn_dormant_drop_cache, ffn_dormant_populate);
+        }
+
+        if (ffn_row_diagnostic_steps) {
+            SRV_INF("S41SERVERFFN row_diagnostic_steps=%u local_shadow=1 delayed_release=1\n", ffn_row_diagnostic_steps);
+        }
+        if (ffn_split_max_columns > 0) {
+            llama_set_ffn_split_policy(ctx_tgt, true, 0, 0);
         }
 
         vocab = llama_model_get_vocab(model_tgt);
@@ -1831,7 +1908,7 @@ private:
             backend_sampling &= !(slot.can_speculate());
 
             // TODO: getting pre sampling logits is not yet supported with backend sampling
-            backend_sampling &= !need_pre_sample_logits;
+            backend_sampling &= !need_pre_sample_logits && !logits_trace;
 
             // TODO: tmp until backend sampling is fully implemented
             if (backend_sampling) {
@@ -2084,8 +2161,9 @@ private:
     void send_partial_response(server_slot & slot, const completion_token_output & tkn, bool is_progress, bool is_begin = false) {
         auto res = std::make_unique<server_task_result_cmpl_partial>();
 
-        res->id    = slot.task->id;
-        res->index = slot.task->index;
+        res->id      = slot.task->id;
+        res->id_slot = slot.id;
+        res->index   = slot.task->index;
 
         if (is_progress) {
             res->is_progress        = true;
@@ -2461,7 +2539,151 @@ private:
                     auto res = std::make_unique<server_task_result_control>();
                     res->id = task.id;
 
-                    server_slot * slot = get_slot_by_cmpl_id(task.params.control_cmpl_id);
+                    const bool ffn_cohort_control =
+                            task.params.control_action == "ffn_split_cohort" ||
+                            task.params.control_action == "ffn_split_cohort_stats";
+                    if (ffn_cohort_control) {
+                        const auto & request_ids =
+                                task.params.control_request_ids;
+                        const auto & slot_ids = task.params.control_slot_ids;
+                        std::vector<server_slot *> cohort_slots;
+                        bool valid = request_ids.size() == slot_ids.size() &&
+                                request_ids.size() >= 2 &&
+                                request_ids.size() <= 8;
+                        for (size_t i = 0; valid && i < slot_ids.size(); ++i) {
+                            server_slot * cohort_slot = get_slot_by_id(slot_ids[i]);
+                            valid = cohort_slot != nullptr &&
+                                    cohort_slot->is_processing() &&
+                                    cohort_slot->task != nullptr &&
+                                    cohort_slot->task->params.scheduler_request_id ==
+                                            request_ids[i] &&
+                                    cohort_slot->state == SLOT_STATE_GENERATING;
+                            if (valid) {
+                                cohort_slots.push_back(cohort_slot);
+                            }
+                        }
+                        if (!valid) {
+                            res->success = false;
+                            res->message =
+                                    "FFN cohort members and active slots differ";
+                            queue_results.send(std::move(res));
+                            break;
+                        }
+
+                        if (task.params.control_action ==
+                                "ffn_split_cohort_stats") {
+                            const auto & first =
+                                    cohort_slots.front()->ffn_split_policy;
+                            valid = static_cast<bool>(
+                                    ffn_split_stats_callback);
+                            for (server_slot * cohort_slot : cohort_slots) {
+                                valid = valid &&
+                                        cohort_slot->ffn_split_policy == first;
+                            }
+                            if (!valid) {
+                                res->success = false;
+                                res->message =
+                                        "FFN cohort policies differ";
+                            } else {
+                                res->success = true;
+                                res->policy_hash = first.policy_hash;
+                                res->slot_id = cohort_slots.front()->id;
+                                res->applied_token_index =
+                                        cohort_slots.front()->n_decoded;
+                                res->plan_generation = first.plan_generation;
+                                res->runtime_stats =
+                                        ffn_split_stats_callback(request_ids);
+                            }
+                        } else {
+                            const bool enabled =
+                                    task.params.control_ffn_enabled;
+                            const uint64_t layer_mask =
+                                    task.params.control_ffn_layer_mask;
+                            const uint32_t columns =
+                                    task.params.control_ffn_columns;
+                            for (server_slot * cohort_slot : cohort_slots) {
+                                valid = valid &&
+                                        task.params.control_plan_generation >
+                                                cohort_slot->ffn_split_policy
+                                                        .plan_generation;
+                            }
+                            valid = valid && ffn_split_max_columns != 0 &&
+                                    enabled ==
+                                            (layer_mask != 0 && columns != 0) &&
+                                    (layer_mask & ~ffn_split_max_layer_mask) == 0 &&
+                                    (layer_mask & ffn_remote_resident_layer_mask) == 0 &&
+                                    columns <= ffn_split_max_columns &&
+                                    (columns == 0 ||
+                                     columns % ffn_split_column_quantum == 0);
+                            std::string apply_error;
+                            if (!valid) {
+                                res->success = false;
+                                res->message =
+                                        "FFN cohort control is stale or exceeds resident slice";
+                            } else if (!ffn_split_apply_callback ||
+                                       !ffn_split_apply_callback(
+                                               layer_mask, columns, apply_error)) {
+                                res->success = false;
+                                res->message = apply_error.empty() ?
+                                        "FFN cohort runtime policy apply failed" :
+                                        apply_error;
+                            } else {
+                                for (size_t i = 0; i < cohort_slots.size(); ++i) {
+                                    cohort_slots[i]->ffn_split_policy = {
+                                        request_ids[i],
+                                        task.params.control_policy_hash,
+                                        task.params.control_plan_generation,
+                                        layer_mask,
+                                        columns,
+                                        cohort_slots[i]->n_decoded,
+                                    };
+                                }
+                                res->success = true;
+                                res->policy_hash =
+                                        task.params.control_policy_hash;
+                                res->slot_id = cohort_slots.front()->id;
+                                res->applied_token_index =
+                                        cohort_slots.front()->n_decoded;
+                                res->plan_generation =
+                                        task.params.control_plan_generation;
+                                if (ffn_split_stats_callback) {
+                                    res->runtime_stats =
+                                            ffn_split_stats_callback(request_ids);
+                                }
+                            }
+                        }
+                        if (res->success) {
+                            res->applied_token_index = (*std::min_element(
+                                    cohort_slots.begin(), cohort_slots.end(),
+                                    [](const server_slot * first,
+                                       const server_slot * second) {
+                                        return first->n_decoded <
+                                                second->n_decoded;
+                                    }))->n_decoded;
+                            res->cohort_members = json::array();
+                            for (size_t i = 0; i < cohort_slots.size(); ++i) {
+                                res->cohort_members.push_back({
+                                    { "request_id", request_ids[i] },
+                                    { "slot_id", cohort_slots[i]->id },
+                                    { "applied_token_index",
+                                      cohort_slots[i]->n_decoded },
+                                    { "plan_generation",
+                                      cohort_slots[i]->ffn_split_policy
+                                              .plan_generation },
+                                });
+                            }
+                        }
+                        queue_results.send(std::move(res));
+                        break;
+                    }
+
+                    const bool ffn_control =
+                            task.params.control_action == "ffn_split" ||
+                            task.params.control_action == "ffn_split_stats";
+                    server_slot * slot = ffn_control ?
+                            (task.params.control_slot_id < 0 ? nullptr :
+                                get_slot_by_id(task.params.control_slot_id)) :
+                            get_slot_by_cmpl_id(task.params.control_cmpl_id);
                     if (slot == nullptr) {
                         SRV_WRN("control %s on unknown completion id=%s, no live slot\n",
                                 task.params.control_action.c_str(), task.params.control_cmpl_id.c_str());
@@ -2482,6 +2704,101 @@ private:
                         // act on the live slot mid generation, never defer
                         common_sampler_reasoning_budget_force(slot->smpl.get());
                         res->success = true;
+                    } else if (task.params.control_action == "ffn_split_stats") {
+                        if (!slot->is_processing() || slot->task == nullptr ||
+                            slot->task->params.scheduler_request_id !=
+                                task.params.control_request_id ||
+                            slot->state != SLOT_STATE_GENERATING ||
+                            !ffn_split_stats_callback) {
+                            res->success = false;
+                            res->message = "FFN stats request and active slot differ";
+                        } else {
+                            res->success = true;
+                            res->policy_hash =
+                                    slot->ffn_split_policy.policy_hash;
+                            res->slot_id = slot->id;
+                            res->applied_token_index = slot->n_decoded;
+                            res->plan_generation =
+                                    slot->ffn_split_policy.plan_generation;
+                            res->runtime_stats = ffn_split_stats_callback({
+                                task.params.control_request_id,
+                            });
+                        }
+                    } else if (task.params.control_action == "ffn_split") {
+                        const auto & current = slot->ffn_split_policy;
+                        const bool enabled = task.params.control_ffn_enabled;
+                        const uint64_t layer_mask =
+                                task.params.control_ffn_layer_mask;
+                        const uint32_t columns =
+                                task.params.control_ffn_columns;
+                        if (!slot->is_processing() || slot->task == nullptr ||
+                            slot->task->params.scheduler_request_id !=
+                                task.params.control_request_id) {
+                            res->success = false;
+                            res->message = "request and active slot differ";
+                        } else if (slot->state != SLOT_STATE_GENERATING) {
+                            res->success = false;
+                            res->message = "FFN control requires decode state";
+                        } else if (
+                            task.params.control_plan_generation <=
+                                current.plan_generation) {
+                            res->success = false;
+                            res->message = "stale FFN control generation";
+                        } else if (
+                            (layer_mask & ffn_remote_resident_layer_mask) != 0) {
+                            res->success = false;
+                            res->message = "FFN control targets remote-resident layers";
+                        } else if (
+                            ffn_split_max_columns == 0 ||
+                            enabled != (layer_mask != 0 && columns != 0) ||
+                            (layer_mask & ~ffn_split_max_layer_mask) != 0 ||
+                            columns > ffn_split_max_columns ||
+                            (columns != 0 &&
+                             columns % ffn_split_column_quantum != 0)) {
+                            res->success = false;
+                            res->message = "FFN control exceeds resident slice";
+                        } else {
+                            std::string apply_error;
+                            if (!ffn_split_apply_callback ||
+                                !ffn_split_apply_callback(
+                                    layer_mask, columns, apply_error)) {
+                                res->success = false;
+                                res->message = apply_error.empty() ?
+                                        "FFN runtime policy apply failed" :
+                                        apply_error;
+                            } else {
+                                slot->ffn_split_policy = {
+                                    task.params.control_request_id,
+                                    task.params.control_policy_hash,
+                                    task.params.control_plan_generation,
+                                    layer_mask,
+                                    columns,
+                                    slot->n_decoded,
+                                };
+                                res->success = true;
+                                res->policy_hash =
+                                        task.params.control_policy_hash;
+                                res->slot_id = slot->id;
+                                res->applied_token_index = slot->n_decoded;
+                                res->plan_generation =
+                                        task.params.control_plan_generation;
+                                if (ffn_split_stats_callback) {
+                                    res->runtime_stats =
+                                            ffn_split_stats_callback({
+                                                task.params.control_request_id,
+                                            });
+                                }
+                                SRV_INF(
+                                        "FFNCONTROL request=%s slot=%d generation=%llu token=%d mask=%llu columns=%u policy=%s\n",
+                                        task.params.control_request_id.c_str(),
+                                        slot->id,
+                                        (unsigned long long) task.params.control_plan_generation,
+                                        slot->n_decoded,
+                                        (unsigned long long) layer_mask,
+                                        columns,
+                                        task.params.control_policy_hash.c_str());
+                            }
+                        }
                     } else {
                         res->success = false;
                         res->message = "unknown control action";
@@ -2928,6 +3245,20 @@ private:
 
         // track if given slot can be batched with slots already in the batch
         auto & slot_batched = batch.slot_batched;
+
+        // Different FFN policies require separate decode batches. Rotate the
+        // policy anchor so a lower-index slot cannot starve the other groups.
+        if (!slots.empty()) {
+            for (size_t offset = 0; offset < slots.size(); ++offset) {
+                const size_t index = (batch_slot_cursor + offset) % slots.size();
+                auto & slot = slots[index];
+                if (slot.state == SLOT_STATE_GENERATING) {
+                    slot_batched = &slot;
+                    batch_slot_cursor = (index + 1) % slots.size();
+                    break;
+                }
+            }
+        }
 
         std::vector<server_slot *> generating;
         std::vector<server_slot *> drafting;
@@ -3584,6 +3915,115 @@ private:
         }
     }
 
+    // Release the phone-executed FFN column suffix while every processing slot is decoding
+    // with a split policy, and populate it again before any prompt processing. Idempotent per
+    // (layer_mask, host_columns); logs a proof line on every state change.
+    bool ffn_row_diagnostic_active() const {
+        for (const auto & slot : slots) {
+            const auto & policy = slot.ffn_split_policy;
+            if (slot.is_processing() && policy.columns > 0 && policy.applied_token_index >= 0 &&
+                slot.n_decoded - policy.applied_token_index < int32_t(ffn_row_diagnostic_steps)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void apply_dormant_host_share(const server_ffn_split_policy & policy) {
+        bool decode_only = policy.layer_mask != 0 && policy.columns > 0 &&
+                policy.columns <= ffn_split_max_columns && !ffn_row_diagnostic_active();
+        // The host FFN pages can only leave while every processing slot decodes under this same
+        // phone policy. A prompt needs the host weights, and so does a decode slot whose policy
+        // keeps its FFN on the host: releasing for one batch and restoring for the next (~150 ms
+        // per cycle) buys nothing and was measured to serve one token per release under mixed
+        // slot policies. Under a mix the share therefore stays local until the mix ends; the
+        // slots that carry the phone policy keep computing their FFN on the phone regardless.
+        bool mixed_policies = false;
+        for (const auto & slot : slots) {
+            if (!slot.is_processing()) {
+                continue;
+            }
+            if (slot.state != SLOT_STATE_GENERATING) {
+                decode_only = false;
+            } else if (!(slot.ffn_split_policy == policy)) {
+                decode_only = false;
+                mixed_policies = true;
+            }
+        }
+        const int64_t t0 = ggml_time_us();
+        if (mixed_policies && ffn_dormant_layer_mask == 0) {
+            ffn_dormant_release_skipped_mixed += 1;
+            SRV_DBG("S41SERVERFFN dormant_host_share release skipped: mixed slot policies (%" PRIu64 " so far)\n",
+                    ffn_dormant_release_skipped_mixed);
+            return;
+        }
+        if (decode_only) {
+            const uint32_t host_columns = ffn_split_max_columns - policy.columns;
+            if (ffn_dormant_layer_mask == policy.layer_mask && ffn_dormant_host_columns == host_columns) {
+                return;
+            }
+            const size_t released = llama_model_ffn_host_share_release(model_tgt, policy.layer_mask, host_columns);
+            ffn_dormant_layer_mask   = policy.layer_mask;
+            ffn_dormant_host_columns = host_columns;
+            ffn_dormant_release_generation += 1;
+            ffn_dormant_released_bytes      = released;
+            ffn_dormant_release_elapsed_us  = ggml_time_us() - t0;
+            SRV_INF("S41SERVERFFN dormant_host_share phase=decode layer_mask=%" PRIu64 " host_columns=%u "
+                    "released_bytes=%zu ranges=%zu elapsed_us=%" PRId64 " drop_cache=%d populate=%d\n",
+                    policy.layer_mask, host_columns, released,
+                    llama_model_ffn_host_share_range_count(model_tgt), ggml_time_us() - t0,
+                    ffn_dormant_drop_cache, ffn_dormant_populate);
+            return;
+        }
+        if (ffn_dormant_layer_mask != 0) {
+            const size_t restored = llama_model_ffn_host_share_restore(model_tgt);
+            SRV_INF("S41SERVERFFN dormant_host_share phase=local layer_mask=%" PRIu64 " host_columns=%u "
+                    "restored_bytes=%zu elapsed_us=%" PRId64 " drop_cache=%d populate=%d\n",
+                    ffn_dormant_layer_mask, ffn_dormant_host_columns, restored, ggml_time_us() - t0,
+                    ffn_dormant_drop_cache, ffn_dormant_populate);
+            ffn_dormant_layer_mask   = 0;
+            ffn_dormant_host_columns = 0;
+            ffn_dormant_released_bytes = 0;
+        }
+    }
+
+    bool apply_ffn_split_ubatch_context(const llama_batch & ubatch) {
+        std::map<int32_t, std::vector<uint32_t>> rows_by_slot;
+        bool valid = ubatch.n_tokens > 0 && ubatch.n_seq_id && ubatch.seq_id;
+        for (int32_t i = 0; valid && i < ubatch.n_tokens; ++i) {
+            valid = ubatch.n_seq_id[i] == 1 && ubatch.seq_id[i] != nullptr;
+            if (valid) {
+                rows_by_slot[ubatch.seq_id[i][0]].push_back(i);
+            }
+        }
+        std::vector<server_ffn_split_runtime_context> contexts;
+        for (const auto & entry : rows_by_slot) {
+            server_slot * slot = get_slot_by_id(entry.first);
+            valid = valid && slot && slot->is_processing() && slot->task &&
+                    !slot->task->params.scheduler_request_id.empty() && batch.slot_batched &&
+                    slot->ffn_split_policy == batch.slot_batched->ffn_split_policy;
+            if (!valid) {
+                break;
+            }
+            std::vector<int32_t> positions;
+            for (uint32_t row : entry.second) {
+                positions.push_back(ubatch.pos ? ubatch.pos[row] : -1);
+            }
+            contexts.push_back({slot->task->params.scheduler_request_id, slot->id,
+                                uint32_t(entry.second.size()), slot->ffn_split_policy.plan_generation,
+                                entry.second, positions, slot->n_decoded,
+                                slot->ffn_split_policy.applied_token_index});
+        }
+        std::string error;
+        if (!valid || contexts.empty() || !ffn_split_context_callback ||
+            !ffn_split_context_callback(contexts, error)) {
+            SRV_ERR("FFN microbatch context rejected: %s\n",
+                    error.empty() ? "request, slot or policy mismatch" : error.c_str());
+            return false;
+        }
+        return true;
+    }
+
     // returns true = success ; false = retry with smaller batch size
     // throw std::runtime_error on fatal error
     bool decode(int32_t & n_batch, int32_t off, llama_batch & batch_view) {
@@ -3606,6 +4046,39 @@ private:
             }
 
             llama_set_embeddings(ctx_tgt, slot_batched->need_embd());
+            if (ffn_split_max_columns > 0) {
+                std::string apply_error;
+                if (!ffn_split_context_callback || !ffn_split_apply_callback ||
+                    !ffn_split_apply_callback(
+                        slot_batched->ffn_split_policy.layer_mask,
+                        slot_batched->ffn_split_policy.columns,
+                        apply_error)) {
+                    const std::string error = apply_error.empty() ?
+                            "FFN runtime context or policy apply failed" :
+                            apply_error;
+                    for (auto & slot : slots) {
+                        if (slot.is_processing()) {
+                            send_error(slot, error);
+                            slot.release();
+                            slot.prompt_clear(false);
+                        }
+                    }
+                    throw std::runtime_error(error);
+                }
+                llama_set_ffn_split_ubatch_callback(ctx_tgt,
+                        [](const llama_batch & ubatch, void * data) {
+                            return static_cast<server_context_impl *>(data)->apply_ffn_split_ubatch_context(ubatch);
+                        }, this);
+                llama_set_ffn_split_policy(
+                        ctx_tgt,
+                        true,
+                        slot_batched->ffn_split_policy.layer_mask,
+                        slot_batched->ffn_split_policy.columns,
+                        ffn_row_diagnostic_active());
+                if (ffn_dormant_host_share) {
+                    apply_dormant_host_share(slot_batched->ffn_split_policy);
+                }
+            }
         }
 
         if (batch.size() == 0) {
@@ -3643,7 +4116,9 @@ private:
                     err = "Compute error.";
                 }
 
-                // TODO: handle ret == 2 (abort) when we start aborting
+                if (ret == 2) {
+                    err = "Compute aborted.";
+                }
 
                 if (!err.empty()) {
                     SRV_ERR("%s off = %d, n_batch = %d, ret = %d\n", err.c_str(), off, n_batch, ret);
@@ -3778,6 +4253,17 @@ private:
 
             // shifted according to the current sub-batch
             const int tok_idx = slot.i_batch - off;
+
+            if (logits_trace) {
+                const uint32_t count = llama_vocab_n_tokens(llama_model_get_vocab(model_tgt));
+                const uint32_t header[] = {uint32_t(slot.id), uint32_t(slot.task->id), uint32_t(slot.n_decoded + 1), count};
+                const float * values = llama_get_logits_ith(slot.ctx_tgt, tok_idx);
+                if (!values || llama_get_sampled_logits_count_ith(slot.ctx_tgt, tok_idx) != count ||
+                        std::fwrite(header, sizeof(header), 1, logits_trace.get()) != 1 ||
+                        std::fwrite(values, sizeof(float), count, logits_trace.get()) != count || std::fflush(logits_trace.get()) != 0) {
+                    throw std::runtime_error("raw logits trace is incomplete or unavailable");
+                }
+            }
 
             llama_token id;
             {
@@ -3972,6 +4458,46 @@ bool server_context::load_model(common_params & params) {
     return impl->load_model(params);
 }
 
+void server_context::configure_ffn_remote_resident(uint64_t remote_resident_layer_mask) {
+    impl->ffn_remote_resident_layer_mask = remote_resident_layer_mask;
+}
+
+server_ffn_dormant_state server_context::ffn_dormant_state() const {
+    server_ffn_dormant_state state;
+    state.enabled            = impl->ffn_dormant_host_share;
+    state.layer_mask         = impl->ffn_dormant_layer_mask;
+    state.host_columns       = impl->ffn_dormant_host_columns;
+    state.release_generation = impl->ffn_dormant_release_generation;
+    state.released_bytes     = impl->ffn_dormant_released_bytes;
+    state.release_elapsed_us = impl->ffn_dormant_release_elapsed_us;
+    return state;
+}
+
+void server_context::configure_ffn_dormant_host_share(bool enabled, bool drop_cache, bool populate, uint32_t row_diagnostic_steps) {
+    impl->ffn_row_diagnostic_steps = row_diagnostic_steps;
+    impl->ffn_dormant_host_share = enabled;
+    impl->ffn_dormant_drop_cache = drop_cache;
+    impl->ffn_dormant_populate = populate;
+}
+
+void server_context::configure_ffn_split_runtime(
+        uint64_t layer_mask, uint32_t max_columns, uint32_t column_quantum,
+        server_ffn_split_apply_callback_t apply_callback,
+        server_ffn_split_context_callback_t context_callback,
+        server_ffn_split_stats_callback_t stats_callback) {
+    if (layer_mask == 0 || max_columns == 0 || column_quantum == 0 ||
+        max_columns % column_quantum != 0 || !apply_callback ||
+        !context_callback || !stats_callback) {
+        throw std::invalid_argument("invalid FFN split runtime configuration");
+    }
+    impl->ffn_split_max_layer_mask = layer_mask;
+    impl->ffn_split_max_columns = max_columns;
+    impl->ffn_split_column_quantum = column_quantum;
+    impl->ffn_split_apply_callback = std::move(apply_callback);
+    impl->ffn_split_context_callback = std::move(context_callback);
+    impl->ffn_split_stats_callback = std::move(stats_callback);
+}
+
 void server_context::start_loop() {
     auto & params = impl->params_base;
     impl->queue_tasks.start_loop(params.sleep_idle_seconds * 1000);
@@ -4147,6 +4673,11 @@ std::unique_ptr<server_res_generator> server_routes::handle_completions_impl(
             task.params.res_type          = res_type;
             task.params.oaicompat_cmpl_id = completion_id;
             task.params.oaicompat_model   = meta->model_name;
+            const auto scheduler_request = req.headers.find(
+                    "X-Scheduler-Request-ID");
+            if (scheduler_request != req.headers.end()) {
+                task.params.scheduler_request_id = scheduler_request->second;
+            }
 
             // prepare child tasks
             if (task.params.n_cmpl > 1) {
@@ -4568,6 +5099,10 @@ void server_routes::init_routes() {
             { "params", tparams.to_json(true) },
             { "n_ctx",  meta->slot_n_ctx },
         };
+        json kv_prefixes = json::array();
+        for (const auto & entry : params.kv_device_cells) {
+            kv_prefixes.push_back({{"layer", entry.layer}, {"device_cells", entry.cells}});
+        }
 
         std::string tmpl_default = common_chat_templates_source(meta->chat_params.tmpls.get(), "");
         std::string tmpl_tools   = common_chat_templates_source(meta->chat_params.tmpls.get(), "tool_use");
@@ -4575,6 +5110,8 @@ void server_routes::init_routes() {
         json props = {
             { "default_generation_settings", default_generation_settings_for_props },
             { "total_slots",                 params.n_parallel },
+            { "kv_cpu_layers",               params.kv_cpu_layers },
+            { "kv_device_cells",             kv_prefixes },
             { "model_alias",                 meta->model_name },
             { "model_path",                  meta->model_path },
             { "modalities",                  json {
@@ -4745,6 +5282,101 @@ void server_routes::init_routes() {
 
         const std::string cmpl_id = json_value(body, "id", std::string());
         const std::string action  = json_value(body, "action", std::string());
+        const bool ffn_cohort_control =
+                action == "ffn_split_cohort" ||
+                action == "ffn_split_cohort_stats";
+        if (action == "ffn_split" || action == "ffn_split_stats" ||
+            ffn_cohort_control) {
+            std::vector<std::string> request_ids;
+            std::vector<int32_t> slot_ids;
+            if (ffn_cohort_control) {
+                if (!body.contains("members") || !body["members"].is_array() ||
+                    body["members"].size() < 2 || body["members"].size() > 8) {
+                    res->error(format_error_response(
+                            "invalid FFN cohort members",
+                            ERROR_TYPE_INVALID_REQUEST));
+                    return res;
+                }
+                for (const auto & member : body["members"]) {
+                    if (!member.is_object()) {
+                        request_ids.clear();
+                        break;
+                    }
+                    request_ids.push_back(json_value(
+                            member, "request_id", std::string()));
+                    slot_ids.push_back(json_value(member, "slot_id", -1));
+                }
+            } else {
+                request_ids.push_back(json_value(
+                        body, "request_id", std::string()));
+                slot_ids.push_back(json_value(body, "slot_id", -1));
+            }
+            const std::string policy_hash = json_value(
+                    body, "policy_hash", std::string());
+            const uint64_t generation = json_value(
+                    body, "plan_generation", UINT64_C(0));
+            const uint64_t layer_mask = json_value(
+                    body, "layer_mask", UINT64_C(0));
+            const uint32_t columns = json_value(
+                    body, "columns", UINT32_C(0));
+            const bool enabled = json_value(body, "enabled", false);
+            const bool valid_hash =
+                    policy_hash.size() == 71 &&
+                    policy_hash.compare(0, 7, "sha256:") == 0 &&
+                    std::all_of(
+                        policy_hash.begin() + 7,
+                        policy_hash.end(),
+                        [](char value) {
+                            return (value >= '0' && value <= '9') ||
+                                   (value >= 'a' && value <= 'f');
+                        });
+            std::set<std::string> unique_request_ids(
+                    request_ids.begin(), request_ids.end());
+            std::set<int32_t> unique_slot_ids(
+                    slot_ids.begin(), slot_ids.end());
+            if (request_ids.empty() || request_ids.size() != slot_ids.size() ||
+                unique_request_ids.size() != request_ids.size() ||
+                unique_slot_ids.size() != slot_ids.size() ||
+                std::any_of(request_ids.begin(), request_ids.end(),
+                        [](const std::string & value) { return value.empty(); }) ||
+                std::any_of(slot_ids.begin(), slot_ids.end(),
+                        [](int32_t value) { return value < 0; }) ||
+                ((action == "ffn_split" ||
+                  action == "ffn_split_cohort") &&
+                 (!valid_hash || generation == 0 ||
+                  enabled != (layer_mask != 0 && columns != 0)))) {
+                res->error(format_error_response(
+                        "invalid FFN control request",
+                        ERROR_TYPE_INVALID_REQUEST));
+                return res;
+            }
+            auto & rd = res->rd;
+            server_task task(SERVER_TASK_TYPE_CONTROL);
+            task.id = rd.get_new_id();
+            task.params.control_action = action;
+            task.params.control_request_id = request_ids.front();
+            task.params.control_policy_hash = policy_hash;
+            task.params.control_slot_id = slot_ids.front();
+            task.params.control_request_ids = request_ids;
+            task.params.control_slot_ids = slot_ids;
+            task.params.control_plan_generation = generation;
+            task.params.control_ffn_layer_mask = layer_mask;
+            task.params.control_ffn_columns = columns;
+            task.params.control_ffn_enabled = enabled;
+            rd.post_task(std::move(task), true);
+
+            auto result = rd.next(req.should_stop);
+            if (!result) {
+                GGML_ASSERT(req.should_stop());
+                return res;
+            }
+            if (result->is_error()) {
+                res->error(result->to_json());
+                return res;
+            }
+            res->ok(result->to_json());
+            return res;
+        }
         if (cmpl_id.empty()) {
             res->error(format_error_response("missing completion id", ERROR_TYPE_INVALID_REQUEST));
             return res;

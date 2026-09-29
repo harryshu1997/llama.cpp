@@ -1,0 +1,10 @@
+d8433ed903da695fe8e884fd55f43442cf2417caec4363495da671b23dbda040  /tmp/s42-dynamic-prefetch-v1/adoptable-v1/bin/gemma-fenced-loader
+f0524ab558a91422376d93df3c01fb5046de057cb5b4fe86fa759563d319d9fc  /tmp/s42-dynamic-prefetch-v1/adoptable-v1/bin/ffn_dmabuf_bridge-adoptable-v2
+c196d8a8677cb5dfec63cde02342a4ebfabecf7c0360688dc839dab171a54c45  /tmp/s42-dynamic-prefetch-v1/harness/qwen/run_qwen_full_energy_arm-adoptable-v2.sh
+65b99e8f22930af33b068a1200fefad02af289761c75798202d5808226ab173a  /tmp/s42-dynamic-prefetch-v1/qualified/adoptable-qualified-r5/RESULT.json
+a0a9740c10fe7c412605d019b50990f32c412a05570607b2621d5713a115b45f  /tmp/s42-dynamic-prefetch-v1/qualified/adoptable-qualified-r5.phone-capture/PHONE_ENERGY_V3.json
+0aceea31c4756509079057cf02a8c45b4625e1c248f5da02248312d2d59d9919  /tmp/s42-dynamic-prefetch-v1/qualified/adoptable-qualified-r5.phone-capture/bridge.stderr
+cd4c9c537a0f0cec0d496d003c13f0858c06aa15f71ab0dc8e22b32e023992fb  /tmp/s42-dynamic-prefetch-v1/qualified/adoptable-qualified-r5.adoption/gemma.stderr
+ce4a0edfdf100bb5410a109a90ff230ba59fae08d95be348203799e506cc34de  /tmp/s42-dynamic-prefetch-v1/qualified/adoptable-qualified-r5.adoption/PROCESS_MEMORY_V1.json
+a0bef80b51571cb35790ef900a6a283db5435f99f94effb7de6371b916b934ed  /tmp/s42-dynamic-prefetch-v1/qualified/adoptable-qualified-r5.adoption/CGROUP_MEMORY_V1.json
+1cddaa0d9acb994c28b74259413e04e4de529b5b4a5ebede65bee55e258d92f5  /tmp/s42-dynamic-prefetch-v1/qualified/adoptable-qualified-r5.adoption/GEMMA_EXECUTION_V1.json

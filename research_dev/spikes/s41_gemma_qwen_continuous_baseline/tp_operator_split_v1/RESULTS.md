@@ -1,9 +1,154 @@
 # Operator-split test: one matmul across A6000 + OP15 + OP12 over USB
 
-Date: 2026-07-27; causal and desktop-proxy revalidation: 2026-07-29.
+Date: 2026-07-27; latest full-model revalidation: 2026-08-06.
 
 Current status:
-`HTP_CACHED_INPUT_REPLAY_BUG; UID_ZERO_WORKAROUND_DYNAMIC_GREEDY_HEAD_PASS; DYNAMIC_TOP8_FAIL; COMPLETE_CPU_LAYER_RELATIVE_PASS_ARGMAX_FAIL; COMPLETE_CPU_LAYER_LATENCY_FAIL_ON_5995WX; I9_PLUS_PHONE_COMPOSED_ONLY; FLEET_PROJECTED_ONLY; ENERGY_NOT_MEASURED; FULL_MODEL_NOT_RUN`.
+`REAL_OP15_MODEL_SHAPES_MEASURED; I3_BURSTGPT_THREE_PAIR_SPEEDUP; I3_ACCOUNTED_FLEET_ENERGY_PASS; I3_MMLU64_NONINFERIOR; FULL_MODEL_CPU_OP15_Q4_DECODE_PASS; FUNCTIONFS_DMABUF_SELECTED; F16_PACKED_ACTIVATIONS_SELECTED; GENERAL_PER_SHAPE_ENFORCE_BLOCKED`.
+
+## 2026-08-06 final BurstGPT I3 campaign
+
+The corrected llama-server integration preserves default CPU selection and
+normal repacking for the unaffected tensors, then selects a phone FFN width by
+physical batch shape. Three alternating RTX 4060 Ti plus OP15 control/
+treatment pairs each complete 74 requests and 11,605 output tokens. Average
+makespan falls 14.38%, server compute-device energy falls 17.30%, and
+accounted server-plus-phone energy falls 16.76%. Mean exposed join wait is
+2.67%, and the pinned MMLU64 score remains 27 / 64 in both arms.
+
+This supersedes the 2026-08-03 no-speedup headline for the repaired execution
+path and source-length trace. It is a measured workload-mix result, not a
+universal per-shape or exact-token certificate. Full policy, repetitions,
+energy boundary, quality limits, evidence hashes, and cleanup are in
+`RESULTS_LLAMA_SERVER_I3_ENERGY_V1.md`.
+
+## 2026-08-03 BurstGPT hot-GPU plus cold CPU/OP15 trace
+
+The full 74-request physical trace does not improve with OP15. Qwen3-14B
+Q4_K_M served the 57 hot-role rows on the RTX 4060 Ti while Gemma4-12B Q4_0
+served the 17 cold-role rows on either the i9-12900K or the CPU plus OP15.
+All 48 decode FFNs used operator-level column overlap and direct FunctionFS
+DMA-BUF; this is not a layer split.
+
+Across three valid runs per mode, median trace throughput fell 7.69%, cold
+service time rose 9.00%, and cold completion time rose 30.31%. Cold-process
+RSS fell 45.94%, saving 5.707 GiB. A component-timed pair shows that OP15
+cuts seven decode evaluations by 35.88%, but a 32.39% prefill regression is
+larger than that saving for this eight-output-token trace. The estimated
+128-token-prompt break-even is about 15 requested output tokens.
+
+The prefill cause is now isolated: FFN submatrix views force the split process
+to disable the 5,847.19 MiB shape-dependent `CPU_REPACK` buffer. The control
+uses repacked Q4_0 8x8 kernels while treatment prefill uses generic Q4_0 CPU
+kernels. This also explains nearly all of the RSS reduction. Dynamic width
+selection cannot repair that global layout change; a repack-compatible split
+layout or a request-level choice between two resident modes is required.
+
+All six primary runs completed. Each OP15 run passed 6,048 phone calls with
+stable 1.441 ms direct-DMA USB and 1.522 ms overlapped-FFN medians. The phone
+was restored to its stock kernel and normal USB configuration. Full workload,
+per-run ranges, timing diagnosis, correctness limits, and raw locations:
+`RESULTS_BURSTGPT_GPU_CPU_OP15_V1.md`.
+
+## 2026-08-03 full-model Q4 CPU plus OP15
+
+The physical i9-12900K plus OP15 now runs a byte-identical Gemma4 12B Q4_0
+model with every decode FFN split at operator level. Direct FunctionFS
+DMA-BUF moves each 3840-element activation into and out of HTP buffers while
+the desktop computes the complementary FFN columns.
+
+The latest profile uses four HVX threads, FP16 activation packing, a
+persistent desktop I/O thread, 9664 phone columns, and 5696 desktop columns.
+Across three fresh workers and 15 paid requests, median 15-step decode time
+was 2278.041 ms versus 3555.619 ms on CPU only. This is a 35.93% latency
+reduction and a 56.08% decode-throughput increase. It is a further 1.87%
+latency reduction over the prior 9344-column F32 DMA path.
+
+The model weights remain byte-identical Q4_0 on both devices. Only transient
+activations use FP16 on the wire. All 12,960 phone calls passed protocol,
+hash, finite-value, and status checks, and all paid requests emitted the same
+16 token IDs as the CPU reference.
+
+Full method, packing-layout decision, width sweep, and raw-log location:
+`RESULTS_FFN_DMABUF_F16_PACKED_V1.md`. The preceding F32 calibration is in
+`RESULTS_FFN_DMABUF_Q4_FASTPATH_V1.md`.
+
+## 2026-08-02 direct-AOA asynchronous buffering
+
+A native libusb host now preposts IN before OUT and supports reusable queue
+depths 1, 2, and 4. A matching OP15 daemon has separate reader and writer
+pthreads over a reusable ring. The physical OP15 plus RTX 4060 Ti campaign
+completed all 90 fresh-process cases and 21,000 exact response-validated paid
+round trips.
+
+Asynchronous depth 1 does not improve one dependency-bound model request:
+paired median latency regresses 13.03% for the attention boundary, 14.04% for
+a 10 KiB hidden vector, 11.00% for SwiGLU, and 7.67% for an 80 KiB batched
+hidden state. Serial direct AOA remains the decode-latency path.
+
+With independent requests, buffering raises transport throughput. The paired
+median gains are 53.46% at the 10 KiB boundary with depth 4, 18.13% at the
+80 KiB boundary with depth 2, and 6.50% for the 68/34 KiB SwiGLU boundary
+with depth 4. These are transport-only continuous-batch results, not token
+throughput.
+
+The direction controls explain the ceiling. One MiB host-to-phone is 79.72
+MB/s serial and 87.28 MB/s at depth 2; phone-to-host is 242.96 and 286.54
+MB/s. Host-side preposting therefore does not fix Android accessory upload.
+The next gate is integrating the reader/compute/writer pipeline with one real
+HTP operator and independent request IDs. Full report:
+`RESULTS_AOA_ASYNC_TRANSPORT_V1.md`.
+
+## 2026-08-02 USB NCM operator-payload control
+
+The OP15 CDC NCM link on the physical RTX 4060 Ti host reached 2.61 Gbit/s
+desktop-to-phone and 3.37 Gbit/s phone-to-desktop in separate exploratory
+streams. This is about 326 and 421 decimal MB/s, not a stable simultaneous
+400 MB/s in both directions.
+
+A primary persistent request/response campaign then ran three fresh phone
+daemons, 50 warmups, and 300 paid exchanges for seven exact operator payloads.
+The zero-payload control costs 1.748 ms at median. A 10 KiB hidden vector each
+way costs 1.872 ms, a 68/34 KiB SwiGLU boundary costs 2.068 ms, and a 1.25 MiB
+payload each way costs 7.847 ms at an effective aggregate 334 MB/s. All 6,300
+paid samples are preserved. The first repetition's small-packet p99 was about
+6.8 ms, so tail stability is not claimed.
+
+NCM transport alone is slower than the complete direct-AOA phone path for
+RMSNorm, SwiGLU, and resident-KV attention. It therefore does not permit a
+larger latency-critical decode split. It remains useful for background
+weight/KV staging or a future large pipelined boundary. Full report:
+`RESULTS_NCM_OPERATOR_TRANSPORT_V1.md`.
+
+## 2026-08-02 persistent model-operator controls
+
+The dummy persistent-kernel result has now been tested with three
+Qwen3-14B-shaped operators on the real OP15 cabled directly to the RTX 4060
+Ti host over 5 Gbit/s USB. The controls use deterministic synthetic values,
+but real RMSNorm, full-width SwiGLU, and one 8K-context GQA attention core.
+Each number is the median of three fresh processes with 50 warmups and 300
+changing-input measurements per process.
+
+| operator | HTP graph | OpenCL graph | OpenCL dispatch | persistent OpenCL | selected |
+| --- | ---: | ---: | ---: | ---: | --- |
+| RMSNorm plus scale | 0.414 ms | 0.958 ms | 1.930 ms | **0.300 ms** | persistent OpenCL |
+| full-width SwiGLU | **0.943 ms** | 1.415 ms | 2.536 ms | 1.061 ms | HTP |
+| one GQA attention core, KV=8,192 | **0.459 ms** | 5.336 ms | 9.697 ms | 7.198 ms | HTP |
+
+These response-ready intervals include host packing, direct AOA USB OUT,
+phone execution, and USB IN, and end when the result is in host memory.
+Against the exact same custom kernel relaunched per request, persistence cuts
+them by 84.45%, 58.16%, and 25.76%, respectively. It wins overall only for
+RMSNorm. The 102 KiB SwiGLU boundary dominates its 21 us persistent arithmetic,
+while the materialized-score persistent attention kernel remains much slower
+than both optimized GGML OpenCL and HTP flash attention.
+
+All 10,800 measured results pass an independent CPU oracle. Direct dispatch
+and persistence are byte-exact across all changing inputs. The result supports
+an operator-aware policy: persistent GPU execution is useful for compact,
+well-optimized fused islands; HTP should serve the tested FFN and attention
+shapes. It does not establish complete-layer, full-model, BurstGPT, or energy
+benefit. Full report:
+`RESULTS_PERSISTENT_MODEL_OPS_V1.md`.
 
 ## 2026-07-31 CPU plus phone dynamic revalidation
 
@@ -1142,3 +1287,59 @@ stray daemons, no forwards. OP15 `sys.usb.config` reads `adb` (was `ptp,adb`;
 
 Workers killed, adb forwards removed, both A6000s idle (111/57 MiB, 0%).
 Binaries left at `/data/local/tmp/tp_slice/tp_worker` on both phones.
+
+## 2026-08-02 OP15 HTP versus OpenCL dummy-kernel breakdown
+
+A new direct-AOA microbenchmark isolates the warm backend and transport floor
+at a 2,816-element FP16 activation boundary. It runs an empty graph, one real
+SQR kernel, and eight dependent SQR kernels through the same worker and wire
+protocol on HTP v81 and Adreno 840 OpenCL. Primary results disable profiling;
+separate processes collect native backend events.
+
+| backend | graph | E2E median | E2E p90 | submit + sync |
+| --- | --- | ---: | ---: | ---: |
+| HTP | no-op | 0.256 ms | 0.284 ms | 0.001 ms |
+| OpenCL | no-op | 0.274 ms | 0.329 ms | 0.004 ms |
+| HTP | 1 x SQR | 0.400 ms | 0.418 ms | 0.089 ms |
+| OpenCL | 1 x SQR | 0.840 ms | 1.034 ms | 0.560 ms |
+| HTP | 8 x SQR | 0.431 ms | 0.533 ms | 0.169 ms |
+| OpenCL | 8 x SQR | 1.294 ms | 1.501 ms | 1.017 ms |
+
+Native attribution shows the arithmetic is not the bottleneck. One HTP SQR
+takes 3 us inside a 91-us batch envelope. One OpenCL SQR executes in 29.4 us
+but takes 532 us from first queue to device completion, including a 404.8-us
+submit-to-start wait. With eight kernels, HTP native operations total 16 us;
+OpenCL kernels total 118.6 us inside a 1,022-us queue-to-completion path.
+
+The result supports fused HTP operator islands and rejects graphs made of many
+tiny OpenCL kernels. It does not establish any model operator, complete-layer,
+energy, CUDA-overlap, or full-model speedup. Full method, stage breakdown,
+claim limits, and raw evidence are in
+`RESULTS_BACKEND_DUMMY_LATENCY_V1.md` and
+`results/backend_dummy_latency_v1/run_20260802T035814Z/`.
+
+## 2026-08-02 Adreno early-flush and persistent-doorbell controls
+
+Three alternating 600-sample OP15 runs show that an early `clFlush()` does
+not materially reduce latency. It moves work from the subsequent fence into
+`graph_compute`: the rebuilt control is 1.172 ms E2E with a 0.844 ms backend
+interval, versus 1.167 and 0.842 ms with early flush. Native event medians are
+also unchanged at about 94/400/29 us for queued-to-submit,
+submitted-to-start, and execution.
+
+A fine-grained-SVM persistent workgroup removes the recurring dispatch. The
+same 2,816-element SQR takes 0.266 ms E2E and 0.00682 ms from doorbell publish
+through completion, reductions of 77.3% and 99.2% versus the rebuilt OpenCL
+control. An exact matched control that relaunches the same doorbell workgroup
+per request reproduces 100.4 us queued-to-submit and 400.7 us
+submitted-to-start, confirming that persistence amortizes the driver/GMU
+path rather than merely changing work geometry.
+
+All 7,200 primary outputs and 1,200 profile outputs match an independent
+same-operation oracle exactly. The bounded resident kernels completed without
+a matched GPU fault or leaked worker. This is still a one-workgroup dummy
+result with no phone-power measurement, real operator, CUDA concurrency, or
+model claim. The persistent path also pays a 10-14 ms one-time launch and must
+be prepared before traffic. Full evidence and limits are in
+`RESULTS_OPENCL_QUEUE_V1.md` and
+`results/backend_opencl_queue_v1/run_20260802T_opencl_queue_v1/`.

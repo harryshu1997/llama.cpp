@@ -1,0 +1,153 @@
+{
+ "binaries": {
+  "adb": "/usr/bin/adb",
+  "bridge": "/home/zhihao/s41-dynamic-ffn-v1/ffn_dmabuf_bridge-unified-v9-repair-r3",
+  "close_helper": "/mnt/storage/s42-trace-v2-20260921-prep/source/research_dev/scheduler/adapters/close_resident_bridge.py",
+  "fastboot": "/home/zhihao/s41-ffs-dmabuf-fixed-v1/fastboot",
+  "nmcli": "/usr/bin/nmcli",
+  "phone_boot_image": "/mnt/storage/s42-dmabuf-cancel-20260914-v1-gBJdFx/candidate-boot.img",
+  "phone_usb_close": "/home/zhihao/s42-mixed-residency-priority-deploy-20260828-v1/build-server-cuda/bin/llama-ffn-split-usb-close",
+  "resident_server": "/mnt/storage/s42-trace-v2-20260921-prep/cuda-build/bin/llama-server",
+  "server": "/mnt/storage/s42-trace-v2-20260921-prep/cuda-build/bin/llama-server"
+ },
+ "devices": [
+  {
+   "device_id": "desktop-cpu",
+   "kind": "cpu",
+   "memory_capacity_bytes": 120000000000
+  },
+  {
+   "device_id": "desktop-cuda",
+   "kind": "gpu",
+   "memory_capacity_bytes": 16000000000
+  },
+  {
+   "device_id": "op15-phone",
+   "kind": "phone",
+   "memory_capacity_bytes": 10000000000
+  }
+ ],
+ "endpoints": {
+  "gemma_cpu": "http://127.0.0.1:18576",
+  "gemma_desktop": "http://127.0.0.1:18573",
+  "gemma_phone": "http://127.0.0.1:18574",
+  "llama_desktop": "http://127.0.0.1:18485",
+  "llama_whole_phone": "http://127.0.0.1:29382",
+  "qwen_cpu": "http://127.0.0.1:18575",
+  "qwen_desktop": "http://127.0.0.1:18571",
+  "qwen_phone": "http://127.0.0.1:18572"
+ },
+ "library_directories": {
+  "cuda": "/mnt/storage/s21_deps/cuda-13.2.1/lib",
+  "resident": "/mnt/storage/s42-trace-v2-20260921-prep/cuda-build/bin"
+ },
+ "phone": {
+  "adb_port": 5037,
+  "android_gadget_path": "/config/usb_gadget/g1",
+  "battery_ppm": 1000000,
+  "boot_image_sha256": "sha256:f13c7c033ce74f32ea4aa6349cb531704407708f5fb35756a6c361ffb48322a3",
+  "busybox_path": "/data/adb/magisk/busybox",
+  "diagnostic_endpoint": "http://192.168.42.1:18383",
+  "functionfs_gadget_path": "/config/usb_gadget/g2",
+  "functionfs_root_path": "/dev/usb-ffs/s41",
+  "kernel_release": "6.12.23-android16-5-o-g227664cbe007-4k",
+  "minimum_usb_speed_mbps": 5000,
+  "multi_session_port_base": 26760,
+  "remote_hash_cache_path": "/mnt/storage/s42-trace-v2-20260921-prep/PHONE_HASH_CACHE.json",
+  "resident_router_path": "/data/local/tmp/s42-ready-subset-router-20260905-v2/llama-ffn-split-resident-router",
+  "resident_workers_path": "/data/local/tmp/s42-per-session-correctness-20260903-v2-bin/llama-ffn-split-resident-workers",
+  "restore_script": "/data/local/tmp/s42-unified-direct-v1/restore_android_usb.sh",
+  "serial": "3C15AU002CL00000",
+  "session_root": "/data/local/tmp/s42-dormant-trace-20260917-v1",
+  "session_script": "/data/local/tmp/s42-hal-runtime-probe-20260906-v4/direct_phone_ffn_session.sh",
+  "usb_controller": "a600000.dwc3",
+  "whole_executable_device": "GPUOpenCL",
+  "whole_forward_port": 29382,
+  "whole_library_directory": "/data/local/tmp/llama-ubatch-op15/bin",
+  "whole_remote_port": 18382,
+  "whole_server_path": "/data/local/tmp/llama-ubatch-op15/bin/llama-server",
+  "whole_server_sha256": "sha256:3fad5e2f2730d1e240f176010994c49dc4a6ea59fb970708df8d2a85bb0abe1c",
+  "whole_state_directory": "/data/local/tmp/s42-dormant-trace-20260917-v1-whole",
+  "worker_path": "/data/local/tmp/s42-ffn-shards-20260904-v1-bin/llama-ffn-split-worker"
+ },
+ "repo_root": "/mnt/storage/s42-trace-v2-20260921-prep/source",
+ "resources": [
+  {
+   "capacity": 8,
+   "identity": "cuda0",
+   "resource_id": "cuda0"
+  },
+  {
+   "capacity": 4,
+   "identity": "desktop-cpu",
+   "resource_id": "desktop-cpu"
+  },
+  {
+   "capacity": 1,
+   "identity": "usb-root",
+   "resource_id": "desktop-usb-root"
+  },
+  {
+   "capacity": 8,
+   "identity": "pcie-d2h-fit",
+   "resource_id": "link:pcie-d2h-fit"
+  },
+  {
+   "capacity": 8,
+   "identity": "pcie-h2d-fit",
+   "resource_id": "link:pcie-h2d-fit"
+  },
+  {
+   "capacity": 1,
+   "identity": "op15-adreno",
+   "resource_id": "op15-adreno"
+  },
+  {
+   "capacity": 1,
+   "identity": "op15-functionfs",
+   "resource_id": "op15-functionfs"
+  },
+  {
+   "capacity": 1,
+   "identity": "op15-htp",
+   "resource_id": "op15-htp"
+  },
+  {
+   "capacity": 1,
+   "identity": "op15-ncm",
+   "resource_id": "op15-ncm"
+  }
+ ],
+ "rig_id": "physical-4060ti-op15-dormant-release-trace-v1",
+ "schema": "research-scheduler-rig-v1",
+ "topology": {
+  "cpu_device_id": "desktop-cpu",
+  "cpu_resource_id": "desktop-cpu",
+  "functionfs_resource_id": "op15-functionfs",
+  "gpu_device_id": "desktop-cuda",
+  "gpu_exclusive_residency_resource_id": "cuda0",
+  "gpu_memory_resource_id": "cuda0-vram",
+  "gpu_resource_id": "cuda0",
+  "host_memory_resource_id": "host-ram",
+  "phone_compute_resource_ids": [
+   "op15-htp"
+  ],
+  "phone_device_id": "op15-phone",
+  "phone_exclusive_residency_resource_id": "op15-htp",
+  "phone_memory_resource_id": "op15-ram",
+  "phone_transport_resource_ids": [
+   "desktop-usb-root",
+   "op15-functionfs",
+   "op15-ncm"
+  ]
+ },
+ "transport_host_dependencies": {
+  "ggml": "/mnt/storage/s42-trace-v2-20260921-prep/cuda-build/bin/libggml.so",
+  "ggml-base": "/mnt/storage/s42-trace-v2-20260921-prep/cuda-build/bin/libggml-base.so",
+  "ggml-cpu": "/mnt/storage/s42-trace-v2-20260921-prep/cuda-build/bin/libggml-cpu.so",
+  "ggml-cuda": "/mnt/storage/s42-trace-v2-20260921-prep/cuda-build/bin/libggml-cuda.so",
+  "llama": "/mnt/storage/s42-trace-v2-20260921-prep/cuda-build/bin/libllama.so",
+  "llama-common": "/mnt/storage/s42-trace-v2-20260921-prep/cuda-build/bin/libllama-common.so",
+  "llama-server-impl": "/mnt/storage/s42-trace-v2-20260921-prep/cuda-build/bin/libllama-server-impl.so"
+ }
+}

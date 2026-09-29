@@ -1,0 +1,141 @@
+{
+  "binaries": {
+    "adb": "/usr/bin/adb",
+    "bridge": "/home/zhihao/s41-dynamic-ffn-v1/ffn_dmabuf_bridge-unified-v9-repair-r3",
+    "close_helper": "/home/zhihao/llama.cpp-release/research_dev/scheduler/adapters/close_resident_bridge.py",
+    "fastboot": "/home/zhihao/s41-ffs-dmabuf-fixed-v1/fastboot",
+    "nmcli": "/usr/bin/nmcli",
+    "phone_boot_image": "/home/zhihao/s41-ffs-dmabuf-fixed-v1/boot.img",
+    "phone_usb_close": "/home/zhihao/s42-mixed-residency-priority-deploy-20260828-v1/build-server-cuda/bin/llama-ffn-split-usb-close",
+    "resident_server": "/home/zhihao/s42-route-evidence-replan-auth-build-20260829-v1/bin/llama-server",
+    "server": "/home/zhihao/s42-route-evidence-replan-auth-build-20260829-v1/bin/llama-server"
+  },
+  "devices": [
+    {
+      "device_id": "desktop-cpu",
+      "kind": "cpu",
+      "memory_capacity_bytes": 120000000000
+    },
+    {
+      "device_id": "desktop-cuda",
+      "kind": "gpu",
+      "memory_capacity_bytes": 16000000000
+    },
+    {
+      "device_id": "op15-phone",
+      "kind": "phone",
+      "memory_capacity_bytes": 10000000000
+    }
+  ],
+  "endpoints": {
+    "gemma_cpu": "http://127.0.0.1:18576",
+    "gemma_desktop": "http://127.0.0.1:18573",
+    "gemma_phone": "http://127.0.0.1:18574",
+    "llama_desktop": "http://127.0.0.1:18485",
+    "llama_whole_phone": "http://127.0.0.1:29382",
+    "qwen_cpu": "http://127.0.0.1:18575",
+    "qwen_desktop": "http://127.0.0.1:18571",
+    "qwen_phone": "http://127.0.0.1:18572"
+  },
+  "environment_overrides": {
+    "S42_ADB": "/binaries/adb",
+    "S42_ADB_PORT": "/phone/adb_port",
+    "S42_CUDA_LIB_DIR": "/library_directories/cuda",
+    "S42_LEGACY_BRIDGE": "/binaries/bridge",
+    "S42_LEGACY_CLOSE_HELPER": "/binaries/close_helper",
+    "S42_NMCLI": "/binaries/nmcli",
+    "S42_PHONE_BATTERY_PPM": "/phone/battery_ppm",
+    "S42_PHONE_BOOT_IMAGE_SHA256": "/phone/boot_image_sha256",
+    "S42_PHONE_DIAGNOSTIC_ENDPOINT": "/phone/diagnostic_endpoint",
+    "S42_PHONE_KERNEL_RELEASE": "/phone/kernel_release",
+    "S42_PHONE_MULTI_SESSION_PORT_BASE": "/phone/multi_session_port_base",
+    "S42_PHONE_REMOTE_HASH_CACHE": "/phone/remote_hash_cache_path",
+    "S42_PHONE_RESIDENT_ROUTER": "/phone/resident_router_path",
+    "S42_PHONE_RESIDENT_WORKERS": "/phone/resident_workers_path",
+    "S42_PHONE_RESTORE": "/phone/restore_script",
+    "S42_PHONE_SERIAL": "/phone/serial",
+    "S42_PHONE_SESSION": "/phone/session_script",
+    "S42_PHONE_SESSION_ROOT": "/phone/session_root",
+    "S42_PHONE_USB_CLOSE": "/binaries/phone_usb_close",
+    "S42_PHONE_WHOLE_EXECUTABLE_DEVICE": "/phone/whole_executable_device",
+    "S42_PHONE_WHOLE_LIBRARY_DIRECTORY": "/phone/whole_library_directory",
+    "S42_PHONE_WHOLE_SERVER": "/phone/whole_server_path",
+    "S42_PHONE_WHOLE_STATE_DIRECTORY": "/phone/whole_state_directory",
+    "S42_PHONE_WORKER": "/phone/worker_path",
+    "S42_RESIDENT_LIB_DIR": "/library_directories/resident",
+    "S42_RESIDENT_SERVER": "/binaries/resident_server",
+    "S42_SERVER": "/binaries/server",
+    "S42_UNIFIED_REPO_ROOT": "/repo_root"
+  },
+  "library_directories": {
+    "cuda": "/mnt/storage/s21_deps/cuda-13.2.1/lib",
+    "resident": "/home/zhihao/s42-route-evidence-replan-auth-build-20260829-v1/bin"
+  },
+  "phone": {
+    "adb_port": 5037,
+    "android_gadget_path": "/config/usb_gadget/g1",
+    "battery_ppm": 1000000,
+    "boot_image_sha256": "sha256:26e8d41808b10b70264d958582bb6f6c9fba634c34275e0bc28fc820a6d3fb8d",
+    "busybox_path": "/data/adb/magisk/busybox",
+    "diagnostic_endpoint": "http://192.168.42.1:18383",
+    "functionfs_gadget_path": "/config/usb_gadget/g2",
+    "functionfs_root_path": "/dev/usb-ffs/s41",
+    "kernel_release": "6.12.23-android16-5-o-g227664cbe007-4k",
+    "minimum_usb_speed_mbps": 5000,
+    "multi_session_port_base": 26760,
+    "remote_hash_cache_path": "/home/zhihao/.cache/llama.cpp/research-scheduler/phone-artifact-hashes-mixed-v1.json",
+    "resident_router_path": "/data/local/tmp/s42-route-evidence-physical-v1/llama-ffn-split-resident-router",
+    "resident_workers_path": "/data/local/tmp/s42-route-evidence-physical-v1/llama-ffn-split-resident-workers",
+    "restore_script": "/data/local/tmp/s42-unified-direct-v1/restore_android_usb.sh",
+    "serial": "3C15AU002CL00000",
+    "session_root": "/data/local/tmp/s42-sparse-locality24-adaptive-route-marginal-v4",
+    "session_script": "/data/local/tmp/s42-route-evidence-physical-v1/direct_phone_ffn_session.sh",
+    "usb_controller": "a600000.dwc3",
+    "whole_executable_device": "GPUOpenCL",
+    "whole_forward_port": 29382,
+    "whole_library_directory": "/data/local/tmp/llama-ubatch-op15/bin",
+    "whole_remote_port": 18382,
+    "whole_server_path": "/data/local/tmp/llama-ubatch-op15/bin/llama-server",
+    "whole_server_sha256": "sha256:3fad5e2f2730d1e240f176010994c49dc4a6ea59fb970708df8d2a85bb0abe1c",
+    "whole_state_directory": "/data/local/tmp/s42-unified-whole-model-v1",
+    "worker_path": "/data/local/tmp/s42-route-evidence-physical-v1/llama-ffn-split-worker"
+  },
+  "repo_root": "/home/zhihao/llama.cpp-release",
+  "resources": [
+    {"capacity": 8, "identity": "cuda0", "resource_id": "cuda0"},
+    {"capacity": 4, "identity": "desktop-cpu", "resource_id": "desktop-cpu"},
+    {"capacity": 1, "identity": "usb-root", "resource_id": "desktop-usb-root"},
+    {"capacity": 8, "identity": "pcie-d2h-fit", "resource_id": "link:pcie-d2h-fit"},
+    {"capacity": 8, "identity": "pcie-h2d-fit", "resource_id": "link:pcie-h2d-fit"},
+    {"capacity": 1, "identity": "op15-adreno", "resource_id": "op15-adreno"},
+    {"capacity": 1, "identity": "op15-functionfs", "resource_id": "op15-functionfs"},
+    {"capacity": 1, "identity": "op15-htp", "resource_id": "op15-htp"},
+    {"capacity": 1, "identity": "op15-ncm", "resource_id": "op15-ncm"}
+  ],
+  "rig_id": "physical-4060ti-op15-f16-burstgpt-auto-v1",
+  "schema": "research-scheduler-rig-v1",
+  "topology": {
+    "cpu_device_id": "desktop-cpu",
+    "cpu_resource_id": "desktop-cpu",
+    "functionfs_resource_id": "op15-functionfs",
+    "gpu_device_id": "desktop-cuda",
+    "gpu_exclusive_residency_resource_id": "cuda0",
+    "gpu_memory_resource_id": "cuda0-vram",
+    "gpu_resource_id": "cuda0",
+    "host_memory_resource_id": "host-ram",
+    "phone_compute_resource_ids": ["op15-htp"],
+    "phone_device_id": "op15-phone",
+    "phone_exclusive_residency_resource_id": "op15-htp",
+    "phone_memory_resource_id": "op15-ram",
+    "phone_transport_resource_ids": ["desktop-usb-root", "op15-functionfs", "op15-ncm"]
+  },
+  "transport_host_dependencies": {
+    "ggml": "/home/zhihao/s42-route-evidence-replan-auth-build-20260829-v1/bin/libggml.so",
+    "ggml-base": "/home/zhihao/s42-route-evidence-replan-auth-build-20260829-v1/bin/libggml-base.so",
+    "ggml-cpu": "/home/zhihao/s42-route-evidence-replan-auth-build-20260829-v1/bin/libggml-cpu.so",
+    "ggml-cuda": "/home/zhihao/s42-route-evidence-replan-auth-build-20260829-v1/bin/libggml-cuda.so",
+    "llama": "/home/zhihao/s42-route-evidence-replan-auth-build-20260829-v1/bin/libllama.so",
+    "llama-common": "/home/zhihao/s42-route-evidence-replan-auth-build-20260829-v1/bin/libllama-common.so",
+    "llama-server-impl": "/home/zhihao/s42-route-evidence-replan-auth-build-20260829-v1/bin/libllama-server-impl.so"
+  }
+}

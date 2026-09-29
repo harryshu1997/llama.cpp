@@ -1,0 +1,107 @@
+{
+  "artifacts": {
+    "control_phone": {
+      "path": "/home/zhihao/s41-dynamic-ffn-v1/campaign/s42-gpu-overflow-v1/run-pair-20260809-0240/control.capture/PHONE_ENERGY_V3.json",
+      "sha256": "9f2c7438cc0790f90efa0c2f509738350589efa1f3aeca7b67f6a4c2ef5f3ce8"
+    },
+    "control_result": {
+      "path": "/home/zhihao/s41-dynamic-ffn-v1/campaign/s42-gpu-overflow-v1/run-pair-20260809-0240/control/RESULT.json",
+      "sha256": "965a38075ac5aa1387f9b3cf48c4c87355e8580002c1afec883b314698d8a131"
+    },
+    "shadow_phone": {
+      "path": "/home/zhihao/s41-dynamic-ffn-v1/campaign/s42-gpu-overflow-v1/run-pair-20260809-0240/shadow.capture/PHONE_ENERGY_V3.json",
+      "sha256": "f6a143e24efd9d36f1dc479be7fdab4fbb67ae2744d47fe627fca39e02ac8e5b"
+    },
+    "shadow_plan": {
+      "path": "/home/zhihao/s41-dynamic-ffn-v1/campaign/s42-gpu-overflow-v1/run-pair-20260809-0240/shadow.capture/PLAN.json",
+      "sha256": "4a9480c5a9bbb6a9a2608841330c07db29e85a5e9a9b75112ee37eed6c9ada57"
+    },
+    "shadow_result": {
+      "path": "/home/zhihao/s41-dynamic-ffn-v1/campaign/s42-gpu-overflow-v1/run-pair-20260809-0240/shadow/RESULT.json",
+      "sha256": "50bbbb722f828022a4689058820aab747f8a447aeae4de28e8b0f8bf99cc3c9b"
+    }
+  },
+  "comparison": {
+    "control": {
+      "cpu_package_j": 5476.082857056373,
+      "duration_s": 178.984850428,
+      "fleet_j": 28619.02690504074,
+      "gpu_board_j": 23010.72759007298,
+      "phone_j": 132.21645791138863,
+      "server_j": 28486.81044712935,
+      "slo_met": 55,
+      "throughput_tokens_s": 64.83788975574963
+    },
+    "delta": {
+      "cpu_package_j": 2546.263995918589,
+      "cpu_package_pct": 46.49790849379723,
+      "duration_pct": -0.5879417757891745,
+      "duration_s": -1.0523267079999812,
+      "fleet_j": 2601.4345812728134,
+      "fleet_pct": 9.089877828147316,
+      "gpu_board_j": -68.49514482755694,
+      "gpu_board_pct": -0.29766614097463967,
+      "phone_j": 123.66573018178073,
+      "phone_pct": 93.53278111917157,
+      "server_j": 2477.768851091034,
+      "server_pct": 8.697951129662961,
+      "slo_met": 2,
+      "throughput_pct": 0.5914189750132115,
+      "throughput_tokens_s": 0.3834635830136506
+    },
+    "shadow": {
+      "cpu_package_j": 8022.346852974962,
+      "duration_s": 177.93252372,
+      "fleet_j": 31220.461486313554,
+      "gpu_board_j": 22942.232445245423,
+      "phone_j": 255.88218809316936,
+      "server_j": 30964.579298220386,
+      "slo_met": 57,
+      "throughput_tokens_s": 65.22135333876328
+    }
+  },
+  "decision": {
+    "energy_route_promoted": false,
+    "reason": "ACCOUNTED_FLEET_ENERGY_REGRESSION",
+    "route_scope": "shadow_latency_overflow_only"
+  },
+  "devices": {
+    "desktop_cpu": "i9-12900K",
+    "desktop_gpu": "RTX 4060 Ti 16 GiB",
+    "phone": "OP15 SM8850"
+  },
+  "gates": {
+    "all_requests_completed": true,
+    "fleet_energy_saved": false,
+    "helper_finished_before_switch": true,
+    "makespan_improved": true,
+    "post_switch_routes_gpu_only": true,
+    "slo_count_not_lower": true
+  },
+  "measurement_boundary": "CPU package RAPL plus GPU board NVML plus simultaneous whole-phone USB input and battery discharge over the paid trace interval",
+  "policy_receipt": {
+    "gpu_ready_us": 108024042,
+    "helper_actual_end_us": {
+      "42": 25568909,
+      "46": 47835722,
+      "50": 70910333
+    },
+    "helper_request_indices": [
+      42,
+      46,
+      50
+    ],
+    "helper_retired_us": 71126240,
+    "mode": "shadow",
+    "post_switch_gpu_request_count": 14,
+    "switch_cutoff_us": 99297030
+  },
+  "schema": "s42-gpu-overflow-burstgpt-result-v1",
+  "status": "PASS",
+  "trace": {
+    "input_tokens": 33843,
+    "output_tokens": 11605,
+    "requests": 74,
+    "sha256": "b20a9ba66ee3558d835a0e19ed3cfa4c31a4a9e8b4f9c085b29a14f80250a0ff"
+  }
+}

@@ -1,5 +1,5 @@
 #define FFN_DMABUF_BRIDGE_NO_MAIN
-#include "../../spikes/s41_gemma_qwen_continuous_baseline/tp_operator_split_v1/ffs_dmabuf_transport_v1/ffn_dmabuf_bridge.cpp"
+#include "../../../examples/layersplit/ffn-split-usb-bridge.cpp"
 
 #include <array>
 #include <limits>
@@ -191,7 +191,12 @@ int main(int argc, char ** argv) {
             throw std::runtime_error(
                     "phone arbiter requires a split host allocator");
         }
-        const bool persistent = allocator == "devmem-split";
+        ffn_split::usb_host_allocator host_allocator;
+        if (!ffn_split::parse_usb_host_allocator(
+                    allocator == "devmem-split" ? "devmem" : "malloc",
+                    host_allocator)) {
+            throw std::runtime_error("invalid USB host allocator");
+        }
         const int protected_first_layer = parse_layer_bound(
                 argv[5], "protected first layer");
         const int protected_last_layer = parse_layer_bound(
@@ -243,14 +248,41 @@ int main(int argc, char ** argv) {
             throw std::runtime_error(
                     "filler protected-done fence has no receipt path");
         }
-        libusb_context * usb_context = nullptr;
-        const int usb_status = libusb_init(&usb_context);
-        if (usb_status != 0) {
-            throw std::runtime_error(std::string("libusb_init failed: ") +
-                    libusb_error_name(usb_status));
-        }
-        libusb_device_handle * handle = open_claimed_device(
-                usb_context, recovery_timeout_ms);
+        const unsigned int configured_queue_depth = []() {
+            const char * value = getenv("S42_PHONE_ARBITER_QUEUE_DEPTH");
+            return value == nullptr ? 1U : parse_queue_depth(value);
+        }();
+        const size_t available_usbfs_bytes = []() {
+            const char * value = getenv("S42_PHONE_ARBITER_USBFS_BYTES");
+            return value == nullptr ? ffn_split::usbfs_memory_bytes() :
+                    parse_byte_count(value);
+        }();
+        const auto make_usb = [&](size_t slot_bytes) {
+            ffn_split::usb_client_config config;
+            config.vendor_id = ffn_split::dmabuf_vendor_id;
+            config.product_id = ffn_split::dmabuf_product_id;
+            config.host_to_device_endpoint =
+                    ffn_split::dmabuf_out_endpoint;
+            config.device_to_host_endpoint =
+                    ffn_split::dmabuf_in_endpoint;
+            config.host_to_device_slot_bytes = slot_bytes;
+            config.device_to_host_slot_bytes = slot_bytes;
+            config.usbfs_available_bytes = available_usbfs_bytes;
+            config.slot_safety_bytes = 64U * 1024U;
+            config.configured_max_queue_depth = configured_queue_depth;
+            config.timeout_ms = transfer_timeout_ms;
+            config.allocator = host_allocator;
+            config.transport_generation = "functionfs-dmabuf-async-v1";
+            auto result = std::make_unique<ffn_split::usb_client>(config);
+            std::string error;
+            if (!result->connect(error)) {
+                throw std::runtime_error("USB connect failed: " + error);
+            }
+            return result;
+        };
+        auto usb = make_usb(std::max(
+                sizeof(ffn_split::hello_request),
+                sizeof(ffn_split::hello_response)));
 
         std::array<arbiter_client, 2> clients = {{
             {"protected"},
@@ -284,20 +316,25 @@ int main(int argc, char ** argv) {
             shutdown.message = static_cast<uint16_t>(
                     ffn_split::message_type::execute_request);
             shutdown.layer = terminate ? -1 : 0;
-            transfer_exact(handle, ffn_split::dmabuf_out_endpoint,
-                    reinterpret_cast<unsigned char *>(&shutdown),
-                    sizeof(shutdown));
+            ffn_split::usb_transfer_record transfer;
+            std::string error;
+            if (!usb->exchange(
+                        &shutdown, sizeof(shutdown), nullptr, 0, {},
+                        transfer, error)) {
+                throw std::runtime_error("USB shutdown failed: " + error);
+            }
         };
 
         const auto arm_direct = [&](int index) {
             arbiter_client & client = clients[index];
             ffn_split::hello_response response = {};
-            transfer_exact(handle, ffn_split::dmabuf_out_endpoint,
-                    reinterpret_cast<unsigned char *>(&client.hello),
-                    sizeof(client.hello));
-            transfer_exact(handle, ffn_split::dmabuf_in_endpoint,
-                    reinterpret_cast<unsigned char *>(&response),
-                    sizeof(response));
+            ffn_split::usb_transfer_record transfer;
+            std::string error;
+            if (!usb->exchange(
+                        &client.hello, sizeof(client.hello), &response,
+                        sizeof(response), {}, transfer, error)) {
+                throw std::runtime_error("USB HELLO failed: " + error);
+            }
             if (!valid_phone_hello(client.hello, response)) {
                 throw std::runtime_error(std::string("phone rejected ") +
                         client.name + " HELLO");
@@ -366,24 +403,18 @@ int main(int argc, char ** argv) {
         }
         const size_t max_wire_bytes =
                 ffn_split::dmabuf_payload_offset + max_payload_bytes;
-        std::unique_ptr<transfer_buffer> request_buffer =
-                std::make_unique<transfer_buffer>(
-                        handle, max_wire_bytes, persistent);
-        std::unique_ptr<transfer_buffer> response_buffer =
-                std::make_unique<transfer_buffer>(
-                        handle, max_wire_bytes, persistent);
+        send_shutdown(false);
+        usb->close();
+        usb = make_usb(max_wire_bytes);
+        active_client = -1;
+        arm_direct(protected_client_index);
+        std::vector<unsigned char> request_buffer(max_wire_bytes);
+        std::vector<unsigned char> response_buffer(max_wire_bytes);
 
         uint64_t reset_recoveries = 0;
         const auto reconnect = [&](int desired_client) {
-            response_buffer.reset();
-            request_buffer.reset();
-            close_claimed_device(handle);
-            handle = nullptr;
-            handle = open_claimed_device(usb_context, recovery_timeout_ms);
-            request_buffer = std::make_unique<transfer_buffer>(
-                    handle, max_wire_bytes, persistent);
-            response_buffer = std::make_unique<transfer_buffer>(
-                    handle, max_wire_bytes, persistent);
+            usb->close();
+            usb = make_usb(max_wire_bytes);
             active_client = -1;
             arm_direct(desired_client);
         };
@@ -430,10 +461,10 @@ int main(int argc, char ** argv) {
                 throw std::runtime_error(std::string("invalid ") +
                         client.name + " local execute request");
             }
-            memset(request_buffer->data(), 0,
+            memset(request_buffer.data(), 0,
                     ffn_split::dmabuf_payload_offset);
-            memcpy(request_buffer->data(), &request, sizeof(request));
-            unsigned char * payload = request_buffer->data() +
+            memcpy(request_buffer.data(), &request, sizeof(request));
+            unsigned char * payload = request_buffer.data() +
                     ffn_split::dmabuf_payload_offset;
             if (!receive_exact(client.fd, payload, request.payload_bytes)) {
                 throw std::runtime_error(std::string(client.name) +
@@ -453,36 +484,44 @@ int main(int argc, char ** argv) {
             const size_t wire_bytes =
                     ffn_split::dmabuf_payload_offset + payload_bytes;
             const std::vector<unsigned char> replay(
-                    request_buffer->data(),
-                    request_buffer->data() + wire_bytes);
+                    request_buffer.data(),
+                    request_buffer.data() + wire_bytes);
             for (;;) {
                 try {
                     ensure_session(index);
-                    transfer_exact(handle, ffn_split::dmabuf_out_endpoint,
-                            reinterpret_cast<unsigned char *>(
-                                    const_cast<ffn_split::execute_request *>(
-                                            &request)),
-                            sizeof(request));
                     uint32_t payload_ready = 0;
-                    transfer_exact(handle, ffn_split::dmabuf_in_endpoint,
-                            reinterpret_cast<unsigned char *>(&payload_ready),
-                            sizeof(payload_ready));
+                    ffn_split::usb_transfer_record header_transfer;
+                    ffn_split::usb_transfer_record payload_transfer;
+                    std::string error;
+                    const ffn_split::usb_transfer_identity identity = {
+                        request.request_id,
+                        clients[index].response.weight_hash,
+                        static_cast<uint64_t>(request.layer),
+                    };
+                    if (!usb->exchange(
+                                &request, sizeof(request), &payload_ready,
+                                sizeof(payload_ready), identity,
+                                header_transfer, error)) {
+                        throw std::runtime_error(error);
+                    }
                     if (payload_ready !=
                             (ffn_split::dmabuf_payload_ready_magic ^
                              request.request_id)) {
                         throw std::runtime_error(
                                 "invalid phone payload-ready response");
                     }
-                    transfer_exact(handle, ffn_split::dmabuf_out_endpoint,
-                            request_buffer->data() +
-                                    ffn_split::dmabuf_payload_offset,
-                            payload_bytes);
-                    transfer_exact(handle, ffn_split::dmabuf_in_endpoint,
-                            response_buffer->data(), wire_bytes);
+                    if (!usb->exchange(
+                                request_buffer.data() +
+                                        ffn_split::dmabuf_payload_offset,
+                                payload_bytes, response_buffer.data(),
+                                wire_bytes, identity, payload_transfer,
+                                error)) {
+                        throw std::runtime_error(error);
+                    }
                     completed_phone_call completed;
-                    memcpy(&completed.response, response_buffer->data(),
+                    memcpy(&completed.response, response_buffer.data(),
                             sizeof(completed.response));
-                    const unsigned char * output = response_buffer->data() +
+                    const unsigned char * output = response_buffer.data() +
                             ffn_split::dmabuf_payload_offset;
                     if (!valid_phone_response(
                                 request, completed.response, output)) {
@@ -500,7 +539,7 @@ int main(int argc, char ** argv) {
                             error.what());
                     fflush(stderr);
                     recover_to(index);
-                    memcpy(request_buffer->data(), replay.data(), wire_bytes);
+                    memcpy(request_buffer.data(), replay.data(), wire_bytes);
                 }
             }
         };
@@ -822,10 +861,7 @@ int main(int argc, char ** argv) {
             }
             close(client.listener);
         }
-        response_buffer.reset();
-        request_buffer.reset();
-        close_claimed_device(handle);
-        libusb_exit(usb_context);
+        usb->close();
         return 0;
     } catch (const std::exception & error) {
         fprintf(stderr, "[phone-arbiter-bridge] %s\n", error.what());

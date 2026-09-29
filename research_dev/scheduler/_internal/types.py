@@ -13,7 +13,7 @@ from enum import Enum
 import hashlib
 import json
 from types import MappingProxyType
-from typing import Any, Mapping, Sequence
+from typing import Mapping, Sequence
 
 
 CONTRACT_SCHEMA = "s42-energy-scheduler-contract-v1"
@@ -21,6 +21,28 @@ CONTRACT_SCHEMA = "s42-energy-scheduler-contract-v1"
 
 class SchedulerContractError(ValueError):
     pass
+
+
+_MAPPING_PROXY_TYPE = type(MappingProxyType({}))
+
+# dataclass field metadata key: an opt-in policy field that must not change any canonical
+# identity (catalog, snapshot, route) until a configuration sets it away from its default
+CANONICAL_OMIT_DEFAULT = "canonical_omit_default"
+
+
+def canonical_dataclass_fields(value: object):
+    """Dataclass fields that take part in canonical identities.
+
+    A field declared with ``metadata={CANONICAL_OMIT_DEFAULT: True}`` is left
+    out while it holds its declared default.
+    """
+    return (
+        item for item in fields(value)
+        if not (
+            item.metadata.get(CANONICAL_OMIT_DEFAULT)
+            and getattr(value, item.name) == item.default
+        )
+    )
 
 
 class UnitKind(str, Enum):
@@ -114,22 +136,54 @@ def _immutable_int_mapping(name: str, values: Mapping[str, int]) -> Mapping[str,
 
 
 def _canonical_value(value: object) -> object:
+    value_type = type(value)
+    if value is None or value_type in {bool, int, str}:
+        return value
+    if value_type in {dict, _MAPPING_PROXY_TYPE}:
+        return {
+            str(key): _canonical_value(item)
+            for key, item in sorted(
+                value.items(), key=lambda row: str(row[0])
+            )
+        }
+    if value_type in {tuple, list}:
+        return [_canonical_value(item) for item in value]
+    if value_type in {set, frozenset}:
+        items = [_canonical_value(item) for item in value]
+        return sorted(
+            items,
+            key=lambda item: json.dumps(
+                item,
+                ensure_ascii=True,
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+        )
     if isinstance(value, Enum):
         return value.value
     if is_dataclass(value):
         return {
             item.name: _canonical_value(getattr(value, item.name))
-            for item in fields(value)
+            for item in canonical_dataclass_fields(value)
         }
     if isinstance(value, Mapping):
         return {
             str(key): _canonical_value(item)
             for key, item in sorted(value.items(), key=lambda row: str(row[0]))
         }
+    if isinstance(value, (set, frozenset)):
+        items = [_canonical_value(item) for item in value]
+        return sorted(
+            items,
+            key=lambda item: json.dumps(
+                item,
+                ensure_ascii=True,
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+        )
     if isinstance(value, (tuple, list)):
         return [_canonical_value(item) for item in value]
-    if value is None or type(value) in {bool, int, str}:
-        return value
     raise SchedulerContractError(
         f"unsupported canonical value type: {type(value).__name__}"
     )

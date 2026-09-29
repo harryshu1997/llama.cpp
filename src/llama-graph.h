@@ -306,6 +306,11 @@ public:
 
 class llm_graph_input_attn_kv : public llm_graph_input_i {
 public:
+    struct slice_input {
+        ggml_tensor * idxs[2] = {};
+        ggml_tensor * masks[2] = {};
+    };
+    std::map<uint32_t, slice_input> slices;
     llm_graph_input_attn_kv(
             const llama_hparams & hparams,
             const llama_cparams & cparams,
@@ -697,6 +702,16 @@ struct llm_graph_params {
 
     uint32_t n_outputs;
 
+    bool     ffn_split_runtime = false;
+    uint64_t ffn_split_layer_mask = 0;
+    uint32_t ffn_split_columns = 0;
+    bool     ffn_row_diagnostic = false;
+
+    // remote-resident dense FFN layers (weights absent locally): always executed by the
+    // eval-callback owner at full width, independent of the adaptive split policy
+    uint64_t ffn_remote_resident_layer_mask = 0;
+    bool     ffn_remote_resident_owned = false;
+
     llm_graph_cb cb;
 
     llm_graph_result * res;
@@ -736,6 +751,15 @@ struct llm_graph_params {
         }
 
         if (n_outputs != other.n_outputs) {
+            return false;
+        }
+
+        if (ffn_split_runtime != other.ffn_split_runtime ||
+            ffn_split_layer_mask != other.ffn_split_layer_mask ||
+            ffn_split_columns != other.ffn_split_columns ||
+            ffn_row_diagnostic != other.ffn_row_diagnostic ||
+            ffn_remote_resident_layer_mask != other.ffn_remote_resident_layer_mask ||
+            ffn_remote_resident_owned != other.ffn_remote_resident_owned) {
             return false;
         }
 
@@ -871,6 +895,15 @@ struct llm_graph_context {
 
     const llama_hparams & hparams;
     const llama_cparams & cparams;
+
+    // dense FFN split runtime (S41/S42): copied from the graph params so that helpers can
+    // resolve the split policy without the caller passing params around
+    const bool     ffn_split_runtime;
+    const uint64_t ffn_split_layer_mask;
+    const uint32_t ffn_split_columns;
+    const bool     ffn_row_diagnostic;
+    const uint64_t ffn_remote_resident_layer_mask;
+    const bool     ffn_remote_resident_owned;
     const llama_ubatch  & ubatch;
 
     const int64_t n_embd;
@@ -981,6 +1014,28 @@ struct llm_graph_context {
        llm_ffn_gate_type   type_gate,
                      int   il) const;
 
+    // Dense FFN column split between the desktop and an FFN split worker (S41/S42).
+    // The policy comes from the runtime control (params.ffn_split_*) or, for standalone
+    // tools, from the LLAMA_FFN_SPLIT_* environment; remote-resident layers
+    // (params.ffn_remote_resident_layer_mask) always run completely on the worker.
+    struct dense_ffn_split_policy {
+        uint64_t layer_mask = 0;
+        int64_t  columns    = 0;
+    };
+
+    dense_ffn_split_policy resolve_dense_ffn_split_policy() const;
+
+    // Build the gated dense FFN of layer il, splitting its columns according to `policy`:
+    // the desktop computes the leading host columns, the worker the trailing ones (marker
+    // tensors ffn_norm-<il> / ffn_phone_partial-<il> carry the activations). Without a split
+    // for this layer it is the plain build_ffn with the layer's biases and scales.
+    ggml_tensor * build_dense_ffn_split(
+             ggml_tensor * cur,
+       const llama_layer & layer,
+         llm_ffn_op_type   type_op,
+    const dense_ffn_split_policy & policy,
+                     int   il) const;
+
     // build MoE FFN without bias tensors
     ggml_tensor * build_moe_ffn(
              ggml_tensor * cur,
@@ -1048,6 +1103,12 @@ struct llm_graph_context {
     //
     // attention
     //
+
+    ggml_tensor * build_attn_split(
+            ggml_tensor * q, ggml_tensor * k, ggml_tensor * v,
+            ggml_tensor * k_host, ggml_tensor * v_host,
+            ggml_tensor * mask, ggml_tensor * mask_host,
+            ggml_tensor * sinks, float scale, int il) const;
 
     ggml_tensor * build_attn_mha(
             ggml_tensor * q,       // [n_embd_head_q, n_head_q, n_tokens]

@@ -5532,6 +5532,12 @@ static ggml_status ggml_backend_opencl_graph_compute(ggml_backend_t backend, ggm
         GGML_ASSERT(ok);
     }
 
+    static const int early_flush = getenv("GGML_OPENCL_EARLY_FLUSH")
+        ? atoi(getenv("GGML_OPENCL_EARLY_FLUSH")) : 0;
+    if (early_flush) {
+        CL_CHECK(clFlush(backend_ctx->queue));
+    }
+
     return GGML_STATUS_SUCCESS;
 }
 
@@ -5863,6 +5869,9 @@ static bool ggml_opencl_supports_op(ggml_backend_dev_t dev, const struct ggml_te
         case GGML_OP_MEAN:
             return op->src[0]->type == GGML_TYPE_F32;
         case GGML_OP_FLASH_ATTN_EXT: {
+            if (ggml_flash_attn_ext_has_lse(op)) {
+                return false;
+            }
             const ggml_tensor * q = op->src[0];
             const ggml_tensor * k = op->src[1];
             const ggml_tensor * v = op->src[2];

@@ -1,0 +1,14 @@
+{
+  "status": "PASS",
+  "width": 17408,
+  "embedding": 5120,
+  "batch": 1,
+  "cases": 8,
+  "ops": 6,
+  "max_cpu_vs_numpy_relative_l2": 3.16556508506748e-06,
+  "activation_sha256": "7724d92a5a77da3e2877f0cbbb070c91e4a3974b0a7c10f4204f64302d3855ee",
+  "weights_sha256": "45328aabbba8333cd5f779945b3df34d3536119f558f583a79c07870ad067647",
+  "model_sha256": "40f197bfb305c3bc06abeac73c9fc378b7fda8727ebfd6d4d7a72674e0c73cc7",
+  "exporter_sha256": "d0310a858270721d5fa7705a2e0f62b198371d34ed2b409a8f629668f8bc8106",
+  "formula": "((x @ gate.T) * sigmoid(x @ gate.T) * (x @ up.T)) @ down.T"
+}

@@ -1,0 +1,19 @@
+{
+  "at": "2026-09-24T01:20:02.212195+00:00",
+  "input": "/home/myid/zs89458/Documents/llama.cpp-release/research_dev/TPU_SDK/probes/ffn17408_b4_v1/ffn.tflite",
+  "input_sha256": "d395f9c519e9963c63a4b2d649b6cd59086d1d53f4cbe0023fc8b7d1b682f40a",
+  "sdk_plugin_sha256": "d74bea45081aa90a39505a675c15f566d46dbcc35e55a98f755c02017464cd1f",
+  "target": "Tensor_G5",
+  "precision": "half",
+  "sharding": "minimal",
+  "compiler_script_sha256": "5d023072cbf8ea8e6cdad395da9dd9d850ed8c256f1a2ed4ab236a2735702332",
+  "status": "PASS",
+  "elapsed_s": 50.31053721701028,
+  "partition_report": "Google_Tensor_G5\n==========================\nPartition Stats:\nSubgraph 0 fully compiled:\t6 / 6 ops offloaded to 1 partitions.\n\n",
+  "outputs": {
+    "ffn_Google_Tensor_G5.tflite": {
+      "bytes": 535009184,
+      "sha256": "9aac75a143bade4c9f2bf440263cd95af798863d56cb5cecd687c9aa8a5e54a5"
+    }
+  }
+}

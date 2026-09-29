@@ -72,6 +72,18 @@ def make_input(elements):
     return struct.pack(f"<{elements}e", *values)
 
 
+def f32(value):
+    return struct.unpack("<f", struct.pack("<f", value))[0]
+
+
+def make_expected(payload, elements, op, repeats):
+    values = list(struct.unpack(f"<{elements}e", payload))
+    if op == "sqr":
+        for _ in range(repeats):
+            values = [f32(value * value) for value in values]
+    return struct.pack(f"<{elements}e", *values)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--elements", type=int, default=2816)
@@ -88,6 +100,10 @@ def main():
 
     payload = make_input(args.elements)
     payload_crc = zlib.crc32(payload) & 0xFFFFFFFF
+    expected_output = make_expected(
+        payload, args.elements, args.op, args.repeats
+    )
+    expected_crc = zlib.crc32(expected_output) & 0xFFFFFFFF
     response_size = RESPONSE.size + len(payload)
     libusb, context = load()
     handle, pid = open_accessory(libusb, context)
@@ -143,6 +159,10 @@ def main():
                 or output_crc != (zlib.crc32(output) & 0xFFFFFFFF)
             ):
                 raise RuntimeError(f"invalid response for request {request_id}")
+            if output != expected_output:
+                raise RuntimeError(
+                    f"semantic output mismatch for request {request_id}"
+                )
             validate_ms = (time.perf_counter_ns() - validate_started) / 1e6
             total_ms = (time.perf_counter_ns() - total_started) / 1e6
 
@@ -194,6 +214,8 @@ def main():
         "elements": args.elements,
         "input_bytes": len(payload),
         "output_bytes": len(payload),
+        "expected_output_crc32": expected_crc,
+        "semantic_matches": args.iters,
         "warmup": args.warmup,
         "iterations": args.iters,
         "accessory_pid": f"0x{pid:04x}",

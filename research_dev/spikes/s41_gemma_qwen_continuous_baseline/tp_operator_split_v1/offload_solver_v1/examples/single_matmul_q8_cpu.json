@@ -1,0 +1,24 @@
+{
+  "activation_type": "f16",
+  "host_backend": "cpu_isolated",
+  "inter_request_gap_ms": 0.0,
+  "kind": "matmul",
+  "m": 1,
+  "minimum_speedup_percent": 5.0,
+  "n": 15360,
+  "name": "Gemma-4-12B gate projection screening shape",
+  "phone_backends": [
+    "op15_htp",
+    "op15_gpu_opencl",
+    "op15_gpu_persistent"
+  ],
+  "quantization": "q8_0",
+  "schema": "s41-offload-workload-v1",
+  "split_alignment": 32,
+  "split_axes": [
+    "n",
+    "k"
+  ],
+  "k": 3840,
+  "transport": "auto"
+}

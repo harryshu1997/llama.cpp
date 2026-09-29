@@ -1,4 +1,5 @@
 #include "models.h"
+#include "../llama-ffn-split-policy.h"
 
 #include <cstdlib> // [plan-a port] getenv/atoi for LayerSplit env knobs
 
@@ -43,7 +44,7 @@ void llama_model_gemma4::load_arch_tensors(llama_model_loader &) {
         throw std::runtime_error("Gemma 4 requires n_embd_head_k_swa == n_embd_head_v_swa");
     }
 
-    // [plan-a port] LayerSplit PARTIAL LOAD — store ONLY this stage's slice on device.
+    // [plan-a port] LayerSplit PARTIAL LOAD - store ONLY this stage's slice on device.
     // A phone stage holds just its transformer layers [ls,le); the head (ls==0) also needs tok_embd
     // for the embedding lookup, and the terminal (le==n_layer) needs tok_embd (tied lm_head) +
     // output + output_norm. Out-of-range tensors are never created -> never allocated, never loaded.
@@ -86,7 +87,7 @@ void llama_model_gemma4::load_arch_tensors(llama_model_loader &) {
     for (int i = 0; i < n_layer; ++i) {
         auto & layer = layers[i];
 
-        // [plan-a port] skip layers this stage does not own — no alloc, no load
+        // [plan-a port] skip layers this stage does not own - no alloc, no load
         if (i < ls || i >= le) {
             continue;
         }
@@ -219,7 +220,21 @@ llama_model_gemma4::graph::graph(const llama_model & model, const llm_graph_para
     GGML_ASSERT(ls < le);
     const bool split_tail_stage = (le == (int) n_layer);
 
-    // [plan-a port] LayerSplit tail stage (ls>0): the batch is DUAL — a relayed input token (so the
+    const dense_ffn_split_policy ffn_split_policy = resolve_dense_ffn_split_policy();
+    uint64_t moe_split_layer_mask = 0;
+    int64_t lm_head_split_rows = 0;
+    int64_t lm_head_split_top_k = 0;
+    if (const char * e = getenv("LLAMA_MOE_SPLIT_LAYER_MASK")) {
+        moe_split_layer_mask = strtoull(e, nullptr, 10);
+    }
+    if (const char * e = getenv("LLAMA_LM_HEAD_SPLIT_ROWS")) {
+        lm_head_split_rows = atoll(e);
+    }
+    if (const char * e = getenv("LLAMA_LM_HEAD_SPLIT_TOP_K")) {
+        lm_head_split_top_k = atoll(e);
+    }
+
+    // [plan-a port] LayerSplit tail stage (ls>0): the batch is DUAL - a relayed input token (so the
     // gemma-3n per-layer token embeddings + scaled token embedding below reconstruct exactly) plus
     // the injected residual from the previous stage in ubatch.embd. build_inp_embd() cannot be used
     // here: for a dual batch it build-time-selects the token path and prunes its own embd tensor,
@@ -234,7 +249,7 @@ llama_model_gemma4::graph::graph(const llama_model & model, const llm_graph_para
         cb(inj_h, "layersplit_inject", -1);
 
         if (model.per_layer_tok_embd) {
-            // per-layer arch (gemma-3n E2B): DUAL batch — the relayed input token reconstructs the
+            // per-layer arch (gemma-3n E2B): DUAL batch - the relayed input token reconstructs the
             // per-layer token embeddings; the injected residual (inj_h) becomes inpL. Needs tok_embd
             // loaded on EVERY stage (loader keeps it when n_embd_per_layer>0). [M1 dual-batch]
             ggml_tensor * inj_tokens = ggml_new_tensor_1d(ctx0, GGML_TYPE_I32, n_tokens); // <- ubatch.token
@@ -247,7 +262,7 @@ llama_model_gemma4::graph::graph(const llama_model & model, const llm_graph_para
             inpL = ggml_get_rows(ctx0, model.tok_embd, inj_tokens);
             inpL = ggml_scale(ctx0, inpL, sqrtf(n_embd));
         } else {
-            // plain arch (gemma-4 12B): no per-layer embeddings — the injected residual IS the input.
+            // plain arch (gemma-4 12B): no per-layer embeddings - the injected residual IS the input.
             // No token is referenced, so a middle stage needs neither tok_embd nor an inj_tokens input
             // (which would otherwise be an orphaned graph input). set_input tolerates the null token.
             res->add_input(std::move(inj));
@@ -376,8 +391,17 @@ llama_model_gemma4::graph::graph(const llama_model & model, const llm_graph_para
         // feed-forward network
         const bool is_moe_layer = model.layers[il].ffn_gate_inp != nullptr;
         if (is_moe_layer) {
+            const bool split_moe =
+                    n_tokens == 1 && il < 64 &&
+                    (moe_split_layer_mask & (UINT64_C(1) << il)) != 0;
+            ggml_tensor * moe_attn_out = attn_out;
+            if (split_moe) {
+                moe_attn_out = ggml_scale(ctx0, attn_out, 1.0f);
+                cb(moe_attn_out, "moe_phone_input", il);
+            }
+
             // MLP (shared exp)
-            ggml_tensor * cur_mlp = build_norm(attn_out,
+            ggml_tensor * cur_mlp = build_norm(moe_attn_out,
                     model.layers[il].ffn_norm, nullptr,
                     LLM_NORM_RMS, il);
             cb(cur_mlp, "ffn_norm_1", il);
@@ -393,38 +417,44 @@ llama_model_gemma4::graph::graph(const llama_model & model, const llm_graph_para
                     LLM_NORM_RMS, il);
             cb(cur_mlp, "ffn_mlp", il);
 
-            // Expert FFN
-            ggml_tensor * cur_moe = build_norm(attn_out,
-                    model.layers[il].ffn_pre_norm_2, nullptr,
-                    LLM_NORM_RMS, il);
-            cb(cur_moe, "ffn_norm_2", il);
+            ggml_tensor * cur_moe;
+            if (split_moe) {
+                cur_moe = ggml_scale(ctx0, cur_mlp, 0.0f);
+                cb(cur_moe, "moe_phone_output", il);
+            } else {
+                // Expert FFN
+                cur_moe = build_norm(moe_attn_out,
+                        model.layers[il].ffn_pre_norm_2, nullptr,
+                        LLM_NORM_RMS, il);
+                cb(cur_moe, "ffn_norm_2", il);
 
-            // custom MoE logits calculation (router operates on attn_out, not cur)
-            ggml_tensor * tmp = ggml_rms_norm(ctx0, attn_out, hparams.f_norm_rms_eps);
-            tmp = ggml_scale(ctx0, tmp, 1.0f / sqrtf((float) n_embd));
-            tmp = ggml_mul(ctx0, tmp, model.layers[il].ffn_gate_inp_s);
-            ggml_tensor * logits = build_lora_mm(model.layers[il].ffn_gate_inp, tmp); // [n_expert, n_tokens]
-            cb(logits, "ffn_moe_logits", il);
+                // custom MoE logits calculation (router operates on attn_out, not cur)
+                ggml_tensor * tmp = ggml_rms_norm(ctx0, moe_attn_out, hparams.f_norm_rms_eps);
+                tmp = ggml_scale(ctx0, tmp, 1.0f / sqrtf((float) n_embd));
+                tmp = ggml_mul(ctx0, tmp, model.layers[il].ffn_gate_inp_s);
+                ggml_tensor * logits = build_lora_mm(model.layers[il].ffn_gate_inp, tmp); // [n_expert, n_tokens]
+                cb(logits, "ffn_moe_logits", il);
 
-            cur_moe = build_moe_ffn(cur_moe,
-                    nullptr, // gate_inp
-                    model.layers[il].ffn_up_exps,
-                    model.layers[il].ffn_gate_exps,
-                    model.layers[il].ffn_down_exps,
-                    nullptr, // exp_probs_b (not used for gemma4)
-                    n_expert, n_expert_used,
-                    LLM_FFN_GELU, true,
-                    1.0f,
-                    LLAMA_EXPERT_GATING_FUNC_TYPE_SOFTMAX,
-                    il, logits,
-                    model.layers[il].ffn_gate_up_exps,
-                    model.layers[il].ffn_up_exps_s,
-                    model.layers[il].ffn_gate_exps_s,
-                    model.layers[il].ffn_down_exps_s);
-            cur_moe = build_norm(cur_moe,
-                    model.layers[il].ffn_post_norm_2, nullptr,
-                    LLM_NORM_RMS, il);
-            cb(cur_moe, "ffn_moe", il);
+                cur_moe = build_moe_ffn(cur_moe,
+                        nullptr, // gate_inp
+                        model.layers[il].ffn_up_exps,
+                        model.layers[il].ffn_gate_exps,
+                        model.layers[il].ffn_down_exps,
+                        nullptr, // exp_probs_b (not used for gemma4)
+                        n_expert, n_expert_used,
+                        LLM_FFN_GELU, true,
+                        1.0f,
+                        LLAMA_EXPERT_GATING_FUNC_TYPE_SOFTMAX,
+                        il, logits,
+                        model.layers[il].ffn_gate_up_exps,
+                        model.layers[il].ffn_up_exps_s,
+                        model.layers[il].ffn_gate_exps_s,
+                        model.layers[il].ffn_down_exps_s);
+                cur_moe = build_norm(cur_moe,
+                        model.layers[il].ffn_post_norm_2, nullptr,
+                        LLM_NORM_RMS, il);
+                cb(cur_moe, "ffn_moe", il);
+            }
 
             cur = ggml_add(ctx0, cur_mlp, cur_moe);
             cb(cur, "ffn_moe_combined", il);
@@ -434,12 +464,7 @@ llama_model_gemma4::graph::graph(const llama_model & model, const llm_graph_para
                     LLM_NORM_RMS, il);
             cb(cur, "ffn_norm", il);
 
-            cur = build_ffn(cur,
-                    model.layers[il].ffn_up,   nullptr, model.layers[il].ffn_up_s,
-                    model.layers[il].ffn_gate, nullptr, model.layers[il].ffn_gate_s,
-                    model.layers[il].ffn_down, nullptr, model.layers[il].ffn_down_s,
-                    nullptr,
-                    LLM_FFN_GELU, LLM_FFN_PAR, il);
+            cur = build_dense_ffn_split(cur, model.layers[il], LLM_FFN_GELU, ffn_split_policy, il);
             cb(cur, "ffn_out", il);
         }
         cur = build_norm(cur,
@@ -517,7 +542,42 @@ llama_model_gemma4::graph::graph(const llama_model & model, const llm_graph_para
     res->t_embd = cur;
 
     // lm_head
-    cur = build_lora_mm(model.output, cur, model.output_s);
+    const bool split_lm_head =
+            n_tokens == 1 && lm_head_split_rows > 0 && lm_head_split_top_k > 0;
+    if (split_lm_head) {
+        const int64_t host_rows = model.output->ne[1] - lm_head_split_rows;
+        GGML_ASSERT(host_rows > 0);
+        GGML_ASSERT(lm_head_split_top_k <= host_rows);
+        GGML_ASSERT(lm_head_split_top_k <= lm_head_split_rows);
+        GGML_ASSERT(model.output_s == nullptr);
+
+        ggml_tensor * split_input = ggml_scale(ctx0, cur, 1.0f);
+        cb(split_input, "lm_head_phone_input", -1);
+
+        ggml_tensor * host_output = ggml_view_2d(
+                ctx0, model.output, model.output->ne[0], host_rows,
+                model.output->nb[1], 0);
+        ggml_tensor * host_logits = ggml_mul_mat(ctx0, host_output, split_input);
+        cb(host_logits, "lm_head_host_logits", -1);
+
+        ggml_tensor * phone_ids = ggml_view_1d(
+                ctx0, host_logits, lm_head_split_top_k, 0);
+        phone_ids = ggml_cast(ctx0, phone_ids, GGML_TYPE_I32);
+        cb(phone_ids, "lm_head_phone_ids", -1);
+
+        ggml_tensor * phone_weights = ggml_get_rows(ctx0, model.output, phone_ids);
+        ggml_tensor * phone_scores = ggml_mul_mat(ctx0, phone_weights, split_input);
+        cb(phone_scores, "lm_head_phone_rescore", -1);
+
+        ggml_tensor * padded = ggml_pad(
+                ctx0, host_logits, lm_head_split_rows, 0, 0, 0);
+        ggml_tensor * phone_dependency = ggml_scale(
+                ctx0, ggml_sum(ctx0, phone_scores), 0.0f);
+        cur = ggml_add(ctx0, padded, phone_dependency);
+        cb(cur, "lm_head_split_output", -1);
+    } else {
+        cur = build_lora_mm(model.output, cur, model.output_s);
+    }
 
     if (hparams.f_final_logit_softcapping) {
         cur = ggml_scale(ctx0, cur, 1.0f / hparams.f_final_logit_softcapping);

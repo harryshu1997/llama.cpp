@@ -1,0 +1,133 @@
+{
+  "admission_phase": "shadow_acquisition_energy_not_yet_promoted",
+  "artifacts": [
+    {
+      "path": "/home/zhihao/models/gemma-4-12B-Q40-dequant-f16.gguf",
+      "role": "cold_model",
+      "sha256": "sha256:ed76f2183d2d1d65091986033023e6c78d27f6276c1b0c5826cc92acf73538cf"
+    },
+    {
+      "path": "/home/zhihao/s41-dynamic-ffn-v1/build-server-ffn-cuda/bin/llama-server",
+      "role": "cold_server",
+      "sha256": "sha256:d8433ed903da695fe8e884fd55f43442cf2417caec4363495da671b23dbda040"
+    }
+  ],
+  "decision": {
+    "energy_mean_uj": null,
+    "energy_upper_uj": null,
+    "fallback_route_id": null,
+    "latency_mean_us": 779833719,
+    "latency_upper_us": 789753448,
+    "mode": "control",
+    "profile_id": "burstgpt-gemma-f16-overflow-4060ti-op15-v1",
+    "reason": "CONTROL_BASELINE",
+    "rejected": [],
+    "route_id": "gemma-f16-cuda25-cpu23-control-v1",
+    "runtime_gate": null,
+    "unit_id": "burstgpt-source-cold17-v1",
+    "work_set_hash": "sha256:4c5cd9da52445b5b0d4d9153b351e765a0d9674f7050fea74c6a97880d9fa72a"
+  },
+  "epoch_key": "sha256:b23689dc0e678f9dd6c0b6fae91639ffeff8137ef7a74e4b692b5841ce0827fc",
+  "evidence_ids": [
+    "sha256:97f701102d2136316b4c557dbf811fd9ee59fd0e4501c839b32a8fd507696147",
+    "sha256:a307eb6cb4bc80042e07ab79ca4fc9b5b38298120d9d92603fa4e1e31d489887",
+    "sha256:b20a9ba66ee3558d835a0e19ed3cfa4c31a4a9e8b4f9c085b29a14f80250a0ff"
+  ],
+  "execution_mode": "cuda-cpu",
+  "expected_work": {
+    "cold_input_tokens": 11476,
+    "cold_output_tokens": 6919,
+    "cpu_prefix_layers": 23,
+    "gpu_suffix_layers": 25,
+    "phone_calls": 0,
+    "phone_download_bytes": 0,
+    "phone_macs": 0,
+    "phone_upload_bytes": 0
+  },
+  "input_tokens": 11476,
+  "layer_placement": {
+    "cpu_capacity": {
+      "available_bytes": 28944580608,
+      "capacity_bytes": 32862289920,
+      "occupied_bytes": 1770225664,
+      "reserve_bytes": 2147483648,
+      "resource_id": "host-ram"
+    },
+    "cpu_layer_spec": "0-22",
+    "gpu_capacity": {
+      "available_bytes": 15821963264,
+      "capacity_bytes": 17175674880,
+      "occupied_bytes": 816840704,
+      "reserve_bytes": 536870912,
+      "resource_id": "cuda0-vram"
+    },
+    "gpu_layer_spec": "23-47",
+    "rejected": [
+      {
+        "candidate_id": "gemma-f16-cuda-full-v1",
+        "reason": "GPU_CAPACITY"
+      }
+    ],
+    "route_id": "gemma-f16-cuda25-cpu23-control-v1",
+    "schema": "research-scheduler-layer-placement-v1",
+    "selected": {
+      "candidate_id": "gemma-f16-cpu23-cuda25-v1",
+      "cpu_compute_bytes": 0,
+      "cpu_kv_bytes": 1694498816,
+      "cpu_prefix_layers": 23,
+      "cpu_total_bytes": 14609243177,
+      "cpu_weight_bytes": 12914744361,
+      "evidence_ids": [
+        "sha256:97f701102d2136316b4c557dbf811fd9ee59fd0e4501c839b32a8fd507696147",
+        "fp16-control-r1",
+        "fp16-control-r2"
+      ],
+      "gpu_compute_bytes": 290455552,
+      "gpu_kv_bytes": 1694498816,
+      "gpu_suffix_layers": 25,
+      "gpu_total_bytes": 14899719700,
+      "gpu_weight_bytes": 12914765332,
+      "latency_sample_count": 3,
+      "latency_us": 779833719,
+      "model_id": "gemma-4-12b-f16-storage-proxy",
+      "model_sha256": "sha256:ed76f2183d2d1d65091986033023e6c78d27f6276c1b0c5826cc92acf73538cf",
+      "placement_verified": true,
+      "runtime_gpu_layers": 25,
+      "status": "measured",
+      "total_layers": 48
+    },
+    "selection_reason": "FASTEST_VERIFIED_CAPACITY_FIT"
+  },
+  "model_hashes": {
+    "cold": "sha256:ed76f2183d2d1d65091986033023e6c78d27f6276c1b0c5826cc92acf73538cf"
+  },
+  "offload": null,
+  "output_tokens": 6919,
+  "plan_id": "burstgpt-cold17-gpu-overflow-control-v1",
+  "plan_sha256": "sha256:8bb556ea7b231d82a915506a02e84cab9c033bd6676d89b909b7f508b59d44fa",
+  "profile_id": "burstgpt-gemma-f16-overflow-4060ti-op15-v1",
+  "request_count": 17,
+  "runtime_bindings": {
+    "arrival_mode": "backlog",
+    "batch_size": 4096,
+    "cache_type_k": "f16",
+    "cache_type_v": "f16",
+    "cold_work_sha256": "sha256:3e299c2e574a49fad474f81f5cc3bd2ec34e7a8e2bb50eac1bcda6a5b0876c10",
+    "context": 32768,
+    "dispatch_order": "source",
+    "gpu_preflight_occupied_bytes": 816840704,
+    "host_preflight_occupied_bytes": 1770225664,
+    "kv_offload": true,
+    "lib_dir": "/mnt/storage/s21_deps/cuda-13.2.1/lib",
+    "mode": "cuda-cpu",
+    "n_gpu_layers": 25,
+    "parallel": 8,
+    "port": 18482,
+    "source_trace_requests": 74,
+    "trace_filter": "cold",
+    "trace_path": "/home/zhihao/s41-dynamic-ffn-v1/campaign/input/REQUESTS_SEMANTIC_SOURCE.jsonl",
+    "ubatch_size": 512
+  },
+  "schema": "research-scheduler-execution-plan-v1",
+  "trace_sha256": "sha256:b20a9ba66ee3558d835a0e19ed3cfa4c31a4a9e8b4f9c085b29a14f80250a0ff"
+}

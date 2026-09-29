@@ -453,6 +453,17 @@ static best_fattn_kernel ggml_cuda_get_best_fattn_kernel(const int device, const
     // 192 satisfies % 64 == 0 but has no vec instance (DKQ != DV); force it onto the MMA path.
     const bool can_use_vector_kernel = Q->ne[0] <= 256 && Q->ne[0] % 64 == 0 && Q->ne[0] != 192 && K->ne[1] % FATTN_KQ_STRIDE == 0;
 
+    // The MMA kernels are stream-k-only; LSE needs the non-stream-k combine metadata.
+    if (ggml_flash_attn_ext_has_lse(KQV)) {
+        if (Q->ne[0] != V->ne[0] || Q->ne[0] > 256) {
+            return BEST_FATTN_KERNEL_NONE;
+        }
+        if (can_use_vector_kernel && Q->ne[1] <= 8) {
+            return BEST_FATTN_KERNEL_VEC;
+        }
+        return BEST_FATTN_KERNEL_TILE;
+    }
+
     // If Turing tensor cores are available, use them:
     if (turing_mma_available(cc) && Q->ne[0] != 40 && Q->ne[0] != 72) {
         if (can_use_vector_kernel) {

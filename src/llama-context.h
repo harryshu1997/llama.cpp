@@ -117,6 +117,8 @@ struct llama_context {
     void set_embeddings_layer_inp(uint32_t lid, bool enable);
     void set_nextn_layer_offset(int32_t offset);
     bool set_layersplit_range(int32_t start, int32_t end);
+    void set_ffn_split_policy(bool runtime, uint64_t layer_mask, uint32_t columns, bool row_diagnostic);
+    void set_ffn_split_ubatch_callback(llama_ffn_split_ubatch_callback callback, void * user_data);
     void set_causal_attn(bool value);
     void set_warmup(bool value);
 
@@ -374,6 +376,15 @@ private:
 
     // env: LLAMA_GRAPH_REUSE_DISABLE
     bool graph_reuse_disable = false;
+
+    bool     ffn_split_runtime = false;
+    uint64_t ffn_split_layer_mask = 0;
+    uint32_t ffn_split_columns = 0;
+    bool     ffn_row_diagnostic = false;
+    llama_ffn_split_ubatch_callback ffn_split_ubatch_callback = nullptr;
+    void * ffn_split_ubatch_user_data = nullptr;
+    // set when the model omits remote-resident FFN weights and this context has an eval callback owner
+    bool     ffn_remote_resident_owned = false;
 
     // perf
     mutable int64_t t_start_us  = 0;

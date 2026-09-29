@@ -2420,6 +2420,19 @@ extern "C" {
             struct ggml_tensor * a,
             enum ggml_prec       prec);
 
+    // Normalized attention followed by log(sum(exp(logits))) in the last element of each head row.
+    GGML_API struct ggml_tensor * ggml_flash_attn_ext_with_lse(
+            struct ggml_context * ctx,
+            struct ggml_tensor  * q,
+            struct ggml_tensor  * k,
+            struct ggml_tensor  * v,
+            struct ggml_tensor  * mask,
+            float                 scale,
+            float                 max_bias,
+            float                 logit_softcap);
+
+    GGML_API bool ggml_flash_attn_ext_has_lse(const struct ggml_tensor * a);
+
     GGML_API enum ggml_prec ggml_flash_attn_ext_get_prec(
             const struct ggml_tensor * a);
 

@@ -22,6 +22,7 @@ extern "C" {
 #define HTP_MM_WEIGHT_TILE_SIZE_Q4_0   576
 #define HTP_MM_WEIGHT_TILE_SIZE_Q4_1   640
 #define HTP_MM_WEIGHT_TILE_SIZE_Q8_0   1088
+#define HTP_MM_WEIGHT_TILE_SIZE_Q6_K   1280
 #define HTP_MM_WEIGHT_TILE_SIZE_IQ4_NL 576
 #define HTP_MM_WEIGHT_TILE_SIZE_MXFP4  544
 
@@ -29,6 +30,7 @@ extern "C" {
 #define HTP_MM_WEIGHT_ALIGNED_TILE_SIZE_Q4_0   640
 #define HTP_MM_WEIGHT_ALIGNED_TILE_SIZE_Q4_1   640
 #define HTP_MM_WEIGHT_ALIGNED_TILE_SIZE_Q8_0   1152
+#define HTP_MM_WEIGHT_ALIGNED_TILE_SIZE_Q6_K   1280
 #define HTP_MM_WEIGHT_ALIGNED_TILE_SIZE_IQ4_NL 640
 #define HTP_MM_WEIGHT_ALIGNED_TILE_SIZE_MXFP4  640
 
@@ -106,6 +108,26 @@ struct mmid_row_mapping {
     uint32_t i1;
     uint32_t i2;
 };
+
+struct htp_context;
+struct htp_ffn_fused_params;
+typedef struct {
+    __fp16 *       output;
+    const __fp16 * activation;
+    const __fp16 * weight;
+    const __fp16 * scales;
+    uint32_t       n_row_tiles;
+    uint32_t       n_col_tiles;
+    uint32_t       n_dot_tiles;
+} hmx_matmul_job_t;
+
+void htp_mm_f16_input(struct htp_context * ctx, const struct htp_ffn_fused_params * p,
+                      const float * src, uint32_t rows, uint32_t k, uint32_t stride);
+void htp_mm_f16_weights(struct htp_context * ctx, const struct htp_ffn_fused_params * p,
+                        uint32_t slot, uint32_t cols, uint32_t k);
+bool htp_mm_f16_submit(struct htp_context * ctx, const struct htp_ffn_fused_params * p,
+                       hmx_matmul_job_t * job, uint32_t index, uint32_t rows, uint32_t cols, uint32_t k);
+void htp_mm_f16_rows(float * dst, const void * tiles, uint32_t row, uint32_t rows, uint32_t cols);
 
 // Search for optimal (mc, nc) chunk sizes within VTCM budget.
 static inline int htp_mm_hmx_compute_chunks(size_t   vtcm_total,
@@ -193,6 +215,8 @@ static inline uint32_t htp_mm_get_weight_tile_size(int weight_type) {
             return HTP_MM_WEIGHT_TILE_SIZE_Q4_1;
         case HTP_TYPE_Q8_0:
             return HTP_MM_WEIGHT_TILE_SIZE_Q8_0;
+        case HTP_TYPE_Q6_K:
+            return HTP_MM_WEIGHT_TILE_SIZE_Q6_K;
         case HTP_TYPE_MXFP4:
             return HTP_MM_WEIGHT_TILE_SIZE_MXFP4;
         default:
@@ -209,6 +233,8 @@ static inline uint32_t htp_mm_get_weight_aligned_tile_size(int weight_type) {
             return HTP_MM_WEIGHT_ALIGNED_TILE_SIZE_Q4_1;
         case HTP_TYPE_Q8_0:
             return HTP_MM_WEIGHT_ALIGNED_TILE_SIZE_Q8_0;
+        case HTP_TYPE_Q6_K:
+            return HTP_MM_WEIGHT_ALIGNED_TILE_SIZE_Q6_K;
         case HTP_TYPE_MXFP4:
             return HTP_MM_WEIGHT_ALIGNED_TILE_SIZE_MXFP4;
         default:
@@ -250,6 +276,7 @@ static inline size_t htp_mm_get_tiled_row_stride(int weight_type, uint32_t k) {
         case HTP_TYPE_IQ4_NL:
         case HTP_TYPE_Q4_1:
         case HTP_TYPE_Q8_0:
+        case HTP_TYPE_Q6_K:
         case HTP_TYPE_MXFP4:
             return (size_t) nb * htp_mm_get_weight_tile_size(weight_type);
         case HTP_TYPE_F16:
@@ -358,7 +385,7 @@ static inline size_t htp_mm_hvx_get_vtcm_sizes(
     size_t vtcm_dst_size  = 0;
 
     const bool is_repack = (wtype == HTP_TYPE_Q4_0 || wtype == HTP_TYPE_Q4_1 ||
-                            wtype == HTP_TYPE_Q8_0 || wtype == HTP_TYPE_IQ4_NL ||
+                            wtype == HTP_TYPE_Q8_0 || wtype == HTP_TYPE_Q6_K || wtype == HTP_TYPE_IQ4_NL ||
                             wtype == HTP_TYPE_MXFP4);
 
     const size_t src0_row_size_padded = htp_mm_round_up(src0_row_size, 128);
@@ -466,7 +493,7 @@ static inline size_t htp_mm_hvx_id_get_vtcm_sizes(
     size_t * vtcm_src1_size_out
 ) {
     const bool is_repack = (wtype == HTP_TYPE_Q4_0 || wtype == HTP_TYPE_Q4_1 ||
-                            wtype == HTP_TYPE_Q8_0 || wtype == HTP_TYPE_IQ4_NL ||
+                            wtype == HTP_TYPE_Q8_0 || wtype == HTP_TYPE_Q6_K || wtype == HTP_TYPE_IQ4_NL ||
                             wtype == HTP_TYPE_MXFP4);
 
     const size_t src0_row_size_padded = htp_mm_round_up(src0_row_size, 128);

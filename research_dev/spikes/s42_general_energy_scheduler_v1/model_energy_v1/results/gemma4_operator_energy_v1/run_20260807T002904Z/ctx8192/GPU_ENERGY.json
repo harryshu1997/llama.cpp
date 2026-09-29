@@ -1,0 +1,137 @@
+{
+  "binary": "/tmp/s41-causal-v3/causal_layer_host",
+  "binary_sha256": "ece5ce938c2483592a85764b4fa4c991c0d7ba6f6d323c7b98d2790b07ddf6ac",
+  "median_energy_per_iteration_j": {
+    "monolithic": 0.11587247547214251
+  },
+  "method": "100ms nvidia-smi arrival timestamps with ZOH integration",
+  "power_samples": "/tmp/s42-gemma-op-energy-v1/ctx8192/GPU_POWER_SAMPLES.jsonl",
+  "power_samples_sha256": "842fd6ddfee0c8fc52886c33a7cade2d643cb92a2f2c342e437d8009dca213a5",
+  "runs": [
+    {
+      "average_power_w": 96.63850173892222,
+      "average_utilization_pct": 94.46808510638297,
+      "command": [
+        "/tmp/s41-causal-v3/causal_layer_host",
+        "8192",
+        "4000",
+        "0",
+        "q8_0",
+        "monolithic",
+        "gemma4_12b"
+      ],
+      "duration_s": 4.796120527,
+      "energy_j": 463.48990188857005,
+      "energy_per_iteration_j": 0.11587247547214251,
+      "graphics_mhz_max": 2820.0,
+      "graphics_mhz_min": 2820.0,
+      "index": 1,
+      "iterations": 4000,
+      "max_sample_gap_s": 0.051228873,
+      "memory_mhz_max": 8751.0,
+      "memory_mhz_min": 8751.0,
+      "mode": "monolithic",
+      "phone_columns": 0,
+      "power_limit_w_values": [
+        165.0
+      ],
+      "process_ended_ns": 1786062515631900354,
+      "process_started_ns": 1786062509747310296,
+      "raw_log": "/tmp/s42-gemma-op-energy-v1/ctx8192/energy_01_monolithic.log",
+      "raw_log_sha256": "652830b6178f66c965a79985f3e9ef1a249a15c4b16d8f22dd69c17e87817e47",
+      "result_line": "RESULT control=monolithic_cuda n=4000 median_ms=1.190206 p90_ms=1.218172",
+      "sample_count": 94,
+      "window_ended_ns": 1786062515521442113,
+      "window_started_ns": 1786062510725321586
+    },
+    {
+      "average_power_w": 96.73764014084549,
+      "average_utilization_pct": 94.5,
+      "command": [
+        "/tmp/s41-causal-v3/causal_layer_host",
+        "8192",
+        "4000",
+        "0",
+        "q8_0",
+        "monolithic",
+        "gemma4_12b"
+      ],
+      "duration_s": 4.750419303,
+      "energy_j": 459.5443530517401,
+      "energy_per_iteration_j": 0.11488608826293502,
+      "graphics_mhz_max": 2820.0,
+      "graphics_mhz_min": 2820.0,
+      "index": 2,
+      "iterations": 4000,
+      "max_sample_gap_s": 0.051222761,
+      "memory_mhz_max": 8751.0,
+      "memory_mhz_min": 8751.0,
+      "mode": "monolithic",
+      "phone_columns": 0,
+      "power_limit_w_values": [
+        165.0
+      ],
+      "process_ended_ns": 1786062522423236783,
+      "process_started_ns": 1786062516633364420,
+      "raw_log": "/tmp/s42-gemma-op-energy-v1/ctx8192/energy_02_monolithic.log",
+      "raw_log_sha256": "7d4f7fb0c8feab6a4af6d864ebac246ab99bd0e1490af6a51344476dba36aadb",
+      "result_line": "RESULT control=monolithic_cuda n=4000 median_ms=1.186187 p90_ms=1.187650",
+      "sample_count": 94,
+      "window_ended_ns": 1786062522324621360,
+      "window_started_ns": 1786062517574202057
+    },
+    {
+      "average_power_w": 96.7166985895483,
+      "average_utilization_pct": 95.17021276595744,
+      "command": [
+        "/tmp/s41-causal-v3/causal_layer_host",
+        "8192",
+        "4000",
+        "0",
+        "q8_0",
+        "monolithic",
+        "gemma4_12b"
+      ],
+      "duration_s": 4.795880019,
+      "energy_j": 463.84168226926016,
+      "energy_per_iteration_j": 0.11596042056731504,
+      "graphics_mhz_max": 2820.0,
+      "graphics_mhz_min": 2820.0,
+      "index": 3,
+      "iterations": 4000,
+      "max_sample_gap_s": 0.051186347,
+      "memory_mhz_max": 8751.0,
+      "memory_mhz_min": 8751.0,
+      "mode": "monolithic",
+      "phone_columns": 0,
+      "power_limit_w_values": [
+        165.0
+      ],
+      "process_ended_ns": 1786062529239103448,
+      "process_started_ns": 1786062523424373805,
+      "raw_log": "/tmp/s42-gemma-op-energy-v1/ctx8192/energy_03_monolithic.log",
+      "raw_log_sha256": "15f17fce8010b9b51d43b989e046706df8ed8a05b120c88e4c27d6b8cea8ed47",
+      "result_line": "RESULT control=monolithic_cuda n=4000 median_ms=1.190155 p90_ms=1.218133",
+      "sample_count": 94,
+      "window_ended_ns": 1786062529145674442,
+      "window_started_ns": 1786062524349794423
+    }
+  ],
+  "schedule": [
+    "monolithic",
+    "monolithic",
+    "monolithic"
+  ],
+  "schema": "s41-causal-gpu-energy-v1",
+  "scope": "GPU_BOARD_ONLY",
+  "shape": "gemma4_12b",
+  "source_sha256": {
+    "causal_ffn_protocol.h": "b44b5f273540f3b491a854e7e6820c8cbf535cb631612af1fbe0682e33c0632a",
+    "causal_ffn_worker.cpp": "1870e0e52ae817e6f66c188330dbbbb9004d0f7318008abe0b81e968328f86e9",
+    "causal_layer_host.cpp": "98a9c9a91640d068b4b89b02b86def50744d373428156dca01633e785b0ee1a6",
+    "causal_quantized_weights.h": "f571dbf0d57f05e456e0bbd5e6f63a7078e6d80e89b9ad20ecb97c2bc1e5dbda",
+    "measure_causal_gpu_energy.py": "07f8b70fc7345b32667a3710d1c3102a15346311e08fbef00b36ff80f690d153"
+  },
+  "split_gpu_energy_change_fraction": null,
+  "weight_type": "q8_0"
+}

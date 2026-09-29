@@ -3,10 +3,12 @@
 #include "ggml-alloc.h"
 #include "ggml.h"
 #include "gguf.h"
+#include "llama-fenced-tensor-loader.h"
 #include "llama-hparams.h"
 
 #include <algorithm>
 #include <array>
+#include <cerrno>
 #include <cinttypes>
 #include <cstdint>
 #include <cstring>
@@ -531,6 +533,30 @@ llama_model_loader::llama_model_loader(
         trace = atoi(getenv("LLAMA_TRACE"));
     }
 
+    if (const char * remote_mask_text = getenv("LLAMA_FFN_REMOTE_RESIDENT_LAYER_MASK")) {
+        errno = 0;
+        char * end = nullptr;
+        const unsigned long long parsed = strtoull(remote_mask_text, &end, 0);
+        if (remote_mask_text[0] == '\0' || errno != 0 || end == remote_mask_text || *end != '\0') {
+            throw std::runtime_error(format("%s: invalid LLAMA_FFN_REMOTE_RESIDENT_LAYER_MASK '%s'", __func__, remote_mask_text));
+        }
+        remote_resident_ffn_layer_mask = static_cast<uint64_t>(parsed);
+        if (remote_resident_ffn_layer_mask != 0 && no_alloc) {
+            // metadata-only estimation loads (parameter fitting) allocate nothing, so there is
+            // nothing to omit; counting the remote weights keeps the estimate conservative
+            LLAMA_LOG_INFO("%s: remote-resident dense FFN layer mask 0x%016" PRIx64 " ignored for a no_alloc estimation load\n",
+                    __func__, remote_resident_ffn_layer_mask);
+            remote_resident_ffn_layer_mask = 0;
+        }
+        if (remote_resident_ffn_layer_mask != 0) {
+            if (!use_mmap) {
+                throw std::runtime_error(format("%s: remote-resident FFN weights require mmap loading (no_mmap is unsupported)", __func__));
+            }
+            LLAMA_LOG_INFO("%s: remote-resident dense FFN layer mask = 0x%016" PRIx64 " (gate/up/down weights of these layers are not loaded locally)\n",
+                    __func__, remote_resident_ffn_layer_mask);
+        }
+    }
+
     if (param_overrides_p != nullptr) {
         for (const struct llama_model_kv_override * p = param_overrides_p; p->key[0] != 0; p++) {
             kv_overrides.insert({std::string(p->key), *p});
@@ -1047,6 +1073,40 @@ static ggml_backend_buffer_type_t select_weight_buft(const llama_hparams & hpara
     return nullptr;
 }
 
+static bool use_view_safe_dense_ffn_weights(const LLM_TN_IMPL & tn) {
+    const char * enabled = getenv("LLAMA_FFN_SPLIT_VIEW_SAFE_WEIGHTS");
+    const char * layer_mask = getenv("LLAMA_FFN_SPLIT_LAYER_MASK");
+    if (enabled == nullptr || strcmp(enabled, "1") != 0 ||
+        layer_mask == nullptr || tn.bid < 0 || tn.bid >= 64 ||
+        (strtoull(layer_mask, nullptr, 0) & (UINT64_C(1) << tn.bid)) == 0 ||
+        tn.suffix == nullptr || strcmp(tn.suffix, "weight") != 0) {
+        return false;
+    }
+    return tn.tensor == LLM_TENSOR_FFN_GATE ||
+            tn.tensor == LLM_TENSOR_FFN_UP ||
+            tn.tensor == LLM_TENSOR_FFN_DOWN;
+}
+
+static ggml_backend_buffer_type_t select_view_safe_dense_ffn_buft(
+        const llama_hparams & hparams, ggml_tensor * tensor, const LLM_TN_IMPL & tn, const buft_list_t * bufts) {
+    if (tensor->type == GGML_TYPE_Q4_0 && ggml_n_dims(tensor) == 2) {
+        ggml_tensor prefix = *tensor;
+        prefix.view_src = tensor;
+        prefix.view_offs = 0;
+        prefix.ne[tn.tensor == LLM_TENSOR_FFN_DOWN ? 0 : 1] = ggml_blck_size(tensor->type);
+        prefix.nb[2] = prefix.nb[1] * prefix.ne[1];
+        prefix.nb[3] = prefix.nb[2];
+        for (const auto & candidate : *bufts) {
+            if (strcmp(ggml_backend_buft_name(candidate.second), "CPU_REPACK") == 0 &&
+                weight_buft_supported(hparams, tensor, GGML_OP_MUL_MAT, candidate.second, candidate.first) &&
+                weight_buft_supported(hparams, &prefix, GGML_OP_MUL_MAT, candidate.second, candidate.first)) {
+                return candidate.second;
+            }
+        }
+    }
+    return ggml_backend_cpu_buffer_type();
+}
+
 struct ggml_tensor * llama_model_loader::create_tensor(
         const llama_hparams & hparams, const buft_list_t * buft_list_cpu, const buft_list_t * buft_list_input, const buft_list_t * buft_list_output,
         const buft_list_t * buft_list_layer, const LLM_TN_IMPL & tn, const std::initializer_list<int64_t> & ne, int flags) {
@@ -1185,6 +1245,15 @@ struct ggml_tensor * llama_model_loader::create_tensor(
             }
         }
 
+        if (!buft && use_view_safe_dense_ffn_weights(tn)) {
+            buft = select_view_safe_dense_ffn_buft(hparams, t_meta, tn, buft_list_cpu);
+            static std::once_flag once;
+            std::call_once(once, [buft] {
+                LLAMA_LOG_INFO("llama_model_loader: using view-safe CPU storage for dense FFN split weights (%s)\n",
+                               ggml_backend_buft_name(buft));
+            });
+        }
+
         if (!buft) {
             buft = select_weight_buft(hparams, t_meta, op, buft_list);
             if (!buft) {
@@ -1254,6 +1323,38 @@ struct ggml_tensor * llama_model_loader::create_tensor(
     }
 
     ggml_tensor * t_meta = get_tensor_meta(tn.str().c_str());
+
+    if (t_meta != nullptr && is_remote_resident_weight(tn)) {
+        // Metadata only: the tensor keeps its name, shape and type so graph builders can
+        // derive the phone-side geometry, but it lives in a context that is never given a
+        // backend buffer and never handed to load_all_data.
+        if (flags & (TENSOR_DUPLICATED | TENSOR_SKIP | TENSOR_SKIP_IF_VIRTUAL)) {
+            throw std::runtime_error(format("%s: remote-resident tensor '%s' has unsupported flags", __func__, tn.str().c_str()));
+        }
+        const ggml_tensor * cur = check_tensor_dims(tn.str(), ne, true);
+        GGML_ASSERT(cur != nullptr);
+        if (ctx_remote_resident == nullptr) {
+            ggml_init_params params = {
+                /*.mem_size   =*/ ggml_tensor_overhead()*(3*hparams.n_layer() + 3),
+                /*.mem_buffer =*/ NULL,
+                /*.no_alloc   =*/ true,
+            };
+            ctx_remote_resident.reset(ggml_init(params));
+            if (!ctx_remote_resident) {
+                throw std::runtime_error(format("failed to create remote-resident ggml context"));
+            }
+        }
+        struct ggml_tensor * tensor = ggml_dup_tensor(ctx_remote_resident.get(), cur);
+        ggml_set_name(tensor, ggml_get_name(cur));
+        const llama_tensor_weight & weight = require_weight(ggml_get_name(cur));
+        const size_t nbytes = ggml_nbytes(cur);
+        remote_resident_weights.push_back({ggml_get_name(cur), weight.idx, weight.offs, nbytes, tn.bid, tn.tensor});
+        size_remote_resident += nbytes;
+        size_data -= nbytes; // balanced by init_mappings(), which sums every file tensor
+        n_created++;
+        return tensor;
+    }
+
     ggml_backend_buffer_type_t buft = buft_for_tensor(t_meta);
     if (buft == nullptr) {
         return nullptr; // return type is ggml_tensor *
@@ -1284,6 +1385,13 @@ struct ggml_tensor * llama_model_loader::create_tensor(
         size_data += ggml_nbytes(cur);
     } else {
         n_created++;
+    }
+
+    if (!duplicated && use_mmap && tn.bid >= 0 && cur->ne[2] == 1 && cur->ne[3] == 1 &&
+        (tn.tensor == LLM_TENSOR_FFN_GATE || tn.tensor == LLM_TENSOR_FFN_UP || tn.tensor == LLM_TENSOR_FFN_DOWN)) {
+        const llama_tensor_weight & weight = require_weight(ggml_get_name(cur));
+        dense_ffn_weights.push_back({ggml_get_name(cur), weight.idx, weight.offs, ggml_nbytes(cur), tn.bid, tn.tensor,
+                                     cur->ne[0], cur->ne[1], cur->nb[1], cur->type});
     }
 
     return tensor;
@@ -1317,6 +1425,78 @@ struct ggml_tensor * llama_model_loader::create_tensor_as_view(struct ggml_conte
     return tensor;
 }
 
+bool llama_model_loader::is_remote_resident_weight(const LLM_TN_IMPL & tn) const {
+    if (remote_resident_ffn_layer_mask == 0 || tn.bid < 0 || tn.bid >= 64 ||
+        (remote_resident_ffn_layer_mask & (UINT64_C(1) << tn.bid)) == 0 ||
+        tn.suffix == nullptr || strcmp(tn.suffix, "weight") != 0) {
+        return false;
+    }
+    return tn.tensor == LLM_TENSOR_FFN_GATE ||
+           tn.tensor == LLM_TENSOR_FFN_UP ||
+           tn.tensor == LLM_TENSOR_FFN_DOWN;
+}
+
+void llama_model_loader::validate_remote_resident_coverage(uint32_t n_layer, enum llm_arch arch) const {
+    if (remote_resident_ffn_layer_mask == 0) {
+        GGML_ASSERT(remote_resident_weights.empty());
+        return;
+    }
+    if (arch != LLM_ARCH_GEMMA4 && arch != LLM_ARCH_QWEN3 && arch != LLM_ARCH_LLAMA) {
+        throw std::runtime_error(format("remote-resident FFN weights are unsupported for architecture %s", llm_arch_name(arch)));
+    }
+    for (uint32_t il = 0; il < 64; ++il) {
+        const bool masked = (remote_resident_ffn_layer_mask & (UINT64_C(1) << il)) != 0;
+        if (!masked) {
+            continue;
+        }
+        if (il >= n_layer) {
+            throw std::runtime_error(format("remote-resident FFN layer %u exceeds the model's %u layers", il, n_layer));
+        }
+        int gate = 0, up = 0, down = 0;
+        for (const auto & w : remote_resident_weights) {
+            if (w.layer != (int) il) {
+                continue;
+            }
+            gate += w.kind == LLM_TENSOR_FFN_GATE;
+            up   += w.kind == LLM_TENSOR_FFN_UP;
+            down += w.kind == LLM_TENSOR_FFN_DOWN;
+        }
+        if (gate != 1 || up != 1 || down != 1) {
+            throw std::runtime_error(format(
+                    "remote-resident FFN layer %u lacks a complete dense gate/up/down group (gate=%d up=%d down=%d)",
+                    il, gate, up, down));
+        }
+    }
+    const size_t expected = 3*(size_t) __builtin_popcountll(remote_resident_ffn_layer_mask);
+    if (remote_resident_weights.size() != expected) {
+        throw std::runtime_error(format("remote-resident FFN weight count %zu differs from the masked %zu",
+                remote_resident_weights.size(), expected));
+    }
+}
+
+void llama_model_loader::unmap_remote_resident_weights() {
+    if (remote_resident_weights.empty()) {
+        return;
+    }
+    GGML_ASSERT(use_mmap && !mappings.empty());
+    for (const auto & w : remote_resident_weights) {
+        auto & mapping = mappings.at(w.idx);
+        const size_t before = mapping->mapped_bytes();
+        mapping->unmap_fragment(w.offs, w.offs + w.nbytes);
+        size_remote_resident_unmapped += before - mapping->mapped_bytes();
+    }
+    LLAMA_LOG_INFO("%s: released %zu of %zu remote-resident FFN bytes from the file mappings (%zu tensors, page-exact)\n",
+            __func__, size_remote_resident_unmapped, size_remote_resident, remote_resident_weights.size());
+}
+
+size_t llama_model_loader::mapped_bytes() const {
+    size_t total = 0;
+    for (const auto & mapping : mappings) {
+        total += mapping->mapped_bytes();
+    }
+    return total;
+}
+
 void llama_model_loader::done_getting_tensors(bool partial) const {
     if (n_created > n_tensors) {
         throw std::runtime_error(format("%s: too many tensors created; expected %d, got %d", __func__, n_tensors, n_created));
@@ -1336,6 +1516,14 @@ void llama_model_loader::done_getting_tensors(bool partial) const {
 }
 
 void llama_model_loader::init_mappings(bool prefetch, llama_mlocks * mlock_mmaps) {
+    if (!remote_resident_weights.empty()) {
+        if (mlock_mmaps != nullptr) {
+            throw std::runtime_error("remote-resident FFN weights cannot be combined with mlock: locking would fault in the omitted ranges");
+        }
+        // The retained ranges are prefetched tensor by tensor in load_all_data instead of
+        // populating the whole file, so the omitted ranges are never read.
+        prefetch = false;
+    }
     if (use_mmap) {
         mappings.reserve(files.size());
         mmaps_used.reserve(files.size());
@@ -1414,7 +1602,12 @@ bool llama_model_loader::load_all_data(
         llama_mlocks * lmlocks,
         llama_progress_callback progress_callback,
         void * progress_callback_user_data) {
+    const bool fenced_tensor_enabled = llama_fenced_tensor::configured();
     if (files.empty()) {
+        if (fenced_tensor_enabled) {
+            throw std::runtime_error(
+                    "fenced tensor loading requires a model file");
+        }
         for (ggml_tensor * t = ggml_get_first_tensor(ctx); t != nullptr; t = ggml_get_next_tensor(ctx, t)) {
             set_tensor_data(t, set_tensor_data_ud);
         }
@@ -1442,6 +1635,7 @@ bool llama_model_loader::load_all_data(
     std::vector<ggml_backend_event_t> events;
     std::vector<void *> host_ptrs;
     size_t buffer_idx = 0; // buffer to use for async loads
+    std::unique_ptr<llama_fenced_tensor::stage> fenced_stage;
     ggml_backend_t upload_backend = [&](const char * func) -> ggml_backend_t {
         if (use_mmap || check_tensors) {
             return nullptr;
@@ -1537,12 +1731,23 @@ bool llama_model_loader::load_all_data(
         }
 
         size_t n_size = ggml_nbytes(cur);
+        const bool fenced_target = fenced_tensor_enabled &&
+                llama_fenced_tensor::matches(ggml_get_name(cur)) &&
+                llama_fenced_tensor::eligible(cur);
+        bool deferred = false;
+        if (fenced_target && (fenced_tensor_loaded || fenced_stage)) {
+            throw std::runtime_error("duplicate fenced tensor target");
+        }
 
         if (use_mmap) {
             const auto & mapping = mappings.at(weight->idx);
             ggml_backend_buffer_t buf_mmap = nullptr;
             if (bufs.count(weight->idx)) {
                 buf_mmap = bufs.at(weight->idx);
+            }
+            if (!remote_resident_weights.empty()) {
+                // the mapping was created without a whole-file prefetch: read ahead only this tensor
+                mapping->prefetch_fragment(weight->offs, weight->offs + n_size);
             }
             uint8_t * data = (uint8_t *) mapping->addr() + weight->offs;
 
@@ -1553,7 +1758,11 @@ bool llama_model_loader::load_all_data(
             }
 
             GGML_ASSERT(buf_mmap || cur->data); // either we have a buffer to allocate the tensor in, or it is already allocated
-            if (buf_mmap && cur->data == nullptr) {
+            if (fenced_target) {
+                fenced_stage = std::make_unique<llama_fenced_tensor::stage>(
+                        cur, data, weight->offs, n_size);
+                deferred = true;
+            } else if (buf_mmap && cur->data == nullptr) {
                 ggml_backend_tensor_alloc(buf_mmap, cur, data);
                 if (lmlocks) {
                     const auto & lmlock = lmlocks->at(weight->idx);
@@ -1569,7 +1778,21 @@ bool llama_model_loader::load_all_data(
         } else {
             const auto & file = files.at(weight->idx);
 
-            if (ggml_backend_buffer_is_host(cur->buffer)) {
+            if (fenced_target) {
+                read_buf.resize(n_size);
+                file->seek(weight->offs, SEEK_SET);
+                file->read_raw(read_buf.data(), n_size);
+                if (check_tensors && !ggml_validate_row_data(
+                            cur->type, read_buf.data(), n_size)) {
+                    throw std::runtime_error(format(
+                            "tensor '%s' has invalid data",
+                            ggml_get_name(cur)));
+                }
+                fenced_stage = std::make_unique<
+                        llama_fenced_tensor::stage>(
+                            cur, read_buf.data(), weight->offs, n_size);
+                deferred = true;
+            } else if (ggml_backend_buffer_is_host(cur->buffer)) {
                 file->seek(weight->offs, SEEK_SET);
                 file->read_raw(cur->data, n_size);
                 if (check_tensors) {
@@ -1643,7 +1866,15 @@ bool llama_model_loader::load_all_data(
             }
         }
 
-        size_done += n_size;
+        if (!deferred) {
+            size_done += n_size;
+        }
+    }
+
+    if (fenced_stage) {
+        fenced_stage->execute();
+        size_done += fenced_stage->size();
+        fenced_tensor_loaded = true;
     }
 
     // free temporary resources used for async uploads
@@ -1671,6 +1902,9 @@ bool llama_model_loader::load_all_data(
 
     // check if this is the last call and do final cleanup
     if (size_done >= size_data) {
+        if (fenced_tensor_enabled && !fenced_tensor_loaded) {
+            throw std::runtime_error("fenced tensor target was not loaded");
+        }
         // unmap offloaded tensors and metadata
         if (use_mmap) {
             for (uint32_t idx = 0; idx < mappings.size(); idx++) {

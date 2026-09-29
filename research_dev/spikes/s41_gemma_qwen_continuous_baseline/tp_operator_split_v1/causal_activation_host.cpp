@@ -2137,7 +2137,8 @@ int main(int argc, char ** argv) {
     printf("VERDICT comparison_scope=same_process_same_config "
            "no_wait_median=%s no_wait_all=%s "
            "split_beats_host=%s latency_change_percent=%.3f\n",
-            percentile(exposed_wait_times, 0.5) == 0.0 ? "PASS" : "FAIL",
+
+           percentile(exposed_wait_times, 0.5) == 0.0 ? "PASS" : "FAIL",
             hidden_count == (size_t) iterations ? "PASS" : "FAIL",
             split_median < full_median ? "PASS" : "FAIL",
             100.0 * (split_median / full_median - 1.0));

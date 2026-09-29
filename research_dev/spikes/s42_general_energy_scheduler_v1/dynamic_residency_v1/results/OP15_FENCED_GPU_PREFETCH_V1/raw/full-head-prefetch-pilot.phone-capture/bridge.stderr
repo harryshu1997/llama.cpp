@@ -1,0 +1,45 @@
+[ffn-dmabuf-bridge] ready bind=127.0.0.1:17682 allocator=malloc-split
+[ffn-dmabuf-bridge] first header sent
+[ffn-dmabuf-bridge] first payload sent
+[ffn-dmabuf-bridge] waiting for first response
+[ffn-dmabuf-bridge] calls=32 usb_p50_ms=10.894
+[ffn-dmabuf-bridge] calls=64 usb_p50_ms=10.875
+[ffn-dmabuf-bridge] calls=96 usb_p50_ms=10.841
+[ffn-dmabuf-bridge] calls=128 usb_p50_ms=10.861
+[ffn-dmabuf-bridge] calls=160 usb_p50_ms=10.861
+[ffn-dmabuf-bridge] calls=192 usb_p50_ms=10.869
+[ffn-dmabuf-bridge] calls=224 usb_p50_ms=10.869
+[ffn-dmabuf-bridge] calls=256 usb_p50_ms=10.872
+[ffn-dmabuf-bridge] calls=288 usb_p50_ms=10.872
+[ffn-dmabuf-bridge] calls=320 usb_p50_ms=10.870
+[ffn-dmabuf-bridge] calls=352 usb_p50_ms=10.868
+[ffn-dmabuf-bridge] calls=384 usb_p50_ms=10.874
+[ffn-dmabuf-bridge] calls=416 usb_p50_ms=10.874
+[ffn-dmabuf-bridge] calls=448 usb_p50_ms=10.879
+[ffn-dmabuf-bridge] calls=480 usb_p50_ms=10.879
+[ffn-dmabuf-bridge] calls=512 usb_p50_ms=10.890
+[ffn-dmabuf-bridge] calls=544 usb_p50_ms=10.883
+[ffn-dmabuf-bridge] calls=576 usb_p50_ms=10.884
+[ffn-dmabuf-bridge] calls=608 usb_p50_ms=10.889
+[ffn-dmabuf-bridge] calls=640 usb_p50_ms=10.883
+[ffn-dmabuf-bridge] calls=672 usb_p50_ms=10.894
+[ffn-dmabuf-bridge] calls=704 usb_p50_ms=10.891
+[ffn-dmabuf-bridge] calls=736 usb_p50_ms=10.891
+[ffn-dmabuf-bridge] calls=768 usb_p50_ms=10.897
+[ffn-dmabuf-bridge] calls=800 usb_p50_ms=10.896
+[ffn-dmabuf-bridge] calls=832 usb_p50_ms=10.891
+[ffn-dmabuf-bridge] calls=864 usb_p50_ms=10.891
+[ffn-dmabuf-bridge] calls=896 usb_p50_ms=10.890
+[ffn-dmabuf-bridge] calls=928 usb_p50_ms=10.885
+[ffn-dmabuf-bridge] calls=960 usb_p50_ms=10.890
+[ffn-dmabuf-bridge] calls=992 usb_p50_ms=10.883
+[ffn-dmabuf-bridge] calls=1024 usb_p50_ms=10.883
+[ffn-dmabuf-bridge] calls=1056 usb_p50_ms=10.884
+[ffn-dmabuf-bridge] calls=1088 usb_p50_ms=10.883
+[ffn-dmabuf-bridge] calls=1120 usb_p50_ms=10.889
+[ffn-dmabuf-bridge] calls=1152 usb_p50_ms=10.890
+[ffn-dmabuf-bridge] calls=1184 usb_p50_ms=10.890
+[ffn-dmabuf-bridge] calls=1216 usb_p50_ms=10.890
+[ffn-dmabuf-bridge] calls=1248 usb_p50_ms=10.889
+[ffn-dmabuf-bridge] calls=1280 usb_p50_ms=10.889
+FFNDMABUF {"status":"ok","calls":1296,"allocator":"malloc-split","max_wire_bytes":5243008,"decode_calls":1296,"prefill_calls":0,"reset_recoveries":0,"upload_bytes":13271040,"download_bytes":13271040,"usb_p50_ms":10.890385,"usb_p90_ms":11.343531,"out_p50_ms":0.313152,"in_p50_ms":10.573029,"decode_usb_p50_ms":10.890385,"prefill_usb_p50_ms":0.000000,"prefetch_fence_enabled":true,"prefetch_group_first_layer":0,"prefetch_group_last_layer":11,"prefetch_fence_calls":108,"prefetch_copied_bytes":2013265920,"prefetch_copied_chunks":480,"prefetch_copy_p50_ms":7.585654,"prefetch_copy_p90_ms":22.870793,"prefetch_overrun_p90_ms":0.000000,"prefetch_overrun_max_ms":0.000000,"prefetch_copied_window_overrun_p90_ms":0.000000,"prefetch_copied_window_overrun_max_ms":0.000000}
