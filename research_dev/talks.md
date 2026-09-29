@@ -19,6 +19,7 @@ User: "fix one config and commit to our fork" → `scheduler/campaigns/burstgpt/
 trace + transport identity + scripts + DESKTOP_MANIFEST (sha256 of 36 referenced files) + README + SHA256SUMS. GPU
 device-power controller excluded from v1 (it is fed the next trace arrival = future knowledge). Commit scope: code,
 tests + fixtures, configs, traces, text docs; not run evidence (28 GB), baselines data, vendor SDK. Clean-tree suite 155/155.
+Committed `dd23b4a33` (2,999 files) and pushed to origin `wip/unified-scheduler-cleanup-20260813` (fast-forward).
 
 ## 2026-09-29 01:45 UTC - Desktop s2 gate prepared; OP15 kernel boot waits for the user's explicit OK
 
