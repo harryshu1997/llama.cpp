@@ -12,6 +12,9 @@ from .contracts import PhysicalAdapterError
 # ``tcp`` keeps its legacy meaning (a host tensor bridge owns the phone link); ``adb-tcp`` is a
 # protocol-v6 worker on the phone reached through ``adb forward`` on that phone's own serial
 ADB_TCP_TRANSPORT_GENERATION = "adb-tcp-worker-v6"
+# opt-in WS10: the same protocol-v6 worker, reached through the host AOA bridge + phone relay (S43A framing v1);
+# the server-facing contract stays ``adb-tcp`` (llama-server dials the bridge's TCP port unchanged)
+AOA_BRIDGE_TRANSPORT_GENERATION = "aoa-bridge-s43a1-worker-v6"
 
 
 def _text(parameters: Mapping[str, int | str], name: str) -> str:

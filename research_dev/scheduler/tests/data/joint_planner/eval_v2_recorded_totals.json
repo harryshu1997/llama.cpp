@@ -1,0 +1,228 @@
+{
+ "runs": [
+  {
+   "duration_s": 2244.348,
+   "host_cpu_kj": 159.872,
+   "host_gpu_kj": 68.663,
+   "label": "legacy",
+   "loads": [
+    {
+     "end_s": 7.6,
+     "model": "gemma",
+     "request": "000",
+     "start_s": 2.0
+    },
+    {
+     "end_s": 384.5,
+     "model": "qwen",
+     "request": "001",
+     "start_s": 294.9
+    },
+    {
+     "end_s": 527.1,
+     "model": "gemma",
+     "request": "002",
+     "start_s": 465.3
+    },
+    {
+     "end_s": 871.8,
+     "model": "qwen",
+     "request": "003",
+     "start_s": 818.6
+    },
+    {
+     "end_s": 1300.5,
+     "model": "gemma",
+     "request": "006",
+     "start_s": 1234.7
+    },
+    {
+     "end_s": 1629.6,
+     "model": "qwen",
+     "request": "007",
+     "start_s": 1577.9
+    },
+    {
+     "end_s": 1868.5,
+     "model": "gemma",
+     "request": "008",
+     "start_s": 1799.1
+    },
+    {
+     "end_s": 1983.9,
+     "model": "llama",
+     "request": "llama00",
+     "start_s": 1981.4
+    },
+    {
+     "end_s": 2058.3,
+     "model": "qwen",
+     "request": "011",
+     "start_s": 1984.3
+    }
+   ],
+   "policy": "legacy",
+   "repeat": {
+    "duration_s": 2429.0,
+    "host_kj": 250.4
+   },
+   "requests": [
+    {
+     "acquired_s": 2.0,
+     "arrival_s": 1.0,
+     "end_s": 294.8,
+     "exec_start_s": 7.6,
+     "id": "000",
+     "input_tokens": 1961,
+     "model": "gemma",
+     "output_tokens": 575
+    },
+    {
+     "acquired_s": 294.9,
+     "arrival_s": 118.0,
+     "end_s": 464.7,
+     "exec_start_s": 384.5,
+     "id": "001",
+     "input_tokens": 160,
+     "model": "qwen",
+     "output_tokens": 124
+    },
+    {
+     "acquired_s": 465.3,
+     "arrival_s": 312.0,
+     "end_s": 818.5,
+     "exec_start_s": 527.1,
+     "id": "002",
+     "input_tokens": 420,
+     "model": "gemma",
+     "output_tokens": 614
+    },
+    {
+     "acquired_s": 818.6,
+     "arrival_s": 404.0,
+     "end_s": 1035.7,
+     "exec_start_s": 871.8,
+     "id": "003",
+     "input_tokens": 246,
+     "model": "qwen",
+     "output_tokens": 262
+    },
+    {
+     "acquired_s": 1036.6,
+     "arrival_s": 458.0,
+     "end_s": 1234.2,
+     "exec_start_s": 1036.8,
+     "id": "004",
+     "input_tokens": 106,
+     "model": "qwen",
+     "output_tokens": 319
+    },
+    {
+     "acquired_s": 1036.6,
+     "arrival_s": 735.0,
+     "end_s": 1201.4,
+     "exec_start_s": 1036.8,
+     "id": "005",
+     "input_tokens": 24,
+     "model": "qwen",
+     "output_tokens": 265
+    },
+    {
+     "acquired_s": 1234.7,
+     "arrival_s": 761.0,
+     "end_s": 1577.4,
+     "exec_start_s": 1300.5,
+     "id": "006",
+     "input_tokens": 24,
+     "model": "gemma",
+     "output_tokens": 594
+    },
+    {
+     "acquired_s": 1577.9,
+     "arrival_s": 989.0,
+     "end_s": 1798.4,
+     "exec_start_s": 1629.6,
+     "id": "007",
+     "input_tokens": 201,
+     "model": "qwen",
+     "output_tokens": 271
+    },
+    {
+     "acquired_s": 1799.1,
+     "arrival_s": 1272.0,
+     "end_s": 1950.9,
+     "exec_start_s": 1868.5,
+     "id": "008",
+     "input_tokens": 630,
+     "model": "gemma",
+     "output_tokens": 168
+    },
+    {
+     "acquired_s": 1951.4,
+     "arrival_s": 1470.0,
+     "end_s": 1981.2,
+     "exec_start_s": 1951.6,
+     "id": "009",
+     "input_tokens": 670,
+     "model": "gemma",
+     "output_tokens": 53
+    },
+    {
+     "acquired_s": 1951.4,
+     "arrival_s": 1496.0,
+     "end_s": 1969.9,
+     "exec_start_s": 1951.6,
+     "id": "010",
+     "input_tokens": 82,
+     "model": "gemma",
+     "output_tokens": 30
+    },
+    {
+     "acquired_s": 1981.4,
+     "arrival_s": 1497.0,
+     "end_s": 1984.2,
+     "exec_start_s": 1983.9,
+     "id": "llama00",
+     "input_tokens": 54,
+     "model": "llama",
+     "output_tokens": 46
+    },
+    {
+     "acquired_s": 1984.3,
+     "arrival_s": 1610.0,
+     "end_s": 2194.0,
+     "exec_start_s": 2058.3,
+     "id": "011",
+     "input_tokens": 588,
+     "model": "qwen",
+     "output_tokens": 211
+    },
+    {
+     "acquired_s": 2195.1,
+     "arrival_s": 1676.0,
+     "end_s": 2241.3,
+     "exec_start_s": 2195.4,
+     "id": "012",
+     "input_tokens": 219,
+     "model": "qwen",
+     "output_tokens": 72
+    }
+   ]
+  },
+  {
+   "duration_s": 1835.0,
+   "host_cpu_kj": 123.5,
+   "host_gpu_kj": 54.7,
+   "label": "desktop-dispatcher",
+   "loads": [],
+   "policy": "sequential-desktop",
+   "repeat": {
+    "duration_s": 1810.0,
+    "host_kj": 174.1
+   },
+   "requests": []
+  }
+ ],
+ "schema": "joint-planner-recorded-totals-v1",
+ "source": "legacy rows of s2a-artifacts/EV2S2A_ALLON_STYLE.md (acquired, exec start/end, load wait); totals from reports/20260925-two-phone-eval/EVAL_V2_DATA.md"
+}

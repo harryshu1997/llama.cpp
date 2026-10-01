@@ -38,6 +38,12 @@ phone policy at its next boundary. That attachment is eligible whenever a group 
 desktop parent runs a phone policy (`joiner_group_runs_phone_policy`), without a probe budget of its
 own; the shared helper window then reuses the group's leases (`SERVER_HELPER_LEASES_SHARED`).
 
+With the active joint planner (``dispatch_policy.joint_planner`` mode active), a request the planner
+joins into a running server is registered as prefilling (``prefill_yield``): until its decode starts,
+every member of its model and desktop parent runs the host policy (reason JOINT_PLANNER_PREFILL_YIELD),
+because llama-server cannot batch a prompt with a phone-policy slot and would otherwise leave the
+joiner's prompt waiting for the holder to finish. Verdicts, proposal and probe budget are untouched.
+
 A quarantined device (lost at runtime or absent at start, reported by the rig) is dropped with every
 set that contains it for every composition of every group, including groups created later; its
 verdicts and proposals go, and a server running it returns to the host. Readmission removes every
@@ -70,6 +76,7 @@ from ..adaptive_decode_contracts import (
 from ..adaptive_decode_state import _AdaptiveSession
 from ..adaptive_decode_state import _AdaptiveServerPolicy
 from . import budgeting as _budgeting
+from . import prefill_yield as _prefill_yield
 
 COHERENCE_REASON = "SERVER_POLICY_COHERENCE"
 # The server runs the phone verdict its composition inherited from a smaller one.
@@ -596,6 +603,10 @@ def server_directive(controller, session, token_index, at_us):
     policy = _matching_policy(controller, session, group.policy)
     if policy is None:
         return None
+    # dispatch_policy.joint_planner (active): the host while a planner-joined co-tenant prefills.
+    yielding = not policy.baseline and _prefill_yield.pending(controller, session, at_us) is not None
+    if yielding:
+        policy = session.baseline
     probing = verdict is None or bool(
         group.device_sets and group.proposal is not None
         and controller._policy_identity(group.proposal) == controller._policy_identity(policy))
@@ -606,6 +617,8 @@ def server_directive(controller, session, token_index, at_us):
     reason = server_reason(group, session.active_batch)
     if not policy.baseline:
         session.zero_assistance_reason = None
+    elif yielding:
+        session.zero_assistance_reason = _prefill_yield.PREFILL_YIELD_REASON
     elif reason is not None:
         session.zero_assistance_reason = reason
     directive = (
@@ -613,6 +626,8 @@ def server_directive(controller, session, token_index, at_us):
         if session.current_policy == policy else
         controller._control(session, policy, token_index, at_us)
     )
+    if yielding:
+        return replace(directive, reason=_prefill_yield.PREFILL_YIELD_REASON)
     return replace(directive, reason=_decision_reason(controller, session, group, policy))
 
 

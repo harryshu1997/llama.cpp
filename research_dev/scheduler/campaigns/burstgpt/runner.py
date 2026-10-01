@@ -11,7 +11,7 @@ import sys
 import threading
 import time
 import traceback
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 from urllib.parse import SplitResult, urlsplit
 
 
@@ -46,6 +46,19 @@ from research_dev.scheduler.adapters import (  # noqa: E402
     LlamaCppCompletionPayload,
     load_transport_qualification_identity,
     validate_decision_candidate_coverage,
+)
+from research_dev.scheduler._internal.joint_planner_shadow import (  # noqa: E402
+    JointPlannerShadow,
+    JointPlannerShadowConfig,
+)
+from research_dev.scheduler._internal.layer_placement_control import (  # noqa: E402
+    MeasuredPlacementConfig,
+    measured_placement_from_policy_json,
+)
+from research_dev.scheduler._internal.joint_planner_active import (  # noqa: E402
+    JointPlannerActive,
+    JointPlannerActiveConfig,
+    joint_planner_from_policy_json,
 )
 from research_dev.scheduler.config import (  # noqa: E402
     FixedPhoneResidencyConfiguration, PhoneHtpMemoryCapConfiguration,
@@ -459,13 +472,113 @@ def _adaptive_decode_overrides_from_json(text: str | None) -> dict[str, object]:
 
 
 def _dispatch_policy_from_json(text: str | None) -> RuntimeDispatchPolicy | None:
-    """Campaign `dispatch_policy` arrives as one JSON object; absent keeps the legacy order."""
+    """Campaign `dispatch_policy` arrives as one JSON object; absent keeps the legacy order.
+
+    Its optional `joint_planner` member configures the shadow or active planner, not the dispatch order.
+    """
     if text is None:
         return None
     try:
-        return RuntimeDispatchPolicy.from_json(json.loads(text))
+        value = json.loads(text)
+        if isinstance(value, dict) and "joint_planner" in value:
+            value, _ = joint_planner_from_policy_json(value)
+            if not value:
+                return None
+        if isinstance(value, dict) and "measured_placement" in value:
+            value, _ = measured_placement_from_policy_json(value)
+            if not value:
+                return None
+        return RuntimeDispatchPolicy.from_json(value)
     except (TypeError, ValueError) as exc:
         raise UnifiedTraceError("dispatch policy is invalid: " + str(exc)) from exc
+
+
+def _measured_placement_from_json(text: str | None) -> MeasuredPlacementConfig | None:
+    """`dispatch_policy.measured_placement` (WS11, mode shadow): replay the finished run through the
+    measured layer-placement controller; execution is unchanged."""
+    if text is None:
+        return None
+    try:
+        value = json.loads(text)
+        if not isinstance(value, dict):
+            return None
+        _, config = measured_placement_from_policy_json(value)
+    except (TypeError, ValueError) as exc:
+        raise UnifiedTraceError("dispatch policy is invalid: " + str(exc)) from exc
+    return config
+
+
+def _write_measured_placement_shadow(args: argparse.Namespace, models: "_TraceModels", result: dict[str, Any],
+                                     epoch_ns: int) -> None:
+    config = _measured_placement_from_json(getattr(args, "dispatch_policy_json", None))
+    if config is None:
+        return
+    from research_dev.scheduler.campaigns.burstgpt.layer_placement_shadow import SHADOW_SCHEMA, run_shadow
+    trace_start_epoch_s = time.time() - (time.monotonic_ns() - epoch_ns) / 1e9
+    try:
+        run_shadow(config, args.output, result, {str(path): model for model, path in models.model_paths.items()},
+                   trace_start_epoch_s=trace_start_epoch_s)
+    except Exception as error:   # the shadow record never fails a finished run
+        (args.output / "LAYER_PLACEMENT.json").write_text(
+            json.dumps({"schema": SHADOW_SCHEMA, "error": repr(error)}, sort_keys=True) + "\n")
+
+
+def _joint_planner_shadow_from_json(text: str | None) -> JointPlannerShadow | None:
+    """`dispatch_policy.joint_planner` (mode shadow): observe every decision, change none."""
+    if text is None:
+        return None
+    try:
+        value = json.loads(text)
+        if not isinstance(value, dict):
+            return None
+        _, config = joint_planner_from_policy_json(value)
+    except (TypeError, ValueError) as exc:
+        raise UnifiedTraceError("dispatch policy is invalid: " + str(exc)) from exc
+    return JointPlannerShadow(config) if isinstance(config, JointPlannerShadowConfig) else None
+
+
+def _joint_planner_active_from_json(text: str | None) -> JointPlannerActive | None:
+    """`dispatch_policy.joint_planner` (mode active): plan every epoch, execute the joint join."""
+    if text is None:
+        return None
+    try:
+        value = json.loads(text)
+        if not isinstance(value, dict):
+            return None
+        _, config = joint_planner_from_policy_json(value)
+    except (TypeError, ValueError) as exc:
+        raise UnifiedTraceError("dispatch policy is invalid: " + str(exc)) from exc
+    return JointPlannerActive(config) if isinstance(config, JointPlannerActiveConfig) else None
+
+
+def _joint_planner_active_result(scheduler: UnifiedScheduler) -> dict[str, Any]:
+    active = scheduler.joint_planner_active()
+    if active is None:
+        return {}
+    active.close()
+    return {"joint_planner_active": active.result()}
+
+
+def _write_joint_planner_active(output: Path, scheduler: UnifiedScheduler) -> None:
+    active = scheduler.joint_planner_active()
+    if active is not None:
+        active.close()
+        (output / "JOINT_PLANNER_ACTIVE.json").write_bytes(canonical(active.artifact()))
+
+
+def _joint_planner_shadow_result(scheduler: UnifiedScheduler) -> dict[str, Any]:
+    shadow = scheduler.joint_planner_shadow()
+    if shadow is None:
+        return {}
+    shadow.close()
+    return {"joint_planner_shadow": shadow.summary()}
+
+
+def _write_joint_planner_shadow(output: Path, scheduler: UnifiedScheduler) -> None:
+    shadow = scheduler.joint_planner_shadow()
+    if shadow is not None:
+        shadow.close()
+        (output / "JOINT_PLANNER_SHADOW.json").write_bytes(canonical(shadow.artifact()))
 
 
 def _require_continuous_join_prerequisites(
@@ -476,6 +589,14 @@ def _require_continuous_join_prerequisites(
         not policy.continuous_join
         or (adaptive_config is not None and adaptive_config.server_policy_coherence),
         "dispatch policy continuous_join requires adaptive_decode_overrides.server_policy_coherence",
+    )
+
+
+def _require_joint_planner_active_prerequisites(adaptive_config: AdaptiveDecodeConfig | None) -> None:
+    """The joint join is executed through server policy coherence only; refuse to run without it."""
+    require(
+        adaptive_config is not None and adaptive_config.server_policy_coherence,
+        "dispatch policy joint_planner active requires adaptive_decode_overrides.server_policy_coherence",
     )
 
 
@@ -501,6 +622,17 @@ def _build_scheduler(
     if dispatch_policy is not None:
         _require_continuous_join_prerequisites(dispatch_policy, adaptive_config)
         scheduler.configure_runtime_dispatch_policy(dispatch_policy)
+    shadow = _joint_planner_shadow_from_json(getattr(args, "dispatch_policy_json", None))
+    if shadow is not None:
+        scheduler.configure_joint_planner_shadow(shadow)
+    active = _joint_planner_active_from_json(getattr(args, "dispatch_policy_json", None))
+    if active is not None:
+        _require_joint_planner_active_prerequisites(adaptive_config)
+        scheduler.configure_joint_planner_active(active)
+    placement = _measured_placement_from_json(getattr(args, "dispatch_policy_json", None))
+    if placement is not None:
+        from research_dev.scheduler.campaigns.burstgpt.layer_placement_shadow import load_inputs
+        load_inputs(placement)   # a broken profile or inventory fails before the trace, not after it
     scheduler.register_runtime_capabilities(models.catalog)
     manifests = {
         model_id: scheduler.register_gguf_model(
@@ -1068,6 +1200,7 @@ def _submit_arrivals(
         )
         _note_next_arrival(rig, request.arrival_us)
         coordinator.wait_for_arrival(request.arrival_us)
+        _note_arrival_observed(rig, request.request_id, model_id, coordinator.observed_at_us)
         snapshot_started_ns = time.monotonic_ns()
         captured_at_us = coordinator.observed_at_us()
         snapshot = rig.snapshot(request, model_id, captured_at_us)
@@ -1080,6 +1213,7 @@ def _submit_arrivals(
             with state.first_token_lock:
                 state.first_token_ns.setdefault(request_id, value_ns)
                 state.first_token_history.setdefault(request_id, []).append(value_ns)
+            _note_first_token(rig, request_id)
 
         def on_active_batch(
             value: int,
@@ -1592,7 +1726,8 @@ def _elastic_drop_result(
 ) -> dict[str, Any]:
     """SERVER_EXITED / REQUEST_RECOVERED rows, the device membership events and the helper
     mask events (elastic phones: drop recovery, quarantine, join, S2a mask-out), and under
-    elastic phones the thermal gate onsets (THERMAL_DEFERRAL rows).
+    elastic phones or dispatch_policy.event_replanning the thermal gate onsets
+    (THERMAL_DEFERRAL / THERMAL_DEFERRAL_CLEARED rows).
 
     Only a run that reaped a server, recovered a request or changed its phone
     membership carries the keys, so every other RESULT stays byte-identical.
@@ -1614,7 +1749,10 @@ def _elastic_drop_result(
     thermal = (
         [dict(row) for row in thermal_events()]
         if callable(thermal_events)
-        and getattr(getattr(rig, "configuration", None), "elastic_phones", None) is not None
+        and (
+            getattr(getattr(rig, "configuration", None), "elastic_phones", None) is not None
+            or _event_replanning_configured(scheduler)
+        )
         else []
     )
     require(
@@ -1632,26 +1770,60 @@ def _elastic_drop_result(
     }
 
 
+def _device_power_policy(rig: object) -> Any:
+    return getattr(getattr(rig, "configuration", None), "device_power", None)
+
+
+def _event_replanning_configured(scheduler: object) -> bool:
+    """dispatch_policy.event_replanning also exports the thermal gate onsets/clearings."""
+    state = getattr(scheduler, "runtime_dispatch_policy_state", None)
+    value = state() if callable(state) else None
+    policy = value.get("policy") if isinstance(value, Mapping) else None
+    return isinstance(policy, Mapping) and policy.get("event_replanning") is True
+
+
 def _note_next_arrival(rig: object, arrival_us: int | None) -> None:
     """Feed the arrival calendar to the device power controller.
 
     Only a rig configured with a ``device_power`` policy is told; a run without the policy
-    (and test rigs without the method) is byte-identical to before.
+    (and test rigs without the method) is byte-identical to before. An ``online`` policy is
+    never told: the calendar is future knowledge.
     """
-    if getattr(getattr(rig, "configuration", None), "device_power", None) is None:
+    policy = _device_power_policy(rig)
+    if policy is None or getattr(policy, "online", False):
         return
     rig.note_next_arrival(arrival_us)
+
+
+def _note_arrival_observed(
+    rig: object, request_id: str, model_id: str, observed_at_us: Callable[[], int]
+) -> None:
+    """Online device power: tell the controller a request arrived, stamped after the wait."""
+    if not getattr(_device_power_policy(rig), "online", False):
+        return
+    rig.note_arrival_observed(request_id, model_id, observed_at_us())
+
+
+def _note_first_token(rig: object, request_id: str) -> None:
+    """Device power ``decode_cap.protect_prefill``: the request's prompt has been processed."""
+    decode_cap = getattr(_device_power_policy(rig), "decode_cap", None)
+    if not getattr(decode_cap, "protect_prefill", False):
+        return
+    rig.note_first_token(request_id)
 
 
 def _device_power_result(rig: HeterogeneousPhysicalRig) -> dict[str, Any]:
     """DEVICE_POWER_STATE rows of the device power controller. Only a run with a ``device_power``
     policy carries the key (also when the controller went UNAVAILABLE), so every other RESULT
-    stays byte-identical."""
-    if getattr(getattr(rig, "configuration", None), "device_power", None) is None:
+    stays byte-identical; ``device_power_telemetry`` only with an explicit arrival_information."""
+    policy = _device_power_policy(rig)
+    if policy is None:
         return {}
     events = [dict(row) for row in getattr(rig, "device_power_events", ())]
     require(all(row.get("kind") == "DEVICE_POWER_STATE" for row in events), "device power event kinds")
-    return {"device_power_events": events}
+    telemetry = (getattr(rig, "device_power_telemetry", None)
+                 if getattr(policy, "arrival_information", None) is not None else None)
+    return {"device_power_events": events, **({} if telemetry is None else {"device_power_telemetry": telemetry})}
 
 
 def _speculative_rows_result(
@@ -1791,6 +1963,8 @@ def _assemble_result(
         **({} if getattr(args, "dispatch_policy_json", None) is None else {
             "dispatch_policy": dict(scheduler.runtime_dispatch_policy_state()),
         }),
+        **_joint_planner_shadow_result(scheduler),
+        **_joint_planner_active_result(scheduler),
         "adaptive_maximum_probe_attempts_per_context": (
             args.adaptive_maximum_probe_attempts_per_context
         ),
@@ -2199,6 +2373,9 @@ def main() -> int:
             adaptive_observations,
             result,
         )
+        _write_joint_planner_shadow(args.output, scheduler)
+        _write_joint_planner_active(args.output, scheduler)
+        _write_measured_placement_shadow(args, models, result, epoch_ns)
         print(json.dumps({
             "counts": result["counts"],
             "duration_us": result["duration_us"],

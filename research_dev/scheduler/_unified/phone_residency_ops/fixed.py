@@ -9,6 +9,10 @@ from typing import Mapping
 from ...config import FixedPhoneResidencyConfiguration
 from ..._internal.policy import Request
 from ..._internal.lifecycle import UnifiedScheduleError
+from ..automated_requests_ops.event_replanning import (
+    event_replanning_enabled,
+    note_device_admissible,
+)
 
 
 def configure_fixed_phone_residency(
@@ -144,4 +148,13 @@ def _phone_telemetry_deferral(controller, snapshot, observed_at_us, request_id):
              "outage_duration_us": observed_at_us - started_at_us,
              "snapshot_id": snapshot.snapshot_id},
         )
+        for capability in (
+            controller._runtime_capabilities.executors
+            if event_replanning_enabled(controller) else ()
+        ):
+            if capability.phone_sessions:
+                note_device_admissible(
+                    controller, capability.device_id, observed_at_us,
+                    "PHONE_TELEMETRY_RECOVERED", started_at_us,
+                )
     return None

@@ -61,7 +61,8 @@ class CoHelperLifecycle:
                 or configuration.column_quantum != row.column_quantum
                 or configuration.max_tokens != row.max_tokens
                 or configuration.phone_port != row.transport_parameters["phone_worker_port"]
-                or configuration.forward_port != row.transport_parameters["ffn_worker_port"]
+                or configuration.forward_port != row.transport_parameters.get(
+                    "ffn_link_proxy_upstream_port", row.transport_parameters["ffn_worker_port"])
             ):
                 raise PhysicalAdapterError(
                     f"co-helper {row.device_id} worker differs from its catalog declaration"
@@ -103,8 +104,12 @@ class CoHelperLifecycle:
                 with self._lock:
                     self.started.append(row.device_id)
         live = dict(session.transport_parameters())
-        if any(live.get(key) != value for key, value in row.transport_parameters.items()
-               if key in live):
+        declared = dict(row.transport_parameters)
+        if "ffn_link_proxy_upstream_port" in declared:
+            # opt-in link delay proxy: the session's live forward is the proxy's upstream port
+            declared["ffn_worker_port"] = declared.pop("ffn_link_proxy_upstream_port")
+        if any(live.get(key) != value for key, value in declared.items()
+               if key in live) or live.get("ffn_link_transport") != declared.get("ffn_link_transport"):
             raise PhysicalAdapterError(
                 f"co-helper {row.device_id} forward differs from its catalog declaration"
             )

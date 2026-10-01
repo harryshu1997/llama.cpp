@@ -877,6 +877,23 @@ class HeterogeneousPhysicalRig(
         if controller is not None:
             controller.note_next_arrival_us(arrival_us)
 
+    def note_arrival_observed(self, request_id: str, model_id: str, observed_at_us: int) -> None:
+        """Online device power: a trace request already arrived at ``observed_at_us``."""
+        controller = self._device_power_controller()
+        if controller is not None:
+            controller.note_arrival_observed(request_id, model_id, observed_at_us)
+
+    def note_first_token(self, request_id: str) -> None:
+        """Device power ``protect_prefill``: the request streamed its first token."""
+        controller = self._device_power_controller()
+        if controller is not None:
+            controller.note_first_token(request_id)
+
+    @property
+    def device_power_telemetry(self) -> dict[str, object] | None:
+        controller = self._device_power_controller()
+        return None if controller is None else controller.telemetry
+
     @property
     def host_power_diagnostics(self) -> Mapping[str, object]:
         return self._sampler.diagnostics()

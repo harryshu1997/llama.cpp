@@ -20,6 +20,10 @@ DISPATCH_POLICY_STAT_NAMES = (
     "continuous_join_bypasses",
     "continuous_join_publication_replans",
     "continuous_join_refusals",
+    "event_replanning_preparation_blocks",
+    "event_replanning_recovery_reevaluations",
+    "event_replanning_recovery_replans",
+    "event_replanning_release_reevaluations",
     "publication_replans",
 )
 # Reported only under dispatch_policy.continuous_join, so other policies keep
@@ -28,6 +32,13 @@ CONTINUOUS_JOIN_STAT_NAMES = frozenset({
     "continuous_join_bypasses",
     "continuous_join_publication_replans",
     "continuous_join_refusals",
+})
+# Reported only under dispatch_policy.event_replanning (same reason).
+EVENT_REPLANNING_STAT_NAMES = frozenset({
+    "event_replanning_preparation_blocks",
+    "event_replanning_recovery_reevaluations",
+    "event_replanning_recovery_replans",
+    "event_replanning_release_reevaluations",
 })
 CONTINUOUS_JOIN_BYPASS_KIND = "CONTINUOUS_JOIN_BARRIER_BYPASS"
 RESIDENCY_HYSTERESIS_HELD_KIND = "RESIDENCY_HYSTERESIS_HELD"
@@ -433,8 +444,14 @@ def dispatch_policy_state(controller) -> Mapping[str, object]:
                 **{
                     name: value
                     for name, value in controller._dispatch_policy_stats.items()
-                    if name not in CONTINUOUS_JOIN_STAT_NAMES
-                    or controller.dispatch_policy.continuous_join
+                    if (
+                        name not in CONTINUOUS_JOIN_STAT_NAMES
+                        or controller.dispatch_policy.continuous_join
+                    )
+                    and (
+                        name not in EVENT_REPLANNING_STAT_NAMES
+                        or controller.dispatch_policy.event_replanning
+                    )
                 },
                 **controller.queue.policy_events(),
             }.items())),

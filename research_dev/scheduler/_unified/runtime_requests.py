@@ -770,6 +770,12 @@ class RuntimeRequestMixin:
             )
         except DecisionLogError as exc:
             raise UnifiedScheduleError(str(exc)) from exc
+        shadow = getattr(self, "_joint_planner_shadow", None)
+        if shadow is not None:
+            shadow.observe_ticket(self, event_kind, ticket, event_time_us, lifecycle_state)
+        active = getattr(self, "_joint_planner_active", None)
+        if active is not None:
+            active.observe_ticket(self, event_kind, ticket, event_time_us, lifecycle_state)
 
     def runtime_decision_log(self) -> dict[str, object]:
         return self._runtime_decision_log.snapshot()
@@ -2127,6 +2133,21 @@ class RuntimeRequestMixin:
 
     def runtime_dispatch_policy_state(self) -> Mapping[str, object]:
         return self._runtime_controller.dispatch_policy_state()
+
+    def configure_joint_planner_shadow(self, shadow: object) -> None:
+        """Opt-in observer of every journal record (``dispatch_policy.joint_planner``); read-only."""
+        self._joint_planner_shadow = shadow
+
+    def joint_planner_shadow(self) -> object | None:
+        return getattr(self, "_joint_planner_shadow", None)
+
+    def configure_joint_planner_active(self, active: object) -> None:
+        """Opt-in planner that decides at every journal record and executes the joint join
+        (``dispatch_policy.joint_planner`` mode active, ``_internal.joint_planner_active``)."""
+        self._joint_planner_active = active
+
+    def joint_planner_active(self) -> object | None:
+        return getattr(self, "_joint_planner_active", None)
 
     def runtime_queued_start_us(self) -> int | None:
         """Earliest planned start of a QUEUED runtime ticket, None when nothing is queued

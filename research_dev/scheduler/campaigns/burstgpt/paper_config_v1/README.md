@@ -62,6 +62,9 @@ All paths inside the template are the desktop's absolute paths; this folder reco
 Host energy is CPU package plus GPU board. Phone energy in these rows is assumed, not measured. Latency is
 arrival to completion. Single runs; the paper needs repeats.
 
-Known gap in v1 (code, not configuration): when the phones are still leased by a finishing batch, the switch of
-the phone weights to the next model is deferred as "in use" and not retried when the lease is released. In s2a the
-Qwen pair 005/007 therefore decoded about 170 s without phones.
+Known gap in v1, corrected 2026-09-30: in s2a the Qwen pair 005/007 decoded about 170 s without phones. The
+re-evaluation of the phone weights did run when the Gemma pair released the phone, but every OP15 route was refused
+with THERMAL_LIMIT after the pair had driven the phone at full fraction, so the preparation never started, and the
+refusal left no record (the thermal state between 1,053 s and 1,272 s is inferred). An earlier note here blamed a
+missing retry; that was wrong. The opt-in `dispatch_policy.event_replanning` (added after v1) records such blocks
+and re-evaluates on every helper release and device recovery.

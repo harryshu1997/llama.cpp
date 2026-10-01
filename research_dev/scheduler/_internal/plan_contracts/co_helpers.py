@@ -36,6 +36,8 @@ _TRANSPORT_KEYS = frozenset({
     "ffn_transport",
     "ffn_worker_host",
     "ffn_worker_port",
+    "ffn_link_proxy_upstream_port",
+    "ffn_link_transport",
     "phone_worker_port",
     "usb_transport_profile_id",
     "usb_transport_qualification_identity_sha256",
@@ -109,6 +111,16 @@ class RuntimeCoHelperPhone:
             raise RuntimePlanError("co-helper transport must be its own adb-tcp forward")
         _port("co-helper adb port", parameters.get("adb_port"))
         _port("co-helper forward port", parameters.get("ffn_worker_port"))
+        if "ffn_link_proxy_upstream_port" in parameters:
+            # opt-in link delay proxy: ffn_worker_port is the proxy, this the adb forward behind it
+            if _port("co-helper link proxy upstream port", parameters["ffn_link_proxy_upstream_port"]) \
+                    == parameters["ffn_worker_port"]:
+                raise RuntimePlanError("co-helper link proxy must listen on its own port")
+        if "ffn_link_transport" in parameters and (
+            parameters["ffn_link_transport"] != "aoa-bridge" or "ffn_link_proxy_upstream_port" in parameters
+        ):
+            # opt-in WS10: the host AOA bridge serves ffn_worker_port; never combined with the delay proxy
+            raise RuntimePlanError("co-helper link transport must be aoa-bridge without a link proxy")
         _port("co-helper phone port", parameters.get("phone_worker_port"))
         _text("co-helper forward host", parameters.get("ffn_worker_host"))
         if "usb_transport_qualification_identity_sha256" in parameters:

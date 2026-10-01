@@ -95,6 +95,21 @@ def model_inventory(specs: list[tuple[str, Path, str]]) -> dict[str, dict[str, A
     return inventory
 
 
+def inventory_from_manifest(path: Path) -> dict[str, dict[str, Any]]:
+    """model_inventory of an existing trace manifest, for a rebuild on a host without the execution artifacts."""
+    inventory = json.loads(path.read_text()).get("model_inventory")
+    if type(inventory) is not dict or not inventory or any(
+            type(entry) is not dict or set(entry) != {"artifact_bytes", "artifact_file", "artifact_sha256", "kind"}
+            or type(entry["artifact_bytes"]) is not int or entry["artifact_bytes"] <= 0
+            or type(entry["artifact_sha256"]) is not str or len(entry["artifact_sha256"]) != 64
+            or type(entry["artifact_file"]) is not str or type(entry["kind"]) is not str
+            for entry in inventory.values()):
+        raise SystemExit(f"{path} has no valid model_inventory")
+    if {TRACE_HOT_MODEL_ID, TRACE_COLD_MODEL_ID} & set(inventory):
+        raise SystemExit(f"{path} model_inventory names trace role ids; use the execution model ids")
+    return {model_id: dict(entry) for model_id, entry in sorted(inventory.items())}
+
+
 class Codec:
     """The layersplit token codec: one process per tokenizer model, JSON lines over stdio."""
 
@@ -227,7 +242,9 @@ def select_window(rows: list[dict[str, Any]], *, duration_s: float, min_requests
                   min_same_model_overlaps: int | None = None,
                   min_requests_per_model: int = 0,
                   arrival_scale: float = 1.0,
-                  service_s_per_token: float = 0.5) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+                  service_s_per_token: float = 0.5,
+                  window_rank: int = 1,
+                  scan_phase_s: float = 0.0) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Return the first window (from the offset, or scanning) whose eligible request count is in range.
 
     With long_tail_threshold, the window must also be representative of the whole log's long tail:
@@ -241,11 +258,22 @@ def select_window(rows: list[dict[str, Any]], *, duration_s: float, min_requests
     With min_same_model_overlaps, the window must contain at least that many same-model request pairs
     that overlap in the replay (see same_model_overlaps), and min_requests_per_model requests of each
     source model, so a development trace exercises batching and model switching.
+
+    With window_rank k > 1, the k-th qualifying window in scan order is taken instead of the first:
+    the same rules give independent, non-overlapping windows (scan starts are duration_s apart).
+    With scan_phase_s, the scan grid starts that many seconds later (0 <= phase < duration_s); its
+    windows overlap the unshifted grid's, so a caller combining grids must check disjointness.
     """
+    if type(window_rank) is not int or window_rank < 1 or (window_rank > 1 and start_offset_s is not None):
+        raise SystemExit("--window-rank must be a positive integer and needs the scan (no --start-offset)")
+    if not 0.0 <= scan_phase_s < duration_s or (scan_phase_s and start_offset_s is not None):
+        raise SystemExit("--scan-phase-s must be in [0, --duration-s) and needs the scan (no --start-offset)")
+    earlier_starts: list[float] = []
     usable = [r for r in rows if r["input"] >= min_input and r["output"] >= min_output]
     times = [r["t"] for r in usable]
     t0 = times[0]
-    starts = [t0 + start_offset_s] if start_offset_s is not None else [t0 + k * duration_s for k in range(int((times[-1] - t0) // duration_s))]
+    starts = [t0 + start_offset_s] if start_offset_s is not None else [
+        t0 + scan_phase_s + k * duration_s for k in range(int((times[-1] - t0 - scan_phase_s) // duration_s))]
     log_tail = long_tail_stats(usable, long_tail_threshold) if long_tail_threshold is not None else None
     for start in starts:
         lo = bisect.bisect_left(times, start)
@@ -283,7 +311,16 @@ def select_window(rows: list[dict[str, Any]], *, duration_s: float, min_requests
             info["long_tail"] = {"log": log_tail, "window": tail, "tolerance": long_tail_tolerance,
                                  "rule": "first window whose request and output-token long-tail shares "
                                          "are each within tolerance of the log-wide shares"}
+        if len(earlier_starts) + 1 < window_rank:
+            earlier_starts.append(start)
+            continue
+        if window_rank > 1:
+            info["window_rank"] = {"rank": window_rank, "earlier_qualifying_starts_source_s": earlier_starts}
+        if scan_phase_s:
+            info["scan_phase_s"] = scan_phase_s
         return usable[lo:hi], info
+    if window_rank > 1:
+        raise SystemExit(f"only {len(earlier_starts)} qualifying windows; --window-rank {window_rank} does not exist")
     raise SystemExit(f"no {duration_s:.0f} s window with {min_requests}..{max_requests} eligible requests"
                      + (" and a representative long tail" if log_tail is not None else "")
                      + (f" and <= {max_output_tokens} capped output tokens" if max_output_tokens is not None else "")
@@ -326,11 +363,22 @@ def main() -> int:
     ap.add_argument("--max-output-tokens", type=int, default=None,
                     help="skip windows whose output tokens (after --output-cap) exceed this; bounds a "
                          "development trace's run time")
-    ap.add_argument("--execution-artifact", type=parse_execution_artifact, action="append", required=True,
-                    metavar="MODEL_ID=PATH[=KIND]",
-                    help="one per execution model (hot, cold, overlay); the manifest pins their bytes and sha256")
+    ap.add_argument("--window-rank", type=int, default=1,
+                    help="take the k-th qualifying window in scan order (default 1 = the first); later ranks "
+                         "are independent, non-overlapping windows under the same rules")
+    ap.add_argument("--scan-phase-s", type=float, default=0.0,
+                    help="shift the window scan grid by this many seconds (0 <= phase < --duration-s); "
+                         "its windows overlap the unshifted grid's, check disjointness when combining")
+    artifacts = ap.add_mutually_exclusive_group(required=True)
+    artifacts.add_argument("--execution-artifact", type=parse_execution_artifact, action="append",
+                           metavar="MODEL_ID=PATH[=KIND]",
+                           help="one per execution model (hot, cold, overlay); the manifest pins their bytes and sha256")
+    artifacts.add_argument("--model-inventory-from", type=Path, metavar="TRACE_MANIFEST",
+                           help="copy model_inventory from an existing trace manifest (same execution artifacts) "
+                                "instead of hashing them; for building where the artifacts are absent")
     args = ap.parse_args()
-    inventory = model_inventory(args.execution_artifact)
+    inventory = (model_inventory(args.execution_artifact) if args.execution_artifact is not None
+                 else inventory_from_manifest(args.model_inventory_from))
     if OVERLAY_MODEL_ID not in inventory or len(inventory) < 3:
         raise SystemExit("--execution-artifact must name the hot, cold and overlay execution models")
 
@@ -351,7 +399,9 @@ def main() -> int:
                                         min_same_model_overlaps=args.min_same_model_overlaps,
                                         min_requests_per_model=args.min_requests_per_model,
                                         arrival_scale=args.arrival_scale,
-                                        service_s_per_token=args.overlap_service_s_per_token)
+                                        service_s_per_token=args.overlap_service_s_per_token,
+                                        window_rank=args.window_rank,
+                                        scan_phase_s=args.scan_phase_s)
 
     qwen_sha = digest_file(args.qwen_tokenizer_model)
     gemma_sha = digest_file(args.gemma_tokenizer_model)
@@ -513,6 +563,15 @@ def main() -> int:
     if args.max_output_tokens is not None:
         long_tail_md += (f"Development bound: windows with more than {args.max_output_tokens} output tokens "
                          f"(after the output cap) were skipped; this window has {output_total + overlay_output}.\n")
+    if window_info.get("scan_phase_s"):
+        long_tail_md += (f"Scan grid shifted by {window_info['scan_phase_s']:.0f} s (windows start at the first "
+                         f"conversation row + {window_info['scan_phase_s']:.0f} s + k x {args.duration_s:.0f} s).\n")
+    rank = window_info.get("window_rank")
+    if rank is not None:
+        long_tail_md += (f"Window rank {rank['rank']}: the {rank['rank']}-th window in scan order that meets every rule "
+                         f"above; the earlier ones start "
+                         + ", ".join(f"{start - rows[0]['t']:.0f}" for start in rank["earlier_qualifying_starts_source_s"])
+                         + " s after the first conversation row.\n")
     md = f"""# {args.trace_name}: a BurstGPT conversation-log window replayed at its own pace
 
 Source: BurstGPT conversation logs (`{args.burstgpt_csv.name}`, sha256 `{manifest['derivation']['burstgpt_csv_sha256'][:16]}...`),

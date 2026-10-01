@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from . import coherence
+from . import prefill_yield as _prefill_yield
 
 from dataclasses import replace
 import time
@@ -103,6 +104,7 @@ def boundary(
             and session.pending_session_drain_policy is None
             and session.pending_helper_refresh_policy is None
             and not coherence.server_policy_pending(controller, session)
+            and not _prefill_yield.closes_window(controller, session, at_us)
         ):
             return None
         if token_index <= session.window_start_token:

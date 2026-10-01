@@ -129,13 +129,32 @@ class _LateRequestHelperContext:
     evidence_state: str
 
 
+def _event_replanning_active(controller: object) -> bool:
+    """Whether ``dispatch_policy.event_replanning`` is configured (off for any stand-in)."""
+    policy = getattr(getattr(controller, "_runtime_controller", None), "dispatch_policy", None)
+    return getattr(policy, "event_replanning", False) is True
+
+
 def _runtime_serialized(
     method: Callable[..., _RuntimeResult],
 ) -> Callable[..., _RuntimeResult]:
     @wraps(method)
     def wrapped(self: "UnifiedScheduler", *args: object, **kwargs: object):
         with self._runtime_lock:
-            return method(self, *args, **kwargs)
+            if not _event_replanning_active(self):
+                return method(self, *args, **kwargs)
+            # Under dispatch_policy.event_replanning the events a call observed are
+            # handled once, when the outermost serialized call returns.
+            depth = self.__dict__.get("_event_replanning_depth", 0)
+            self._event_replanning_depth = depth + 1
+            try:
+                result = method(self, *args, **kwargs)
+            finally:
+                self._event_replanning_depth = depth
+            if depth == 0:
+                from .automated_requests_ops.event_replanning import process_pending_events
+                process_pending_events(self)
+            return result
 
     return wrapped
 

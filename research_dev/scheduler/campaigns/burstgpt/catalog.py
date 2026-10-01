@@ -771,8 +771,12 @@ def helper_phone_co_helpers(rig, config, manifest: ModelManifest) -> RuntimeCoHe
                 shard_sha256=record.shard_sha256, resident_bytes=record.shard_bytes,
                 transport_parameters={
                     "adb_port": row.adb_port, "adb_serial": row.serial, "ffn_transport": "adb-tcp",
-                    "ffn_worker_host": "127.0.0.1", "ffn_worker_port": row.forward_port,
+                    "ffn_worker_host": "127.0.0.1", "ffn_worker_port": row.link_delay_proxy_port or row.forward_port,
                     "phone_worker_port": row.worker_port,
+                    # opt-in link delay: the server dials the proxy, the worker session keeps the adb forward
+                    **({"ffn_link_proxy_upstream_port": row.forward_port} if row.link_delay_proxy_port else {}),
+                    # opt-in WS10: the host AOA bridge (not adb forward) owns forward_port; the server is unchanged
+                    **({"ffn_link_transport": "aoa-bridge"} if row.transport == "aoa-bridge" else {}),
                 },
             ))
         declaration = RuntimeCoHelperDeclaration(

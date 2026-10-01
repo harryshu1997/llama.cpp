@@ -50,6 +50,7 @@ from .adaptive_decode_ops import promotion as _promotion
 from .adaptive_decode_ops import reporting as _reporting
 from .adaptive_decode_ops import sequencing as _sequencing
 from .adaptive_decode_ops import coherence as _coherence
+from .adaptive_decode_ops import prefill_yield as _prefill_yield
 from .adaptive_decode_ops import windows as _windows
 
 __all__ = [
@@ -107,6 +108,10 @@ class AdaptiveDecodeController:
         # Device membership (phones lost or absent), a physical fact kept outside checkpoints:
         # quarantine drops are re-applied to every group that is fetched, restored or created.
         self._quarantined_devices: dict[str, str] = {}
+        # Joiners in their prompt phase next to co-tenants (dispatch_policy.joint_planner active,
+        # adaptive_decode_ops.prefill_yield), also a physical fact kept outside checkpoints.
+        self._prefill_yields: dict[str, dict[str, object]] = {}
+        self._prefill_yield_events: list[dict[str, object]] = []
 
     @staticmethod
     def _clone_session(session: _AdaptiveSession) -> _AdaptiveSession:
@@ -815,6 +820,32 @@ class AdaptiveDecodeController:
         with self._lock:
             return dict(self._quarantined_devices)
 
+    def register_prefill_yield(
+        self, joiner_request_id: str, *, model_artifact_sha256: str, desktop_placement_sha256: str,
+        at_us: int, expires_at_us: int,
+    ) -> tuple[str, tuple[str, ...]]:
+        """Co-tenants of the joiner's model and desktop parent run the host policy until its decode
+        starts (``adaptive_decode_ops.prefill_yield``); returns (outcome, co-tenant request ids)."""
+        if type(joiner_request_id) is not str or not joiner_request_id:
+            raise AdaptiveDecodeError("prefill yield joiner is invalid")
+        if not (self._valid_sha256(model_artifact_sha256) and self._valid_sha256(desktop_placement_sha256)):
+            raise AdaptiveDecodeError("prefill yield identity is invalid")
+        if type(at_us) is not int or type(expires_at_us) is not int or not 0 <= at_us < expires_at_us:
+            raise AdaptiveDecodeError("prefill yield time is invalid")
+        with self._lock:
+            return _prefill_yield.register(
+                self, joiner_request_id, model_artifact_sha256=model_artifact_sha256,
+                desktop_placement_sha256=desktop_placement_sha256, at_us=at_us,
+                expires_at_us=expires_at_us)
+
+    def clear_prefill_yield(self, joiner_request_id: str, *, at_us: int, reason: str) -> bool:
+        with self._lock:
+            return _prefill_yield.end(self, joiner_request_id, at_us, reason)
+
+    def prefill_yield_events(self) -> tuple[Mapping[str, object], ...]:
+        with self._lock:
+            return _prefill_yield.events(self)
+
     def _initial_start_directive(
         self,
         session: _AdaptiveSession,
@@ -857,7 +888,7 @@ class AdaptiveDecodeController:
         execution_context_available: bool = True,
         helper_layout_identity_sha256: str | None = None,
     ) -> AdaptiveDecodeDirective:
-        return _admission.start(
+        directive = _admission.start(
             self,
             request_id=request_id,
             ticket_id=ticket_id,
@@ -883,6 +914,10 @@ class AdaptiveDecodeController:
             execution_context_available=execution_context_available,
             helper_layout_identity_sha256=helper_layout_identity_sha256,
         )
+        if self._prefill_yields:
+            with self._lock:
+                _prefill_yield.end(self, request_id, first_token_at_us, "JOINER_STARTED")
+        return directive
 
     def helper_ready(
         self,

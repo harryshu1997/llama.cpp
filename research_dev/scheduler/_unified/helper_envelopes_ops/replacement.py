@@ -21,6 +21,10 @@ from ..._internal.runtime_plan import (
 )
 from ..._internal.runtime_controller import RuntimeRequestTicket
 from ..common import _RECOVERABLE_ERRORS, _StalePhoneSessionAssignment
+from ..automated_requests_ops.event_replanning import (
+    event_replanning_enabled,
+    record_preparation_outcome,
+)
 
 
 def _helper_changed_session_ids(
@@ -256,14 +260,49 @@ def _prevalidate_target_layout_helper_envelopes(
     )
 
 
+def _materialization_blocked(
+    diagnostics: dict[str, object] | None, reason: str,
+    candidate_set=None, layout=None, **values: object,
+) -> None:
+    """Record why no envelope was materialized (only when the caller asks, i.e. under
+    ``dispatch_policy.event_replanning``); always returns None."""
+
+    if diagnostics is not None:
+        diagnostics.clear()
+        if candidate_set is not None:
+            values.update(_layout_route_rejections(candidate_set, layout))
+        diagnostics.update(values, reason=reason)
+    return None
+
+
+def _layout_route_rejections(candidate_set, layout) -> dict[str, object]:
+    """Rejection reasons of the FFN helper routes compiled for one layout geometry."""
+
+    rows = tuple(
+        row for row in candidate_set.candidates
+        if row.assisted_operator_kind == "ffn"
+        and row.plan.adapter_parameters.get("phone_shard_set_geometry_sha256")
+            == layout.layout.geometry_sha256
+    )
+    return {
+        "candidate_rejection_reasons": sorted({
+            reason for row in rows for reason in row.rejection_reasons
+        }),
+        "layout_route_count": len(rows),
+    }
+
+
 def _materialize_phone_layout_preparation_envelope(
     controller,
     ticket: RuntimeRequestTicket,
     layout: ModelPhoneResidencyLayout,
     snapshot: HeterogeneousRuntimeSnapshot,
     observed_at_us: int,
+    diagnostics: dict[str, object] | None = None,
 ) -> RuntimeHelperExecutionEnvelope | None:
-    """Materialize one exact phone-only transition for a target layout."""
+    """Materialize one exact phone-only transition for a target layout.
+
+    ``diagnostics`` (event re-planning only) receives the reason of a None."""
 
     if (
         layout.state not in {"PROPOSED", "PREPARING"}
@@ -271,14 +310,14 @@ def _materialize_phone_layout_preparation_envelope(
         or ticket.execution_plan is None
         or ticket.execution_plan.desktop_placement_sha256 is None
     ):
-        return None
+        return _materialization_blocked(diagnostics, "PREPARATION_CONTEXT_UNAVAILABLE")
     changed_artifacts = {
         shard.artifact_sha256
         for shard in layout.layout.shards
         if shard.session_id in layout.layout.changed_session_ids
     }
     if ticket.model.artifact_sha256 not in changed_artifacts:
-        return None
+        return _materialization_blocked(diagnostics, "MODEL_NOT_CHANGED_BY_LAYOUT")
     key = (
         ticket.request.request_id,
         ticket.ticket_id,
@@ -334,7 +373,10 @@ def _materialize_phone_layout_preparation_envelope(
         ticket.binding.executor_id
     )
     if base_state is None or not base_state.healthy:
-        return None
+        return _materialization_blocked(
+            diagnostics, "DESKTOP_PARENT_UNAVAILABLE",
+            desktop_executor_id=ticket.binding.executor_id,
+        )
     if not base_state.ready or base_state.free_slots < 1:
         request_snapshot = replace(
             request_snapshot,
@@ -382,7 +424,11 @@ def _materialize_phone_layout_preparation_envelope(
         )
     )
     if len(opportunities) != 1:
-        return None
+        return _materialization_blocked(
+            diagnostics,
+            "NO_HELPER_OPPORTUNITY" if not opportunities else "AMBIGUOUS_HELPER_OPPORTUNITY",
+            candidate_set, layout,
+        )
     opportunity = opportunities[0]
     assisted = tuple(
         candidate
@@ -394,7 +440,9 @@ def _materialize_phone_layout_preparation_envelope(
         )
     )
     if len(assisted) != 1:
-        return None
+        return _materialization_blocked(
+            diagnostics, "ASSISTED_ROUTE_ABSENT", candidate_set, layout,
+        )
     authorized_plan, authorized_binding = (
         controller._authorize_phone_helper_plan(
             opportunity.helper_operator_plan,
@@ -506,10 +554,16 @@ def runtime_request_helper_preparation_envelope(
     target = controller._model_placement_controller.target_phone_layout()
     if target is None:
         return None
+    # dispatch_policy.event_replanning: learn why no envelope was materialized
+    diagnostics = {} if event_replanning_enabled(controller) else None
     try:
         with controller._transaction(convert=False):
-            return controller._materialize_phone_layout_preparation_envelope(
-                ticket, target, snapshot, observed_at_us
+            if diagnostics is None:
+                return controller._materialize_phone_layout_preparation_envelope(
+                    ticket, target, snapshot, observed_at_us
+                )
+            helper = controller._materialize_phone_layout_preparation_envelope(
+                ticket, target, snapshot, observed_at_us, diagnostics=diagnostics
             )
     except _RECOVERABLE_ERRORS as exc:
         controller._model_placement_controller.record_request_helper_event(
@@ -526,6 +580,10 @@ def runtime_request_helper_preparation_envelope(
             },
         )
         return None
+    record_preparation_outcome(
+        controller, ticket, target, helper, diagnostics, observed_at_us
+    )
+    return helper
 
 
 def runtime_background_helper_preparation_allowed(

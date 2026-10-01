@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from . import coherence
+from . import prefill_yield as _prefill_yield
 
 from dataclasses import replace
 
@@ -346,6 +347,12 @@ def _control(
     if not policy.baseline and not session.helper_available:
         policy = session.baseline
         session.zero_assistance_reason = "PHONE_HELPER_UNAVAILABLE"
+        controller._state(session, "RECOVERING")
+    if (not policy.baseline and getattr(controller, "_prefill_yields", None)
+            and _prefill_yield.pending(controller, session, at_us) is not None):
+        # dispatch_policy.joint_planner (active): no phone switch while a joined co-tenant prefills.
+        policy = session.baseline
+        session.zero_assistance_reason = _prefill_yield.PREFILL_YIELD_REASON
         controller._state(session, "RECOVERING")
     if (not policy.baseline and not session.execution_context_available
             and policy.policy_hash not in session.maintenance_policy_hashes):

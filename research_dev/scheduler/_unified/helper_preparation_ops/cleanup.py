@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Mapping
 
+from ..automated_requests_ops.event_replanning import note_resource_release
+
 
 def _release_request_helper_leases(
     controller,
@@ -41,6 +43,7 @@ def _release_request_helper_leases(
         renewal = controller._runtime_renewals.get(request_id)
         if renewal is not None:
             renewal.wake()
+    note_resource_release(controller, request_id, at_us, "HELPER_LEASES_RELEASED")
 
 
 def _close_request_helper_runtime(
@@ -137,3 +140,4 @@ def _close_request_helper_runtime(
     }
     controller._late_request_helper_contexts.pop(request_id, None)
     controller._request_helper_envelope_history.pop(request_id, None)
+    note_resource_release(controller, request_id, at_us, outcome)

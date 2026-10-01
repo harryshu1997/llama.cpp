@@ -14,6 +14,9 @@ from research_dev.scheduler.adapters.co_helper_lifecycle import CoHelperLifecycl
 from research_dev.scheduler.adapters.contracts import PhysicalAdapterError
 from research_dev.scheduler.adapters.phone_helpers import PhoneHelperTransportIdentity, observe_usb_port
 from research_dev.scheduler.adapters.phone_tcp_session import AdbTcpPhoneWorkerSession, AdbTcpWorkerConfiguration
+from research_dev.scheduler.adapters.phone_aoa_session import (
+    AOA_LINK_TRANSPORT, AoaBridgeConfiguration, AoaBridgePhoneWorkerSession,
+)
 
 
 def require(condition, message):
@@ -36,23 +39,35 @@ class HelperPhoneEvidence:
     worker: AdbTcpWorkerConfiguration
     profile_fragment: dict
     power: RuntimePhonePowerProfile
+    # opt-in WS10: the helper's worker is reached through the host AOA bridge (transport identity aoa-bridge)
+    aoa_bridge: AoaBridgeConfiguration | None = None
+
+    def session(self):
+        """A fresh worker session of the qualified transport."""
+        if self.aoa_bridge is not None:
+            return AoaBridgePhoneWorkerSession(self.worker, self.aoa_bridge)
+        return AdbTcpPhoneWorkerSession(self.worker)
 
     def verify_identity(self, session=None):
         """The phone on the qualified USB port is the qualified phone (serial, speed, controller,
-        ADB identity, kernel release); returns the qualified transport identity."""
+        ADB identity -- or, for aoa-bridge, its accessory+adb identity -- kernel release); returns the
+        qualified transport identity."""
         observed = observe_usb_port(self.identity.hardware_identity["phone_usb_sysfs_device"])
+        usb_identities = {self.identity.hardware_identity["adb_usb_identity"]}
+        if self.aoa_bridge is not None:
+            usb_identities.add(self.identity.hardware_identity["aoa_usb_identity"])
         require(observed.serial == self.worker.serial
                 and observed.negotiated_speed_mbps >= self.identity.minimum_usb_speed_mbps
                 and observed.host_controller == self.identity.hardware_identity["host_usb_controller"]
-                and observed.vendor_product == self.identity.hardware_identity["adb_usb_identity"],
+                and observed.vendor_product in usb_identities,
                 "helper USB identity differs from qualification")
-        session = AdbTcpPhoneWorkerSession(self.worker) if session is None else session
+        session = self.session() if session is None else session
         require(session._shell("uname -r").strip() == self.identity.hardware_identity["phone_kernel_release"],
                 "helper kernel differs from qualification")
         return self.identity.identity_sha256
 
     def live_preflight(self):
-        session = AdbTcpPhoneWorkerSession(self.worker)
+        session = self.session()
         self.verify_identity(session)
         return session.preflight().to_json()
 
@@ -95,11 +110,23 @@ def load_helper_evidence(path, *, server_path=None):
     power = RuntimePhonePowerProfile.from_json(raw["power"])
     require(power.device_id == worker.device_id and power.allow_assumed_for_scheduling,
             "helper scheduling power is absent")
+    aoa = None
+    if identity.transport == AOA_LINK_TRANSPORT:
+        require("aoa_bridge" in raw, "aoa-bridge helper evidence lacks its bridge configuration")
+        aoa = AoaBridgeConfiguration.from_json(raw["aoa_bridge"])
+        require(software["phone_relay_sha256"] == aoa.relay_sha256
+                and software["host_bridge_sha256"] == aoa.bridge_script_sha256
+                and software["aoa_bridge_options_sha256"] == aoa.options_sha256
+                and identity.hardware_identity["phone_usb_sysfs_device"] == aoa.usb_sysfs_device
+                and worker.serial not in aoa.forbidden_serials,
+                "helper AOA bridge differs from qualification")
+    else:
+        require("aoa_bridge" not in raw, "only aoa-bridge helper evidence carries a bridge configuration")
     fragment = raw["profile_fragment"]
     require([row["device_id"] for row in fragment["devices"]] == [worker.device_id]
             and all(row["device_id"] == worker.device_id for row in fragment["kernels"]),
             "helper cost profile modifies another device")
-    return HelperPhoneEvidence(path, identity, worker, fragment, power)
+    return HelperPhoneEvidence(path, identity, worker, fragment, power, aoa)
 
 
 def extend_helper_profile(profile, evidences):
@@ -134,6 +161,14 @@ def validate_helper_declaration(declaration, manifest, evidence, rig_row):
                  "column_quantum", "max_tokens", "forward_port", "max_requests", "worker_environment",
                  "as_root", "phone_lock_path"):
         require(getattr(worker, name) == getattr(rig_row, name), "helper rig differs: " + name)
+    link = getattr(rig_row, "transport", "adb-tcp")
+    require((link == AOA_LINK_TRANSPORT) == (evidence.aoa_bridge is not None)
+            and helper.transport_parameters.get("ffn_link_transport") == (
+                AOA_LINK_TRANSPORT if evidence.aoa_bridge is not None else None),
+            "helper rig transport differs from its evidence")
+    if evidence.aoa_bridge is not None:
+        rig_bridge = AoaBridgeConfiguration.from_json(dict(getattr(rig_row, "aoa_bridge", None) or {}))
+        require(rig_bridge.to_json() == evidence.aoa_bridge.to_json(), "helper rig AOA bridge differs from its evidence")
     require(worker.phone_port == rig_row.worker_port and worker.artifact_sha256 == manifest.artifact_sha256
             and worker.n_embd == manifest.embedding_length and worker.columns == manifest.feed_forward_length
             and worker.layer_mask == helper.layer_mask
@@ -165,7 +200,7 @@ def campaign_co_helper_lifecycles(paths, catalog, manifests, server_path):
             evidence = by_device[device]
             require(evidence.worker.artifact_sha256 == artifact and artifact in by_artifact,
                     "helper worker artifact differs from catalog")
-            sessions[device] = AdbTcpPhoneWorkerSession(evidence.worker)
+            sessions[device] = evidence.session()
         # an elastic join re-verifies the pinned identity before the pinned-hash preflight
         result[artifact] = CoHelperLifecycle(
             declaration, sessions, IdleCoHelperStopPolicy(),

@@ -216,17 +216,21 @@ class AdbTcpPhoneWorkerSession:
                          stdin=subprocess.DEVNULL, timeout=timeout_s).stdout
 
     def _worker_pids(self) -> list[int]:
+        return self._executable_pids(self.configuration.worker_path)
+
+    def _executable_pids(self, path: str) -> list[int]:
+        """Phone processes running exactly ``path`` (a rooted basename match is confirmed by its exe link)."""
         pids = []
         for line in self._shell("ps -A -o PID,ARGS").splitlines():
             fields = line.split(None, 1)
             if len(fields) != 2 or not fields[0].isdigit():
                 continue
             executable = fields[1].split()[:1]
-            if executable == [self.configuration.worker_path]:
+            if executable == [path]:
                 pids.append(int(fields[0]))
-            elif self.configuration.as_root and executable == [Path(self.configuration.worker_path).name]:
+            elif self.configuration.as_root and executable == [Path(path).name]:
                 target = self._shell("su -c " + shlex.quote(f"readlink /proc/{fields[0]}/exe || true")).strip()
-                if target == self.configuration.worker_path:
+                if target == path:
                     pids.append(int(fields[0]))
         return pids
 
@@ -296,11 +300,7 @@ class AdbTcpPhoneWorkerSession:
                 if self._process.poll() is not None or self._clock() > deadline:
                     raise PhysicalAdapterError("adb-tcp worker did not become ready: " + text[-2000:])
                 self._sleep(0.25)
-            forward = self._run(
-                self._adb("forward", "--no-rebind", f"tcp:{configuration.forward_port}", f"tcp:{configuration.phone_port}"),
-                check=True, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=30,
-            ).stdout.strip()
-            self._host_port = configuration.forward_port or int(forward)
+            self._host_port = self._open_host_endpoint(log_path)
         except BaseException:
             if release_failed_start:
                 self._abandon_failed_start()
@@ -312,7 +312,45 @@ class AdbTcpPhoneWorkerSession:
                                    MappingProxyType({"command": command, "host_port": self._host_port,
                                                      "phone_port": configuration.phone_port,
                                                      "ready_line": self._ready_line,
-                                                     "worker_pids": pids}))
+                                                     "worker_pids": pids, **self._endpoint_details()}))
+
+    # --- host endpoint: the adb forward llama-server dials (a subclass may replace it) ------
+
+    def _open_host_endpoint(self, log_path: Path) -> int:
+        """Create the host endpoint of a READY worker; returns the host port."""
+        configuration = self.configuration
+        forward = self._run(
+            self._adb("forward", "--no-rebind", f"tcp:{configuration.forward_port}", f"tcp:{configuration.phone_port}"),
+            check=True, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=30,
+        ).stdout.strip()
+        return configuration.forward_port or int(forward)
+
+    def _host_endpoint_alive(self, host_port: int) -> bool:
+        """The host endpoint still reaches this worker (subprocess errors propagate)."""
+        configuration = self.configuration
+        listing = self._run(self._adb("forward", "--list"), check=True, capture_output=True, text=True,
+                            stdin=subprocess.DEVNULL, timeout=30).stdout
+        expected = f"{configuration.serial} tcp:{host_port} tcp:{configuration.phone_port}"
+        return expected in (line.strip() for line in listing.splitlines())
+
+    def _release_host_endpoint(self, host_port: int, errors: list[str]) -> bool:
+        """Best-effort removal for a lost worker; failures are appended to ``errors``."""
+        try:
+            self._run(self._adb("forward", "--remove", f"tcp:{host_port}"), check=True,
+                      capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=30)
+            return True
+        except (OSError, subprocess.SubprocessError) as error:
+            errors.append("forward: " + type(error).__name__ + ": " + str(error))
+            return False
+
+    def _close_host_endpoint(self, host_port: int) -> None:
+        """Removal at a normal stop, after the worker exited; raises on failure."""
+        self._run(self._adb("forward", "--remove", f"tcp:{host_port}"), check=True,
+                  capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=30)
+
+    def _endpoint_details(self) -> Mapping[str, object]:
+        """Extra receipt fields of the host endpoint (none for the adb forward)."""
+        return {}
 
     def _abandon_failed_start(self) -> None:
         """Elastic phones: a failed start leaves the session inactive. The worker it launched may have
@@ -381,16 +419,12 @@ class AdbTcpPhoneWorkerSession:
         process, host_port = self._process, self._host_port
         if process is None or host_port is None or process.poll() is not None:
             return False
-        configuration = self.configuration
         try:
             if not self._worker_pids():
                 return False
-            listing = self._run(self._adb("forward", "--list"), check=True, capture_output=True, text=True,
-                                stdin=subprocess.DEVNULL, timeout=30).stdout
+            if not self._host_endpoint_alive(host_port):
+                return False
         except (OSError, subprocess.SubprocessError, PhysicalAdapterError):
-            return False
-        expected = f"{configuration.serial} tcp:{host_port} tcp:{configuration.phone_port}"
-        if expected not in (line.strip() for line in listing.splitlines()):
             return False
         if connect:
             try:
@@ -433,12 +467,7 @@ class AdbTcpPhoneWorkerSession:
                 errors.append("local adb client did not exit")
         forward_removed = False
         if host_port is not None:
-            try:
-                self._run(self._adb("forward", "--remove", f"tcp:{host_port}"), check=True,
-                          capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=30)
-                forward_removed = True
-            except (OSError, subprocess.SubprocessError) as error:
-                errors.append("forward: " + type(error).__name__ + ": " + str(error))
+            forward_removed = self._release_host_endpoint(host_port, errors)
         try:
             boot = self._boot()
         except (OSError, subprocess.SubprocessError) as error:
@@ -450,7 +479,7 @@ class AdbTcpPhoneWorkerSession:
                                    MappingProxyType({"boot_unchanged": bool(boot) and boot == previous_boot,
                                                      "errors": errors, "exit_code": process.poll(),
                                                      "forward_removed": forward_removed,
-                                                     "signalled_pids": signalled}))
+                                                     "signalled_pids": signalled, **self._endpoint_details()}))
 
     def terminate_for_fault_injection(
         self, *, authorized: bool, elastic_phones: Mapping[str, object] | None,
@@ -629,8 +658,7 @@ class AdbTcpPhoneWorkerSession:
             if self._clock() > deadline:
                 raise PhysicalAdapterError("adb-tcp worker did not exit; it is left running, never killed")
             self._sleep(0.25)
-        self._run(self._adb("forward", "--remove", f"tcp:{self._host_port}"), check=True,
-                  capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=30)
+        self._close_host_endpoint(self._host_port)
         boot = self._boot()
         exit_code = self._process.returncode
         receipt = AdbTcpWorkerReceipt("stop", configuration.device_id, configuration.serial, boot,
@@ -639,7 +667,8 @@ class AdbTcpPhoneWorkerSession:
                                                         "forward_removed": True, "signalled": signalled,
                                                         "worker_pids_after": self._worker_pids(),
                                                         **({"already_exited": exited}
-                                                           if release_exited else {})}))
+                                                           if release_exited else {}),
+                                                        **self._endpoint_details()}))
         self._process = None
         self._host_port = None
         if boot != self._boot_id or (exit_code != 0 and not signalled and not exited):

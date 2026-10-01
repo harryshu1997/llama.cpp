@@ -31,6 +31,7 @@ from .._internal.types import canonical_sha256
 from .contracts import PhysicalAdapterError
 from .phone_transport import (
     ADB_TCP_TRANSPORT_GENERATION,
+    AOA_BRIDGE_TRANSPORT_GENERATION,
     PhoneTransportContract,
     phone_transport_contract,
 )
@@ -356,7 +357,19 @@ IDENTITY_REQUIREMENTS = MappingProxyType({
         "receipts": ("usb-link-speed", "numerical-rows-1-2-4", "server-token-identity",
                      "adb-forward-round-trip", "scheduler-launched-session"),
     }),
+    # opt-in WS10: the adb-tcp worker behind the host AOA bridge + phone relay (adb stays the control plane)
+    "aoa-bridge": MappingProxyType({
+        "hardware": ("adb_usb_identity", "aoa_usb_identity", "host_usb_controller", "phone_kernel_release",
+                     "phone_usb_serial", "phone_usb_sysfs_device"),
+        "software": ("aoa_bridge_options_sha256", "host_binary_sha256", "host_bridge_sha256", "phone_relay_sha256",
+                     "phone_shard_sha256", "phone_worker_sha256", "transport_client_source_sha256",
+                     "worker_environment_sha256"),
+        "receipts": ("usb-link-speed", "numerical-rows-1-2-4", "server-token-identity", "aoa-bridge-round-trip",
+                     "aoa-bridge-byte-identity", "scheduler-launched-session"),
+    }),
 })
+_TRANSPORT_GENERATIONS = MappingProxyType({"adb-tcp": ADB_TCP_TRANSPORT_GENERATION,
+                                           "aoa-bridge": AOA_BRIDGE_TRANSPORT_GENERATION})
 
 
 def _sha256_text(name: str, value: object) -> str:
@@ -382,8 +395,8 @@ class PhoneHelperTransportIdentity:
         requirements = IDENTITY_REQUIREMENTS.get(self.transport)
         if requirements is None:
             raise PhysicalAdapterError("phone helper identity transport is invalid")
-        if self.transport == "adb-tcp" and self.transport_generation != ADB_TCP_TRANSPORT_GENERATION:
-            raise PhysicalAdapterError("adb-tcp identity generation is " + ADB_TCP_TRANSPORT_GENERATION)
+        if self.transport in _TRANSPORT_GENERATIONS and self.transport_generation != _TRANSPORT_GENERATIONS[self.transport]:
+            raise PhysicalAdapterError(self.transport + " identity generation is " + _TRANSPORT_GENERATIONS[self.transport])
         if type(self.minimum_usb_speed_mbps) is not int or self.minimum_usb_speed_mbps <= 0:
             raise PhysicalAdapterError("phone helper identity USB speed floor is invalid")
         for name, required in (("hardware", requirements["hardware"]), ("software", requirements["software"])):
@@ -395,10 +408,10 @@ class PhoneHelperTransportIdentity:
         for key, value in self.software_identity.items():
             if key.endswith("sha256") or ":" in key:
                 _sha256_text("phone helper software " + key, value)
-        if self.transport == "adb-tcp" and not any(
+        if self.transport in ("adb-tcp", "aoa-bridge") and not any(
             key.startswith("phone_library_sha256:") for key in self.software_identity
         ):
-            raise PhysicalAdapterError("adb-tcp identity needs phone_library_sha256:<name> entries")
+            raise PhysicalAdapterError(self.transport + " identity needs phone_library_sha256:<name> entries")
         receipts = {kind: _sha256_text("phone helper receipt " + kind, value)
                     for kind, value in dict(self.receipts).items()}
         object.__setattr__(self, "receipts", MappingProxyType(dict(sorted(receipts.items()))))

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 from types import MappingProxyType
 from typing import Mapping
 
 from .common import (
     RIG_MANIFEST_SCHEMA,
+    SchedulerConfigurationError,
     _SHA256,
     _boolean,
     _integer,
@@ -379,7 +381,28 @@ class PhoneRigConfiguration:
         }
 
 
-HELPER_PHONE_TRANSPORTS = ("adb-tcp",)
+HELPER_PHONE_TRANSPORTS = ("adb-tcp", "aoa-bridge")
+# keys of ``helper_phones[].aoa_bridge`` (validated in depth by adapters.phone_aoa_session.AoaBridgeConfiguration)
+AOA_BRIDGE_KEYS = frozenset({
+    "usb_sysfs_device", "relay_path", "relay_sha256", "bridge_script_sha256", "relay_lock_path",
+    "forbidden_serials", "relay_options", "bridge_options", "python_path", "mode_switch_timeout_s",
+    "ready_timeout_s", "trace",
+})
+AOA_BRIDGE_REQUIRED_KEYS = frozenset({"usb_sysfs_device", "relay_path", "relay_sha256", "bridge_script_sha256"})
+
+
+def _aoa_bridge_settings(value: object) -> Mapping[str, object]:
+    """Opt-in WS10 AOA bridge settings of one helper: an object of known keys, kept verbatim (canonical JSON)."""
+    row = _object(value, "helper phone AOA bridge")
+    _require(set(row) <= AOA_BRIDGE_KEYS, "helper phone AOA bridge has unknown keys: "
+             + ",".join(sorted(set(row) - AOA_BRIDGE_KEYS)))
+    _require(AOA_BRIDGE_REQUIRED_KEYS <= set(row), "helper phone AOA bridge lacks "
+             + ",".join(sorted(AOA_BRIDGE_REQUIRED_KEYS - set(row))))
+    try:
+        canonical = json.loads(json.dumps(row, sort_keys=True, allow_nan=False))
+    except (TypeError, ValueError) as error:
+        raise SchedulerConfigurationError("helper phone AOA bridge is not JSON: " + str(error)) from error
+    return MappingProxyType(canonical)
 
 
 @dataclass(frozen=True)
@@ -408,6 +431,11 @@ class HelperPhoneRigConfiguration:
     worker_environment: Mapping[str, str] = MappingProxyType({})
     as_root: bool = False
     phone_lock_path: str | None = None
+    # opt-in link-latency experiments: llama-server dials this host port, where an external delay proxy
+    # (campaigns/burstgpt/tools/link_delay_proxy.py) forwards to forward_port; 0 = dial forward_port
+    link_delay_proxy_port: int = 0
+    # opt-in (transport "aoa-bridge", WS10): the host AOA bridge owns forward_port instead of adb forward
+    aoa_bridge: Mapping[str, object] | None = None
 
     @classmethod
     def from_json(cls, value: object) -> "HelperPhoneRigConfiguration":
@@ -445,8 +473,18 @@ class HelperPhoneRigConfiguration:
             worker_environment=environment,
             as_root=_boolean(row.get("as_root", False), "helper phone root mode"),
             phone_lock_path=_optional_text(row.get("phone_lock_path"), "helper phone lock path"),
+            link_delay_proxy_port=_integer(
+                row.get("link_delay_proxy_port", 0), "helper phone link delay proxy port", maximum=65535
+            ),
+            aoa_bridge=_aoa_bridge_settings(row["aoa_bridge"]) if "aoa_bridge" in row else None,
         )
         _require(result.transport in HELPER_PHONE_TRANSPORTS, "helper phone transport")
+        _require((result.transport == "aoa-bridge") == (result.aoa_bridge is not None),
+                 "helper phone aoa_bridge settings belong to (and are required by) transport aoa-bridge")
+        _require(result.transport != "aoa-bridge" or (result.forward_port and not result.link_delay_proxy_port),
+                 "helper phone aoa-bridge needs a fixed forward port and no link delay proxy")
+        _require(not result.link_delay_proxy_port or result.forward_port,
+                 "helper phone link delay proxy needs a fixed forward port")
         _require(result.column_quantum % 32 == 0, "helper phone column quantum must be a multiple of 32")
         _require(result.phone_lock_path is None or result.phone_lock_path.startswith("/"),
                  "helper phone lock must be an absolute phone path")
@@ -456,6 +494,8 @@ class HelperPhoneRigConfiguration:
         return {
             **({"as_root": True} if self.as_root else {}),
             **({"phone_lock_path": self.phone_lock_path} if self.phone_lock_path else {}),
+            **({"link_delay_proxy_port": self.link_delay_proxy_port} if self.link_delay_proxy_port else {}),
+            **({"aoa_bridge": dict(self.aoa_bridge)} if self.aoa_bridge is not None else {}),
             "adb_port": self.adb_port,
             "backend": self.backend,
             "column_quantum": self.column_quantum,
@@ -585,7 +625,8 @@ class RigManifest:
         )
         serials = [phone.serial, *(row.serial for row in helpers)]
         _require(len(set(serials)) == len(serials), "rig phone serials are not unique")
-        forwards = [phone.whole_forward_port, *(row.forward_port for row in helpers if row.forward_port)]
+        forwards = [phone.whole_forward_port, *(row.forward_port for row in helpers if row.forward_port),
+                    *(row.link_delay_proxy_port for row in helpers if row.link_delay_proxy_port)]
         _require(len(set(forwards)) == len(forwards), "rig phone host forward ports are ambiguous")
         sysfs = [row.usb_sysfs_device for row in helpers]
         _require(len(set(sysfs)) == len(sysfs), "rig helper phones share a USB port")

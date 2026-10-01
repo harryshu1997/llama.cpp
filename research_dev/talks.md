@@ -1,3 +1,388 @@
+## 2026-10-01 13:47 UTC - Block 2 complete (21/21): online power -14 % fleet (GPU -8 kJ every repeat); active planner +10 % energy for -14 % median latency; default llama.cpp beats legacy
+
+Fleet kJ (desktop CPU+GPU + both phones measured), 3 interleaved repeats each; latency arrival-to-end (nearest rank):
+```
+arm                                   fleet kJ (r1 / r2 / r3)    mean    GPU kJ mean   E2E p50 / p90 / mean s   TTFT p50
+ctl   frozen full system              93.4 / 121.3 / 116.8       110.5   53.3          200 / 499 / 251          71
+er    + event_replanning              100.5 / 119.0 / 89.5       103.0   52.9          201 / 484 / 247          61
+pa    + event_replanning + planner    105.3 / 141.3 / 92.0       112.9   54.4          173 / 565 / 243          56
+dpon  + online GPU power              90.2 / 111.1 / 82.9        94.7    45.4          219 / 579 / 272          84
+dpor  + oracle GPU power              81.0 / 125.2 / 105.4       103.9   44.4          212 / 557 / 276          93
+dpond dispatcher-only + online power  166.9 / 157.6 / 160.7      161.7   42.6          203 / 558 / 253          38
+dft   out-of-the-box llama.cpp        187.8 / 187.6 / 189.9      188.4   59.0          343 / 612 / 395          233
+(block 1: legacy 242.7, dispatcher-only 177.1, frozen full system 114.4)
+```
+Contrasts: online power vs ctl -15.8 kJ (-14 %), GPU -8 kJ in every repeat, latency +8 % mean / +16 % p90 (within the 1.25x bound);
+online vs oracle GPU energy within 1 kJ (45.4 vs 44.4) -> the oracle is not needed; active planner vs er +9.9 kJ (+10 %, higher in
+all three repeats: CPU 42.5/74.7/28.9 vs 34.9/57.2/28.1 — the prefill yield puts the holder on the host CPU) for E2E p50 -14 % and
+p99 645 vs 781 s (p90 worse) -> as built it trades energy for latency; event re-planning alone inconclusive (+7.1/-2.3/-27.3).
+Baselines: online power on the no-phone baseline -8.7 % (161.7 vs 177.1). Out-of-the-box llama.cpp (router, defaults + 2 deviations)
+188.4 kJ: 22 % BELOW legacy, 6 % above the tuned dispatcher. Headlines: full system + online power 94.7 vs strongest no-phone
+baseline 161.7 = -41 %; frozen full system (6 runs, 112.5) vs dispatcher-only 177.1 = -36.5 %, vs out-of-the-box llama.cpp -40 %.
+Two-phone CPU energy spans 28-75 kJ across runs (timing forks) -> contrasts under ~15 kJ only count when consistent per repeat.
+Generality block (QUEUE-p3g, 12 arms) started 13:41 UTC. Artifacts ~/.cache/claude-work/p2m-artifacts (FLEET/LATENCY_BLOCK2).
+
+## 2026-10-01 04:44 UTC - WS11 measured layer placement merged (shadow mode): Pixel takes Qwen 24, OP15 takes Gemma 24-26 (fits 9+9+9)
+
+Measured (60 two-phone runs' S41SERVERFFNSHAPE rows + block-1 meters, read-only): OP15 ~6.99 ms / ~0.13-0.145 J above idle per Gemma
+call; Pixel 0.17-0.18 J per call above idle; desktop Qwen CPU layer 18.7 ms; host power fit 149 W (CPU FFN) vs 54 W (waiting on a
+phone; 4 points / 4 unknowns, no redundancy). Unassisted CPU FFN today ~58 ms/token (not ~80). OP15 holds 27 Gemma layers in 3 HTP
+sessions (9 x 3,185,049,600 B <= 3,208,646,656 B per session; 9.555 GB total < the 9.626 GB Qwen layout it already holds); Qwen is
+full at 18 -> Qwen 24 to the Pixel.
+```
+variant                                       Qwen owners              Gemma owners        saved J/tok Q/G   kJ/run (% fleet)
+measured, adb transport (deployed today)      OP15 0-17, Pixel 18-24   OP15 0-26           1.58 / 3.35       6.7 (5.8 %)
+AOA, risk premium                             same                     OP15 0-26           1.81 / 3.35       6.9
+AOA, plain expected value                     Pixel 0-24               OP15 0-26           2.72 / 3.35       7.9
+user proposal (Pixel takes Gemma 24-26)       OP15 0-17, Pixel 18-24   OP15 0-23, Px 24-26  1.58 / 1.70-1.86  4.2-4.4
+```
+Built (opt-in `dispatch_policy.measured_placement`, mode shadow): `_internal/layer_placement.py` (profile store, exact DP + greedy
+with gap bound; risk premium; busy cap), `layer_placement_control.py` (re-plan on join/loss/quarantine/thermal/model/drift/shards,
+hysteresis; mask lost device to CPU, runtime re-enable, next-launch ownership, restart only if it pays; refuses unqualified layers),
+`layer_placement_onboarding.py` (capability probe; arch check refuses e.g. Qwen2.5), `native/pixel_packed_shard.py` (reproduces the
+qualified QWEN_PACKED byte-for-byte), `tools/prepare_measured_placement.py` (plan -> arm inputs, fail-closed). Shards generated +
+verified locally then deleted (disk 98 %): Pixel Qwen 18-24 5c1c8165, OP15 Gemma 9/9/9 6058f9c6 / 83200ea8 / a3fb5885, Pixel Gemma
+24-26 Q4_0 3ee971d1 (6.5e-5 rel err; f16 on Pixel ARM 3e-3 fails the 1e-3 gate; Q4_0 needs a worker patch, not built).
+Limits: ownership binds at server launch (mid-trace moves recorded only); one model per helper today. Risks: OP15 27 Gemma layers
+above the lowest live memory seen 09-24 (9.27 GB) -> conservative plan OP15 0-25 + Pixel 26; +12.5 % OP15 Gemma work (thermal).
+51 tests; full suite running. Phase 2 ~6-6.5 h rig (regenerate/push/qualify 1.5-2 h, decode micro A/B 70 min, trace A/B 3+3 ~3.5 h).
+
+## 2026-10-01 03:18 UTC - WS11 started: measured layer placement (give the Pixel the layers the OP15 cannot hold; rebalance by measurement)
+
+User: "give [the Pixel] more layers that op15 may not have space to cover, since pixel is better than server cpu. the scheduler
+should automatically rebalance the workload by measure, and robust to any new resources and new models."
+Today layer ownership is static (prebuilt shards + launch-time helper layer masks): Qwen CPU layers 0-24 -> OP15 0-17, Pixel 18-23,
+layer 24 on the desktop CPU; Gemma CPU layers 0-26 -> OP15 0-23, 24-26 on the CPU (~80 ms CPU FFN per token unassisted).
+WS11 builds: (1) a measured placement function (layer -> phone or desktop CPU, min predicted system energy/token under memory,
+latency and availability; profile store updated online from S41SERVERFFNSHAPE + phone meters), (2) rebalancing on join/leave/
+thermal/model change/drift with hysteresis charging provisioning cost, executed via runtime layer-mask control + phone residency
+provisioning + fail-closed qualification (opt-in `dispatch_policy.measured_placement`), (3) device capability probe + model
+onboarding check, (4) Pixel shards for Qwen 24 (packed Q4_K) and Gemma 24-26 (f16 or a new Q4_0 packed path), (5) Phase-2 runbook.
+No rig until block 2 + generality are done.
+
+## 2026-10-01 01:36 UTC - Pixel AOA qualified in llama-server: overhead per call 4.2 -> 0.9 ms, rpc -33 %; block 2 resumed
+
+B3 server-token identity over the bridge (llama-server + Pixel worker, same config as the 09-26 r2 receipt): PASS, token identity
+[desktop, Pixel 8,704, Pixel 17,408, desktop] all true, boot unchanged. Same-day adb control also PASS. Server's own S41SERVERFFNSHAPE:
+```
+width           adb rpc mean/p50   compute   overhead     AOA+QoS rpc mean/p50   compute   overhead
+17,408 (full)   12.26 / 9.89 ms    8.06      4.20 ms      8.20 / 6.58 ms         7.34      0.87 ms   (rpc -33 %)
+8,704 (half)     9.12 / 7.24       4.64      4.48          5.74 / 4.37            4.46      1.28      (rpc -37 %)
+```
+The B2 harness's 4.2 ms "overhead" was mostly its own client; in the real server the transport overhead is ~0.9-1.3 ms (target was
+0.6-1.0). Evidence bundle `evidence-aoa-r1/PIXEL_EVIDENCE_AOA.json` (6 receipts) built from the adb bundle of p2m2dpond.
+Fixes found on the rig (merged in main): `qualify_pixel_server_transport.py` lacked the original tool's sampler warm-up wait
+(energy coverage failure) and now saves POWER_SAMPLES/DIAGNOSTICS; runs need LD_LIBRARY_PATH = rig CUDA + build dirs;
+`restore_normal` retries the reset (first try left 2d01 once); after a failure the tool leaves the session up by design ->
+SIGTERM server/bridge/relay/worker manually. Cleanup PASS: Pixel 18d1:4ee7 5 Gb/s, adb, no relay/worker/bridge/forwards,
+OP15 unchanged, Pixel charging 87 %. PAUSE released 01:35 (paused ~63 min between p2m2dpond and the next arm).
+Remaining: B4 full-system ABBA (adb vs aoa-bridge, ~2.5-3 h) needs WS10 deployed -> after block 2 + generality (deploy must not
+change mid-block).
+
+## 2026-10-01 01:25 UTC - Pixel AOA Phase B on the rig (block 2 paused between arms): idle cause found, per-call -18..-39 %, Pixel J/call -14 %
+
+Block 2 paused after p2m2dpond (`$R/PAUSE`); tests from a staging copy `/mnt/storage/s43-pixel-aoa-20261001-v1/repo` (deploy untouched).
+B0 bring-up PASS: relay sha 124feb79, switch 18d1:4ee7 -> 2d01 (adb kept), continuous 10 KB echo RTT p50 0.30 ms; first `restore`
+left the Pixel in 2d01, a second reset restored it in ~1 s -> `restore_normal` now retries (2 attempts, identity re-check; test added).
+Kernel: "usb 2-9.2: LPM exit latency is zeroed, disabling LPM" -> host link power states are not the cause.
+B1 idle diagnostic (10 KB echo through the relay; serving cadence = 6 calls 6 ms apart, 300-500 ms token gap):
+```
+condition                       gap>=4 ms rtt p50   cadence rtt p50 (first / others)   others > 3 ms   relay cpu_s
+base (no keep-awake)            2.9-4.8 ms          4.41 / 4.73                         87.6 %          1.90
+qos (phone CPU-latency 0)       0.36-0.73           0.73 / 0.70                         0 %             0.50
+ka (host keep-alive 2 ms)       0.62-0.70           0.70 / 0.70                         0 %             6.88
+qos + ka / fifo pinned          0.47-0.71           0.69 / 0.65                         0 %             6.5-6.9
+```
+-> the ~4.7 ms mode is the phone's deep CPU idle; the relay's CPU-latency request removes it at the lowest CPU cost.
+B2 cadence A/B with the real DVFS-fixed worker (774 calls/arm, ABBA x2, 20 runs ALL PASS, byte identity PASS every arm/segment,
+lifecycle kill + USB-reset rejoin PASS), rpc p50 ms:
+```
+rows   adb (today)    aoa           aoa + phone QoS (chosen)   aoa + QoS + host keep-alive
+1      15.0-15.3      12.6          10.4-10.5  (-31 %)         10.4
+2      25.9-26.1      20.9-21.5     15.9-16.1  (-39 %)         15.4-17.4
+4      34.9-35.5      34.2-35.3     29.0-29.1  (-18 %)         28.8-30.9
+```
+Overhead outside compute 7.6 -> 4.2 ms (rows 1), NOT the 0.6-1.0 ms target; transport alone ~0.7 ms (B1) -> ~3.5 ms sits on the phone
+between relay and worker (loopback TCP + worker I/O/wake) -> next: worker-side AOA (no loopback hop) or worker keep-awake.
+Pixel energy (meter, battery-only, per arm): adb 245.6, aoa 249.4, **aoa-qos 211.9 J / 1000 calls (-14 %)**, aoa-ka 261.3 —
+the phone QoS window costs nothing net. Final AOA_BRIDGE.json = base + relay QoS 0 us, window 1.5 s. B3 server-token identity running.
+
+## 2026-09-30 22:40 UTC - WS10 Pixel direct USB transport (AOA bridge + phone relay) merged, not yet on the rig
+
+Design: host `adapters/aoa_bridge.py` (ctypes libusb; desktop has libusb 1.0.29) owns the same 127.0.0.1:forward_port llama-server
+already dials and carries each TCP stream as frames over the Pixel's Android Open Accessory bulk endpoints; phone relay
+`native/aoa_bridge/s43_aoa_relay.c` (root) connects to the UNCHANGED worker (sha 5d824455, DVFS-fixed) on loopback -> no server or
+worker rebuild, worker numerics carry over. Pixel in accessory+adb mode (18d1:2d01; adb stays), selected by path 2-9.2 + serial,
+OP15 serials refused everywhere, accessory-only 18d1:2d00 refused (OP15 collision). AOA over FunctionFS: proven byte-exact on this
+phone (9,936 calls), stock 6.6 kernel lacks FFS DMA-BUF anyway, no gadget surgery.
+Idle: prototype re-analysis — AOA at 5 ms gaps 2.4-2.7 ms vs 0.35 ms back-to-back; small-echo bimodal (42-68 % near 4.5-5 ms;
+cause not isolated). Opt-in remedies: relay CPU-latency request only while traffic flows (released 1.5 s after the last call;
+liveness pings no longer hold it — bug found + test), pin/uclamp/RT options, host keep-alive; USB LPM disable needs a sudoers rule.
+Opt-in `helper_phones[].transport: "aoa-bridge"` (server contract stays adb-tcp -> server env byte-identical); elastic
+liveness/drop/rejoin extended; new transport identity `aoa-bridge` with six receipts. 44 new tests (real relay + real CPU worker
+behind fake adb; bridge ~131 us round trip for 10 KB locally). Expected per-call overhead 4.9 -> ~1.8-2.5 ms (no keep-awake) or
+~0.6-1.0 ms (idle fix) -> ~23-26 ms/step, ~1.5-2 kJ host per run. Phase B needs ~5-6 h rig (bring-up 30 min, idle diagnostic 30 min,
+cadence A/B 45 min, qualification 40 min, full-system A/B 2.5-3 h). Merged into main (20 files; affected tests OK; full suite 174 modules EXIT=0), NOT deployed.
+
+## 2026-09-30 22:00 UTC - WS9 quality calibration (A6000, GSM8K train, 2,800 items/model): penalties, provenance, a streaming blocker
+
+Frozen exact-match rule, paired differences in points, Tango 95 % (pooled Qwen + Gemma):
+```
+comparison                                   Qwen3-14B              Gemma-4-12B            pooled                 discordance
+quantization penalty (Q4 - original)         -7.75 [-9.08,-6.47]    -1.93 [-2.73,-1.18]    -4.84 [-5.61,-4.09]    8.6 %
+execution format (dequant-f16 - Q4)          +1.25 [+0.22,+2.30]    -0.04 [-0.55,+0.47]    +0.61 [+0.04,+1.19]    4.8 %
+noise floor (same file, repeat)              -0.75 [-1.46,-0.06]    -0.21 [-0.62,+0.17]    -0.48 [-0.89,-0.09]    2.2 %
+```
+Qwen's numbers are dominated by float-formatted answers ("46.00000000000001", counted wrong): with a 1e-6 numeric tolerance
+(descriptive) pooled quantization -0.98, format -0.07, noise -0.02. Accuracy: Qwen original 89.9 / Q4 82.1 / dequant 83.4-82.6 %,
+Gemma 93.6 / 91.6 / 91.6-91.4 %. Same-file repeats give identical 512-token outputs for only 52 % of items (GPU, 32 slots).
+Budget: at 512 tokens answers extracted 99.1-99.3 % (Qwen), 94.3-96.6 % (Gemma; 384 would lose 17-21 %) -> 512 for both.
+**Provenance:** the shipped Qwen3-14B Q4_K_M (= official Qwen/Qwen3-14B-GGUF) is built from an AWQ-rescaled checkpoint, NOT a
+quantization of the original f16 (norms differ, linear weights differ 8-112 %); a plain Q4_K_M of the original costs -2.64.
+Rig Qwen artifact d89e9e82 = `llama-quantize --allow-requantize Q4_K_M -> F16` (reproduced byte-for-byte); Gemma chain
+bf16 -> Q4_0 (494518c2) -> dequant-f16 (ed76f218) reproduced byte-for-byte locally.
+**Blocker:** llama-server streaming drops the token id of a token whose text ends mid multi-byte UTF-8 character
+(`server-context.cpp` process_token / send_partial_response): 62 % of Qwen GSM8K outputs (0 % Gemma) -> the runner raises
+"completion accounting differs" -> quality pilot/confirmatory runs would be invalid for Qwen. Pilot removed from block 3
+(`rig/block3_generality.sh`, RUN_PILOT=0; old waiter stopped); generality follows block 2 directly. Needs a fix (server
+streaming or a non-stream quality path) before any rig quality run.
+Power inputs for the margin: discordance 2.2-4.8 % (frozen rule), power at 512/768 pairs: M=2 0.76/0.92 (2.2 %) 0.50/0.69 (4.8 %);
+M=3 0.98/1.00 and 0.84/0.95. Code merged (`quality/calibrate.py`, 21 tests). Deliverables `~/.cache/claude-work/ws9-calibration/`.
+
+## 2026-09-30 19:55 UTC - Why the Pixel helps little; WS10 started: direct USB transport for the Pixel
+
+Latest full-system run (p0m3, Qwen server S41SERVERFFNSHAPE): OP15 rpc 9.8 ms = compute 9.4 + 0.5 overhead (FunctionFS DMA-BUF);
+Pixel rpc 13.4 ms = compute 8.5 + 4.9 overhead (adb forward TCP), 2 rows 15.9 = 10.2 + 5.8. The Pixel's compute is fine; its link
+costs ~10x per call, and it covers only Qwen layers 18-23 (no Gemma shards) -> ~10 % of offloaded work, 1.5-2.1 kJ/run.
+User chose option 2 (direct USB transport). Prior art: 2026-09-24 rooted AOA (/dev/usb_accessory) test — continuous B1
+10.565 -> 6.152 ms byte-exact, but with 5 ms idle pauses the gain mostly vanished ("idle robustness FAIL", pre-DVFS-fix);
+partial two-FunctionFS host diff (reports/20260924-two-phone-readiness/two-ffs). WS10 design target: host-side USB bridge that
+exposes the same local TCP endpoint to llama-server (no server rebuild/requalification), Pixel selected by serial + bus path,
+idle-cadence robustness (USB LPM, CPU idle) central, opt-in per-helper transport. Code + local tests now; rig bring-up (Phase B)
+only when the rig is free (blocks 2-3 measuring until ~tomorrow).
+
+## 2026-09-30 19:35 UTC - Block 1 complete (9/9); hub power-switch test FAILED to cut VBUS; block 2 resumed
+
+Block 1 final (fleet kJ, both phones measured): legacy 238.5 / 237.4 / 252.3 (mean 242.7), tuned dispatcher-only 180.3 / 175.3 /
+175.6 (177.1), frozen full system 115.2 / 123.1 / 104.9 (114.4) -> -35.4 % vs the tuned no-phone baseline, -52.9 % vs legacy;
+every full-system run beat every no-phone run by >= 52 kJ; p90 arrival-to-end 536-629 vs 532-570 s.
+Latch fix attempt: user added sudoers `zhihao ALL=(root) NOPASSWD: /usr/sbin/uhubctl` (works: `sudo -n uhubctl`). Queue paused
+between arms (new `$R/PAUSE` switch in rig_ready.sh), OP15 moved onto the ASMedia ASM1074 hub (2-9, `ppps`), one
+`uhubctl -l 2-9 -p 2 -a cycle -d 5`: the DATA link dropped/re-enumerated (15:28:09 -> 15:28:15 local) but a phone-side 0.5 s log of
+usb/voltage_now never went below 4.97 V and input stayed 494 mA -> the hub does NOT switch VBUS -> cannot clear the latch.
+Layout restored (OP15 root 2-2, Pixel hub 2-9.2, both 5 Gb/s; OP15 not rebooted, g2 intact), pause released 19:32, block 2 arm 2
+(p2m1dpor) running. Remaining latch fixes: VBUS-switching hub from the uhubctl compatibility list, a charging source (PD adapter
+with data pass-through / 1.5 A CDP hub), or the user's standing approval for automatic reboot + RAM-boot recovery.
+
+## 2026-09-30 17:50 UTC - WS8 quantized spill-model feasibility: GO conditional on a one-day screen (E1); decisions needed
+
+At Q4_0 both current proxies fit VRAM (Qwen3-14B 8.5 GB, Gemma-4-12B 7.0 GB) -> the spill regime needs 24-32B models.
+Recommended: hot = **Qwen3-32B Q4_0** (18.6 GB, 64 layers, ~32 CPU layers, FFN 221 MB/layer = 7.08 GB -> OP15 alone holds it,
+host RAM ~13 GB, same qwen3 arch/tokenizer); cold = Gemma-4-12B Q8_0 (installed on desktop + phones, spills ~7-12 layers);
+optional regime twin Mistral-Small-24B Q8_0 (FFN 534.8 MB/layer = byte-identical to the Qwen3-14B f16 proxy). Ruled out:
+Qwen3-32B Q8_0 (pages in 30 GB RAM), Qwen2.5-32B / Gemma-3-27B (arch unsupported by the split), Q4_K_M (no HTP kernel).
+Native Q4_0 split path exists and has run (Llama-1B Q4_0 shard on OP15). Must change (opt-in): F16-only preflight
+(`preflight.py:586-596`), host-share release rejects block types (`runtime_resources.py:271-272`; frees nothing for
+CPU_REPACK anyway), phone kernel rates in physical bytes, block check on column quanta, and an **identity-gate policy**:
+HTP quantized kernels cannot be byte-identical (HVX quantizer: 1 f16 scale per 128 vs CPU per 32) -> "approximate numerics"
+evidence class + WS4 quality protocol under a new id. Pixel packed path is Q4_K/Q6_K only -> OP15-only arm first.
+Energy expectation: whole trace fleet -15..-30 % vs the tuned no-phone baseline (f16 measured -35.7 %); latency risk if
+per-call overhead >= ~3 ms (32 sync calls/token). E1 (one rig day): OP15 Q4_0 kernel screen, desktop llama-bench -ngl sweep,
+in-stack 8 prompts x 64 tokens with the row diagnostic; GO = OP15 <= 6 ms/layer B1, >= 0.5 J saved/layer, rel-L2 median <= 1e-2.
+E0 (local prep) needs ~150 GB scratch (host has ~119 GB free). Effort ~5.5 days to a first arm set, ~8-9 paper grade.
+Deliverables `~/.cache/claude-work/ws8-quant-feasibility/FEASIBILITY.md`.
+
+## 2026-09-30 17:30 UTC - OP15 replugged; ~29 h unattended chain running (p0m3 -> block 2 -> quality pilot -> generality)
+
+User replugged the OP15 (latch cleared, notify 0) and re-pasted the decisions table (pilot first, generality after block 2,
+quantized-model feasibility check before committing, thermal limit unchanged, qualify the power setup before long campaigns).
+```
+order  what                                                    arms   est.
+1      p0m3 legacy + desktop (finishes block 1)                 2      1.5 h   running since 17:14
+2      block 2 (QUEUE-p2m): ctl er pa dpon dpor dpond dft x3   21     15-16 h
+3      quality pilot (train split, legacy, 512-token rule)      1      2-4 h   rig/block3_pilot_generality.sh
+4      generality (QUEUE-p3g): {desktop, two-phone} x {w2,w3,w4,d2x,d4x,d0p5x}   12   ~9-10 h
+```
+Pilot prep on the desktop: GSM8K test/train at `/mnt/storage/quality-gsm8k-v1/data` (pinned sha256 verified); tokenizer files
++ codec located (`/home/zhihao/models/...`, `s41-dynamic-ffn-v1/host/llama-token-codec`); the script re-verifies all pins.
+Latch handling: `matrix_queue2.sh` now WAITS for a replug instead of aborting (no new arm starts while LATCHED; the chain's
+own 512 check is untouched); an arm whose run completed (RESULT PASS, 14/14) before the post-run check saw the latch keeps
+its data flagged `LATCH_AT_POST_CHECK`. Expect a replug every ~5-6 h (last latch after 5.5 h). Root fix = a charging-capable
+hub/PD adapter, qualified for FunctionFS 5 Gb/s + no latch before long campaigns (user hardware).
+WS8 quantized spill-model feasibility check running (desk study, no rig).
+Margin note [CORRECTED 17:40 UTC]: the rig's f16 artifacts are dequantized Q4, so Q4 vs dequant-f16 measures only execution format,
+not quantization loss, and the 24-item pilot cannot size a 3-point margin. Calibration (WS9, A6000, train split): original vs Q4,
+Q4 vs dequant-f16, same-format noise floor; margin = user decision from that evidence + an explicit tolerance, frozen before
+confirmatory outcomes (PROTOCOL.md section 8 marked PROVISIONAL).
+
+## 2026-09-30 12:10 UTC - WS7 out-of-the-box llama.cpp baseline merged; interleaved into block 2 (7 arms x 3)
+
+`tools/default_llamacpp_baseline.py` (plan / run) + `tools/rig/launch_default_baseline.sh` + 16 tests: ONE stock llama-server in
+router mode, the campaign's exact request bodies (+ "model" for routing), trace arrivals, campaign host-energy sampler,
+RESULT.json readable by fleet_energy / latency_report, MODEL_PLACEMENTS.json from `-lv 4`.
+Pure defaults cannot run this trace on the desktop: router `--models-max` default 4 keeps Qwen (29.5 GB) + Gemma resident in
+30 GB RAM -> paging; and router eviction kills in-flight streams (local probe: 13/14 and 9/14 requests failed without a gate).
+Recorded deviations: `--models-max 1`, client FIFO drain-before-switch, `-lv 4`, "model" field. Expected default fit ~= the tuned
+placements (Qwen ~17-19 GPU layers, Gemma ~23-25, ctx 4096, 4 slots), so this arm differs mainly by model switching (8 reloads),
+CUDA graphs on, flash attention auto, 8 GiB prompt cache -> expect it near legacy, not dramatically worse.
+Desktop: plan built for the frozen template (14 requests, 3 models); binary has router mode + fit (help with the rig's CUDA libs).
+`launch_one_arm.sh` KIND=default; block 2 entries now ctl / er / pa / dpon / dpor / dpond / dft (21 arms, ~15-16 h after replug).
+Main deployed (residual 0).
+
+## 2026-09-30 11:10 UTC - Block 2 redesigned with interleaved frozen-system controls; out-of-the-box llama.cpp baseline arm being built
+
+Design (adopted before block 2 started): every repeat interleaves the unchanged frozen system, arm order shuffled per repeat,
+start temperature + battery logged per arm, one setting differs per contrast:
+```
+arm    template                          contrast
+ctl    template-eval2-s2 (frozen)        control for every contrast
+er     + event_replanning                planner-off arm with the planner's event handling
+pa     + event_replanning + planner      pa vs er   (active planner on/off, identical event handling)
+dpon   + online GPU power                dpon vs ctl (power on/off, identical scheduling)
+dpor   + oracle GPU power                dpon vs dpor (online vs oracle, identical scheduling + workload)
+dpond  dispatcher-only + online power    strongest no-phone baseline
+```
+3 repeats = 18 arms (~13 h), prefix p2m, starts automatically after the OP15 replug (after p0m3 legacy/desktop).
+User: "for the all server baseline, we can use the default llamacpp setting to show greater benefits" -> added as an EXTRA
+reference arm (out-of-the-box: one stock llama-server in router mode, default fit of GPU layers/context/slots, same requests at
+the same arrivals, same energy integration); the headline stays vs the tuned dispatcher-only baseline (a default-only baseline
+would read as a strawman). Every deviation from defaults is recorded (desktop RAM 30 GB: router must not keep two f16 models).
+Harness agent WS7 (`~/.cache/claude-work/ws7-default-baseline/`), local tests only; desktop runs after block 2.
+
+## 2026-09-30 10:45 UTC - Block 1 (P0-3/P0-4): full system -35 % fleet energy vs the tuned no-phone baseline at similar latency; OP15 charger latched, waiting for a replug
+
+7 of 9 arms done (`QUEUE-p0m`, template-eval2-s2 = paper_config_v1, both phones metered, controlled charging). p0m3 two-phone
+completed 14/14 PASS, then the chain's post-run check found `battery_notify_code 512` (charger latch) and stopped; USB input held
+494 mA through that run, so its data is kept (flag: latch at the post-run check). Fleet = host (RAPL CPU + NVML GPU) + OP15 + Pixel,
+all measured (`tools/fleet_energy.py`, `tools/latency_report.py` nearest-rank; artifacts `~/.cache/claude-work/p0m-artifacts/`).
+```
+arm (template-eval2-s2)   run      host kJ (CPU+GPU)       OP15   Pixel  fleet kJ   E2E p50/p90 s   E2E mean  TTFT p50  TPOT mean
+legacy all-desktop        p0m1     234.8 (163.2+71.6)      2.7    1.1    238.5      614 / 875       647       572 s     511 ms
+                          p0m2     233.7 (163.6+70.1)      2.6    1.1    237.4      563 / 844       613       530       509
+desktop + dispatcher      p0m1     177.4 (123.0+54.5)      2.0    0.8    180.3      200 / 532       236        20       520
+ (tuned, no phones)       p0m2     172.5 (118.9+53.5)      2.0    0.8    175.3      199 / 570       246        21       521
+full system (v1)          p0m1     105.8 ( 51.8+54.1)      7.9    1.5    115.2      261 / 629       279        71       467
+                          p0m2     114.0 ( 58.2+55.8)      7.1    2.1    123.1      191 / 580       261        62       457
+                          p0m3      95.2 ( 41.4+53.8)      8.0    1.7    104.9      210 / 536       229        50       451
+```
+Means: legacy 237.9, desktop+dispatcher 177.8, full system 114.4 kJ fleet -> **-35.7 % vs the tuned no-phone baseline**, -51.9 %
+vs legacy, phones counted in full (7.1-8.0 kJ OP15 + 1.5-2.1 kJ Pixel). Legacy repeats agree within 0.5 %, the no-phone baseline
+within 2.8 %, the full system spreads 104.9-123.1 kJ (CPU 41-58 kJ: how much decode the phones carried). Latency vs the tuned
+baseline: p90 536-629 vs 532-570 s (within ~10 %), TPOT 11 % faster, TTFT 50-71 vs 20 s (joiners wait: the llama-server
+policy-match batching rule, see WS2b). Main (all 7 merges) deployed (residual 0). After the replug a waiter
+(`rig/wait_unlatch_then_block2.sh`) finishes p0m3 legacy/desktop and starts block 2 (`QUEUE-p2m`: er, planner-active,
+dp-online full + dispatcher-only, dp-oracle; 3 repeats, ~11 h).
+
+## 2026-09-30 07:40 UTC - WS2b planner ACTIVE mode merged; the join serialization is in llama-server, not the lanes
+
+Correction of the WS2 premise: 003/004 (and Gemma 010) were already admitted onto the running server on the plain desktop route
+(no phone lease). llama-server serializes them: slots only batch when their FFN split policies match (`server-context.cpp:407,
+:81`), a new slot starts on the host policy (:333), FFN control is refused until the slot decodes (:2741), the anchor rotates
+only among decoding slots (:3248-3261) and a prompt that cannot batch with the anchor is skipped (:3409) -> while the holder
+decodes on the phone, the joiner's prompt waits (s2a first tokens 445.8 = 001's end, 576.1 = 003's end, 1503.0 = 009's end).
+Batch-growth inheritance (s2) made it strict.
+**Active mode** (`dispatch_policy.joint_planner.mode: "active"`, requires server_policy_coherence): when a same-model request is
+acquired into a running batch and the planner says "admit" where the cascade parks it, a bounded PREFILL YIELD runs the
+co-tenants on the host policy until the joiner's first token (min(60 s, 10 s + 3x modelled prefill)); then coherence puts both
+on the phone policy with one shared call/lease. Only behaviour change; everything else advisory, fallbacks logged
+(`JOINT_PLANNER_FALLBACK`), RESULT `joint_planner_active` + `JOINT_PLANNER_ACTIVE.json`. 35 tests; token-level server model:
+003 first token 447.4 -> 412.3 s, 004 579.3 -> 464.5 s, 001 +8 s. Offline: cool 80.8 -> 80.1 kJ, p50/p90 226/454 -> 178/436 s;
+thermal window 94.4 -> 93.7; 40 resampled thermal instances 96.5 -> 93.8 (28 cheaper, 8 costlier). Alternative (not done): fix the
+llama-server batching rule in C++ (rebuild + transport requalification).
+Templates on the desktop: `template-eval2-s2-er` (control: + event_replanning), `template-eval2-s2-planner-active` (+ joint_planner
+active). Main: merged, related modules OK, full suite running. Deploy after block 1 finishes.
+
+## 2026-09-30 06:10 UTC - WS2 joint planner (phase 1: simulator + shadow mode) merged; all six workstreams in main
+
+Simulated only. Cost model from measured values; calibration: recorded timelines reproduce host energy -1.9..+4.3 % (s1a-s2a),
+policy emulation s2a -0.2 % energy / -1.1 % duration, legacy -0.6 / +1.6 %, desktop+dispatcher +5.2 / +0.7 %.
+```
+comparison (same retry fixes both sides)            sequential        planner
+full trace, cool OP15: host kJ                       80.8              80.1 (-0.9 %)
+full trace: p50 / p90 arrival-to-end                 226 / 454 s       178 / 436 s
+40 resampled-load instances: mean host kJ            83.3              81.3 (cheaper 40/40)
+fork F1 (arrival 2 s after cohort window): fleet kJ  22.71             21.05 (-7.3 %)
+first window 000-004: fleet kJ                       54.32             51.40 (-5.4 %)
+gap to best known J* on 10 small cases               -                 <= 2.7 % (0 % on 5)
+```
+New finding: in s2a Qwen 003/004 were admitted to the running server by affinity but decoded strictly AFTER the assisted holder
+(first tokens at 001's and 003's ends, batch 1) because the assisted route reserves the capacity-1 phone lanes and helper use is
+chosen per request, apart from batch formation — the joint decision the planner fixes (shadow replay: it would join 003 at 404 s
+and 004 at 458 s). On the whole trace freed time becomes 22 W idle, so energy gain is small; latency gain is large.
+s2a thermal fork: no online policy closes it (sequential = planner = J*).
+Key `dispatch_policy.joint_planner = {mode: "shadow", horizon_s, budget_ms, depth, objective}` (shadow only; decision-log bytes
+identical with shadow on). Active mode specified in DESIGN.md §7, not built. Files: `_internal/joint_planner*.py`,
+`campaigns/burstgpt/joint_planner_{runs,eval}.py`, 39 tests. Deliverables `~/.cache/claude-work/ws2-planner/`.
+Main: all six merged; planner + neighbours OK, pyflakes clean; full suite running. NOT deployed (block 1 is measuring).
+
+## 2026-09-30 05:20 UTC - WS6 generality tooling merged; P0 block 1 (3 x legacy / desktop / full system, metered) running on the rig
+
+**WS6 merged** (9 files; opt-in rig key `helper_phones[].link_delay_proxy_port`): `tools/generality_traces.py` (only 3 windows
+in the 110-day log pass the exact rules; w4/w5 from a 900 s-shifted grid; windows w2-w5 carry 2-3x the base's prompt tokens;
+density variants d2x / d4x / d0p5x keep the rows, change arrivals only), `tools/link_delay_proxy.py` (asyncio, per-direction
+delay + jitter, loopback +0.1-0.4 ms; Pixel adb path only), thread templates t4/t8/t12/t16 (server today uses the default 8
+P-cores), `llama-batched-bench` sweep, RUNBOOK (~23 h + 10.5 h repeats). `longtail_eval_v2` rebuilt locally byte-identical.
+Deliverables: `~/.cache/claude-work/ws6-generality/`. Quantized >16 GB model: ~4.5-5.5 days (not started).
+
+Main (WS1+WS3+WS4+WS5+WS6): full suite 163 modules, only the known admission timing flake; WS6 + touched modules OK; deployed
+to the desktop stage + deploy (residual 0). Rig scripts in `$R/rig/` (`matrix_queue.sh`, `launch_one_arm.sh`, `meter_phones.sh`).
+Meter fix: its "chain running" check matched any shell mentioning the runner (my own ssh) -> now `^python3 ...run_chain_eval.py`.
+
+**Block 1 launched 05:12 UTC** (`QUEUE-p0m`, prefix p0m, template-eval2-s2 = paper_config_v1, 3 repeats x {legacy, desktop,
+two-phone}, shuffled per repeat, seed 20260930; both phones metered with controlled charging: OP15 mmi 1->0, Pixel stop
+100->90). Answers P0-3 (strong baseline + fleet accounting) and P0-4 (latency) with repeats. WS2 planner still running.
+
+## 2026-09-30 06:00 UTC - WS1 event handling + WS4 quality protocol merged; two earlier claims corrected
+
+**Corrections (WS1 root cause from the s2a artifacts):**
+- The s2a Qwen pair 005/007 ran host-only ~170 s because the OP15 was at its THERMAL LIMIT after the full-fraction Gemma pair:
+  the phone-layout re-evaluation DID fire at the lease release (PROPOSED at 1,052.93 s, no sessions in use), but every OP15
+  route compiled as `THERMAL_LIMIT` (`feasibility.py:858-875`), `adaptive_decode_policies` dropped them and the preparation
+  envelope returned None silently (`replacement.py:384`). s2a is the only run with any THERMAL_LIMIT. Not a missing retry.
+- Continuous join is NOT dead: s2a co-decoded 001+003, 003+004, 002+006, 005+007, 009+010, 011+012; every joinable arrival joined
+  within 4 s. `continuous_join_bypasses` counts only the barrier bypass after model affinity refuses (never on 14 requests).
+
+**WS1 merged** (`dispatch_policy.event_replanning: true`, opt-in, 12 files, 14 tests): re-evaluate phone re-provisioning on
+every helper release (decode detach, lease release, completion, cancel, failure) when counted-in-use sessions are free; on
+device recovery (thermal cleared, telemetry recovered, readmission) re-evaluate the layout and re-plan not-started attempts
+(`event_device_admissible`); record `PREPARATION_BLOCKED` / `PREPARATION_UNBLOCKED` with rejection reasons; export thermal
+deferrals. Does not recover s2a's gap (thermal) — makes it visible. Levers for that are policy (thermal limit / fraction).
+
+**WS4 merged** (`campaigns/burstgpt/quality/`, new files, 35 tests): pre-registered GSM8K noninferiority protocol
+`ws4-quality-gsm8k-ni-v1` (pooled Qwen+Gemma paired accuracy, Tango score test, margin 3 points, one-sided alpha 0.025,
+8 shards = 512 pairs, power 0.82 at discordance 0.05), trace builder, scorer on `run/streams/request-NNN.raw` checked by
+prompt sha, blinded interim, pilot for the token budget. Runner decodes greedy with `ignore_eos`, so the scorer takes the
+earliest final answer. **Rig time 29-114 h for three arms** (budget 256-512 tokens) — needs a user decision. No key forces
+the phone fraction, so the "strict" arm may fail its coverage gate.
+
+Main after WS1+WS3+WS4+WS5: affected tests OK, pyflakes clean; full suite running. `paper_config_v1/README.md` gap note and
+SHA256SUMS updated (config files unchanged). Not committed.
+
+## 2026-09-30 04:40 UTC - P0/P1 program: accounting (WS3) and online power control (WS5) merged; four workstreams still running
+
+User asked to fix the six P0/P1 items. Six agents in isolated copies (`~/.cache/claude-work/iso/ws1..ws6`, base snapshot
+`~/.cache/claude-work/base-scheduler-20260929`, merges via `merge_ws.sh`). All six hit the weekly API limit once and were resumed.
+
+**WS3 energy accounting + latency (merged, new files only):** `tools/fleet_energy.py`, `tools/latency_report.py`,
+`tools/energy_latency.py`, `tools/rig/meter_phones.sh` + `phone_power_sampler.sh` (controlled charging, both phones), 25 tests.
+```
+finding                                   value
+phone energy measured in all 21 runs      run_chain_eval already logged both phones at 1 Hz; pe1 reproduced (USB 4,527 + battery 5,206 J)
+s2a fleet (host + both phones measured)   104.6 kJ  = -54.2 % vs legacy, -39.9 % vs desktop+dispatcher run 2 (174.1 kJ)
+15 phone runs                             fleet -38.7..-58.5 % vs legacy, -19.5..-45.6 % vs dispatcher; phones absorb 6-18 % of the host saving
+old phone model                           wrong both ways: OP15 ~2x too low, Pixel 1.4-1.9x too high (total measured 1.37-1.65x assumed)
+OP15 battery current_now                  integrates to ~0.5x the coulomb counter -> use the counter
+Pixel charging state varied               pe1, s1a-s1d battery-only (Battery Defender); s2a charging 4.25 W -> formula USB + net battery change
+latency percentiles                       Table 2 used nearest-rank, README/talks linear -> nearest-rank everywhere: s2a p50/p90 206/542 s
+RESULT actual_latency_us                  = execution time after model load, NOT arrival-to-completion
+```
+**WS5 online power control (merged, opt-in):** `device_power.arrival_information: oracle|online`, `online_idle{predictor,...}`,
+`decode_cap.protect_prefill`; online runner passes no future arrivals (test with a spy rig); `tools/device_power_replay.py`.
+Replay over s1a-s2a: online within 0.02 kJ of the oracle, 97-101 % of its low-clock idle captured; both ~13.5-17.6 kJ modelled GPU
+saving vs always-on (indicative); prefill protection -> 0 s capped prefill (was 83-218 s). Templates: always-on / dp-oracle /
+dp-online in `~/.cache/claude-work/ws5-power/templates/`. OP15 DSP clock pinned at top corner (`htp/main.c:62-86`): feasible, not built.
+Main tests: test_ws3_accounting 25, test_device_power_online 23, test_device_power 30 OK; pyflakes clean. Not committed.
+
 ## 2026-09-29 05:30 UTC - s2a PASS 94.6 kJ, 13/14 identical: the inheritance fix works; a new re-provision gap appears; config frozen as paper_config_v1
 
 User: "yes, reboot the phones and test them" → Pixel rebooted (stay-awake restored to default 0, doze on), OP15
@@ -10,7 +395,7 @@ s1d   103.1    −54.9 %     12/14      186 / 468                  1,557    26,4
 s2a    94.6    −58.6 %     13/14      240 / 478                  1,759    47,208      17,244     5,658        0           240
 ```
 Fix confirmed: no budget exhaustion; Gemma 006 assisted for the first time (002+006 co-decoded with the phone).
-New gap (code): at 1,052.9 s the phone re-provision Gemma→Qwen was `REPROVISION_DEFERRED_IN_USE` (the pair still held the
+[CORRECTED 2026-09-30: the re-evaluation did run at release; the OP15 was at THERMAL_LIMIT, see the WS1 entry] New gap (code): at 1,052.9 s the phone re-provision Gemma→Qwen was `REPROVISION_DEFERRED_IN_USE` (the pair still held the
 lease), stayed PROPOSED, never re-evaluated until the 1,272 s arrival → Qwen 005/007 decoded host-only (133
 `PHONE_HELPER_UNAVAILABLE`). In s1c the handover happened at 1,046 s because 006 was not assisted. Next fix: re-evaluate a
 deferred proposal when the phone lease is released.

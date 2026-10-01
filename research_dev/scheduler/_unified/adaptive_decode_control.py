@@ -30,6 +30,11 @@ from .._internal.adaptive_decode_contracts import (
     policy_device_set,
 )
 from .automated_requests_ops import failure as _failure
+from .automated_requests_ops.event_replanning import (
+    event_replanning_enabled,
+    note_device_admissible,
+    note_resource_release,
+)
 from .common import (
     _runtime_serialized,
     _text,
@@ -134,6 +139,10 @@ class AdaptiveDecodeControlMixin:
         if (not identity_sha256.startswith("sha256:") or len(identity_sha256) != 71
                 or set(identity_sha256[7:]) - set("0123456789abcdef")):
             raise UnifiedScheduleError("membership identity must be sha256:<64 hex>")
+        quarantined_at_us = next((
+            row.get("at_us") for row in reversed(self._membership_events())
+            if row.get("device_id") == device_id and row.get("kind") != "DEVICE_READMITTED"
+        ), None) if event_replanning_enabled(self) else None
         try:
             adaptive = self._adaptive_decode.readmit_device(device_id)
             runtime = self._runtime_controller.readmit_device(device_id)
@@ -147,6 +156,9 @@ class AdaptiveDecodeControlMixin:
                 "kind": "DEVICE_READMITTED",
                 "reason": "IDENTITY_VERIFIED_JOIN",
             })
+            note_device_admissible(
+                self, device_id, at_us, "DEVICE_READMITTED", quarantined_at_us
+            )
 
     def quarantined_devices(self) -> Mapping[str, str]:
         """Quarantined phone -> reason (the controller's own lock: rig probes poll it)."""
@@ -156,6 +168,41 @@ class AdaptiveDecodeControlMixin:
         """RESULT ``device_membership_events`` rows, in order."""
         with self._runtime_lock:
             return tuple(dict(row) for row in self._membership_events())
+
+    def register_joint_join_prefill_yield(
+        self, ticket: RuntimeRequestTicket, *, at_us: int, expires_at_us: int,
+    ) -> Mapping[str, object]:
+        """``dispatch_policy.joint_planner`` (active): the planner joins an acquired request into its
+        running server, so the co-tenants of its model and desktop parent run the host policy until
+        its decode starts (``_internal.adaptive_decode_ops.prefill_yield``). Called from the journal
+        hook under the runtime lock; touches only the adaptive controller (a leaf lock). Registers
+        nothing, and says why, when the join cannot be expressed through server policy coherence."""
+        config = getattr(self, "_adaptive_decode_config", None)
+        plan = ticket.execution_plan
+        if config is None or not config.server_policy_coherence:
+            return {"outcome": "SERVER_POLICY_COHERENCE_DISABLED"}
+        if ticket.dispatch_state != "ACQUIRED":
+            return {"outcome": "JOINER_NOT_ACQUIRED"}
+        if plan is None or plan.desktop_placement_sha256 is None:
+            return {"outcome": "JOINER_WITHOUT_DESKTOP_PARENT"}
+        if (plan.execution_contract.execution_mode != "adaptive-split"
+                and plan.helper_envelope is None and not self._has_dormant_phone_ffn_runtime(plan)):
+            return {"outcome": "JOINER_NOT_ADAPTIVE"}
+        try:
+            outcome, co_tenants = self._adaptive_decode.register_prefill_yield(
+                ticket.request.request_id, model_artifact_sha256=ticket.model.artifact_sha256,
+                desktop_placement_sha256=plan.desktop_placement_sha256, at_us=at_us,
+                expires_at_us=expires_at_us)
+        except AdaptiveDecodeError as exc:
+            return {"outcome": "REGISTRATION_REJECTED", "detail": str(exc)}
+        return {"outcome": outcome, "co_tenant_request_ids": list(co_tenants)}
+
+    def clear_joint_join_prefill_yield(self, request_id: str, *, at_us: int, reason: str) -> bool:
+        """End a joiner's prefill yield (it finished, failed or was cancelled before decoding)."""
+        return self._adaptive_decode.clear_prefill_yield(request_id, at_us=at_us, reason=reason)
+
+    def joint_join_prefill_yield_events(self) -> tuple[Mapping[str, object], ...]:
+        return self._adaptive_decode.prefill_yield_events()
 
     def _adaptive_policies_from_ticket(
         self,
@@ -1561,6 +1608,9 @@ class AdaptiveDecodeControlMixin:
                     request_id,
                     fallback_outcome="REQUEST_COMPLETED",
                     observed_at_us=release_at_us,
+                )
+                note_resource_release(
+                    self, request_id, release_at_us, "DECODE_COMPLETED"
                 )
             return result
         except AdaptiveDecodeError as exc:

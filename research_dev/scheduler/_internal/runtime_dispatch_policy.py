@@ -1,5 +1,5 @@
 """Opt-in dispatch ordering: work-conserving admission, model affinity, continuous join,
-residency hysteresis."""
+residency hysteresis, event re-planning."""
 
 from __future__ import annotations
 
@@ -18,9 +18,12 @@ _CONTINUOUS_JOIN_FIELDS = frozenset({"continuous_join", "max_barrier_extension_s
 _RESIDENCY_HYSTERESIS_FIELDS = frozenset({
     "residency_hysteresis_s", "residency_hysteresis_min_probability_ppm",
 })
+_EVENT_REPLANNING_FIELDS = frozenset({"event_replanning"})
 DEFAULT_RESIDENCY_HYSTERESIS_MIN_PROBABILITY_PPM = 500_000
 # Serialized only when set, so policies written before them serialize unchanged.
-_OPTIONAL_FIELDS = _CONTINUOUS_JOIN_FIELDS | _RESIDENCY_HYSTERESIS_FIELDS
+_OPTIONAL_FIELDS = (
+    _CONTINUOUS_JOIN_FIELDS | _RESIDENCY_HYSTERESIS_FIELDS | _EVENT_REPLANNING_FIELDS
+)
 
 
 @dataclass(frozen=True)
@@ -71,6 +74,20 @@ class RuntimeDispatchPolicy:
     the window runs first (its lanes free before the held change, or model
     affinity displaces the change); the change is never held more than the
     window beyond its earliest possible start.
+
+    ``event_replanning`` (independent of the others): queued and deferred
+    decisions are revisited when the runtime event that made them wait
+    happens, not at the next arrival or dispatch. A release of phone helper
+    sessions (decode completion, lease release, request completion,
+    cancellation or failure) re-evaluates the phone residency re-provisioning
+    when sessions an earlier decision counted as in use are free now; a phone
+    that becomes admissible again (thermal gate cleared, telemetry recovered,
+    readmitted after quarantine) re-evaluates the phone layout and replans the
+    not-started attempts decided while it was out; a proposed phone layout
+    that a live request cannot prepare records why
+    (``PREPARATION_BLOCKED``/``PREPARATION_UNBLOCKED``). The events are
+    handled once, when the outermost scheduler call that observed them
+    returns.
     """
 
     work_conserving_admission: bool = False
@@ -83,10 +100,12 @@ class RuntimeDispatchPolicy:
     residency_hysteresis_min_probability_ppm: int = (
         DEFAULT_RESIDENCY_HYSTERESIS_MIN_PROBABILITY_PPM
     )
+    event_replanning: bool = False
 
     def __post_init__(self) -> None:
         for name in (
             "work_conserving_admission", "model_affinity", "continuous_join",
+            "event_replanning",
         ):
             if type(getattr(self, name)) is not bool:
                 raise RuntimeDispatchPolicyError(

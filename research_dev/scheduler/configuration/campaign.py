@@ -8,9 +8,14 @@ from typing import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from .._internal.joint_planner_active import joint_planner_config_from_json
+from .._internal.joint_planner_shadow import JointPlannerShadowError
+from .._internal.layer_placement import LayerPlacementError
+from .._internal.layer_placement_control import MeasuredPlacementConfig
 from .._internal.types import canonical_sha256
 from .common import (
     CAMPAIGN_MANIFEST_SCHEMA,
+    SchedulerConfigurationError,
     _SHA256,
     _boolean,
     _integer,
@@ -291,7 +296,8 @@ def _adaptive_decode_overrides(value: object) -> Mapping[str, object] | None:
     return MappingProxyType(checked)
 
 
-_DISPATCH_POLICY_FLAGS = ("work_conserving_admission", "model_affinity", "continuous_join")
+_DISPATCH_POLICY_FLAGS = ("work_conserving_admission", "model_affinity", "continuous_join",
+                         "event_replanning")
 _DISPATCH_POLICY_BOUNDS = ("affinity_maximum_bypasses", "affinity_maximum_wait_us",
                            "max_barrier_extension_s", "residency_hysteresis_s")
 _DISPATCH_POLICY_PPM = ("residency_hysteresis_min_probability_ppm",)
@@ -303,7 +309,8 @@ def _dispatch_policy(value: object) -> Mapping[str, object] | None:
         return None
     row = _object(value, "dispatch policy")
     _require(bool(row), "dispatch policy is empty")
-    _require(set(row) <= {*_DISPATCH_POLICY_FLAGS, *_DISPATCH_POLICY_BOUNDS, *_DISPATCH_POLICY_PPM},
+    _require(set(row) <= {*_DISPATCH_POLICY_FLAGS, *_DISPATCH_POLICY_BOUNDS, *_DISPATCH_POLICY_PPM,
+                          "joint_planner", "measured_placement"},
              "dispatch policy has unknown fields")
     checked = {name: _boolean(row[name], "dispatch policy " + name)
                for name in _DISPATCH_POLICY_FLAGS if name in row}
@@ -321,6 +328,19 @@ def _dispatch_policy(value: object) -> Mapping[str, object] | None:
     _require("residency_hysteresis_min_probability_ppm" not in checked
              or bool(checked.get("residency_hysteresis_s")),
              "dispatch policy residency_hysteresis_min_probability_ppm requires residency_hysteresis_s")
+    if "joint_planner" in row:
+        try:
+            joint_planner_config_from_json(row["joint_planner"])
+        except JointPlannerShadowError as exc:
+            raise SchedulerConfigurationError("dispatch policy " + str(exc)) from exc
+        checked["joint_planner"] = dict(sorted(row["joint_planner"].items()))
+    if "measured_placement" in row:
+        # opt-in WS11 measured layer placement (shadow): validated here, split off by the runner
+        try:
+            MeasuredPlacementConfig.from_json(row["measured_placement"])
+        except (LayerPlacementError, TypeError) as exc:
+            raise SchedulerConfigurationError("dispatch policy measured_placement: " + str(exc)) from exc
+        checked["measured_placement"] = dict(sorted(row["measured_placement"].items()))
     return MappingProxyType(dict(sorted(checked.items())))
 
 
@@ -406,21 +426,66 @@ class DeviceIdlePowerConfiguration:
 @dataclass(frozen=True)
 class DeviceDecodeCapConfiguration:
     """Decode sub-policy of ``device_power``: while a GPU execution is active the SM clock range is
-    ``[idle.gpu_min_clocks_mhz, sm_max_mhz]`` (memory clocks are never touched)."""
+    ``[idle.gpu_min_clocks_mhz, sm_max_mhz]`` (memory clocks are never touched). With
+    ``protect_prefill`` the cap holds only while every active execution is past its first token:
+    an execution start restores full clocks synchronously before its prompt is processed."""
 
     sm_max_mhz: int
+    protect_prefill: bool = False
 
     def __post_init__(self) -> None:
         _integer(self.sm_max_mhz, "device power decode_cap sm_max_mhz", minimum=1)
+        _boolean(self.protect_prefill, "device power decode_cap protect_prefill")
 
     @classmethod
     def from_json(cls, value: object) -> "DeviceDecodeCapConfiguration":
         row = _object(value, "device power decode_cap")
-        _require(set(row) == {"sm_max_mhz"}, "device power decode_cap fields are invalid")
-        return cls(row["sm_max_mhz"])
+        _require({"sm_max_mhz"} <= set(row) <= {"sm_max_mhz", "protect_prefill"},
+                 "device power decode_cap fields are invalid")
+        return cls(row["sm_max_mhz"], _boolean(row.get("protect_prefill", False),
+                                                "device power decode_cap protect_prefill"))
 
     def to_json(self) -> dict[str, object]:
-        return {"sm_max_mhz": self.sm_max_mhz}
+        return {"sm_max_mhz": self.sm_max_mhz, **({"protect_prefill": True} if self.protect_prefill else {})}
+
+
+# ``device_power.arrival_information``: "oracle" is fed the next trace arrival before it happens (the
+# behaviour of a policy without the key); "online" only ever sees arrivals that already happened.
+DEVICE_POWER_ARRIVAL_INFORMATION = ("oracle", "online")
+DEVICE_POWER_ONLINE_PREDICTORS = ("global", "per_model")
+
+
+@dataclass(frozen=True)
+class DeviceOnlineIdleConfiguration:
+    """Online idle rule (``arrival_information: "online"``). The controller learns inter-arrival
+    gaps from observed arrivals only (``predictor``: one global sequence or one per model) and,
+    while the GPU is idle, enters IDLE_MIN when the pessimistic estimate of an arrival within
+    ``idle.min_gap_s`` is at most ``max_arrival_probability_ppm``, or once the GPU has been idle
+    for ``fallback_idle_ms`` (ski-rental timeout; null = predictor only). It restores on every
+    observed arrival, queued ticket, transition, load and (synchronously) execution start."""
+
+    predictor: str
+    max_arrival_probability_ppm: int
+    fallback_idle_ms: int | None
+
+    def __post_init__(self) -> None:
+        _require(self.predictor in DEVICE_POWER_ONLINE_PREDICTORS,
+                 "device power online_idle predictor must be global or per_model")
+        _integer(self.max_arrival_probability_ppm, "device power online_idle max_arrival_probability_ppm",
+                 minimum=1, maximum=999_999)
+        if self.fallback_idle_ms is not None:
+            _integer(self.fallback_idle_ms, "device power online_idle fallback_idle_ms", minimum=1)
+
+    @classmethod
+    def from_json(cls, value: object) -> "DeviceOnlineIdleConfiguration":
+        row = _object(value, "device power online_idle")
+        _require(set(row) == {"predictor", "max_arrival_probability_ppm", "fallback_idle_ms"},
+                 "device power online_idle fields are invalid")
+        return cls(row["predictor"], row["max_arrival_probability_ppm"], row["fallback_idle_ms"])
+
+    def to_json(self) -> dict[str, object]:
+        return {"fallback_idle_ms": self.fallback_idle_ms,
+                "max_arrival_probability_ppm": self.max_arrival_probability_ppm, "predictor": self.predictor}
 
 
 @dataclass(frozen=True)
@@ -430,6 +495,9 @@ class DevicePowerConfiguration:
     ``gpu_uuid`` pins every ``nvidia-smi`` command to that board. ``idle`` is the base sub-policy
     and carries the device's lowest SM clock, which is also the floor of ``decode_cap`` and the
     lock of ``load_min`` (clocks at the floor while a model loads from disk), so both require it.
+    ``arrival_information`` absent keeps the calendar-fed controller exactly as before; set, the
+    controller also records ``DEVICE_POWER_TELEMETRY.json`` (idle intervals, restore waits) and
+    "online" (with ``online_idle``) never receives a future arrival.
     Absent (None) keeps today's behaviour and every RESULT byte-identical."""
 
     device: str
@@ -437,8 +505,22 @@ class DevicePowerConfiguration:
     idle: DeviceIdlePowerConfiguration | None = None
     decode_cap: DeviceDecodeCapConfiguration | None = None
     load_min: bool = False
+    arrival_information: str | None = None
+    online_idle: DeviceOnlineIdleConfiguration | None = None
+
+    @property
+    def online(self) -> bool:
+        return self.arrival_information == "online"
 
     def __post_init__(self) -> None:
+        _require(self.arrival_information is None or self.arrival_information in DEVICE_POWER_ARRIVAL_INFORMATION,
+                 "device power arrival_information must be oracle or online")
+        _require(self.online_idle is None or isinstance(self.online_idle, DeviceOnlineIdleConfiguration),
+                 "device power online_idle is invalid")
+        _require((self.online_idle is not None) == (self.arrival_information == "online"),
+                 "device power online_idle is required exactly when arrival_information is online")
+        _require(self.arrival_information != "online" or self.idle is not None,
+                 "device power online arrival information requires idle")
         _text(self.device, "device power device")
         _text(self.gpu_uuid, "device power gpu_uuid")
         _require(self.idle is None or isinstance(self.idle, DeviceIdlePowerConfiguration),
@@ -456,7 +538,8 @@ class DevicePowerConfiguration:
     @classmethod
     def from_json(cls, value: object) -> "DevicePowerConfiguration":
         row = _object(value, "device power")
-        _require({"device", "gpu_uuid"} <= set(row) <= {"device", "gpu_uuid", "idle", "decode_cap", "load_min"},
+        _require({"device", "gpu_uuid"} <= set(row) <= {"device", "gpu_uuid", "idle", "decode_cap", "load_min",
+                                                          "arrival_information", "online_idle"},
                  "device power fields are invalid")
         return cls(
             device=row["device"],
@@ -465,15 +548,20 @@ class DevicePowerConfiguration:
             decode_cap=(None if row.get("decode_cap") is None
                         else DeviceDecodeCapConfiguration.from_json(row["decode_cap"])),
             load_min=_boolean(row.get("load_min", False), "device power load_min"),
+            arrival_information=row.get("arrival_information"),
+            online_idle=(None if row.get("online_idle") is None
+                         else DeviceOnlineIdleConfiguration.from_json(row["online_idle"])),
         )
 
     def to_json(self) -> dict[str, object]:
         return {
+            **({} if self.arrival_information is None else {"arrival_information": self.arrival_information}),
             **({} if self.decode_cap is None else {"decode_cap": self.decode_cap.to_json()}),
             "device": self.device,
             "gpu_uuid": self.gpu_uuid,
             **({} if self.idle is None else {"idle": self.idle.to_json()}),
             **({"load_min": True} if self.load_min else {}),
+            **({} if self.online_idle is None else {"online_idle": self.online_idle.to_json()}),
         }
 
 

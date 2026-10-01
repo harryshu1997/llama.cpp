@@ -405,6 +405,7 @@ class HelperEnvelopeMixin:
         layout: ModelPhoneResidencyLayout,
         snapshot: HeterogeneousRuntimeSnapshot,
         observed_at_us: int,
+        diagnostics: dict[str, object] | None = None,
     ) -> RuntimeHelperExecutionEnvelope | None:
         """Materialize one exact phone-only transition for a target layout."""
         return _replacement._materialize_phone_layout_preparation_envelope(
@@ -413,6 +414,7 @@ class HelperEnvelopeMixin:
             layout,
             snapshot,
             observed_at_us,
+            diagnostics,
         )
 
     def _record_preparation_envelope_materialized(
