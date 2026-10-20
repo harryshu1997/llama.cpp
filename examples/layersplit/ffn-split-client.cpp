@@ -302,7 +302,8 @@ bool client::connect(std::string & error, uint64_t layer_mask) {
     request.max_columns = config_.max_columns;
     request.n_embd = config_.n_embd;
     request.flags = (config_.f16_io ? flag_f16_io : 0) |
-            (config_.swiglu ? flag_swiglu : 0);
+            (config_.swiglu ? flag_swiglu : 0) |
+            (config_.fast_hash ? flag_fast_hash : 0);
     request.max_tokens = config_.max_tokens;
     memcpy(request.artifact_sha256, artifact_sha256, sizeof(artifact_sha256));
     hello_response response = {};
@@ -479,6 +480,25 @@ bool client::connect(std::string & error, uint64_t layer_mask) {
             }
         }
     }
+    if ((config_.fused_layer_mask & requested_layer_mask) != 0) {
+        // WS21: fused calls run over TCP and over FunctionFS (the OP15 HTP worker); the worker
+        // must hold the full FFN width of the layers it owns
+        if (offset_ != 0 || n_ff_ != config_.max_columns ||
+            (config_.fused_layer_mask & ~config_.layer_mask) != 0 ||
+            (config_.fused_next_mask & ~config_.fused_layer_mask) != 0 ||
+            (config_.fused_layer_mask & config_.remote_resident_layer_mask) != 0) {
+            error = "fused FFN calls need a worker holding full-width layers it owns";
+            disconnect();
+            return false;
+        }
+        if (!fused_hello(requested_layer_mask, error)) {
+            disconnect();
+            return false;
+        }
+    } else {
+        fused_session_mask_ = 0;
+        fused_session_next_mask_ = 0;
+    }
     try {
         thread_ = std::thread(&client::worker_loop, this);
     } catch (const std::system_error &) {
@@ -506,6 +526,10 @@ bool client::connect(std::string & error, uint64_t layer_mask) {
 
 bool client::ready() const {
     return connected();
+}
+
+uint32_t client::session_hash(const void * data, size_t size) const {
+    return payload_hash(config_.fast_hash ? flag_fast_hash : 0, data, size);
 }
 
 #if defined(FFN_SPLIT_USB_TRANSPORT)
@@ -571,7 +595,13 @@ bool client::start_usb_exchange(
                     part.host_to_device_bytes + staging_bytes ||
             part.buffers.device_to_host_capacity < wire_bytes) {
             error = "FFN split USB slot is smaller than the batch part";
-            release_usb_exchange();
+            if (index == 0 || config_.usb_split_h2d) {
+                release_usb_exchange();
+            } else {
+                // earlier parts are already in flight
+                usb_->close();
+                usb_parts_.clear();
+            }
             return false;
         }
 
@@ -618,7 +648,7 @@ bool client::start_usb_exchange(
         request.layer = layer;
         request.elements = part.elements;
         request.payload_bytes = static_cast<uint32_t>(part.payload_bytes);
-        request.payload_hash = hash_bytes(
+        request.payload_hash = session_hash(
                 input_wire + input_offset, part.payload_bytes);
         request.columns = columns;
         request.tokens = part.tokens;
@@ -645,11 +675,22 @@ bool client::start_usb_exchange(
         } else {
             memset(input_wire, 0, dmabuf_payload_offset);
             memcpy(input_wire, &request, sizeof(request));
+            // submit now: the phone receives this part while the next one is encoded
+            if (!usb_->submit_acquired(
+                        part.buffers, part.host_to_device_bytes,
+                        part.device_to_host_bytes, identity, error)) {
+                usb_->close();
+                usb_parts_.clear();
+                return false;
+            }
         }
         token_offset += part.tokens;
     }
 
     for (usb_pending_part & part : usb_parts_) {
+        if (!config_.usb_split_h2d) {
+            break; // submitted above
+        }
         const usb_transfer_identity identity = {
             part.request_id,
             weight_hash_,
@@ -753,7 +794,7 @@ bool client::exchange(
     execute_response response = {};
     const unsigned char * response_payload = nullptr;
     if (tcp) {
-        request.payload_hash = hash_bytes(input_payload, payload_bytes);
+        request.payload_hash = session_hash(input_payload, payload_bytes);
         request_packet_.resize(sizeof(execute_request) + payload_bytes);
         response_payload_.resize(payload_bytes);
         memcpy(request_packet_.data(), &request, sizeof(request));
@@ -805,7 +846,7 @@ bool client::exchange(
                 response.payload_bytes != part.payload_bytes ||
                 response.columns != columns ||
                 response.tokens != part.tokens ||
-                response.payload_hash != hash_bytes(
+                response.payload_hash != session_hash(
                         response_payload, part.payload_bytes)) {
                 error = "FFN split USB batch response mismatch";
                 usb_->close();
@@ -871,7 +912,7 @@ bool client::exchange(
     rpc_ms_ = now_ms() - started;
     compute_ms_ = static_cast<double>(response.compute_us) / 1000.0;
     if (response.payload_hash !=
-        hash_bytes(response_payload, payload_bytes)) {
+        session_hash(response_payload, payload_bytes)) {
         error = "FFN split EXECUTE payload hash mismatch";
         return false;
     }
@@ -881,6 +922,182 @@ bool client::exchange(
                 output_.data(), output_.size());
     } else {
         memcpy(output_.data(), response_payload, payload_bytes);
+    }
+    return true;
+}
+
+bool client::fused_hello(uint64_t requested_layer_mask, std::string & error) {
+    fused_hello_payload asked = {};
+    asked.fused_layer_mask = config_.fused_layer_mask & requested_layer_mask;
+    asked.next_qkv_mask = config_.fused_next_mask & asked.fused_layer_mask;
+    execute_request request = {};
+    request.magic = protocol_magic;
+    request.version = protocol_version;
+    request.message = static_cast<uint16_t>(message_type::fused_hello_request);
+    request.layer = -1;
+    request.payload_bytes = sizeof(asked);
+    request.payload_hash = session_hash(&asked, sizeof(asked));
+    execute_response response = {};
+    fused_hello_payload offered = {};
+    if (config_.transport == client_transport::tcp) {
+        if (!send_exact(fd_, &request, sizeof(request)) || !send_exact(fd_, &asked, sizeof(asked)) ||
+            !receive_exact(fd_, &response, sizeof(response)) ||
+            response.payload_bytes != sizeof(offered) ||
+            !receive_exact(fd_, &offered, sizeof(offered))) {
+            error = "FFN split fused HELLO exchange failed (worker without fused support?)";
+            return false;
+        }
+    } else {
+#if defined(FFN_SPLIT_USB_TRANSPORT)
+        if (usb_ == nullptr || !usb_->connected()) {
+            error = "FFN split fused HELLO has no USB session";
+            return false;
+        }
+        std::vector<unsigned char> frame(dmabuf_payload_offset + sizeof(asked), 0);
+        std::vector<unsigned char> reply(dmabuf_payload_offset + sizeof(offered), 0);
+        memcpy(frame.data(), &request, sizeof(request));
+        memcpy(frame.data() + dmabuf_payload_offset, &asked, sizeof(asked));
+        usb_transfer_record transfer;
+        if (!usb_->exchange(frame.data(), frame.size(), reply.data(), reply.size(),
+                    {0, weight_hash_, UINT64_MAX}, transfer, error)) {
+            error = "FFN split fused HELLO USB exchange failed: " + error;
+            return false;
+        }
+        memcpy(&response, reply.data(), sizeof(response));
+        memcpy(&offered, reply.data() + dmabuf_payload_offset, sizeof(offered));
+        if (response.payload_bytes != sizeof(offered)) {
+            error = "FFN split fused HELLO USB reply is malformed (worker without fused support?)";
+            return false;
+        }
+#else
+        error = "FunctionFS USB support is not built";
+        return false;
+#endif
+    }
+    if (response.magic != protocol_magic || response.version != protocol_version ||
+        response.message != static_cast<uint16_t>(message_type::fused_hello_response) ||
+        response.status != 0 || response.payload_hash != session_hash(&offered, sizeof(offered)) ||
+        (asked.fused_layer_mask & ~offered.fused_layer_mask) != 0 ||
+        (asked.next_qkv_mask & ~offered.next_qkv_mask) != 0 ||
+        offered.n_q == 0 || offered.n_kv == 0) {
+        error = "FFN split fused HELLO refused";
+        return false;
+    }
+    if (config_.transport == client_transport::functionfs_usb) {
+        const size_t element_bytes = config_.f16_io ? sizeof(ggml_fp16_t) : sizeof(float);
+        const size_t in_row = static_cast<size_t>(offered.n_q) + config_.n_embd;
+        const size_t out_row = fused_response_row(config_.n_embd, offered.n_q, offered.n_kv,
+                asked.next_qkv_mask != 0);
+        const size_t fused_payload = std::max(in_row, out_row) * config_.max_tokens * element_bytes;
+        if (fused_payload > config_.usb_max_payload_bytes) {
+            error = "FFN split USB slots are smaller than a fused call (" +
+                    std::to_string(fused_payload) + " > " +
+                    std::to_string(config_.usb_max_payload_bytes) + " bytes)";
+            return false;
+        }
+    }
+    fused_session_mask_ = asked.fused_layer_mask;
+    fused_session_next_mask_ = asked.next_qkv_mask;
+    fused_n_q_ = offered.n_q;
+    fused_n_kv_ = offered.n_kv;
+    fused_weight_hash_ = offered.fused_weight_hash;
+    fprintf(stderr,
+            "[ffn-split] fused layers=%016llx next=%016llx n_q=%u n_kv=%u hash=%016llx\n",
+            static_cast<unsigned long long>(fused_session_mask_),
+            static_cast<unsigned long long>(fused_session_next_mask_),
+            fused_n_q_, fused_n_kv_, static_cast<unsigned long long>(fused_weight_hash_));
+    return true;
+}
+
+bool client::exchange_fused(
+        uint32_t request_id, int layer, uint32_t elements,
+        uint32_t columns, uint32_t tokens, bool next_qkv,
+        std::string & error) {
+    if (input_.size() != elements) {
+        error = "FFN split fused request vector size mismatch";
+        return false;
+    }
+    const uint32_t out_row = fused_response_row(config_.n_embd, fused_n_q_, fused_n_kv_, next_qkv);
+    const size_t out_elements = static_cast<size_t>(out_row) * tokens;
+    const size_t element_bytes = config_.f16_io ? sizeof(ggml_fp16_t) : sizeof(float);
+    const void * input_payload = input_.data();
+    size_t payload_bytes = static_cast<size_t>(elements) * element_bytes;
+    if (config_.f16_io) {
+        encoded_input_.resize(elements);
+        ggml_fp32_to_fp16_row(input_.data(), reinterpret_cast<ggml_fp16_t *>(encoded_input_.data()), elements);
+        input_payload = encoded_input_.data();
+    }
+    execute_request request = {};
+    request.magic = protocol_magic;
+    request.version = protocol_version;
+    request.message = static_cast<uint16_t>(next_qkv ?
+            message_type::fused_next_execute_request : message_type::fused_execute_request);
+    request.request_id = request_id;
+    request.layer = layer;
+    request.elements = elements;
+    request.payload_bytes = static_cast<uint32_t>(payload_bytes);
+    request.payload_hash = session_hash(input_payload, payload_bytes);
+    request.columns = columns;
+    request.tokens = tokens;
+    const double started = now_ms();
+    execute_response response = {};
+    response_payload_.resize(out_elements * element_bytes);
+    if (config_.transport == client_transport::tcp) {
+        request_packet_.resize(sizeof(request) + payload_bytes);
+        memcpy(request_packet_.data(), &request, sizeof(request));
+        memcpy(request_packet_.data() + sizeof(request), input_payload, payload_bytes);
+        if (!send_exact(fd_, request_packet_.data(), request_packet_.size()) ||
+            !receive_exact(fd_, &response, sizeof(response)) ||
+            response.payload_bytes != response_payload_.size() ||
+            !receive_exact(fd_, response_payload_.data(), response_payload_.size())) {
+            error = "FFN split fused EXECUTE exchange failed";
+            return false;
+        }
+    } else {
+#if defined(FFN_SPLIT_USB_TRANSPORT)
+        // WS21: one ring frame per fused call (header | pad | payload), one reply frame
+        if (usb_ == nullptr || !usb_->connected() || !usb_parts_.empty()) {
+            error = "FFN split fused USB exchange has no idle session";
+            return false;
+        }
+        request_packet_.assign(dmabuf_payload_offset + payload_bytes, 0);
+        memcpy(request_packet_.data(), &request, sizeof(request));
+        memcpy(request_packet_.data() + dmabuf_payload_offset, input_payload, payload_bytes);
+        std::vector<unsigned char> reply(dmabuf_payload_offset + response_payload_.size(), 0);
+        usb_transfer_record transfer;
+        if (!usb_->exchange(request_packet_.data(), request_packet_.size(), reply.data(), reply.size(),
+                    {request_id, weight_hash_, static_cast<uint64_t>(layer)}, transfer, error)) {
+            error = "FFN split fused EXECUTE USB exchange failed: " + error;
+            usb_->close();
+            return false;
+        }
+        memcpy(&response, reply.data(), sizeof(response));
+        if (response.payload_bytes != response_payload_.size()) {
+            error = "FFN split fused EXECUTE USB reply size mismatch";
+            return false;
+        }
+        memcpy(response_payload_.data(), reply.data() + dmabuf_payload_offset, response_payload_.size());
+#else
+        error = "FunctionFS USB support is not built";
+        return false;
+#endif
+    }
+    if (response.magic != protocol_magic || response.version != protocol_version ||
+        response.message != static_cast<uint16_t>(message_type::fused_execute_response) ||
+        response.status != 0 || response.request_id != request_id || response.layer != layer ||
+        response.elements != out_elements || response.columns != columns || response.tokens != tokens ||
+        response.payload_hash != session_hash(response_payload_.data(), response_payload_.size())) {
+        error = "FFN split fused EXECUTE response mismatch";
+        return false;
+    }
+    rpc_ms_ = now_ms() - started;
+    compute_ms_ = static_cast<double>(response.compute_us) / 1000.0;
+    fused_output_.resize(out_elements);
+    if (config_.f16_io) {
+        ggml_fp16_to_fp32_row(reinterpret_cast<const ggml_fp16_t *>(response_payload_.data()),
+                fused_output_.data(), out_elements);
+    } else {
+        memcpy(fused_output_.data(), response_payload_.data(), response_payload_.size());
     }
     return true;
 }
@@ -1028,6 +1245,8 @@ void client::worker_loop() {
         uint32_t elements = 0;
         uint32_t columns = 0;
         uint32_t tokens = 0;
+        bool fused = false;
+        bool fused_next = false;
         {
             std::unique_lock<std::mutex> lock(thread_mutex_);
             thread_job_cv_.wait(lock, [this]() {
@@ -1041,12 +1260,15 @@ void client::worker_loop() {
             elements = thread_elements_;
             columns = thread_columns_;
             tokens = thread_tokens_;
+            fused = thread_fused_;
+            fused_next = thread_fused_next_;
             thread_has_job_ = false;
         }
 
         std::string exchange_error;
-        const bool ok = exchange(
-                request_id, layer, elements, columns, tokens, exchange_error);
+        const bool ok = fused ?
+                exchange_fused(request_id, layer, elements, columns, tokens, fused_next, exchange_error) :
+                exchange(request_id, layer, elements, columns, tokens, exchange_error);
         {
             std::lock_guard<std::mutex> lock(thread_mutex_);
             thread_ok_ = ok;
@@ -1423,9 +1645,196 @@ bool client::parse_named_layer(const char * name, const char * prefix, int & lay
             (config_.layer_mask & (UINT64_C(1) << layer)) != 0;
 }
 
+// WS15 fused call markers: fused_in-<l> sends [attention | residual]; fused_delta-<l> and
+// fused_q/k/v-<l+1> are placeholders the response fills (the first one to be evaluated waits)
+bool client::eval_fused(ggml_tensor * tensor, bool ask, bool & handled) {
+    handled = false;
+    if (config_.fused_layer_mask == 0 || tensor->name[0] != 'f') {
+        return false;
+    }
+    static const struct { const char * prefix; int kind; int offset; } kinds[] = {
+        { "fused_in", 0, 0 }, { "fused_delta", 1, 0 }, { "fused_q", 2, 1 }, { "fused_k", 3, 1 }, { "fused_v", 4, 1 },
+    };
+    int kind = -1;
+    int layer = -1;
+    for (const auto & entry : kinds) {
+        int named = -1;
+        if (parse_named_layer_any(tensor->name, entry.prefix, named)) {
+            kind = entry.kind;
+            layer = named - entry.offset;
+            break;
+        }
+    }
+    if (kind < 0 || layer < 0 || layer >= 64 ||
+        (config_.fused_layer_mask & (UINT64_C(1) << layer)) == 0 ||
+        (kind >= 2 && (config_.fused_next_mask & (UINT64_C(1) << layer)) == 0)) {
+        return false;
+    }
+    handled = true;
+    if (!connected() && !failed_) {
+        // a deferred (never connected) runtime-control session: as for the FFN markers, a graph built before any
+        // policy owns this helper (model warm-up from the static environment) leaves the fused layers inert
+        return false;
+    }
+    if (ask) {
+        return true;
+    }
+    const uint64_t bit = UINT64_C(1) << layer;
+    if (!connected() || failed_ || (fused_session_mask_ & bit) == 0) {
+        set_error("fused layer " + std::to_string(layer) + " has no usable fused helper session");
+        return false;
+    }
+    if (tensor->type != GGML_TYPE_F32 || tensor->buffer == nullptr || !ggml_is_contiguous(tensor) ||
+        tensor->ne[1] <= 0 || tensor->ne[1] > config_.max_tokens || tensor->ne[2] != 1 || tensor->ne[3] != 1) {
+        set_error(std::string("fused graph tensor is unsupported: ") + tensor->name);
+        return false;
+    }
+    const uint32_t tokens = static_cast<uint32_t>(tensor->ne[1]);
+    if (kind == 0) {
+        uint64_t layer_mask = 0;
+        uint32_t columns = 0;
+        std::string width_error;
+        if (!runtime_columns(tokens, layer_mask, columns, width_error)) {
+            set_error(width_error);
+            return false;
+        }
+        if (pending_ || fused_pending_ || (layer_mask & bit) == 0 || columns != config_.max_columns ||
+            tensor->ne[0] != static_cast<int64_t>(fused_n_q_ + config_.n_embd)) {
+            set_error("fused call of layer " + std::to_string(layer) +
+                    " does not match the pending state, the full-width policy or n_q");
+            return false;
+        }
+        const uint32_t elements = static_cast<uint32_t>(ggml_nelements(tensor));
+        input_.resize(elements);
+        ggml_backend_tensor_get(tensor, input_.data(), 0, input_.size() * sizeof(float));
+        // the request context of this batch, as for a plain call: the proof attributes the fused
+        // call's rows to the scheduler requests (empty = warm-up / ownership validation, unattributed)
+        if (config_.runtime_control) {
+            std::lock_guard<std::mutex> lock(runtime_context_mutex_);
+            const uint64_t context_rows = std::accumulate(
+                    runtime_context_.begin(), runtime_context_.end(),
+                    uint64_t { 0 }, [](uint64_t total, const auto & entry) {
+                        return total + entry.rows;
+                    });
+            if (runtime_context_.empty()) {
+                fused_runtime_context_.clear();
+            } else if (context_rows != tokens) {
+                set_error("fused call runtime context differs from tensor rows");
+                return false;
+            } else {
+                fused_runtime_context_ = runtime_context_;
+            }
+        } else {
+            fused_runtime_context_.clear();
+        }
+        fused_elements_ = elements;
+        fused_columns_ = columns;
+        const bool next = (fused_session_next_mask_ & bit) != 0;
+        const uint32_t request_id = next_request_id_++;
+        fused_pending_ = true;
+        fused_received_ = false;
+        fused_layer_ = layer;
+        fused_tokens_ = tokens;
+        fused_next_ = next;
+        fused_remaining_ = next ? 4 : 1;
+        fused_request_id_ = request_id;
+        fused_launch_ms_ = now_ms();
+        {
+            std::lock_guard<std::mutex> lock(thread_mutex_);
+            thread_ok_ = false;
+            thread_error_.clear();
+            thread_done_ = false;
+            thread_done_ns_ = 0;
+            thread_request_id_ = request_id;
+            thread_layer_ = layer;
+            thread_elements_ = elements;
+            thread_columns_ = columns;
+            thread_tokens_ = tokens;
+            thread_fused_ = true;
+            thread_fused_next_ = next;
+            thread_has_job_ = true;
+        }
+        thread_job_cv_.notify_one();
+        return true;
+    }
+    if (!fused_pending_ || layer != fused_layer_ || tokens != fused_tokens_ ||
+        (kind >= 2 && !fused_next_)) {
+        set_error(std::string("fused placeholder without its pending call: ") + tensor->name);
+        return false;
+    }
+    if (!fused_received_) {
+        {
+            std::unique_lock<std::mutex> lock(thread_mutex_);
+            thread_done_cv_.wait(lock, [this]() { return thread_done_; });
+            thread_fused_ = false;
+        }
+        if (!thread_ok_) {
+            fused_pending_ = false;
+            set_error(thread_error_.empty() ? "FFN split fused request failed" : thread_error_);
+            return false;
+        }
+        fused_received_ = true;
+        fused_rpc_samples_.push_back(rpc_ms_);
+        fused_compute_samples_.push_back(compute_ms_);
+        fused_tokens_samples_.push_back(fused_tokens_);
+        fused_next_samples_.push_back(fused_next_ ? 1 : 0);
+        fprintf(stderr, "S41SERVERFFNFUSEDCALL request=%u layer=%d tokens=%u next_qkv=%d rpc_ms=%.3f compute_ms=%.3f\n",
+                fused_request_id_, fused_layer_, fused_tokens_, fused_next_ ? 1 : 0, rpc_ms_, compute_ms_);
+        // the proof line of a fused call (2026-10-05): same fields as a plain call, plus the width of its
+        // [attention | residual] input rows so the proof can check payload_bytes = width x tokens x 2
+        const size_t fused_payload_bytes = static_cast<size_t>(fused_elements_) *
+                (config_.f16_io ? sizeof(ggml_fp16_t) : sizeof(float));
+        const uint32_t fused_width = fused_n_q_ + config_.n_embd;
+        fused_payload_samples_.push_back(fused_payload_bytes);
+        if (fused_runtime_context_.empty()) {
+            std::fprintf(stderr,
+                    "S41SERVERFFNCALL request=%u layer=%d tokens=%u columns=%u payload_bytes=%zu fused_width=%u\n",
+                    fused_request_id_, fused_layer_, fused_tokens_, fused_columns_, fused_payload_bytes, fused_width);
+        } else {
+            const std::string context = runtime_context_log(fused_runtime_context_);
+            std::fprintf(stderr,
+                    "S41SERVERFFNCALL context=%s request=%u layer=%d tokens=%u columns=%u payload_bytes=%zu fused_width=%u\n",
+                    context.c_str(), fused_request_id_, fused_layer_, fused_tokens_, fused_columns_,
+                    fused_payload_bytes, fused_width);
+        }
+        // the per-request runtime statistics the adaptive windows read (ffn_split_stats): a fused call counts
+        // like a plain call of this batch's rows; it is fully exposed (wait = rpc), no host branch, no USB phases
+        record_runtime_summary(
+                fused_runtime_context_, fused_tokens_, fused_payload_bytes,
+                /*transfer_subrequests=*/1, /*h2d_ms=*/0.0, /*d2h_exposed_ms=*/0.0,
+                rpc_ms_, compute_ms_, /*host_branch_ms=*/0.0, /*wait_ms=*/rpc_ms_,
+                /*useful_overlap_ms=*/0.0);
+    }
+    const uint32_t n_embd = config_.n_embd;
+    const uint32_t out_row = fused_response_row(n_embd, fused_n_q_, fused_n_kv_, fused_next_);
+    const uint32_t offsets[] = { 0, 0, n_embd, n_embd + fused_n_q_, n_embd + fused_n_q_ + fused_n_kv_ };
+    const uint32_t widths[] = { 0, n_embd, fused_n_q_, fused_n_kv_, fused_n_kv_ };
+    if (tensor->ne[0] != static_cast<int64_t>(widths[kind]) || fused_output_.size() != static_cast<size_t>(out_row) * tokens) {
+        set_error(std::string("fused placeholder shape mismatch: ") + tensor->name);
+        return false;
+    }
+    std::vector<float> rows(static_cast<size_t>(widths[kind]) * tokens);
+    for (uint32_t token = 0; token < tokens; ++token) {
+        memcpy(rows.data() + static_cast<size_t>(token) * widths[kind],
+                fused_output_.data() + static_cast<size_t>(token) * out_row + offsets[kind],
+                static_cast<size_t>(widths[kind]) * sizeof(float));
+    }
+    ggml_backend_tensor_set(tensor, rows.data(), 0, rows.size() * sizeof(float));
+    if (--fused_remaining_ == 0) {
+        fused_pending_ = false;
+        fused_layer_ = -1;
+    }
+    return true;
+}
+
 bool client::eval(ggml_tensor * tensor, bool ask) {
     if (tensor == nullptr) {
         return false;
+    }
+    bool fused_handled = false;
+    const bool fused_result = eval_fused(tensor, ask, fused_handled);
+    if (fused_handled) {
+        return fused_result;
     }
     if (!connected()) {
         // Without a phone session an assisted-copy layer simply runs on the host, but a
@@ -1983,21 +2392,34 @@ client_summary client::summary() const {
         result.batch_plan = "single";
         result.queue_depth = 1;
     }
-    result.calls = rpc_samples_.size();
+    // 2026-10-05: fused calls count as calls (the adaptive windows and the proof read calls/input_rows
+    // per layer); the per-shape p50/p90 stay plain-only (FUSEDSHAPE prices the fused calls)
+    result.calls = rpc_samples_.size() + fused_rpc_samples_.size();
+    std::vector<double> all_rpc(rpc_samples_);
+    all_rpc.insert(all_rpc.end(), fused_rpc_samples_.begin(), fused_rpc_samples_.end());
+    std::vector<double> all_compute(compute_samples_);
+    all_compute.insert(all_compute.end(), fused_compute_samples_.begin(), fused_compute_samples_.end());
+    // a fused call is fully exposed: the graph waits for its delta and Q/K/V (no host branch, no overlap)
+    std::vector<double> all_wait(wait_samples_);
+    all_wait.insert(all_wait.end(), fused_rpc_samples_.begin(), fused_rpc_samples_.end());
+    std::vector<double> all_host_branch(host_branch_samples_);
+    all_host_branch.resize(all_host_branch.size() + fused_rpc_samples_.size(), 0.0);
+    std::vector<double> all_useful_overlap(useful_overlap_samples_);
+    all_useful_overlap.resize(all_useful_overlap.size() + fused_rpc_samples_.size(), 0.0);
     result.transfer_subrequests = std::accumulate(
             transfer_parts_samples_.begin(), transfer_parts_samples_.end(),
             size_t { 0 });
     result.batched_calls = static_cast<size_t>(std::count_if(
             transfer_parts_samples_.begin(), transfer_parts_samples_.end(),
             [](uint32_t count) { return count > 1; }));
-    result.rpc_mean_ms = mean(rpc_samples_);
+    result.rpc_mean_ms = mean(all_rpc);
     result.rpc_p50_ms = percentile(rpc_samples_, 0.50);
     result.rpc_p90_ms = percentile(rpc_samples_, 0.90);
-    result.compute_mean_ms = mean(compute_samples_);
+    result.compute_mean_ms = mean(all_compute);
     result.compute_p50_ms = percentile(compute_samples_, 0.50);
-    result.host_branch_mean_ms = mean(host_branch_samples_);
+    result.host_branch_mean_ms = mean(all_host_branch);
     result.host_branch_p50_ms = percentile(host_branch_samples_, 0.50);
-    result.wait_mean_ms = mean(wait_samples_);
+    result.wait_mean_ms = mean(all_wait);
     result.wait_min_ms = wait_samples_.empty() ? 0.0 :
             *std::min_element(wait_samples_.begin(), wait_samples_.end());
     result.wait_p10_ms = percentile(wait_samples_, 0.10);
@@ -2007,7 +2429,7 @@ client_summary client::summary() const {
             *std::max_element(wait_samples_.begin(), wait_samples_.end());
     result.overlap_mean_ms = mean(overlap_samples_);
     result.overlap_p50_ms = percentile(overlap_samples_, 0.50);
-    result.useful_overlap_mean_ms = mean(useful_overlap_samples_);
+    result.useful_overlap_mean_ms = mean(all_useful_overlap);
     result.phone_tail_mean_ms = mean(phone_tail_samples_);
     result.phone_tail_min_ms = phone_tail_samples_.empty() ? 0.0 :
             *std::min_element(
@@ -2069,6 +2491,20 @@ client_summary client::summary() const {
         result.upload_bytes += payload_samples_[i];
         result.download_bytes += payload_samples_[i];
         if (decode_samples_[i]) {
+            ++result.decode_calls;
+        } else {
+            ++result.prefill_calls;
+        }
+    }
+    for (size_t i = 0; i < fused_tokens_samples_.size(); ++i) {
+        result.input_rows += fused_tokens_samples_[i];
+        result.maximum_tokens = std::max(
+                result.maximum_tokens, fused_tokens_samples_[i]);
+        const uint64_t bytes = i < fused_payload_samples_.size() ?
+                fused_payload_samples_[i] : 0;
+        result.upload_bytes += bytes;
+        result.download_bytes += bytes;
+        if (fused_tokens_samples_[i] == 1) {
             ++result.decode_calls;
         } else {
             ++result.prefill_calls;
@@ -2139,6 +2575,28 @@ client_summary client::summary() const {
         shape.overlap_p50_ms = percentile(std::move(overlap), 0.50);
         shape.useful_overlap_mean_ms = mean(useful_overlap);
         result.shapes.push_back(shape);
+    }
+    result.fused_calls = fused_rpc_samples_.size();
+    std::map<std::pair<uint32_t, uint32_t>, std::vector<size_t>> fused_indices;
+    for (size_t i = 0; i < fused_tokens_samples_.size(); ++i) {
+        fused_indices[{fused_tokens_samples_[i], fused_next_samples_[i] ? 2u : 1u}].push_back(i);
+    }
+    for (const auto & entry : fused_indices) {
+        std::vector<double> rpc;
+        std::vector<double> compute;
+        for (size_t index : entry.second) {
+            rpc.push_back(fused_rpc_samples_[index]);
+            compute.push_back(fused_compute_samples_[index]);
+        }
+        client_shape_summary shape;
+        shape.tokens = entry.first.first;
+        shape.columns = entry.first.second;
+        shape.calls = entry.second.size();
+        shape.rpc_mean_ms = mean(rpc);
+        shape.rpc_p50_ms = percentile(std::move(rpc), 0.50);
+        shape.compute_mean_ms = mean(compute);
+        shape.compute_p50_ms = percentile(std::move(compute), 0.50);
+        result.fused_shapes.push_back(shape);
     }
     return result;
 }
@@ -2246,6 +2704,18 @@ bool client::remote_resident_layer(int layer) const {
 
 uint64_t client::layer_mask() const {
     return config_.layer_mask;
+}
+
+uint64_t client::fused_layer_mask() const {
+    return config_.fused_layer_mask;
+}
+
+uint64_t client::fused_next_mask() const {
+    return config_.fused_next_mask;
+}
+
+uint64_t client::fused_weight_hash() const {
+    return fused_weight_hash_;
 }
 
 uint64_t client::weight_hash() const {

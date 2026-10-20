@@ -9,11 +9,30 @@ from typing import Mapping, Sequence
 from .._internal.model_manifest import ModelManifest
 from .._internal.placement import PlacementHardwareProfile, TransferLink
 from .._internal.plan_contracts.co_helpers import (
+    PER_HELPER_OUTAGE_PARAMETER,
     PHONE_CO_HELPERS_PARAMETER,
+    ANCHORED_CO_HELPERS_PARAMETER,
+    STATIC_HELPER_ANCHOR_PARAMETER,
     RuntimeCoHelperDeclaration,
     co_helper_declaration,
 )
+from .._internal.phone_shards import (
+    phone_shard_resident_bytes,
+    phone_shard_resident_geometry_sha256,
+)
+from .._internal.plan_contracts.remote_resident import (
+    REMOTE_RESIDENT_FFN_QUANTIZATION_BY_DTYPE,
+    RuntimeRemoteResidentFfn,
+    RuntimeRemoteResidentSession,
+    remote_resident_tensor_ids,
+)
 from .._internal.policy import ResourceProfile
+from .._internal.plan_contracts.common import RuntimePlanError
+from .._internal.route_generation.remote_resident import (
+    REMOTE_RESIDENT_CO_HELPER_DECODE_PARAMETER,
+    REMOTE_RESIDENT_FFN_PARAMETER,
+)
+from .._internal.types import canonical_json
 from .._internal.runtime_capabilities import (
     RuntimeCapabilityCatalog,
     RuntimeCompositeExecutorCapability,
@@ -379,6 +398,20 @@ class RuntimeModelEndpointCapability:
     cpu_evidence_ids: tuple[str, ...] | None = None
     # static FFN co-helper phones of every phone-assisted family (Stage A two-phone dispatch)
     co_helpers: RuntimeCoHelperDeclaration | None = None
+    # WS23 opt-in: every helper phone is its own resource. A phone-assisted family then carries
+    # ``per_helper_outage`` so route feasibility tolerates one thermally deferred / absent helper while another
+    # stays available (False keeps every composite byte-identical).
+    per_helper_outage: bool = False
+    # WS23 opt-in: co-helper devices that may anchor (launch, session identity, server environment) a phone-assisted
+    # route of their own, without any other phone. Each gets a sibling composite family; () keeps the catalog
+    # byte-identical. Needs ``co_helpers`` naming the device.
+    led_helper_device_ids: tuple[str, ...] = ()
+    # internal: the layers a led route's helper owns (its candidates); 0 = every FFN layer (the usual primary)
+    led_layer_mask: int = 0
+    # WS23 (2026-10-05): False when the primary phone stores no shard of this model (no shard index): with led
+    # helpers the primary-anchored route families are then not materialized, because their primary candidates
+    # would be every layer the co-helper does not own (the GPU layers 24-39 on the rig) and that launch won
+    primary_phone_stores_model: bool = True
 
     def __post_init__(self) -> None:
         if not isinstance(self.manifest, ModelManifest):
@@ -473,6 +506,16 @@ class RuntimeModelEndpointCapability:
         if self.cpu_evidence_ids is not None:
             object.__setattr__(self, "cpu_evidence_ids",
                                _evidence("runtime CPU evidence", self.cpu_evidence_ids))
+        led = tuple(self.led_helper_device_ids)
+        if led and (
+            self.co_helpers is None
+            or len(set(led)) != len(led)
+            or set(led) - set(self.co_helpers.device_ids)
+        ):
+            raise CatalogMaterializationError(
+                "runtime led helper phones must be declared co-helpers"
+            )
+        object.__setattr__(self, "led_helper_device_ids", led)
         object.__setattr__(self, "adapter_parameters", parameters)
         object.__setattr__(
             self, "phone_adapter_parameters", phone_parameters
@@ -1089,6 +1132,11 @@ def _phone_family_adapter_parameters(
         phone_parameters["ffn_column_quantum"] = max(
             model.ffn_column_quantum, model.co_helpers.column_quantum(1)
         )
+    if model.per_helper_outage:
+        phone_parameters[PER_HELPER_OUTAGE_PARAMETER] = 1
+    if model.led_layer_mask:
+        # WS23: the ticket's phone is a static co-helper's TCP worker (no FunctionFS session, no phone shards)
+        phone_parameters[STATIC_HELPER_ANCHOR_PARAMETER] = 1
     if model.phone_runtime_control_protocol is not None:
         phone_parameters["ffn_runtime_control_protocol"] = (
             model.phone_runtime_control_protocol
@@ -1204,6 +1252,10 @@ def _phone_family_capabilities(
             operator.operator_id for operator in manifest.operators
             if operator.kind == "ffn"
             and not _co_helper_layer(co_helper_mask, operator.layer_id)
+            and (
+                not model.led_layer_mask
+                or _co_helper_layer(model.led_layer_mask, operator.layer_id)
+            )
         ),
         adapter_parameters=phone_parameters,
         replacement_group_by_device={
@@ -1278,12 +1330,80 @@ def model_composite_capabilities(
             model.cpu_phone_endpoint,
             model.cpu_phone_backend,
         ))
+    primary_anchored = model.primary_phone_stores_model or not model.led_helper_device_ids
     for baseline, prefix, endpoint, backend in baselines:
-        for family in ("operator_offload", "operator_split"):
-            rows.extend(_phone_family_capabilities(
-                model, topology, baseline, prefix, endpoint, backend, family
-            ))
+        if primary_anchored:
+            for family in ("operator_offload", "operator_split"):
+                rows.extend(_phone_family_capabilities(
+                    model, topology, baseline, prefix, endpoint, backend, family
+                ))
+        for device_id in model.led_helper_device_ids:
+            led_model, led_topology = _led_helper_model(model, topology, device_id)
+            for family in ("operator_offload", "operator_split"):
+                rows.extend(_phone_family_capabilities(
+                    led_model, led_topology, baseline, prefix + "-led:" + device_id,
+                    endpoint, backend, family,
+                ))
     return tuple(rows)
+
+
+# keys of a FunctionFS primary transport that mean nothing to a TCP-worker helper
+_PRIMARY_ONLY_PARAMETER_PREFIXES = ("usb_", "usbfs_")
+
+
+def _led_helper_model(
+    model: RuntimeModelEndpointCapability,
+    topology: RuntimePhysicalTopology,
+    device_id: str,
+) -> tuple[RuntimeModelEndpointCapability, RuntimePhysicalTopology]:
+    """The model endpoint and topology of a route that a co-helper phone anchors on its own.
+
+    The helper takes the scheduled phone's seat: its resources, its transport parameters (the ticket's phone
+    transport is then its worker's TCP/AOA forward), its declared layers as the only candidates, no phone
+    sessions (the worker is the trace-lifetime co-helper session) and no other phone in the route."""
+    declaration = model.co_helpers
+    assert declaration is not None
+    row = next(value for value in declaration.helpers if value.device_id == device_id)
+    resources = topology.helper_phone(device_id)
+    led_topology = replace(
+        topology,
+        phone_device_id=device_id,
+        phone_memory_resource_id=resources.memory_resource_id,
+        functionfs_resource_id=resources.transport_resource_ids[0],
+        phone_transport_resource_ids=resources.transport_resource_ids,
+        phone_compute_resource_ids=resources.compute_resource_ids,
+        phone_sessions=(),
+        phone_exclusive_residency_resource_id=None,
+        helper_phones=(),
+    )
+    shared = {
+        key: value for key, value in model.phone_adapter_parameters.items()
+        if key != "ffn_transport" and not key.startswith(_PRIMARY_ONLY_PARAMETER_PREFIXES)
+    }
+    # the campaign finds the helper worker lifecycle through this carrier when no primary-anchored family exists
+    shared[ANCHORED_CO_HELPERS_PARAMETER] = declaration.encode()
+    # the costing compares the helper's allocations in MANIFEST bytes (f16 here) with maximum_helper_resident_weight_bytes;
+    # the declaration's resident_bytes are the packed shard's (Q4_K), so the limit must be the declared layers' manifest bytes
+    # or the slice shrinks to what the packed size admits (8 of 24 layers on the rig, 2026-10-05)
+    declared_ffn_bytes = sum(
+        model.manifest.tensor_by_id[tensor_id].nbytes
+        for operator in model.manifest.operators
+        if operator.kind == "ffn" and _co_helper_layer(row.layer_mask, operator.layer_id)
+        for tensor_id in operator.tensor_ids
+    )
+    led_model = replace(
+        model,
+        phone_adapter_parameters={**shared, **dict(row.transport_parameters)},
+        phone_resident_limit_bytes=max(row.resident_bytes, declared_ffn_bytes),
+        ffn_column_quantum=row.column_quantum,
+        phone_preloaded=True,
+        phone_batch_plans=("split-row",),
+        qualified_phone_batch_plans=("split-row",),
+        co_helpers=None,
+        led_helper_device_ids=(),
+        led_layer_mask=row.layer_mask,
+    )
+    return led_model, led_topology
 
 
 def resource_profiles_for_catalog(
@@ -2031,6 +2151,322 @@ def materialize_whole_model_endpoint(
     )
 
 
+REMOTE_RESIDENT_OWNER_EXECUTOR_SUFFIX = ":remote-owner"
+# decode-only relocation of an assisted copy; a remote-resident parent holds no host copy of its owner layers
+_ASSISTED_COPY_ONLY_PARAMETERS = (
+    "ffn_host_share_drop_cache",
+    "ffn_host_share_populate",
+    "ffn_host_share_release",
+)
+
+
+def remote_resident_owner_executor_id(desktop_executor_id: str) -> str:
+    return desktop_executor_id + REMOTE_RESIDENT_OWNER_EXECUTOR_SUFFIX
+
+
+def remote_resident_payload_qualification(
+    catalog: RuntimeCapabilityCatalog,
+    parameters: Mapping[str, int | str],
+) -> Mapping[str, object]:
+    """Whole-ubatch FunctionFS payload of a remote-resident parent against its qualified links.
+
+    The owner computes prefill too, so one call carries ``ffn_n_embd x ffn_max_tokens`` rows of
+    ``ffn_wire_element_bytes``. ``qualified`` is True when measured links in both directions
+    between the parent's CPU and its phone hold that payload, and their usbfs budget holds the
+    client's slots (``(payload x ffn_transport_slot_payload_multiplier + safety) x queue depth``).
+    """
+    cpu = parameters.get("cpu_device_id")
+    phone = parameters.get("phone_device_id")
+    required = (
+        int(parameters.get("ffn_n_embd", 0))
+        * int(parameters.get("ffn_max_tokens", 0))
+        * int(parameters.get("ffn_wire_element_bytes", 2))
+    )
+    multiplier = int(parameters.get("ffn_transport_slot_payload_multiplier", 1))
+    best = {"h2d": 0, "d2h": 0}
+    covered = {"h2d": False, "d2h": False}
+    for link in catalog.placement_profile.links:
+        direction = (
+            "h2d" if (link.source_device, link.target_device) == (cpu, phone)
+            else "d2h" if (link.source_device, link.target_device) == (phone, cpu)
+            else None
+        )
+        if (
+            direction is None or not link.ready or link.status != "measured"
+            or not link.transport_generation.startswith("functionfs")
+            or link.qualification_identity_sha256 is None
+        ):
+            continue
+        best[direction] = max(best[direction], link.maximum_payload_bytes)
+        slots = (required * multiplier + link.slot_safety_bytes) * link.queue_depth
+        if link.maximum_payload_bytes >= required and (
+            not link.usbfs_available_bytes or slots <= link.usbfs_available_bytes
+        ):
+            covered[direction] = True
+    return MappingProxyType({
+        "qualified": required > 0 and all(covered.values()),
+        "qualified_maximum_payload_bytes": min(best.values()),
+        "required_payload_bytes": required,
+        "slot_payload_multiplier": multiplier,
+    })
+
+
+def materialize_remote_resident_owner(
+    catalog: RuntimeCapabilityCatalog,
+    manifest: ModelManifest,
+    owner_layer_masks: Mapping[str, int],
+    shard_index,
+    *,
+    co_helper_decode: bool = False,
+) -> RuntimeCapabilityCatalog:
+    """Add the remote-resident desktop parent of ``manifest`` (Phase 2, opt-in).
+
+    The parent is the model's desktop control with the dense FFN weights of
+    ``owner_layer_masks`` (session id -> layer mask) omitted; the owning phone sessions
+    compute those layers for prefill and decode. Its phone binding is the primary
+    phone-assisted family of the same parent (one FunctionFS phone), and its session
+    geometries are the ones the shard packer gives the same sessions, so a READY
+    fixed-residency layout binds the declaration. The parent stays CALIBRATION_PENDING: no
+    measured route profile exists for it. Idempotent for an equal composite; anything
+    inconsistent raises.
+
+    ``co_helper_decode`` (opt-in, target B): the family's static co-helper phones join the
+    parent as decode co-helpers of their own (desktop-resident) layers, each under its own row
+    cap; without it a family with co-helpers is refused.
+    """
+    if not isinstance(catalog, RuntimeCapabilityCatalog) or not isinstance(manifest, ModelManifest):
+        raise CatalogMaterializationError("remote-resident owner input is invalid")
+    control = catalog.desktop_control_by_artifact.get(manifest.artifact_sha256)
+    source = None if control is None else catalog.composite_executor_by_id.get(control.executor_id)
+    if (
+        source is None or source.assisted_operator_kind is not None
+        or source.helper_device_id is not None
+        or REMOTE_RESIDENT_FFN_PARAMETER in source.adapter_parameters
+    ):
+        raise CatalogMaterializationError(
+            "remote-resident owner needs the model's plain desktop control composite"
+        )
+    masks = dict(owner_layer_masks)
+    if not masks or any(
+        type(mask) is not int or mask <= 0 or mask >> manifest.block_count
+        for mask in masks.values()
+    ):
+        raise CatalogMaterializationError("remote-resident owner layer masks are invalid")
+    union = 0
+    for mask in masks.values():
+        if union & mask:
+            raise CatalogMaterializationError("remote-resident owner layer masks overlap")
+        union |= mask
+    session_by_id = {
+        session.session_id: (executor.device_id, session)
+        for executor in catalog.executors for session in executor.phone_sessions
+    }
+    missing = sorted(set(masks) - set(session_by_id))
+    if missing:
+        raise CatalogMaterializationError(
+            "remote-resident owner sessions are not discovered: " + ",".join(missing)
+        )
+    devices = {session_by_id[session_id][0] for session_id in masks}
+    if len(devices) != 1:
+        raise CatalogMaterializationError("remote-resident owner sessions must live on one phone")
+    phone = next(iter(devices))
+    devices_by_id = catalog.placement_profile.devices
+    placements = {row.operator_id: row for row in control.operator_placements}
+    owner_ffn = tuple(
+        row for row in manifest.operators
+        if row.kind == "ffn" and union >> int(row.layer_id.split(":")[1]) & 1
+    )
+    if sum(1 << int(row.layer_id.split(":")[1]) for row in owner_ffn) != union or any(
+        devices_by_id[placements[row.operator_id].primary_device_id].kind != "cpu"
+        for row in owner_ffn
+    ):
+        raise CatalogMaterializationError(
+            "remote-resident owner layers must be CPU FFN layers of the desktop control"
+        )
+    helpers = sorted(
+        (
+            row for row in catalog.composite_executors
+            if row.baseline_executor_id == source.executor_id
+            and row.assisted_operator_kind == "ffn"
+            and row.helper_device_id == phone
+            and STATIC_HELPER_ANCHOR_PARAMETER not in row.adapter_parameters
+        ),
+        key=lambda row: row.executor_id,
+    )
+    if not helpers:
+        raise CatalogMaterializationError(
+            "remote-resident owner phone has no FFN family on the desktop control"
+        )
+    helper = helpers[0]
+    try:
+        co_helpers = co_helper_declaration(helper.adapter_parameters)
+    except RuntimePlanError as error:
+        raise CatalogMaterializationError(
+            "remote-resident owner family co-helpers are invalid: " + str(error)
+        ) from error
+    if co_helpers is not None and not co_helper_decode:
+        raise CatalogMaterializationError(
+            "remote-resident owner composite does not take static co-helper phones"
+        )
+    if co_helper_decode and (
+        co_helpers is None
+        or PER_HELPER_OUTAGE_PARAMETER in helper.adapter_parameters
+        or co_helpers.layer_mask & sum(masks.values())
+    ):
+        raise CatalogMaterializationError(
+            "remote-resident decode co-helpers need the family's static, non-elastic "
+            "co-helper phones on desktop-resident layers"
+        )
+    co_helper_ids = () if co_helpers is None else co_helpers.device_ids
+    quantizations = {
+        manifest.tensor_by_id[tensor_id].quantization
+        for tensor_id in remote_resident_tensor_ids(union)
+    }
+    dtypes = [
+        dtype for dtype, name in REMOTE_RESIDENT_FFN_QUANTIZATION_BY_DTYPE.items()
+        if quantizations == {name}
+    ]
+    if len(dtypes) != 1:
+        raise CatalogMaterializationError(
+            "remote-resident owner weights need one served dtype: " + ",".join(sorted(quantizations))
+        )
+    quantization = REMOTE_RESIDENT_FFN_QUANTIZATION_BY_DTYPE[dtypes[0]]
+    columns = manifest.feed_forward_length
+    sessions = []
+    for session_id, mask in sorted(masks.items()):
+        _device, capability = session_by_id[session_id]
+        omitted = sum(
+            manifest.tensor_by_id[tensor_id].nbytes
+            for tensor_id in remote_resident_tensor_ids(mask)
+        )
+        resident = phone_shard_resident_bytes(manifest, mask)
+        if resident != omitted:
+            raise CatalogMaterializationError(
+                "remote-resident owner layers hold weights beyond gate/up/down: " + session_id
+            )
+        if (
+            capability.maximum_columns < columns
+            or columns % capability.column_quantum
+            or mask & ~capability.supported_layer_mask
+            or ("*" not in capability.supported_data_types
+                and quantization not in capability.supported_data_types)
+        ):
+            raise CatalogMaterializationError(
+                "remote-resident owner session cannot hold its complete shard: " + session_id
+            )
+        record = shard_index.resolve(
+            manifest.artifact_sha256, mask, columns, session_id=session_id
+        )
+        if (
+            record is None or record.weight_type != quantization
+            or record.columns != columns or getattr(record, "fused_layer_mask", 0)
+        ):
+            raise CatalogMaterializationError(
+                "remote-resident owner shard is absent or differs: " + session_id
+            )
+        sessions.append(RuntimeRemoteResidentSession(
+            session_id=session_id,
+            endpoint=capability.endpoint,
+            layer_mask=mask,
+            shard_sha256=record.shard_sha256,
+            resident_geometry_sha256=phone_shard_resident_geometry_sha256(
+                manifest, capability, mask, resident, columns
+            ),
+            resident_bytes=resident,
+            remote_path=record.remote_path,
+        ))
+    group = RuntimeRemoteResidentFfn(
+        parent_artifact_sha256=manifest.artifact_sha256,
+        layer_mask=union,
+        dtype=dtypes[0],
+        omitted_bytes=sum(row.resident_bytes for row in sessions),
+        tensor_ids=remote_resident_tensor_ids(union),
+        shard_index_sha256=shard_index.index_sha256,
+        sessions=tuple(sessions),
+    )
+    parameters = {
+        **{
+            key: value for key, value in helper.adapter_parameters.items()
+            if key not in _ASSISTED_COPY_ONLY_PARAMETERS
+        },
+        **source.adapter_parameters,
+        REMOTE_RESIDENT_FFN_PARAMETER: canonical_json(group.to_json()),
+        "ffn_assistance_phase": "decode",
+        "ffn_max_tokens": source.adapter_parameters["ubatch_size"],
+        "ffn_resident_columns": columns,
+        "ffn_resident_layer_mask": union,
+        "ffn_resident_weight_bytes": group.omitted_bytes,
+        "ffn_weight_buffer_layout": "resident-superset",
+        "resident_model_identity_sha256": manifest.artifact_sha256,
+        **({REMOTE_RESIDENT_CO_HELPER_DECODE_PARAMETER: 1} if co_helper_decode else {}),
+    }
+    for name in ("ffn_activation", "ffn_timeout_ms", "ffn_n_embd"):
+        if name not in parameters:
+            raise CatalogMaterializationError(
+                "remote-resident owner phone parameter is absent: " + name
+            )
+    if parameters.get("ffn_runtime_control_protocol") != "decode-boundary-v1":
+        raise CatalogMaterializationError(
+            "remote-resident owner needs the decode-boundary runtime control"
+        )
+    payload = remote_resident_payload_qualification(catalog, parameters)
+    if not payload["qualified"]:
+        raise CatalogMaterializationError(
+            "remote-resident owner transport is not qualified for the whole ubatch: needs "
+            + str(payload["required_payload_bytes"]) + " bytes per call (n_embd "
+            + str(parameters["ffn_n_embd"]) + " x " + str(parameters["ffn_max_tokens"])
+            + " tokens x " + str(parameters.get("ffn_wire_element_bytes", 2))
+            + " bytes) with usbfs room for its slots; the transport identity qualifies at most "
+            + str(payload["qualified_maximum_payload_bytes"]) + " bytes"
+        )
+    phone_resources = helper.participant_resource_ids[phone]
+    phones = (phone, *co_helper_ids)
+    executor_id = remote_resident_owner_executor_id(source.executor_id)
+    remote = replace(
+        source,
+        executor_id=executor_id,
+        maturity="CALIBRATION_PENDING",
+        adapter_parameters=parameters,
+        participant_device_ids=(*source.participant_device_ids, *phones),
+        participant_resource_ids={
+            **source.participant_resource_ids,
+            **{device: helper.participant_resource_ids[device] for device in phones},
+        },
+        resource_ids=tuple(sorted(set(source.resource_ids) | {
+            resource for device in phones for resource in helper.participant_resource_ids[device]
+        })),
+    )
+    transitions = tuple(
+        replace(
+            row,
+            transition_id=row.transition_id + REMOTE_RESIDENT_OWNER_EXECUTOR_SUFFIX,
+            executor_id=executor_id,
+            resource_ids=tuple(sorted(set(row.resource_ids) | set(phone_resources))),
+            resource_slots={**row.resource_slots, **{key: 1 for key in phone_resources}},
+            energy_maturity="CALIBRATION_PENDING",
+        )
+        for row in catalog.transitions if row.executor_id == source.executor_id
+    )
+    if not transitions:
+        raise CatalogMaterializationError(
+            "remote-resident owner parent lacks a desktop load transition"
+        )
+    existing = catalog.composite_executor_by_id.get(executor_id)
+    if existing is not None:
+        if existing != remote or any(
+            row not in catalog.transitions for row in transitions
+        ):
+            raise CatalogMaterializationError(
+                "catalog declares a different remote-resident owner composite"
+            )
+        return catalog
+    return replace(
+        catalog,
+        composite_executors=(*catalog.composite_executors, remote),
+        transitions=(*catalog.transitions, *transitions),
+    )
+
+
 def merge_runtime_capability_catalogs(
     base: RuntimeCapabilityCatalog,
     overlay: RuntimeCapabilityCatalog,
@@ -2178,6 +2614,7 @@ __all__ = [
     "desktop_model_composite_capability",
     "desktop_operator_placements",
     "materialize_desktop_control",
+    "materialize_remote_resident_owner",
     "materialize_whole_model_endpoint",
     "merge_runtime_capability_catalogs",
     "measured_desktop_control_profile",
@@ -2185,5 +2622,7 @@ __all__ = [
     "model_composite_capabilities",
     "model_manifest_transition_capabilities",
     "model_transition_capabilities",
+    "remote_resident_owner_executor_id",
+    "remote_resident_payload_qualification",
     "resource_profiles_for_catalog",
 ]

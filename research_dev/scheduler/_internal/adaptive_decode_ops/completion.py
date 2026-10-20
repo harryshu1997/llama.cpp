@@ -80,6 +80,53 @@ def _seal_released_phone_tail(
     )
 
 
+def _seal_released_remainder(
+    controller, session, boundary, observation, terminal_token_index, terminal_at_us,
+) -> AdaptiveDecodeDirective:
+    """A request that FINISHED before its window's statistics could be read (2026-10-05: the client
+    processed the boundary seconds late, after the server had released the slot). The window stays
+    as an UNMEASURED record and every token from its end to the terminal is an unmeasured tail; no
+    counters are invented, so nothing here is cost evidence and the terminal native proofs account
+    for the remainder. Only a boundary strictly before the terminal qualifies: a tail boundary takes
+    the released-tail paths."""
+    previous = session.records[-1] if session.records else None
+    if (
+        session.awaiting_boundary != boundary
+        or not isinstance(observation, AdaptiveDecodeRawWindowObservation)
+        or observation.failure_reason != "released_slot_unmeasured_remainder"
+        or not observation.output_valid
+        or "physical:terminal-release-confirmed" not in observation.evidence_ids
+        or observation.completed_phone_calls != 0
+        or observation.completed_phone_input_rows != 0
+        or type(terminal_token_index) is not int
+        or terminal_token_index != session.output_tokens
+        or boundary.token_end >= session.output_tokens
+        or type(terminal_at_us) is not int
+        or terminal_at_us < boundary.finished_at_us
+        or session.tail_seal_token not in (None, boundary.token_end)
+        or session.current_policy != boundary.policy
+        or session.awaiting_control is not None
+        or session.transition_policy is not None
+        or session.transition_ack is not None
+        or (previous is not None and previous.token_end != boundary.token_start)
+    ):
+        raise AdaptiveDecodeError("adaptive released remainder transaction differs")
+    controller._append_window(session, boundary, observation, stable_window=False)
+    session.awaiting_boundary = None
+    session.current_ack = boundary.applied_ack
+    session.window_start_token = None
+    session.window_start_us = None
+    session.target_token = None
+    session.tail_seal_token = boundary.token_end
+    session.tail_seal_reason = "released_slot_unmeasured_remainder"
+    session.tail_seal_pending_control = False
+    controller._state(session, "EXPLOITING")
+    controller._seal_session(session)
+    return AdaptiveDecodeDirective(
+        state=session.state, reason="STALE_SLOT_DIRECTIVE_DISCARDED", target_token_index=None,
+    )
+
+
 def seal_tail(
     controller,
     request_id: str,

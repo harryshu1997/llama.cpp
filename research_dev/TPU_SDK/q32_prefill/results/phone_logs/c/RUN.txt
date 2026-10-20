@@ -1,0 +1,37 @@
+start 2026-10-08T12:17:36-04:00 boot=dbff3b27-a613-4e1e-a9ab-1f9cd3ae1d1e
+=== bf16-M32 2026-10-08T12:17:36-04:00
+/mnt/storage/s43-ws17-quantized-20261003/q32-phone/tpu/stage/bf16-M32.tflite: 1 file pushed, 0 skipped. 136.9 MB/s (786694832 bytes in 5.480s)
+pushed bf16-M32.tflite bytes=786694832 s=5.535957402
+exit bf16-M32 rc=0 2026-10-08T12:17:50-04:00
+=== bf16-M128 2026-10-08T12:17:51-04:00
+/mnt/storage/s43-ws17-quantized-20261003/q32-phone/tpu/stage/bf16-M128.tflite: 1 file pushed, 0 skipped. 43.4 MB/s (786726576 bytes in 17.270s)
+pushed bf16-M128.tflite bytes=786726576 s=17.354440791
+exit bf16-M128 rc=0 2026-10-08T12:18:18-04:00
+=== i8drq-M32 2026-10-08T12:18:18-04:00
+/mnt/storage/s43-ws17-quantized-20261003/q32-phone/tpu/stage/i8drq-M32.tflite: 1 file pushed, 0 skipped. 54.0 MB/s (530223776 bytes in 9.361s)
+pushed i8drq-M32.tflite bytes=530223776 s=9.478302456
+exit i8drq-M32 rc=0 2026-10-08T12:18:36-04:00
+=== i8drq-M128 2026-10-08T12:18:36-04:00
+/mnt/storage/s43-ws17-quantized-20261003/q32-phone/tpu/stage/i8drq-M128.tflite: 1 file pushed, 0 skipped. 39.9 MB/s (393939360 bytes in 9.412s)
+pushed i8drq-M128.tflite bytes=393939360 s=9.492986821
+exit i8drq-M128 rc=0 2026-10-08T12:18:55-04:00
+=== i4pcdrq-M128 2026-10-08T12:18:56-04:00
+/mnt/storage/s43-ws17-quantized-20261003/q32-phone/tpu/stage/i4pcdrq-M128.tflite: 1 file pushed, 0 skipped. 85.1 MB/s (204379552 bytes in 2.292s)
+pushed i4pcdrq-M128.tflite bytes=204379552 s=2.430824659
+exit i4pcdrq-M128 rc=0 2026-10-08T12:19:08-04:00
+=== f16gu-M512 2026-10-08T12:19:09-04:00
+/mnt/storage/s43-ws17-quantized-20261003/q32-phone/tpu/stage/f16gu-M512.tflite: 1 file pushed, 0 skipped. 114.3 MB/s (524858544 bytes in 4.378s)
+pushed f16gu-M512.tflite bytes=524858544 s=4.444647300
+exit f16gu-M512 rc=0 2026-10-08T12:19:22-04:00
+=== f16dn-M512 2026-10-08T12:19:23-04:00
+/mnt/storage/s43-ws17-quantized-20261003/q32-phone/tpu/stage/f16dn-M512.tflite: 1 file pushed, 0 skipped. 94.9 MB/s (262574224 bytes in 2.638s)
+pushed f16dn-M512.tflite bytes=262574224 s=2.697187532
+/mnt/storage/s43-ws17-quantized-20261003/q32-phone/tpu/stage/inputs_M512_K25600.f32: 1 file pushed, 0 skipped. 52.9 MB/s (104857600 bytes in 1.891s)
+pushed inputs_M512_K25600.f32 bytes=104857600 s=1.963108389
+exit f16dn-M512 rc=0 2026-10-08T12:19:35-04:00
+=== f16-M128-res 2026-10-08T12:19:36-04:00
+/mnt/storage/s43-ws17-quantized-20261003/q32-phone/tpu/stage/f16-M128.tflite: 1 file pushed, 0 skipped. 38.3 MB/s (786726576 bytes in 19.601s)
+pushed f16-M128.tflite bytes=786726576 s=19.675617129
+exit f16-M128-res rc=0 2026-10-08T12:20:12-04:00
+done 2026-10-08T12:20:13-04:00 boot=dbff3b27-a613-4e1e-a9ab-1f9cd3ae1d1e same_boot=1
+ALLDONE

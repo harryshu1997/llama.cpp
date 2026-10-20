@@ -1,0 +1,17 @@
+{
+  "at": "2026-10-08T15:46:40.977282+00:00",
+  "input": "/mnt/data_h16t/zs89458/claude-scratch/q32-tpu/diag4/i4bw_pos-down/ffn.tflite",
+  "input_sha256": "2b2a7ef30f37e94a2639ae22c90e3a9ef2d6d0ec082f4e5ae4471a00a3223da7",
+  "sdk_plugin_sha256": "d74bea45081aa90a39505a675c15f566d46dbcc35e55a98f755c02017464cd1f",
+  "target": "Tensor_G5",
+  "compiler_flags": {
+    "google_tensor_truncation_type": "half",
+    "google_tensor_sharding_intensity": "minimal",
+    "google_tensor_enable_4bit_compilation": "true",
+    "google_tensor_enable_dynamic_range_quantization": "true"
+  },
+  "compiler_script_sha256": "0318a1ede03d5bfc42fd6b75fba92689cd53487db3f000d5c9e14be623cbbc7c",
+  "status": "FAIL",
+  "elapsed_s": 0.22414726694114506,
+  "error": "ValueError('apply_plugin failed to apply plugin. See /mnt/data_h16t/zs89458/claude-scratch/q32-tpu/tmpdir/tmps_ey845c.error for details.')"
+}

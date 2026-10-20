@@ -6,7 +6,7 @@ from dataclasses import dataclass, fields
 from types import MappingProxyType
 from typing import Mapping, Sequence
 from ..phone_shards import PhoneFfnSessionIdentity
-from ..plan_contracts.co_helpers import co_helper_declaration
+from ..plan_contracts.co_helpers import PER_HELPER_OUTAGE_PARAMETER, co_helper_declaration
 from ..runtime_capabilities import (
     ROUTE_MATURITY_STATES,
     RuntimeCompositeExecutorCapability,
@@ -36,20 +36,50 @@ PHONE_RESIDENCY_EVIDENCE_NEUTRAL_REJECTIONS = frozenset({
 })
 
 
-def unavailable_co_helpers(coordinator: object, snapshot: object) -> frozenset[str]:
-    """Declared static co-helpers of a composite that the rig reports lost or absent.
+def per_helper_outage_enabled(coordinator: object) -> bool:
+    """WS23 opt-in: the composite treats every helper phone as its own resource."""
+    return (
+        isinstance(coordinator, RuntimeCompositeExecutorCapability)
+        and coordinator.adapter_parameters.get(PER_HELPER_OUTAGE_PARAMETER) == 1
+    )
 
-    Only an elastic-phones rig publishes a ``membership`` telemetry row, so a static rig sees none."""
+
+def route_helper_devices(coordinator: object) -> frozenset[str]:
+    """Every phone helper of a composite: its scheduled phone plus the declared static co-helpers."""
     if not isinstance(coordinator, RuntimeCompositeExecutorCapability):
         return frozenset()
     declaration = co_helper_declaration(coordinator.adapter_parameters)
-    if declaration is None:
+    return frozenset((
+        *(() if coordinator.helper_device_id is None else (coordinator.helper_device_id,)),
+        *(() if declaration is None else declaration.device_ids),
+    ))
+
+
+def unavailable_co_helpers(coordinator: object, snapshot: object) -> frozenset[str]:
+    """Declared static co-helpers of a composite that the rig reports lost or absent.
+
+    Only an elastic-phones rig publishes a ``membership`` telemetry row, so a static rig sees none.
+    Under the WS23 ``per_helper_outage`` opt-in the scheduled phone counts like a co-helper, as long as
+    another helper of the route is still a member."""
+    if not isinstance(coordinator, RuntimeCompositeExecutorCapability):
         return frozenset()
-    return frozenset(
-        device_id for device_id in declaration.device_ids
-        if (row := snapshot.telemetry_observations.get(device_id)) is not None
-        and row.get("membership") in CO_HELPER_MEMBERSHIP_STATES
-    )
+    declaration = co_helper_declaration(coordinator.adapter_parameters)
+    candidates = () if declaration is None else declaration.device_ids
+    independent = per_helper_outage_enabled(coordinator)
+    if independent:
+        candidates = tuple(sorted(route_helper_devices(coordinator)))
+
+    def member_lost(device_id: str) -> bool:
+        row = snapshot.telemetry_observations.get(device_id)
+        return row is not None and row.get("membership") in CO_HELPER_MEMBERSHIP_STATES
+
+    lost = frozenset(device_id for device_id in candidates if member_lost(device_id))
+    if independent and declaration is not None and lost == route_helper_devices(coordinator):
+        # nobody is left: the scheduled phone keeps its ordinary gates (co-helpers stay tolerated as before)
+        return frozenset(device for device in lost if device in declaration.device_ids)
+    if independent and declaration is None:
+        return frozenset()
+    return lost
 
 
 _DORMANT_PHONE_FFN_RUNTIME_PARAMETER = "dormant_phone_ffn_runtime_v1"
@@ -217,7 +247,8 @@ def _placement_rejection_reasons(message: str) -> tuple[str, ...]:
     marker = ": candidate_gate="
     if marker not in message:
         return ("PLACEMENT_INFEASIBLE",)
-    raw = message.split(marker, 1)[1]
+    # the marker swallows the first key: "...: candidate_gate=0, memory=0, transfer=1, deadline=0"
+    raw = "candidate_gate=" + message.split(marker, 1)[1]
     values = {}
     try:
         for item in raw.split(", "):

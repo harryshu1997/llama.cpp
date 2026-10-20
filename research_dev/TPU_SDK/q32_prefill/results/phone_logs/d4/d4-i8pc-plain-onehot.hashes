@@ -1,0 +1,4 @@
+9593a1e1babf24db03d7ece3e6d1381de26d6c9627e40dd1b75cb4efba6ead23  /data/local/tmp/s43-q32-tpu/d4-i8pc-plain.tflite
+36a386b4116de6471e2ba00bb4afcda3f2f881e3a6d0ccd3b1013cecb46d831c  /data/local/tmp/s43-q32-tpu/q32_tpu_probe
+97355a36cb8ac7628cf407773291e98da79f3ef184cc43cb0e57dedf5f0c0637  /data/local/tmp/s43-q32-tpu/libLiteRt.so
+35b59265eb8595a1d28c2f69693b1cad39d1fa4a38c2c18d5d54550d079264ac  /data/local/tmp/s43-q32-tpu/libLiteRtDispatch_GoogleTensor.so

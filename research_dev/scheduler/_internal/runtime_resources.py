@@ -26,8 +26,15 @@ def runtime_phase_lease_demands(
     transitions: Sequence[RuntimeTransitionPlan],
     service_us: int,
     service_upper_us: int,
+    share_keys: Mapping[str, str] | None = None,
 ) -> tuple[LeaseDemand, ...]:
-    """Reserve transitions in adapter order, followed by execution."""
+    """Reserve transitions in adapter order, followed by execution.
+
+    ``share_keys`` maps resources the execution shares with co-tenants (one
+    server multiplexing its requests onto them) to their co-tenancy key;
+    transitions always reserve exclusively.
+    """
+    share_keys = {} if share_keys is None else share_keys
     prepare_us = 0
     demands = []
     for row in transitions:
@@ -50,6 +57,7 @@ def runtime_phase_lease_demands(
             start_offset_us=prepare_us,
             duration_us=max(1, service_us - prepare_us),
             duration_upper_us=max(1, service_upper_us - prepare_us),
+            share_key=share_keys.get(resource_id),
         )
         for resource_id, slots in sorted(resource_slots.items())
     )
@@ -431,6 +439,65 @@ def remote_resident_accounting(
         kv_capacity_gain_bytes=reclaimed - reserve,
         proof=proof,
     )
+
+
+REMOTE_RESIDENT_RUN_LEDGER_SCHEMA = "research-scheduler-remote-resident-run-ledger-v1"
+
+
+def remote_resident_run_ledger(
+    *,
+    artifact_sha256: str,
+    desktop_pool_id: str,
+    layer_mask: int,
+    desktop_weights_full_bytes: int,
+    omitted_bytes_planned: int,
+    phone_weights_bytes_by_session: Mapping[str, int],
+    phone_workspace_bytes: int,
+    launches: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    """RESULT ledger of a remote-resident trace arm: every reduced launch's own omission proof
+    and the desktop RAM it saved, credited only after the proof matches the plan.
+
+    ``launches`` rows carry the server's ``proof`` (omission record JSON), its measured
+    ``vm_rss_bytes`` and the host's ``host_available_bytes`` right after the launch. The arm
+    runs no full-weight parent (its pin forbids one), so a launch's recovery need is estimated
+    as its RSS plus the verified omission (``teardown``: the reduced parent releases first).
+    """
+    rows = []
+    for launch in launches:
+        proof = RuntimeRemoteResidentOmissionProof.from_json(launch.get("proof"))
+        resident = _nonnegative("reduced server resident bytes", launch.get("vm_rss_bytes"))
+        account = remote_resident_accounting(
+            artifact_sha256=artifact_sha256,
+            desktop_pool_id=desktop_pool_id,
+            layer_mask=layer_mask,
+            desktop_weights_full_bytes=desktop_weights_full_bytes,
+            omitted_bytes_planned=omitted_bytes_planned,
+            proof=proof,
+            phone_weights_bytes_by_session=phone_weights_bytes_by_session,
+            phone_workspace_bytes=phone_workspace_bytes,
+            kv_bytes_by_pool={},
+            transition_peak_bytes_by_pool={},
+            live_available_bytes_by_pool={desktop_pool_id: launch.get("host_available_bytes")},
+            reduced_allocation_bytes_by_pool={desktop_pool_id: resident},
+            recovery_required_bytes_by_pool={
+                desktop_pool_id: resident + (
+                    proof.omitted_bytes if proof.layer_mask == layer_mask else 0
+                ),
+            },
+        )
+        rows.append({**dict(launch), "accounting": account.to_json()})
+    verified = bool(rows) and all(row["accounting"]["verified"] for row in rows)
+    return {
+        "desktop_ram_saving_bytes": (
+            min(row["accounting"]["reclaimed_bytes"] for row in rows) if verified else 0
+        ),
+        "launches": rows,
+        "omitted_bytes_planned": omitted_bytes_planned,
+        "recovery_basis": "estimated: reduced server RSS plus the verified omission",
+        "schema": REMOTE_RESIDENT_RUN_LEDGER_SCHEMA,
+        "verified": verified,
+    }
 
 
 def runtime_preparation_windows(ticket, *, active_until_us=None):

@@ -162,7 +162,7 @@ def _sample_candidates(
     rows = controller_type._representative_candidates(candidates)
     if not rows:
         return []
-    order = device_set_order(rows)
+    order = device_set_order(rows, widest_first=config.cold_start_probe_widest_set_first)
     if len(order) > 1:
         return _sample_device_set_candidates(rows, order, config)
     return _sample_fractions(rows, config)
@@ -176,6 +176,8 @@ def _sample_device_set_candidates(
     """Cold start with several helper phones: the leading fraction of every set that contains the
     primary phone (primary alone first, then adding co-helpers), then the primary set's other
     fractions. Sets without the primary are failure fallbacks, never cold-start probes."""
+    # ``order`` is device_set_order(...): primary alone first by default, or the widest set first under
+    # cold_start_probe_widest_set_first; the narrower widths come from the first set either way
     primary = order[0][0]
     sweeps = {
         devices: _sample_fractions([row for row in rows if policy_device_set(row) == devices], config)

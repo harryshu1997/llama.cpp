@@ -14,13 +14,20 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import hashlib
 import json
+from types import MappingProxyType
 from typing import Mapping
 
 from .common import RuntimePlanError, _integer, _sha256, _text
 
 
 REMOTE_RESIDENT_FFN_SCHEMA = "research-scheduler-remote-resident-ffn-v1"
-REMOTE_RESIDENT_FFN_DTYPES = frozenset({"f16"})
+# group dtype -> GGUF tensor quantization name; the worker serves every listed type
+REMOTE_RESIDENT_FFN_QUANTIZATION_BY_DTYPE = MappingProxyType({
+    "f16": "F16",
+    "q4_0": "Q4_0",
+    "q8_0": "Q8_0",
+})
+REMOTE_RESIDENT_FFN_DTYPES = frozenset(REMOTE_RESIDENT_FFN_QUANTIZATION_BY_DTYPE)
 REMOTE_RESIDENT_FFN_TENSOR_KINDS = ("ffn_down", "ffn_gate", "ffn_up")
 
 

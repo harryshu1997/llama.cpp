@@ -37,13 +37,20 @@ def _partial_phone_replacement_session_diff(
         if source_by_session.get(session_id)
             != target_by_session.get(session_id)
     ))
-    retained_session_ids = tuple(sorted(
-        set(source_by_session) & set(target_by_session)
-        - set(changed_session_ids)
-    ))
+    # 2026-10-06: a replacement that changes EVERY session of the source
+    # (one-session phone: OnePlus holding only Qwen layer 0, replaced by
+    # Gemma) is still one exact per-session replacement. The plan
+    # authorization rewrites the model-level eviction into a session-scoped
+    # one (route_generation/envelopes.py), and the ledger never credits
+    # session-scoped evictions, so without this rewrite the planned
+    # replaceable bytes can never match ("memory replacement credit differs
+    # from transition plan"; the helper watcher then died silently and the
+    # OnePlus never loaded Gemma on the single-user traces). Retained
+    # sessions are therefore not required here; the copy-on-write yielding
+    # rule (helper_preparation_ops/memory.py) still needs them, because only
+    # a retained session keeps serving during the load.
     if (
         not changed_session_ids
-        or not retained_session_ids
         or changed_session_ids
             != tuple(sorted(target.layout.changed_session_ids))
     ):

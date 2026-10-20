@@ -44,7 +44,8 @@ def timing(controller, request_id: str) -> Mapping[str, int]:
 def snapshot(controller, request_id: str) -> Mapping[str, object]:
     with controller._lock:
         session = controller._terminal_session(request_id)
-        device_sets = device_set_order(session.candidates)
+        device_sets = device_set_order(session.candidates,
+                                       widest_first=session.config.cold_start_probe_widest_set_first)
         return MappingProxyType({
             # several helper phones: the device sets in exploration order
             **({} if len(device_sets) < 2 else {

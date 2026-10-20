@@ -234,6 +234,74 @@ class CampaignInputTests(unittest.TestCase):
                 adaptive_minimum_remaining_tokens=None, adaptive_maximum_probe_attempts_per_context=None,
                 adaptive_decode_overrides_json=json.dumps({"no_such_field": 1})))
 
+    def test_device_set_subset_challenge_override_reaches_the_controller_configuration(self):
+        """The pA1q8f overrides plus the opt-in device-set subset challenge: the campaign accepts it,
+        the runner's controller configuration carries it, and RESULT provenance names it only when
+        set (a template without it serializes as before)."""
+        from research_dev.scheduler.config import CAMPAIGN_MANIFEST_SCHEMA
+        row = {"schema": CAMPAIGN_MANIFEST_SCHEMA, "campaign_id": "subset-challenge-test",
+               "rig_manifest_path": "rig.json", "models_manifest_path": "models.json",
+               "evidence_manifest_path": "evidence.json", "selection_mode": "energy-aware",
+               "maximum_latency_ppm": 1_250_000, "energy_attribution_kind": "diagnostic",
+               "trace": {"large_requests_path": "large.json", "overlay_requests_path": "overlay.json",
+                         "trace_manifest_path": "trace.json"}}
+        frozen = {"batch_growth_verdict_inheritance": True, "cold_start_probe_widest_set_first": True,
+                  "late_helper_adoption": True, "late_helper_adoption_minimum_tokens": 24,
+                  "server_policy_coherence": True}
+        overrides = {**frozen, "device_set_subset_challenge": True}
+        manifest = CampaignManifest.from_json({**row, "adaptive_decode_overrides": overrides}, Path("/inputs"))
+        self.assertEqual(dict(manifest.adaptive_decode_overrides), overrides)
+
+        def configured(values):
+            return runner._configured_adaptive_decode_config(argparse.Namespace(
+                adaptive_minimum_remaining_tokens=None, adaptive_maximum_probe_attempts_per_context=None,
+                adaptive_decode_overrides_json=json.dumps(values)))
+
+        config = configured(overrides)
+        self.assertIs(config.device_set_subset_challenge, True)
+        self.assertIs(config.to_json()["device_set_subset_challenge"], True)
+        before = configured(frozen)
+        self.assertIs(before.device_set_subset_challenge, False)
+        self.assertNotIn("device_set_subset_challenge", before.to_json())
+        self.assertEqual(before.to_json(), replace(config, device_set_subset_challenge=False).to_json())
+
+    def test_live_membership_probe_timeout_override_reaches_the_scheduler(self):
+        """A template's integer-millisecond override passes the campaign validation, the runner's
+        controller configuration and the scheduler accessor the HTTP adapter's probe calls."""
+        from research_dev.scheduler import UnifiedScheduler
+        from research_dev.scheduler.config import CAMPAIGN_MANIFEST_SCHEMA
+        row = {"schema": CAMPAIGN_MANIFEST_SCHEMA, "campaign_id": "membership-timeout-test",
+               "rig_manifest_path": "rig.json", "models_manifest_path": "models.json",
+               "evidence_manifest_path": "evidence.json", "selection_mode": "energy-aware",
+               "maximum_latency_ppm": 1_250_000, "energy_attribution_kind": "diagnostic",
+               "trace": {"large_requests_path": "large.json", "overlay_requests_path": "overlay.json",
+                         "trace_manifest_path": "trace.json"}}
+        overrides = {"server_policy_coherence": True, "live_membership_probe_timeout_ms": 5000}
+        manifest = CampaignManifest.from_json({**row, "adaptive_decode_overrides": overrides}, Path("/inputs"))
+        self.assertEqual(dict(manifest.adaptive_decode_overrides), overrides)
+        for invalid in (5.0, 0, "5000"):
+            with self.subTest(invalid=invalid), self.assertRaises(SchedulerConfigurationError):
+                CampaignManifest.from_json(
+                    {**row, "adaptive_decode_overrides": {"live_membership_probe_timeout_ms": invalid}},
+                    Path("/inputs"))
+
+        def configured(values):
+            return runner._configured_adaptive_decode_config(argparse.Namespace(
+                adaptive_minimum_remaining_tokens=None, adaptive_maximum_probe_attempts_per_context=None,
+                adaptive_decode_overrides_json=json.dumps(values)))
+
+        config = configured(overrides)
+        self.assertEqual(config.to_json()["live_membership_probe_timeout_ms"], 5000)
+        scheduler = UnifiedScheduler.for_runtime_discovery("enforce", adaptive_decode_config=config)
+        self.assertEqual(scheduler.adaptive_live_membership_probe_timeout_s(1_200_000), 5)
+        self.assertEqual(UnifiedScheduler.for_runtime_discovery("enforce")
+                         .adaptive_live_membership_probe_timeout_s(1_200_000), 1)
+        auto = configured({"live_membership_probe_timeout_auto": True})
+        self.assertEqual(UnifiedScheduler.for_runtime_discovery("enforce", adaptive_decode_config=auto)
+                         .adaptive_live_membership_probe_timeout_s(1_200_000), 3.6)
+        with self.assertRaisesRegex(ValueError, "500..30000 ms"):
+            configured({"live_membership_probe_timeout_ms": 40_000})
+
     def test_probe_budget_field_reaches_the_adaptive_controller_configuration(self):
         from research_dev.scheduler.config import CAMPAIGN_MANIFEST_SCHEMA
         row = {"schema": CAMPAIGN_MANIFEST_SCHEMA, "campaign_id": "probe-budget-test",
@@ -305,3 +373,52 @@ class CampaignInputTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class _Arguments:
+    """Runner arguments with ``None`` for everything not given (2026-10-06)."""
+
+    def __init__(self, **values):
+        self.__dict__.update(values)
+
+    def __getattr__(self, name):
+        return None
+
+
+class OptionalPhoneModelConfigurationTests(unittest.TestCase):
+    def _configuration(self, **arguments):
+        manifests = {"hot": SimpleNamespace(artifact_sha256="sha256:" + "1" * 64),
+                     "cold": SimpleNamespace(artifact_sha256="sha256:" + "2" * 64),
+                     "small": SimpleNamespace(artifact_sha256="sha256:" + "3" * 64)}
+        models = SimpleNamespace(
+            expected_qwen=SimpleNamespace(model_id="hot"), expected_gemma=SimpleNamespace(model_id="cold"),
+            llama_model_id="small", diagnostic_url=SimpleNamespace(port=1, hostname="127.0.0.1"),
+            catalog=SimpleNamespace(executors=()),
+        )
+        captured = {}
+
+        def capture(**kwargs):
+            captured.update(kwargs)
+            return "configuration"
+        with patch.object(runner, "DirectPhoneFfnSessionConfiguration", capture):
+            result = runner._direct_phone_configuration(
+                _Arguments(phone_worker="/phone/worker", minimum_usb_speed_mbps=5000, **arguments),
+                models, manifests, {}, None,
+            )
+        self.assertEqual(result, "configuration")
+        return captured
+
+    def test_a_model_without_a_phone_copy_is_left_out_of_the_phone_session(self):
+        captured = self._configuration(qwen_phone_model=None, gemma_phone_model="/data/local/tmp/gemma.gguf")
+        self.assertEqual(captured["model_paths_by_artifact"], {"sha256:" + "2" * 64: "/data/local/tmp/gemma.gguf"})
+        self.assertEqual(captured["worker_paths_by_artifact"], {"sha256:" + "2" * 64: "/phone/worker"})
+        both = self._configuration(qwen_phone_model="/data/local/tmp/qwen.gguf",
+                                   gemma_phone_model="/data/local/tmp/gemma.gguf")
+        self.assertEqual(len(both["model_paths_by_artifact"]), 2)
+        neither = self._configuration(qwen_phone_model=None, gemma_phone_model=None)
+        self.assertEqual((neither["model_paths_by_artifact"], neither["worker_paths_by_artifact"]), ({}, {}))
+
+    def test_phone_shards_without_the_phone_copy_fail_closed(self):
+        with self.assertRaisesRegex(Exception, "phone FFN shards need the phone model artifact: hot"):
+            self._configuration(qwen_phone_model=None, qwen_ffn_shards="FFN.json=/data/local/tmp/shards",
+                                gemma_phone_model="/data/local/tmp/gemma.gguf")

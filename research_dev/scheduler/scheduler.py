@@ -340,6 +340,7 @@ class UnifiedScheduler(
         ] = {}
         self._active_offline_phone_residency_plan_id: str | None = None
         self._fixed_phone_residency = None
+        self._remote_resident_owner = None
         self._phone_reprovisioning = None
         self._phone_reprovision_boundary_gate = None
         self._phone_htp_memory_caps: dict[str, tuple[int, int]] = {}

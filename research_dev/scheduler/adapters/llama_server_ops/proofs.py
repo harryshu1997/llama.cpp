@@ -18,7 +18,8 @@ from ..._internal.plan_contracts.phone import RuntimePhoneShard
 from ..._internal.runtime_plan import RuntimeHelperExecutionEnvelope
 from ..._internal.types import canonical_sha256
 from ..contracts import PhysicalAdapterError
-from ..ticket import PhysicalExecutionCommand, static_decode_policy
+from ..phone_helpers import phone_helper_bindings_from_parameters
+from ..ticket import PhysicalExecutionCommand, remote_resident_co_helper_policy, static_decode_policy
 from ..llama_server_contracts import (
     _phone_ffn_command as _phone_ffn_command,
     _adaptive_phone_ffn as _adaptive_phone_ffn,
@@ -34,6 +35,18 @@ from ..llama_server_contracts import (
     phone_ffn_resident_contract as phone_ffn_resident_contract,
     llama_server_launch_contract as llama_server_launch_contract,
 )
+
+
+def _expected_call_payload_bytes(manifest, call) -> int:
+    """Bytes one proof line must carry for its rows: ``tokens`` f16 rows of the FFN input width, or of
+    the wider [attention | residual] rows of a WS15 fused call (``fused_width`` > embedding; 2026-10-05).
+    -1 marks an implausible fused width so the comparison fails."""
+    width = manifest.embedding_length
+    if call.fused_width:
+        if call.fused_width <= width:
+            return -1
+        width = call.fused_width
+    return width * call.tokens * 2
 
 
 class ManagedServerProofMixin:
@@ -165,6 +178,13 @@ class ManagedServerProofMixin:
                 )
             return None, None, None
         if not isinstance(static_control_ack, Mapping):
+            if (
+                static_control_ack is None
+                and output_tokens <= 1
+                and command.execution_contract.remote_resident_ffn is not None
+            ):
+                # a one-token request ends before any decode step: its decode co-helper never served it
+                return None, None, None
             raise PhysicalAdapterError(
                 "static FFN runtime acknowledgement is absent"
             )
@@ -309,6 +329,34 @@ class ManagedServerProofMixin:
         return stale_windows, stale_tail or released_tail, stale_tail
 
     @staticmethod
+    def _released_remainder(observation: AdaptiveDecodeGroupedObservation):
+        """The trailing UNMEASURED window of a request that finished before its window statistics
+        could be read (2026-10-05: the client processed the boundary after the slot was released).
+        Its tokens, like the unmeasured tail after it, were executed under ``final_policy`` with no
+        counters observed, so the proof accounts for them from the token counts, as for a released
+        tail. Returns the window or None; anything half-formed is rejected."""
+        last = observation.windows[-1]
+        if last.failure_reason != "released_slot_unmeasured_remainder":
+            if any(row.failure_reason == "released_slot_unmeasured_remainder"
+                   for row in observation.windows):
+                raise PhysicalAdapterError("adaptive released remainder window is invalid")
+            return None
+        if (
+            not last.output_valid
+            or last.measurement_eligible
+            or last.completed_phone_calls != 0
+            or last.completed_phone_input_rows != 0
+            or "physical:terminal-release-confirmed" not in last.evidence_ids
+            or observation.unmeasured_tail_reason != "released_slot_unmeasured_remainder"
+            or observation.unmeasured_tail_tokens <= 0
+            or observation.final_policy != last.policy
+            or any(row.failure_reason == "released_slot_unmeasured_remainder"
+                   for row in observation.windows[:-1])
+        ):
+            raise PhysicalAdapterError("adaptive released remainder window is invalid")
+        return last
+
+    @staticmethod
     def _validate_adaptive_observation(
         observation: AdaptiveDecodeGroupedObservation,
         command: PhysicalExecutionCommand,
@@ -317,6 +365,7 @@ class ManagedServerProofMixin:
         desktop_placement,
         stale_windows,
         stale_baseline_tail: bool,
+        remainder=None,
     ) -> None:
         if (
             observation.request_id != (
@@ -336,6 +385,7 @@ class ManagedServerProofMixin:
                 or (
                     row.failure_reason is not None
                     and row not in stale_windows
+                    and row is not remainder
                 )
                 for row in observation.windows
             )
@@ -370,6 +420,7 @@ class ManagedServerProofMixin:
         contract_by_plan,
         desktop_placement,
         cohort,
+        remainder=None,
     ) -> list[tuple[int, int]]:
         rows: list[tuple[int, int]] = []
         for window in observation.windows:
@@ -402,7 +453,7 @@ class ManagedServerProofMixin:
                 raise PhysicalAdapterError(
                     "adaptive window exceeds the resident operator plan"
                 )
-            if policy.baseline:
+            if policy.baseline or window is remainder:
                 continue
             if window.completed_phone_calls is not None:
                 layer_count = len(policy.layer_indices)
@@ -446,10 +497,12 @@ class ManagedServerProofMixin:
         desktop_placement,
         cohort,
         rows_per_token: int = 1,
+        remainder=None,
     ) -> None:
         tail_policy = observation.final_policy
+        remainder_tokens = 0 if remainder is None else remainder.token_count
         if (
-            not observation.unmeasured_tail_tokens
+            not (observation.unmeasured_tail_tokens + remainder_tokens)
             or tail_policy.baseline
         ):
             return
@@ -474,13 +527,16 @@ class ManagedServerProofMixin:
             raise PhysicalAdapterError(
                 "adaptive tail exceeds the resident operator plan"
             )
-        tail_tokens = observation.unmeasured_tail_tokens
-        if (observation.unmeasured_tail_reason in _TAIL_RELEASE_REASONS
+        tail_tokens = observation.unmeasured_tail_tokens + remainder_tokens
+        # a released remainder is a released tail that starts at the unmeasured window: the
+        # windows WITH counters end before it, so the measured segment excludes it
+        measured = observation.windows if remainder is None else observation.windows[:-1]
+        if ((observation.unmeasured_tail_reason in _TAIL_RELEASE_REASONS or remainder is not None)
                 and observation.final_policy_ack is None):
             accounted_ahead = 1
-            ack_index = next((index for index in range(len(observation.windows) - 1, -1, -1)
-                              if observation.windows[index].applied_ack is not None), None)
-            segment = () if ack_index is None else observation.windows[ack_index:]
+            ack_index = next((index for index in range(len(measured) - 1, -1, -1)
+                              if measured[index].applied_ack is not None), None)
+            segment = () if ack_index is None else measured[ack_index:]
             if (cohort is None and segment
                     and all(window.policy == tail_policy
                             and window.completed_phone_calls is not None
@@ -522,6 +578,7 @@ class ManagedServerProofMixin:
         stale_windows, stale_tail, ignore_unattributed_calls = (
             self._stale_adaptive_baseline_tail(observation)
         )
+        remainder = self._released_remainder(observation)
         self._validate_adaptive_observation(
             observation,
             command,
@@ -530,9 +587,10 @@ class ManagedServerProofMixin:
             desktop_placement,
             stale_windows,
             stale_tail,
+            remainder=remainder,
         )
         rows = self._adaptive_window_call_rows(
-            observation, contract_by_plan, desktop_placement, cohort
+            observation, contract_by_plan, desktop_placement, cohort, remainder=remainder,
         )
         if cohort is None and (
             observation.windows[-1].token_end
@@ -549,6 +607,7 @@ class ManagedServerProofMixin:
             desktop_placement,
             cohort,
             self._speculative_rows_per_token(),
+            remainder=remainder,
         )
         return tuple(rows), ignore_unattributed_calls
 
@@ -603,7 +662,7 @@ class ManagedServerProofMixin:
             invalid = invalid or (
                 rows <= 0
                 or call.payload_bytes
-                    != manifest.embedding_length * call.tokens * 2
+                    != _expected_call_payload_bytes(manifest, call)
                 or (
                     bool(call.contexts)
                     and (
@@ -653,7 +712,7 @@ class ManagedServerProofMixin:
                 call.tokens <= 0
                 or call.tokens > expected_contract.max_tokens
                 or call.payload_bytes
-                    != manifest.embedding_length * call.tokens * 2
+                    != _expected_call_payload_bytes(manifest, call)
             )
             if current_helper is not None:
                 plan_by_request[call.request_id] = (
@@ -774,7 +833,7 @@ class ManagedServerProofMixin:
                 or call.columns > expected_contract.columns
                 or call.columns % column_quantum
                 or call.payload_bytes
-                    != manifest.embedding_length * call.tokens * 2
+                    != _expected_call_payload_bytes(manifest, call)
                 for call in calls
             )
         ):
@@ -812,7 +871,7 @@ class ManagedServerProofMixin:
                 ) <= 0
                 or call.columns != expected_contract.columns
                 or call.payload_bytes
-                    != manifest.embedding_length * call.tokens * 2
+                    != _expected_call_payload_bytes(manifest, call)
                 for call in calls
             )
         ):
@@ -835,6 +894,74 @@ class ManagedServerProofMixin:
         if any(
             rows_by_layer.get(layer, 0) < minimum_rows
             for layer in expected_layers
+        ):
+            raise PhysicalAdapterError(
+                "llama-server phone call coverage is incomplete"
+            )
+        return by_layer, {}
+
+    def _verify_remote_resident_co_helper_calls(
+        self,
+        calls: tuple[LlamaServerFfnCall, ...],
+        expected_contract: PhoneFfnExecutionContract,
+        policy,
+        command: PhysicalExecutionCommand,
+        manifest: ModelManifest,
+        expected_scope_ids: set[str],
+        output_tokens: int,
+        static_applied_token: int | None,
+    ) -> tuple[dict[int, int], dict[int, str]]:
+        """A remote-resident parent with decode co-helpers (opt-in).
+
+        The owner serves its remote-resident layers for every row (whole ubatches); a co-helper
+        serves the static policy's layers at full width, within its own row cap, once the policy
+        applied. Any other layer, width or batch fails closed.
+        """
+        helpers = phone_helper_bindings_from_parameters(command.adapter_parameters) or ()
+        remote_layers = set(expected_contract.layer_indices)
+        cap_by_layer = {
+            layer: row.max_tokens or expected_contract.max_tokens
+            for row in helpers[1:]
+            for layer in range(64)
+            if (row.layer_mask & policy.layer_mask) >> layer & 1
+        }
+
+        def allowed(call) -> bool:
+            if call.layer in remote_layers:
+                return (call.tokens <= expected_contract.max_tokens
+                        and call.columns == expected_contract.columns)
+            return (call.layer in cap_by_layer and call.tokens <= cap_by_layer[call.layer]
+                    and call.columns == policy.columns)
+
+        if (
+            not calls
+            or len({call.request_id for call in calls}) != len(calls)
+            or any(
+                not allowed(call)
+                or self._logical_call_rows(call, expected_scope_ids) <= 0
+                or call.payload_bytes != _expected_call_payload_bytes(manifest, call)
+                for call in calls
+            )
+        ):
+            raise PhysicalAdapterError(
+                "llama-server phone calls differ from the operator plan"
+            )
+        by_layer = {}
+        rows_by_layer = {}
+        for call in calls:
+            by_layer[call.layer] = by_layer.get(call.layer, 0) + 1
+            rows_by_layer[call.layer] = (
+                rows_by_layer.get(call.layer, 0)
+                + self._logical_call_rows(call, expected_scope_ids)
+            )
+        decode_rows = (
+            0 if static_applied_token is None
+            else max(0, output_tokens - static_applied_token)
+        )
+        if any(
+            rows_by_layer.get(layer, 0) < output_tokens for layer in remote_layers
+        ) or any(
+            rows_by_layer.get(layer, 0) < decode_rows for layer in cap_by_layer
         ):
             raise PhysicalAdapterError(
                 "llama-server phone call coverage is incomplete"
@@ -886,6 +1013,18 @@ class ManagedServerProofMixin:
                 manifest,
                 expected_scope_ids,
                 current_helper,
+            )
+        co_helper_policy = remote_resident_co_helper_policy(command)
+        if co_helper_policy is not None:
+            return self._verify_remote_resident_co_helper_calls(
+                calls,
+                expected_contract,
+                co_helper_policy,
+                command,
+                manifest,
+                expected_scope_ids,
+                output_tokens,
+                static_applied_token,
             )
         return self._verify_static_execution_calls(
             calls,
@@ -948,7 +1087,10 @@ class ManagedServerProofMixin:
         call_plan_by_request,
         manifest: ModelManifest,
         expected_scope_ids: set[str],
+        driven_layer_mask: int | None = None,
     ) -> tuple[LlamaServerPhoneSessionProof, ...]:
+        """``driven_layer_mask``: the layers a static policy drove (a remote-resident parent with
+        decode co-helpers); only the phones owning one of them must have served calls."""
         shards_by_plan = {
             row.operator_plan_sha256:
                 row.helper_plan.execution_contract.phone_shards
@@ -965,6 +1107,11 @@ class ManagedServerProofMixin:
                     manifest.feed_forward_length
                 )
             )
+            if driven_layer_mask is not None:
+                # decode co-helpers: their proof shards join the owner sessions
+                parameters_by_plan[phone_source.operator_plan_sha256] = (
+                    phone_source.adapter_parameters
+                )
         if (
             not shards_by_plan
             and phone_source.execution_contract.phone_shards
@@ -1011,7 +1158,9 @@ class ManagedServerProofMixin:
                 )
         if calls and not used_plans:
             used_plans.add(phone_source.operator_plan_sha256)
-            used_layers[phone_source.operator_plan_sha256] = (1 << 64) - 1
+            used_layers[phone_source.operator_plan_sha256] = (
+                (1 << 64) - 1 if driven_layer_mask is None else driven_layer_mask
+            )
         totals = {}
         for call in calls:
             if not shards_by_plan:

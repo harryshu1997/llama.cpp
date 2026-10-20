@@ -31,6 +31,7 @@ from ..._internal.runtime_residency_cohorts import (
 )
 from ..._internal.runtime_controller import RuntimeRequestTicket
 from ..._internal.runtime_admission import RuntimeRequestObservation
+from ..common import remote_resident_owner_pinned
 
 
 def _commit_decode_cohort_leases(
@@ -661,6 +662,14 @@ def _commit_automated_attempt(
     if not isinstance(preview, LeasePreview):
         raise UnifiedScheduleError(
             "automated lease preview is invalid"
+        )
+    if (
+        remote_resident_owner_pinned(controller, candidate_set.model_id)
+        and selected.plan.execution_contract.remote_resident_ffn is None
+    ):
+        raise UnifiedScheduleError(
+            "remote-resident owner arm forbids the full-weight route of "
+            + candidate_set.model_id + ": " + selected.candidate_id
         )
     leases, decode_cohort, preview = controller._commit_decode_cohort_leases(
         request, selected, preview, observed_at_us

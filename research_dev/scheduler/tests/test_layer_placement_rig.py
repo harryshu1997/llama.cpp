@@ -76,41 +76,54 @@ class TodayPlacementTests(unittest.TestCase):
     def test_measured_placement_on_todays_transport(self):
         plan = solve_placement(self.problem(pixel_transport="adb-tcp"))
         self.assertEqual(plan.solver, "exact")
-        self.assertEqual(owners(plan, rig.QWEN), {rig.OP15: "0-17", rig.PIXEL: "18-24"})
-        self.assertEqual(owners(plan, rig.GEMMA), {rig.OP15: "0-26"})   # the OP15 has room: 9 per session
+        self.assertEqual(owners(plan, rig.QWEN), {rig.OP15: "0-17", rig.PIXEL: "18-23"})
+        self.assertEqual(owners(plan, rig.GEMMA), {rig.OP15: "0-25"})   # the OP15 has room: 9 per session
         self.assertEqual(plan.priors_used, ())
+        # 2026-10-02 CPU-layer fix (Qwen 0-23, Gemma 0-25): today's Qwen layout already covers every CPU layer, so the
+        # measured plan equals it; Gemma gains layers 24-25
+        self.assertAlmostEqual(plan.models[rig.QWEN].current_energy_j_per_token,
+                               plan.models[rig.QWEN].energy_j_per_token, places=9)
+        self.assertGreater(plan.models[rig.GEMMA].current_energy_j_per_token, plan.models[rig.GEMMA].energy_j_per_token)
         for model in (rig.QWEN, rig.GEMMA):
             row = plan.models[model]
-            self.assertGreater(row.current_energy_j_per_token, row.energy_j_per_token)
             self.assertLess(row.chain_ms_by_rows[1], row.cpu_only_chain_ms_by_rows[1])
         self.assertLessEqual(plan.device_usage[rig.OP15][rig.GEMMA], 3 * rig.OP15_SESSION_LIMIT)
 
     def test_aoa_variants(self):
         expected = solve_placement(self.problem(pixel_transport="aoa-bridge"))
-        self.assertEqual(owners(expected, rig.QWEN), {rig.PIXEL: "0-24"})
+        # WS12: the Pixel is a co-helper, so the OP15 keeps one Qwen layer to carry the route (was Pixel 0-24,
+        # which the runtime cannot run)
+        self.assertEqual(owners(expected, rig.QWEN), {rig.OP15: "0", rig.PIXEL: "1-23"})
         risky = replace(self.problem(pixel_transport="aoa-bridge"), uncertainty_ppm=tool.RISK,
                         confident_calls=tool.CONFIDENT_CALLS)
-        self.assertEqual(owners(solve_placement(risky), rig.QWEN), {rig.OP15: "0-17", rig.PIXEL: "18-24"})
+        self.assertEqual(owners(solve_placement(risky), rig.QWEN), {rig.OP15: "0-17", rig.PIXEL: "18-23"})
         safe = with_envelope_caps(self.problem(pixel_transport="aoa-bridge"), 250_000)
-        self.assertEqual(owners(solve_placement(safe), rig.QWEN), {rig.OP15: "0-12", rig.PIXEL: "13-24"})
+        self.assertEqual(owners(solve_placement(safe), rig.QWEN), {rig.OP15: "0-11", rig.PIXEL: "12-23"})
 
     def test_user_proposal_when_the_op15_gemma_layout_is_held(self):
-        problem = self.problem(pixel_transport="adb-tcp")
+        # only with multi-artifact helper support (not built): today's co-helper serves one model per campaign
+        problem = self.problem(pixel_transport="adb-tcp", pixel_runtime="hypothetical-multi-model")
         problem = replace(problem, devices=tuple(
             replace(device, allowed_layers=MappingProxyType({rig.QWEN: layer_mask(range(25)),
                                                              rig.GEMMA: layer_mask(range(24))}))
             if device.device_id == rig.OP15 else device for device in problem.devices))
         plan = solve_placement(problem)
-        self.assertEqual(owners(plan, rig.GEMMA), {rig.OP15: "0-23", rig.PIXEL: "24-26"})
+        self.assertEqual(owners(plan, rig.GEMMA), {rig.OP15: "0-23", rig.PIXEL: "24-25"})
         self.assertTrue(any(":gemma-4-12b-q40-dequant-f16:q4_0-packed:" in row for row in plan.priors_used))
 
     def test_conservative_capacity_and_robustness(self):
         low = solve_placement(self.problem(op15_capacity=rig.OP15_LOWEST_LIVE_LIMIT))
-        self.assertEqual(owners(low, rig.GEMMA), {rig.OP15: "0-25", rig.PIXEL: "26"})
+        # WS12: the Pixel already serves Qwen and a co-helper serves one model -> Gemma 26 stays on the host
+        self.assertEqual(owners(low, rig.QWEN), {rig.OP15: "0", rig.PIXEL: "1-23"})
+        self.assertEqual(owners(low, rig.GEMMA), {rig.OP15: "0-25"})
+        multi = solve_placement(self.problem(op15_capacity=rig.OP15_LOWEST_LIVE_LIMIT,
+                                             pixel_runtime="hypothetical-multi-model"))
+        self.assertEqual(owners(multi, rig.GEMMA), {rig.OP15: "0-25"})
         gone = solve_placement(self.problem(available={rig.OP15: False}))
-        self.assertEqual(owners(gone, rig.QWEN), {rig.PIXEL: "0-24"})
+        # WS12: without the OP15 no assisted route exists, so the co-helper cannot serve alone
+        self.assertEqual(owners(gone, rig.QWEN), {"desktop-cpu": "0-23"})
         no_pixel = solve_placement(self.problem(available={rig.PIXEL: False}))
-        self.assertEqual(owners(no_pixel, rig.QWEN), {rig.OP15: "0-17", "desktop-cpu": "18-24"})
+        self.assertEqual(owners(no_pixel, rig.QWEN), {rig.OP15: "0-17", "desktop-cpu": "18-23"})
 
     def test_inventory_round_trip(self):
         problem = self.problem()
@@ -122,13 +135,13 @@ class ReplayTests(unittest.TestCase):
     def test_replay_is_fail_closed_and_reacts_to_a_lost_device(self):
         record = tool.replay()
         self.assertEqual(record["errors"], [])
-        self.assertEqual(record["decision_counts"], {"BLOCKED_QUALIFICATION": 3})
-        self.assertEqual(record["target"][rig.QWEN], {"desktop-cpu": "24", rig.OP15: "0-17", rig.PIXEL: "18-23"})
+        self.assertEqual(record["decision_counts"], {"BLOCKED_QUALIFICATION": 2})
+        self.assertEqual(record["target"][rig.QWEN], {rig.OP15: "0-17", rig.PIXEL: "18-23"})
         needs = [row["details"]["needs"] for row in record["decisions"] if row["model_id"] == rig.GEMMA]
-        self.assertTrue(needs and needs[-1][0]["layers"] == "24-26", needs)
+        self.assertTrue(needs and needs[-1][0]["layers"] == "24-25", needs)
         dropped = tool.replay(drop={rig.PIXEL: 3000.0})
         self.assertIn("MASK_OUT_NOW", dropped["decision_counts"])
-        self.assertEqual(dropped["target"][rig.QWEN], {"desktop-cpu": "18-24", rig.OP15: "0-17"})
+        self.assertEqual(dropped["target"][rig.QWEN], {"desktop-cpu": "18-23", rig.OP15: "0-17"})
 
 
 class ShadowTests(unittest.TestCase):
@@ -160,7 +173,7 @@ class ShadowTests(unittest.TestCase):
             profile = LayerPlacementProfile.from_json(json.loads((run / "LAYER_PLACEMENT_PROFILE.json").read_text()))
             self.assertGreater(profile.revision, PROFILE.revision)
             self.assertEqual(record["initial_report"]["ideal"]["models"][rig.GEMMA]["owners"][rig.OP15]["layers"],
-                             "0-26")
+                             "0-25")
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from research_dev.scheduler import PlacementHardwareProfile, RuntimePhonePowerProfile
-from research_dev.scheduler._internal.plan_contracts.co_helpers import co_helper_declaration
+from research_dev.scheduler._internal.plan_contracts.co_helpers import anchored_co_helper_declaration, co_helper_declaration
 from research_dev.scheduler._internal.types import canonical_sha256
 from research_dev.scheduler._internal.capability_contracts.common import _placement_profile_json
 from research_dev.scheduler.adapters import apply_assumed_phone_power_profile
@@ -41,6 +41,9 @@ class HelperPhoneEvidence:
     power: RuntimePhonePowerProfile
     # opt-in WS10: the helper's worker is reached through the host AOA bridge (transport identity aoa-bridge)
     aoa_bridge: AoaBridgeConfiguration | None = None
+    # WS15: {"kernel": "attn_proj:fused", "fused_layer_mask": int, "fused_next_mask": int,
+    #        "fused_weight_hash": "<16 hex>"} when the qualified worker serves fused calls
+    fused: dict | None = None
 
     def session(self):
         """A fresh worker session of the qualified transport."""
@@ -72,7 +75,7 @@ class HelperPhoneEvidence:
         return session.preflight().to_json()
 
 
-def load_helper_evidence(path, *, server_path=None):
+def load_helper_evidence(path, *, server_path=None, repinned_host_software=()):
     path = Path(path)
     raw = json.loads(path.read_text())
     require(raw.get("schema") == "s42-static-helper-evidence-v1" and raw.get("status") == "PASS",
@@ -101,6 +104,10 @@ def load_helper_evidence(path, *, server_path=None):
             require(worker.expected_sha256_by_path.get(library) == expected,
                     "helper library differs from qualification: " + library)
     for name, host_path in raw["host_software_paths"].items():
+        if name in repinned_host_software:
+            # rebind-shard re-pins this host file (a server rebuilt in place keeps its path): the source bundle's
+            # digest is stale by construction and the rebound bundle is validated with the fresh one
+            continue
         require(digest(host_path) == software[name], "helper host software differs: " + name)
     require({"host_binary_sha256", "host_impl_sha256", "transport_client_source_sha256"}
             <= set(raw["host_software_paths"]), "helper host software pins are incomplete")
@@ -122,11 +129,25 @@ def load_helper_evidence(path, *, server_path=None):
                 "helper AOA bridge differs from qualification")
     else:
         require("aoa_bridge" not in raw, "only aoa-bridge helper evidence carries a bridge configuration")
+    fused = None
+    if "fused" in raw:
+        fused = dict(raw["fused"])
+        require(set(fused) == {"kernel", "fused_layer_mask", "fused_next_mask", "fused_weight_hash"}
+                and fused["kernel"] == "attn_proj:fused"
+                and type(fused["fused_layer_mask"]) is int and type(fused["fused_next_mask"]) is int
+                and 0 < fused["fused_layer_mask"] and not fused["fused_layer_mask"] & ~worker.layer_mask
+                and not fused["fused_next_mask"] & ~fused["fused_layer_mask"]
+                and type(fused["fused_weight_hash"]) is str and len(fused["fused_weight_hash"]) == 16,
+                "helper fused kernel evidence is invalid")
+        receipt = json.loads(Path(raw["receipt_paths"]["numerical-rows-1-2-4"]).read_text())
+        require(receipt.get("kernel") == "attn_proj:fused"
+                and receipt.get("fused_layer_mask") == fused["fused_layer_mask"],
+                "helper fused kernel lacks its numerical receipt")
     fragment = raw["profile_fragment"]
     require([row["device_id"] for row in fragment["devices"]] == [worker.device_id]
             and all(row["device_id"] == worker.device_id for row in fragment["kernels"]),
             "helper cost profile modifies another device")
-    return HelperPhoneEvidence(path, identity, worker, fragment, power, aoa)
+    return HelperPhoneEvidence(path, identity, worker, fragment, power, aoa, fused)
 
 
 def extend_helper_profile(profile, evidences):
@@ -174,19 +195,30 @@ def validate_helper_declaration(declaration, manifest, evidence, rig_row):
             and worker.layer_mask == helper.layer_mask
             and worker.expected_sha256_by_path[worker.shard_path] == helper.shard_sha256,
             "helper shard or geometry differs from the model declaration")
+    fused = evidence.fused or {}
+    require((getattr(helper, "fused_layer_mask", 0), getattr(helper, "fused_next_mask", 0))
+            == (fused.get("fused_layer_mask", 0), fused.get("fused_next_mask", 0)),
+            "helper fused layers differ from the qualified fused kernel")
+
+
+def catalog_co_helper_declarations(catalog):
+    """artifact -> the model's co-helper declaration, from the primary-anchored composites (phone_co_helpers_v1) or,
+    WS23 (2026-10-05), from the helper-led composites' carrier (anchored_co_helpers_v1) when no primary family exists."""
+    declarations = {}
+    for row in catalog.composite_executors:
+        declaration = co_helper_declaration(row.adapter_parameters) or anchored_co_helper_declaration(row.adapter_parameters)
+        if declaration is None:
+            continue
+        previous = declarations.setdefault(row.artifact_sha256, declaration)
+        require(previous == declaration, "model has conflicting helper declarations")
+    return declarations
 
 
 def campaign_co_helper_lifecycles(paths, catalog, manifests, server_path):
     evidences = [load_helper_evidence(path, server_path=server_path) for path in paths]
     by_device = {row.worker.device_id: row for row in evidences}
     require(len(by_device) == len(evidences), "duplicate helper campaign evidence")
-    declarations = {}
-    for row in catalog.composite_executors:
-        declaration = co_helper_declaration(row.adapter_parameters)
-        if declaration is None:
-            continue
-        previous = declarations.setdefault(row.artifact_sha256, declaration)
-        require(previous == declaration, "model has conflicting helper declarations")
+    declarations = catalog_co_helper_declarations(catalog)
     require({device for declaration in declarations.values() for device in declaration.device_ids} == set(by_device),
             "catalog and helper campaign evidence differ")
     by_artifact = {manifest.artifact_sha256: manifest for manifest in manifests.values()}

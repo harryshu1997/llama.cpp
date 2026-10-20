@@ -229,7 +229,17 @@ def main() -> int:
                     leftovers(inputs, stage)
                     row = {"stage": stage, "inputs": str(inputs), "exit_code": code}
                     if stage == "preflight" and (output / "PHYSICAL_PREFLIGHT.json").is_file():
-                        row["preflight_status"] = json.loads((output / "PHYSICAL_PREFLIGHT.json").read_text()).get("status")
+                        report = json.loads((output / "PHYSICAL_PREFLIGHT.json").read_text())
+                        row["preflight_status"] = report.get("status")
+                        row["phone_route_plannable_models"] = report.get("phone_route_plannable_models")
+                        # opt-in S43_REQUIRE_PHONE_ROUTE=MODEL[,MODEL]: a phone arm stops here unless every named
+                        # model has a phone route that plans (a desktop-only run would otherwise PASS and look like a
+                        # phone result); an older report without the key fails too. Desktop arms are exempt.
+                        required = [m for m in os.environ.get("S43_REQUIRE_PHONE_ROUTE", "").split(",") if m]
+                        plannable = set(report.get("phone_route_plannable_models") or ())
+                        if (required and not inputs.name.startswith("inputs-desktop-")
+                                and row["preflight_status"] == "PASS" and not plannable.issuperset(required)):
+                            row["preflight_status"] = "NO_PHONE_ROUTE"
                     if stage == "run" and (output / "run/RESULT.json").is_file():
                         result = json.loads((output / "run/RESULT.json").read_text())
                         row["result_status"] = result.get("status")

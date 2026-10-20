@@ -1,0 +1,17 @@
+start 2026-10-08T11:21:20-04:00 boot=dbff3b27-a613-4e1e-a9ab-1f9cd3ae1d1e
+=== diag-i4bw 2026-10-08T11:21:20-04:00
+/mnt/storage/s43-ws17-quantized-20261003/q32-phone/tpu/stage/diag-i4bw-down.tflite: 1 file pushed, 0 skipped. 640.8 MB/s (1711600 bytes in 0.003s)
+pushed diag-i4bw-down.tflite bytes=1711600 s=.086000269
+/mnt/storage/s43-ws17-quantized-20261003/q32-phone/tpu/stage/onehot_M32_K512.f32: 1 file pushed, 0 skipped. 545.6 MB/s (131072 bytes in 0.000s)
+pushed onehot_M32_K512.f32 bytes=131072 s=.035676764
+exit diag-i4bw rc=0 2026-10-08T11:21:21-04:00
+=== diag-i4pc 2026-10-08T11:21:21-04:00
+/mnt/storage/s43-ws17-quantized-20261003/q32-phone/tpu/stage/diag-i4pc-down.tflite: 1 file pushed, 0 skipped. 433.7 MB/s (1574016 bytes in 0.003s)
+pushed diag-i4pc-down.tflite bytes=1574016 s=.084276211
+exit diag-i4pc rc=0 2026-10-08T11:21:23-04:00
+=== diag-f32 2026-10-08T11:21:23-04:00
+/mnt/storage/s43-ws17-quantized-20261003/q32-phone/tpu/stage/diag-f32-down.tflite: 1 file pushed, 0 skipped. 10.1 MB/s (5471104 bytes in 0.518s)
+pushed diag-f32-down.tflite bytes=5471104 s=.648525506
+exit diag-f32 rc=0 2026-10-08T11:21:25-04:00
+done 2026-10-08T11:21:25-04:00 boot=dbff3b27-a613-4e1e-a9ab-1f9cd3ae1d1e same_boot=1
+ALLDONE

@@ -642,6 +642,7 @@ class RuntimeRequestMixin:
                     "resource_id": lease.resource_id,
                     "start_us": lease.start_us,
                     "token": lease.token,
+                    **({} if lease.share_key is None else {"share_key": lease.share_key}),
                 }
                 for lease in ticket.decision.leases
             ],

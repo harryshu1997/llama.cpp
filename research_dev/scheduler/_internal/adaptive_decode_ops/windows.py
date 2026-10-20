@@ -767,6 +767,11 @@ def discard_stale_window(
                 session, boundary, observation,
                 terminal_token_index, terminal_at_us,
             )
+        if reason == "released_slot_unmeasured_remainder":
+            return controller._seal_released_remainder(
+                session, boundary, observation,
+                terminal_token_index, terminal_at_us,
+            )
         released = terminal_token_index is not None or terminal_at_us is not None
         acknowledgements = [
             (row.policy, row.applied_ack)

@@ -651,6 +651,251 @@ class MultiSessionPhoneTests(unittest.TestCase):
                 exclusive_resource_by_device={"phone": "phone-htp"},
             )
 
+    def test_whole_single_session_replacement_reuses_exact_session_memory(
+        self,
+    ) -> None:
+        """2026-10-06: a one-session phone (the OnePlus holding only Qwen
+        layer 0 on the single-user traces) replacing its only session with
+        Gemma has no retained session. Plan authorization still emits a
+        session-scoped eviction, which the ledger never credits, so the
+        copy-on-write rewrite must apply here as well. Before the fix the
+        preparation failed with "memory replacement credit differs from
+        transition plan", the helper watcher died silently and the OnePlus
+        never loaded Gemma."""
+        artifact_a = "sha256:" + "a" * 64
+        artifact_b = "sha256:" + "b" * 64
+
+        def shard(
+            artifact_sha256: str, resident_bytes: int,
+        ) -> PhoneFfnShardPlacement:
+            suffix = "HTP0" + artifact_sha256[-1]
+            return PhoneFfnShardPlacement(
+                artifact_sha256=artifact_sha256,
+                session_id="HTP0",
+                endpoint="session://phone/HTP0",
+                memory_resource_id="phone-memory:HTP0",
+                operator_ids=("blk.0.ffn",),
+                layer_mask=1,
+                maximum_columns=1024,
+                resident_bytes=resident_bytes,
+                resident_geometry_sha256=canonical_sha256({
+                    "geometry": suffix,
+                }),
+                operator_plan_sha256=canonical_sha256({
+                    "plan": suffix,
+                }),
+            )
+
+        def layout(row: PhoneFfnShardPlacement) -> PhoneFfnResidencyLayout:
+            return PhoneFfnResidencyLayout(
+                shards=(row,),
+                queued_work_by_artifact={row.artifact_sha256: 10},
+                queue_benefit_by_artifact={row.artifact_sha256: 100},
+                queue_benefit_by_session={"HTP0": 100},
+                queue_benefit=100,
+                transition_cost=1,
+                transition_cost_by_session={"HTP0": 1},
+                objective=1 - 100,
+                objective_kind="queue_energy_delta_uj",
+                changed_session_ids=("HTP0",),
+                geometry_sha256=canonical_sha256({
+                    "artifact_sha256": row.artifact_sha256,
+                    "shards": [{
+                        "geometry_sha256": row.resident_geometry_sha256,
+                        "session_id": "HTP0",
+                    }],
+                }),
+            )
+
+        source_layout = layout(shard(artifact_a, 100)).with_session_generations(
+            {"HTP0": 1}
+        )
+        target_layout = layout(shard(artifact_b, 120)).with_session_generations(
+            {"HTP0": 2}
+        )
+        common = dict(
+            workspace_bytes=4,
+            shared_compute_resource_id="phone-htp",
+            shared_transport_resource_ids=("phone-usb",),
+            minimum_residency_interval_us=0,
+        )
+        source = ModelPhoneResidencyLayout(
+            generation=1,
+            state="READY",
+            layout=source_layout,
+            proposed_at_us=0,
+            minimum_resident_until_us=0,
+            session_identities=source_layout.session_identities,
+            ready_at_us=1,
+            verification_sha256=canonical_sha256({"ready": 1}),
+            **common,
+        )
+        target = ModelPhoneResidencyLayout(
+            generation=2,
+            state="PROPOSED",
+            layout=target_layout,
+            proposed_at_us=2,
+            minimum_resident_until_us=2,
+            session_identities=target_layout.session_identities,
+            **common,
+        )
+        # Nothing keeps serving on the phone during the load, so the
+        # preparation leases the shared resources like a cold load.
+        self.assertEqual(
+            UnifiedScheduler._copy_on_write_preparation_yielding_resources(
+                source, target
+            ),
+            (),
+        )
+        old = source_layout.shards[0]
+        new = target_layout.shards[0]
+        transition = RuntimeTransitionPlan(
+            transition_id="replace-only-phone-session",
+            device_id="phone",
+            source_state="cold",
+            target_state="hot",
+            latency_us=10,
+            energy_uj=10,
+            resource_ids=("phone-htp",),
+            maturity="QUALIFIED",
+            prepares_device_ids=("phone",),
+            evictions=(RuntimeResidencyEviction(
+                model_id="model-a",
+                artifact_sha256=artifact_a,
+                device_id="phone",
+                resident_bytes=100,
+                generation=1,
+                executor_id="phone-executor",
+                replacement_group="phone-htp",
+                session_id="HTP0",
+                resident_geometry_sha256=old.resident_geometry_sha256,
+                operator_plan_sha256=old.operator_plan_sha256,
+            ),),
+            phone_shards=(RuntimePhoneShard(
+                session_id="HTP0",
+                endpoint=new.endpoint,
+                layer_mask=new.layer_mask,
+                maximum_columns=new.maximum_columns,
+                resident_bytes=new.resident_bytes,
+                resident_geometry_sha256=new.resident_geometry_sha256,
+                operator_plan_sha256=new.operator_plan_sha256,
+                artifact_sha256=artifact_b,
+                session_generation=2,
+            ),),
+            changed_phone_session_ids=("HTP0",),
+        )
+        demands = (
+            RuntimeMemoryDemand(
+                demand_id="weights:phone",
+                resource_id="phone-memory",
+                kind="model_weights",
+                required_bytes=120,
+                resident_bytes=0,
+                lifetime="resident",
+                share_key=target_layout.geometry_sha256,
+                replacement_group="phone-htp",
+                replaceable_bytes=100,
+                device_id="phone",
+            ),
+            RuntimeMemoryDemand(
+                demand_id="phone-session:HTP0",
+                resource_id="phone-memory:HTP0",
+                kind="session_residency_constraint",
+                required_bytes=120,
+                resident_bytes=0,
+                lifetime="resident",
+                share_key=new.resident_geometry_sha256,
+                device_id="phone",
+            ),
+            RuntimeMemoryDemand(
+                demand_id="workspace:phone",
+                resource_id="phone-memory",
+                kind="workspace",
+                required_bytes=4,
+                resident_bytes=0,
+                lifetime="resident",
+                share_key=target_layout.geometry_sha256 + ":workspace",
+                device_id="phone",
+            ),
+        )
+        snapshot = SimpleNamespace(
+            residency=(ModelResidencyObservation(
+                model_id="model-a",
+                artifact_sha256=artifact_a,
+                device_id="phone",
+                state="hot",
+                resident_tensor_ids=("weight-a",),
+                resident_bytes=100,
+                generation=1,
+                executor_id="phone-executor",
+                resident_geometry_sha256=source_layout.geometry_sha256,
+            ),),
+            phone_session_residency=(PhoneSessionResidencyObservation(
+                session_id="HTP0",
+                device_id="phone",
+                executor_id="phone-executor",
+                endpoint=old.endpoint,
+                artifact_sha256=artifact_a,
+                resident_geometry_sha256=old.resident_geometry_sha256,
+                operator_plan_sha256=old.operator_plan_sha256,
+                session_generation=1,
+                resident_bytes=100,
+            ),),
+        )
+        placement = RuntimePlacementSnapshot(
+            snapshot_id="whole-phone-memory",
+            captured_at_us=0,
+            valid_until_us=100,
+            capacities={
+                "phone-memory": DeviceMemoryCapacity(
+                    "phone-memory", 500, 200, 0
+                ),
+                "phone-memory:HTP0": DeviceMemoryCapacity(
+                    "phone-memory:HTP0", 130, 100, 0
+                ),
+            },
+        )
+        # The planned credit alone can never be proven: the ledger skips
+        # session-scoped evictions (this is the production failure).
+        with self.assertRaisesRegex(
+            RuntimeResourceError,
+            "memory replacement credit differs from transition plan",
+        ):
+            RuntimeMemoryLedger().reserve(
+                "whole-phone-replacement-unadjusted",
+                demands,
+                placement,
+                transitions=(transition,),
+                residency=snapshot.residency,
+                exclusive_resource_by_device={"phone": "phone-htp"},
+            )
+        adjusted = UnifiedScheduler._partial_phone_replacement_memory_demands(
+            demands,
+            phone_device_id="phone",
+            source=source,
+            target=target,
+            transitions=(transition,),
+            snapshot=snapshot,
+        )
+        by_id = {row.demand_id: row for row in adjusted}
+        self.assertEqual(by_id["weights:phone"].resident_bytes, 100)
+        self.assertEqual(by_id["weights:phone"].additional_bytes, 20)
+        self.assertIsNone(by_id["weights:phone"].replacement_group)
+        self.assertEqual(by_id["phone-session:HTP0"].additional_bytes, 20)
+        self.assertEqual(by_id["workspace:phone"].additional_bytes, 0)
+        reservations = RuntimeMemoryLedger().reserve(
+            "whole-phone-replacement",
+            adjusted,
+            placement,
+            transitions=(transition,),
+            residency=snapshot.residency,
+            exclusive_resource_by_device={"phone": "phone-htp"},
+        )
+        self.assertEqual(
+            {row.resource_id: row.reserved_bytes for row in reservations},
+            {"phone-memory": 20, "phone-memory:HTP0": 20},
+        )
+
     def test_mixed_helpers_time_share_capacity_one_htp(self) -> None:
         timeline = ResourceTimeline({
             resource_id: ResourceProfile(

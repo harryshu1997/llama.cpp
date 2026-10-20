@@ -1,0 +1,14 @@
+{
+  "fmt": "i4pc",
+  "scale_dtype": "f16",
+  "nibble_order": "lo",
+  "batch": 1,
+  "part": "all",
+  "columns": 25600,
+  "ops": 6,
+  "tflite_bytes": 197285280,
+  "weight_payload_bytes": 196608000,
+  "model_sha256": "24f44f37678aac79e18f67f7cb38e11249245ccdf660ac31ab911bc92919997d",
+  "weights_sha256": "fc8a9faf92a0a2776b71a44cf03425b7003e9adb0cd6610247ffbe99b9ca6e6f",
+  "exporter_sha256": "80758663203add547881d3b29460eb02e735623262d7b19a5aab6f84eb936574"
+}

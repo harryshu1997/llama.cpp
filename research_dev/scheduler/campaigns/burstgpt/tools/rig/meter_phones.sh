@@ -36,8 +36,11 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 MODE=as-is; OP15_PERIOD=1; PIXEL_PERIOD=0.25; MAX_SAMPLES=100000
 OP15_MMI=/sys/class/oplus_chg/battery/mmi_charging_enable
 PIXEL_STOP=/sys/devices/platform/google,charger/charge_stop_level
-OP15_NODES="usb/current_now usb/voltage_now usb/input_current_limit battery/current_now battery/voltage_now battery/charge_counter $OP15_MMI"
-PIXEL_NODES="usb/current_now usb/voltage_now usb/input_current_limit battery/current_now battery/current_avg battery/voltage_now battery/charge_counter $PIXEL_STOP"
+# the driver keeps charge_start_level < charge_stop_level: lower start before stop, raise stop before start.
+# 2026-10-03: Pixel Adaptive Charging had left start=70/stop=80 and a stop write of 70 was refused (exit 4)
+PIXEL_START=/sys/devices/platform/google,charger/charge_start_level
+OP15_NODES="usb/current_now usb/voltage_now usb/input_current_limit battery/current_now battery/voltage_now battery/charge_counter battery/temp $OP15_MMI"   # battery/temp added 2026-10-04 (thermal confound analysis)
+PIXEL_NODES="usb/current_now usb/voltage_now usb/input_current_limit battery/current_now battery/current_avg battery/voltage_now battery/charge_counter battery/temp $PIXEL_STOP"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -86,15 +89,17 @@ restore(){
   [ "$MODE" = controlled ] && [ -n "$CHANGED" ] || return 0
   if [ -n "$ORIG_MMI" ]; then su1 $OP15 "echo $ORIG_MMI > $OP15_MMI"; fi
   if [ -n "$ORIG_STOP" ]; then su1 $PIXEL "echo $ORIG_STOP > $PIXEL_STOP"; fi
+  if [ -n "$ORIG_START" ]; then su1 $PIXEL "echo $ORIG_START > $PIXEL_START"; fi
   sleep "$SETTLE"
-  local mmi stop usb ok=1
-  mmi=$(su1 $OP15 "cat $OP15_MMI"); stop=$(su1 $PIXEL "cat $PIXEL_STOP"); usb=$(su1 $PIXEL 'cat /sys/class/power_supply/usb/current_now')
+  local mmi stop start usb ok=1
+  mmi=$(su1 $OP15 "cat $OP15_MMI"); stop=$(su1 $PIXEL "cat $PIXEL_STOP"); start=$(su1 $PIXEL "cat $PIXEL_START"); usb=$(su1 $PIXEL 'cat /sys/class/power_supply/usb/current_now')
   [ -z "$ORIG_MMI" ] || [ "$mmi" = "$ORIG_MMI" ] || ok=0
   [ -z "$ORIG_STOP" ] || [ "$stop" = "$ORIG_STOP" ] || ok=0
+  [ -z "$ORIG_START" ] || [ "$start" = "$ORIG_START" ] || ok=0
   if [ "$ORIG_USB" -gt 20000 ] 2>/dev/null; then  # input was on before: it must be on again
     [ -n "$usb" ] && [ "$usb" -gt 20000 ] 2>/dev/null || ok=0
   fi
-  log "charging restored: op15 mmi=$mmi (orig $ORIG_MMI) pixel stop=$stop (orig $ORIG_STOP) pixel usb_ua=$usb verified=$ok"
+  log "charging restored: op15 mmi=$mmi (orig $ORIG_MMI) pixel stop=$stop (orig $ORIG_STOP) start=$start (orig $ORIG_START) pixel usb_ua=$usb verified=$ok"
   [ $ok = 1 ] || log "WARNING: charging state NOT verified; check both phones by hand"
   MODE=restored
 }
@@ -103,19 +108,21 @@ trap 'exit 130' INT TERM
 
 snapshot before
 if [ "$MODE" = controlled ]; then
-  ORIG_MMI=$(su1 $OP15 "cat $OP15_MMI"); ORIG_STOP=$(su1 $PIXEL "cat $PIXEL_STOP")
+  ORIG_MMI=$(su1 $OP15 "cat $OP15_MMI"); ORIG_STOP=$(su1 $PIXEL "cat $PIXEL_STOP"); ORIG_START=$(su1 $PIXEL "cat $PIXEL_START")
   ORIG_USB=$(su1 $PIXEL 'cat /sys/class/power_supply/usb/current_now'); ORIG_USB=${ORIG_USB:-0}
   CAP=$(sh1 $PIXEL "cat /sys/class/power_supply/battery/capacity")
-  case "$ORIG_MMI$ORIG_STOP$CAP" in ''|*[!0-9]*) log "cannot read charge-control state (mmi=$ORIG_MMI stop=$ORIG_STOP cap=$CAP)"; exit 4 ;; esac
+  case "$ORIG_MMI$ORIG_STOP$ORIG_START$CAP" in ''|*[!0-9]*) log "cannot read charge-control state (mmi=$ORIG_MMI stop=$ORIG_STOP start=$ORIG_START cap=$CAP)"; exit 4 ;; esac
   LEVEL=$((CAP - 10)); [ $LEVEL -lt 5 ] && LEVEL=5
+  START=$((LEVEL - 10)); [ $START -lt 1 ] && START=1   # a run drains the Pixel ~6 %: it never reaches the recharge level
   [ "$CAP" -ge 20 ] || { log "Pixel capacity $CAP % < 20 %: not starting battery-only mode"; exit 4; }
   CHANGED=1
   su1 $OP15 "echo 0 > $OP15_MMI"
+  su1 $PIXEL "echo $START > $PIXEL_START"
   su1 $PIXEL "echo $LEVEL > $PIXEL_STOP"
   sleep "$SETTLE"
-  NOW_MMI=$(su1 $OP15 "cat $OP15_MMI"); NOW_STOP=$(su1 $PIXEL "cat $PIXEL_STOP")
-  log "charging controlled: op15 mmi $ORIG_MMI -> $NOW_MMI, pixel stop $ORIG_STOP -> $NOW_STOP (capacity $CAP), pixel usb_ua=$(su1 $PIXEL 'cat /sys/class/power_supply/usb/current_now')"
-  [ "$NOW_MMI" = 0 ] && [ "$NOW_STOP" = "$LEVEL" ] || { log "charge control did not take effect: not running"; exit 4; }
+  NOW_MMI=$(su1 $OP15 "cat $OP15_MMI"); NOW_STOP=$(su1 $PIXEL "cat $PIXEL_STOP"); NOW_START=$(su1 $PIXEL "cat $PIXEL_START")
+  log "charging controlled: op15 mmi $ORIG_MMI -> $NOW_MMI, pixel stop $ORIG_STOP -> $NOW_STOP start $ORIG_START -> $NOW_START (capacity $CAP), pixel usb_ua=$(su1 $PIXEL 'cat /sys/class/power_supply/usb/current_now')"
+  [ "$NOW_MMI" = 0 ] && [ "$NOW_STOP" = "$LEVEL" ] && [ "$NOW_START" = "$START" ] || { log "charge control did not take effect: not running"; exit 4; }
 fi
 
 declare -A START_JSON

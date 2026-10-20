@@ -1,0 +1,70 @@
+{
+  "bounded_check": {
+    "local_directory": "bounded-check",
+    "remote_directory": "/mnt/storage/s42-cuda-graph-v1-20260909/attempts/bounded-graph-phone-compatibility-attempt3",
+    "result_sha256": "sha256:006cc33a4a3807cb8a65b6a8a901c2ee938cf175646f46eaa73b1f0f6b98da77"
+  },
+  "comparison_sha256": "83054fdc4179b4c64939a1ed07ce0891e833a3f642218464c47e62eaf27ba022",
+  "desktop_host": "zhihao@172.20.74.85",
+  "excluded_completed_source_v6_references": [
+    "desktop-default-cuda",
+    "desktop-matched-cuda",
+    "fixed-ggg",
+    "fixed-qqq"
+  ],
+  "failed_attempt_directories": [
+    "failed-attempts/bounded-graph-phone-compatibility-attempt1",
+    "failed-attempts/bounded-graph-phone-compatibility-attempt2",
+    "failed-attempts/desktop-default-cuda-attempt1",
+    "failed-attempts/fixed-ggq-attempt1"
+  ],
+  "frozen_source": "provenance/reference-source-v7.tar.gz",
+  "frozen_specification": "provenance/reference-inputs/FROZEN_EXPERIMENT_SPECIFICATION-v6.json",
+  "preflights_directory": "provenance/preflights",
+  "qualification_directory": "qualification",
+  "references": {
+    "desktop-default-cuda": {
+      "attempt": 3,
+      "local_directory": "references-source-v7/desktop-default-cuda",
+      "local_result_matches_remote_sha256": true,
+      "remote_directory": "/mnt/storage/s42-cuda-graph-v1-20260909/attempts/desktop-default-cuda-attempt3",
+      "result_sha256": "sha256:908046fad807b5937ac822490e1e67cab81eb1a00534f82538ac42664bf2ecf2"
+    },
+    "desktop-matched-cuda": {
+      "attempt": 2,
+      "local_directory": "references-source-v7/desktop-matched-cuda",
+      "local_result_matches_remote_sha256": true,
+      "remote_directory": "/mnt/storage/s42-cuda-graph-v1-20260909/attempts/desktop-matched-cuda-attempt2",
+      "result_sha256": "sha256:33e33dbcc2b24def34521b14e8fd257b824acaee9badc00c6c4dde38609a1d4d"
+    },
+    "fixed-ggg": {
+      "attempt": 2,
+      "local_directory": "references-source-v7/fixed-ggg",
+      "local_result_matches_remote_sha256": true,
+      "remote_directory": "/mnt/storage/s42-cuda-graph-v1-20260909/attempts/fixed-ggg-attempt2",
+      "result_sha256": "sha256:883a659b9b959a3084ee60dfa2e9e7c5f45612f76fd82443a17a5d46d7d163f3"
+    },
+    "fixed-ggq": {
+      "attempt": 2,
+      "local_directory": "references-source-v7/fixed-ggq",
+      "local_result_matches_remote_sha256": true,
+      "remote_directory": "/mnt/storage/s42-cuda-graph-v1-20260909/attempts/fixed-ggq-attempt2",
+      "result_sha256": "sha256:59301e4eb9b622cf62bc0aeefd7f0794d0ae75cbcf44fcd1eccce10911ef906e"
+    },
+    "fixed-gqq": {
+      "attempt": 1,
+      "local_directory": "references-source-v7/fixed-gqq",
+      "local_result_matches_remote_sha256": true,
+      "remote_directory": "/mnt/storage/s42-cuda-graph-v1-20260909/attempts/fixed-gqq-attempt1",
+      "result_sha256": "sha256:60d7af9b8b44041b60687ae2166a9907a9f6d69059af6a2d21ebf3ee75007603"
+    },
+    "fixed-qqq": {
+      "attempt": 2,
+      "local_directory": "references-source-v7/fixed-qqq",
+      "local_result_matches_remote_sha256": true,
+      "remote_directory": "/mnt/storage/s42-cuda-graph-v1-20260909/attempts/fixed-qqq-attempt2",
+      "result_sha256": "sha256:61ee255d48edfcdeb43a2b23489abc91dc40bedc5ee99b931b30ab48eee96fdb"
+    }
+  },
+  "schema": "cuda-reference-artifact-origins-v1"
+}

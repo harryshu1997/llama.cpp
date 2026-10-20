@@ -106,8 +106,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--phone-cpu-affinity", help="qualified hexadecimal CPU mask for phone session subprocesses")
     parser.add_argument("--phone-multi-session-port-base", type=int)
     parser.add_argument("--phone-busybox", required=True)
-    parser.add_argument("--qwen-phone-model", required=True)
-    parser.add_argument("--gemma-phone-model", required=True)
+    parser.add_argument("--qwen-phone-model")  # absent: the phone holds no copy (no phone shards)
+    parser.add_argument("--gemma-phone-model")  # absent: the phone holds no copy (no phone shards)
     parser.add_argument("--llama-phone-model")
     parser.add_argument(
         "--qwen-ffn-shards",
@@ -185,6 +185,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--maximum-phone-sessions", type=int)
     parser.add_argument("--host-memory-budget-bytes", type=int, help="decode-only relocation admission: book every server and its released FFN share against this host budget")
     parser.add_argument("--fixed-phone-residency-json")
+    parser.add_argument("--remote-resident-owner-json",
+                        help="campaign remote_resident_owner: {model_id, owner_ready_timeout_s}")
     parser.add_argument("--phone-htp-memory-caps-json")
     parser.add_argument("--phone-thermal-status-limits-json",
                         help="JSON array of {phone_device_id, maximum_thermal_status} rows "

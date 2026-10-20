@@ -8,7 +8,8 @@ This module holds the host-side contracts around that runtime:
 * :class:`PhoneHelperBinding` / :func:`validate_disjoint_ownership` - which device owns which
   layers; overlaps, duplicates and uncovered layers fail closed;
 * :func:`helper_server_environment` - the ``S41_SERVER_FFN_HELPER<k>_*`` launch environment; a
-  single helper collapses to the legacy single-client environment byte for byte;
+  single helper collapses to the legacy single-client environment byte for byte; remote-resident
+  layers move to their owning helper (``HELPER<k>_REMOTE_RESIDENT_LAYER_MASK``);
 * :func:`attribute_ffn_calls` - per-device call accounting of ``S41SERVERFFNCALL`` proofs by the
   owner of each layer, cross-checked against the owner's request-id range;
 * :class:`PhoneHelperTransportIdentity` - what one helper's transport qualification binds, and
@@ -41,11 +42,14 @@ MAXIMUM_HELPERS = 8
 # native request-id range of helper k: [1 + k * 2^24, 1 + (k + 1) * 2^24)
 REQUEST_ID_RANGE = 1 << 24
 HELPER_TRANSPORTS = ("functionfs-usb", "adb-tcp")
-_TRANSPORT_KEYS = ("S41_SERVER_FFN_TRANSPORT", "S41_SERVER_FFN_HOST", "S41_SERVER_FFN_PORT")
+_TRANSPORT_KEYS = (
+    "S41_SERVER_FFN_TRANSPORT", "S41_SERVER_FFN_HOST", "S41_SERVER_FFN_PORT", "S41_SERVER_FFN_FAST_HASH",
+)
 _TRANSPORT_PREFIXES = ("S41_SERVER_FFN_USB_", "S41_SERVER_FFN_USBFS_")
+_REMOTE_RESIDENT_KEY = "S41_SERVER_FFN_REMOTE_RESIDENT_LAYER_MASK"
+_HELPER_REMOTE_RESIDENT_SUFFIX = "_REMOTE_RESIDENT_LAYER_MASK"
 # shared keys the native runtime refuses next to several helpers
 _MULTI_HELPER_FORBIDDEN_KEYS = (
-    "S41_SERVER_FFN_REMOTE_RESIDENT_LAYER_MASK",
     "S41_SERVER_FFN_TAIL_FENCE_SOCKET",
     "S41_SERVER_FFN_TAIL_FENCE_LAYER",
     "S41_SERVER_FFN_TAIL_FENCE_JOIN_LAYER",
@@ -92,8 +96,33 @@ class PhoneHelperBinding:
     layer_mask: int
     label: str
     transport_parameters: Mapping[str, int | str] = field(default_factory=dict)
+    # WS15: layers whose full-width call also runs O(l) (+ layer l+1's Q/K/V for fused_next_mask)
+    fused_layer_mask: int = 0
+    fused_next_mask: int = 0
+    # WS21: attention geometry of the fused calls (sizes the FunctionFS slots); 0 when not fused or unknown (TCP)
+    fused_n_q: int = 0
+    fused_n_kv: int = 0
+    # remote-resident decode co-helper (opt-in): this helper's own row cap below the server's batch; 0 = shared
+    max_tokens: int = 0
 
     def __post_init__(self) -> None:
+        if type(self.max_tokens) is not int or not 0 <= self.max_tokens <= 512:
+            raise PhysicalAdapterError("phone helper max_tokens is invalid")
+        for name in ("fused_layer_mask", "fused_next_mask", "fused_n_q", "fused_n_kv"):
+            value = getattr(self, name)
+            if type(value) is not int or not 0 <= value < 1 << 64:
+                raise PhysicalAdapterError("phone helper " + name + " must be a 64-bit mask")
+        if self.fused_layer_mask & ~self.layer_mask or self.fused_next_mask & ~self.fused_layer_mask:
+            raise PhysicalAdapterError("phone helper fused layers must be its own layers (next within fused)")
+        if (self.fused_n_q or self.fused_n_kv) and (not self.fused_layer_mask or not (self.fused_n_q and self.fused_n_kv)):
+            raise PhysicalAdapterError("phone helper fused geometry needs fused layers, n_q and n_kv")
+
+    def fused_row_elements(self, n_embd: int) -> int:
+        """Widest fused wire row; n_embd for FFN-only bindings."""
+        if not self.fused_layer_mask:
+            return n_embd
+        out_row = n_embd + (self.fused_n_q + 2 * self.fused_n_kv if self.fused_next_mask else 0)
+        return max(n_embd, self.fused_n_q + n_embd, out_row)
         for name in ("device_id", "serial"):
             value = getattr(self, name)
             if type(value) is not str or not value or not value.isascii():
@@ -113,6 +142,10 @@ class PhoneHelperBinding:
             "layer_mask": self.layer_mask,
             "serial": self.serial,
             "transport_parameters": dict(self.transport_parameters),
+            **({"fused_layer_mask": self.fused_layer_mask, "fused_next_mask": self.fused_next_mask}
+               if self.fused_layer_mask else {}),
+            **({"fused_n_q": self.fused_n_q, "fused_n_kv": self.fused_n_kv} if self.fused_n_q else {}),
+            **({"max_tokens": self.max_tokens} if self.max_tokens else {}),
         }
 
     @classmethod
@@ -125,6 +158,11 @@ class PhoneHelperBinding:
             layer_mask=value.get("layer_mask"),
             label=value.get("label"),
             transport_parameters=value.get("transport_parameters", {}),
+            fused_layer_mask=value.get("fused_layer_mask", 0),
+            fused_next_mask=value.get("fused_next_mask", 0),
+            fused_n_q=value.get("fused_n_q", 0),
+            fused_n_kv=value.get("fused_n_kv", 0),
+            max_tokens=value.get("max_tokens", 0),
         )
 
 
@@ -216,19 +254,85 @@ def helper_server_environment(
     validate_disjoint_ownership(rows, required_layer_mask=int(mask_text))
     if len(contracts) != len(rows):
         raise PhysicalAdapterError("every phone helper needs one transport contract")
+    for row, contract in zip(rows, contracts):
+        if row.fused_layer_mask and contract.transport not in ("adb-tcp", "functionfs-usb"):
+            raise PhysicalAdapterError(f"phone helper {row.device_id} fused calls need a TCP or FunctionFS worker")
+        if row.fused_layer_mask and contract.transport == "functionfs-usb":
+            # WS21: one ring frame per fused call; the qualified slot payload must hold the widest fused row,
+            # or the client refuses the fused HELLO (fail-closed) and the server never starts
+            shape = tuple(shared.get("S41_SERVER_FFN_" + name, "") for name in ("MAX_TOKENS", "N_EMBD"))
+            if any(not value.isdecimal() for value in shape) or not row.fused_n_q:
+                raise PhysicalAdapterError(f"phone helper {row.device_id} fused calls need the decode shape and geometry")
+            max_tokens, n_embd = map(int, shape)
+            element_bytes = 2 if shared.get("S41_SERVER_FFN_F16_IO", "1") == "1" else 4
+            needed = row.fused_row_elements(n_embd) * max_tokens * element_bytes
+            if contract.max_payload_bytes < needed:
+                raise PhysicalAdapterError(
+                    f"phone helper {row.device_id} FunctionFS slots hold {contract.max_payload_bytes} bytes, "
+                    f"fused calls need {needed}")
+    capped = [row for row in rows if row.max_tokens]
+    shared_tokens = shared.get("S41_SERVER_FFN_MAX_TOKENS", "")
+    if capped and (
+        len(rows) == 1 or rows[0].max_tokens or not shared_tokens.isdecimal()
+        or shared.get("S41_SERVER_FFN_RUNTIME_CONTROL") != "1"
+        or any(row.max_tokens >= int(shared_tokens) for row in capped)
+    ):
+        raise PhysicalAdapterError(
+            "a capped phone helper needs runtime control and a larger shared maximum batch")
     if len(rows) == 1:
-        return MappingProxyType(dict(sorted({**shared, **contracts[0].server_environment()}.items())))
+        fused = ({"S41_SERVER_FFN_FUSED_LAYER_MASK": str(rows[0].fused_layer_mask),
+                  "S41_SERVER_FFN_FUSED_NEXT_MASK": str(rows[0].fused_next_mask)} if rows[0].fused_layer_mask else {})
+        return MappingProxyType(dict(sorted({**shared, **contracts[0].server_environment(), **fused}.items())))
     forbidden = [key for key in _MULTI_HELPER_FORBIDDEN_KEYS if key in shared]
     if forbidden:
         raise PhysicalAdapterError("several phone helpers cannot combine with " + ",".join(forbidden))
+    remote_text = shared.pop(_REMOTE_RESIDENT_KEY, None)
+    remote_owner = None
+    if remote_text is not None:
+        # the omitted weights live on one phone: only its client may serve (and pin) those layers
+        remote_mask = int(remote_text) if remote_text.isdecimal() else 0
+        owners = [index for index, row in enumerate(rows) if row.layer_mask & remote_mask]
+        if (
+            not remote_mask or str(remote_mask) != remote_text or len(owners) != 1
+            or remote_mask & ~rows[owners[0]].layer_mask
+            or remote_mask & rows[owners[0]].fused_layer_mask
+        ):
+            raise PhysicalAdapterError(
+                "remote-resident layers must belong to exactly one unfused phone helper"
+            )
+        remote_owner = owners[0]
     result = {**shared, "S41_SERVER_FFN_HELPERS": str(len(rows))}
     for index, (row, contract) in enumerate(zip(rows, contracts)):
         prefix = f"S41_SERVER_FFN_HELPER{index}_"
         result[prefix + "LABEL"] = row.label
         result[prefix + "LAYER_MASK"] = str(row.layer_mask)
+        if index == remote_owner:
+            result[prefix + "REMOTE_RESIDENT_LAYER_MASK"] = remote_text
+        if row.fused_layer_mask:
+            result[prefix + "FUSED_LAYER_MASK"] = str(row.fused_layer_mask)
+            result[prefix + "FUSED_NEXT_MASK"] = str(row.fused_next_mask)
+        if row.max_tokens:
+            result[prefix + "MAX_TOKENS"] = str(row.max_tokens)
         for key, value in contract.server_environment().items():
             result[prefix + key.removeprefix("S41_SERVER_FFN_")] = value
     return MappingProxyType(dict(sorted(result.items())))
+
+
+def remote_resident_layer_mask(environment: Mapping[str, str]) -> int:
+    """Remote-resident layers of a launch environment, single-client or per helper; 0 when none."""
+    result = 0
+    for key, value in environment.items():
+        if key != _REMOTE_RESIDENT_KEY and not (
+            key.startswith("S41_SERVER_FFN_HELPER") and key.endswith(_HELPER_REMOTE_RESIDENT_SUFFIX)
+        ):
+            continue
+        if type(value) is not str or not value.isdecimal() or str(int(value)) != value:
+            raise PhysicalAdapterError("remote-resident layer mask is invalid: " + key)
+        mask = int(value)
+        if mask & result:
+            raise PhysicalAdapterError("remote-resident layer masks overlap")
+        result |= mask
+    return result
 
 
 def phone_helper_bindings_from_parameters(

@@ -310,7 +310,12 @@ class RoutePatternMixin:
             owners = tuple(self._phone_session_capability(row.session_id) for row in group.sessions)
             if any(row is None for row in owners):
                 raise RouteGenerationError("remote-resident owner session is unknown")
-            owner_devices = tuple(sorted({row[0] for row in owners}))
+            # static co-helpers serve other layers of the same server; route_helper_devices names them
+            co_helpers = co_helper_declaration(coordinator.adapter_parameters)
+            owner_devices = tuple(sorted(
+                {row[0] for row in owners}
+                | set(() if co_helpers is None else co_helpers.device_ids)
+            ))
         return _Pattern(
             route_key="coordinated:" + coordinator.executor_id,
             route_family=coordinator.route_family,

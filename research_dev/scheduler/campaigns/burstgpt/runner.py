@@ -2,7 +2,7 @@
 """Run the 74-request F16 trace plus ten-request Llama overlay."""
 
 import argparse
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass, field, replace
 import hashlib
 import json
@@ -63,8 +63,10 @@ from research_dev.scheduler._internal.joint_planner_active import (  # noqa: E40
 from research_dev.scheduler.config import (  # noqa: E402
     FixedPhoneResidencyConfiguration, PhoneHtpMemoryCapConfiguration,
     PhoneResidentModelReprovisioningConfiguration, PhoneThermalStatusLimitConfiguration,
-    StartupDesktopParentConfiguration,
+    RemoteResidentOwnerConfiguration, StartupDesktopParentConfiguration,
 )
+from research_dev.scheduler._internal.runtime_plan import RuntimeRemoteResidentFfn  # noqa: E402
+from research_dev.scheduler._internal.runtime_resources import remote_resident_run_ledger  # noqa: E402
 from research_dev.scheduler.campaigns.burstgpt.common import (  # noqa: E402
     CONFIRMATION as CONFIRMATION,
     UnifiedTraceError as UnifiedTraceError,
@@ -717,7 +719,60 @@ def _build_scheduler(
         scheduler.configure_phone_resident_model_reprovisioning(
             PhoneResidentModelReprovisioningConfiguration.from_json(json.loads(reprovisioning))
         )
+    owner = _remote_resident_owner(args)
+    if owner is not None:
+        scheduler.configure_remote_resident_owner(owner.model_id)
     return scheduler, manifests, initial_adaptive_group_sha256s
+
+
+def _remote_resident_owner(args: argparse.Namespace) -> RemoteResidentOwnerConfiguration | None:
+    text = getattr(args, "remote_resident_owner_json", None)
+    return None if text is None else RemoteResidentOwnerConfiguration.from_json(json.loads(text))
+
+
+@dataclass
+class _RemoteResidentOwnerGate:
+    """Campaign ``remote_resident_owner``: the model's arrivals wait for READY owners, bounded.
+
+    The fixed residency preload loads the owners; an arrival of the model before READY waits
+    for it, and a preload that is not READY within the timeout fails the run (there is no
+    full-weight parent to fall back to)."""
+
+    configuration: RemoteResidentOwnerConfiguration
+    preload: Future
+    epoch_ns: int
+    started_ns: int
+    ready_observed_at_us: int | None = None
+    waited_request_id: str | None = None
+    waited_us: int = 0
+    timed_out: bool = False
+
+    def __call__(self, request_id: str, model_id: str) -> None:
+        if model_id != self.configuration.model_id or self.ready_observed_at_us is not None:
+            return
+        waited_ns = time.monotonic_ns()
+        remaining_s = self.configuration.owner_ready_timeout_s - (waited_ns - self.started_ns) / 1e9
+        try:
+            self.preload.result(timeout=max(0.0, remaining_s))
+        except FutureTimeoutError as error:
+            self.timed_out = True
+            raise UnifiedTraceError(
+                "remote-resident owners of " + model_id + " were not READY within "
+                + str(self.configuration.owner_ready_timeout_s)
+                + " s; the arm never falls back to the full-weight parent"
+            ) from error
+        finished_ns = time.monotonic_ns()
+        self.ready_observed_at_us = (finished_ns - self.epoch_ns) // 1000
+        self.waited_request_id = request_id
+        self.waited_us = (finished_ns - waited_ns) // 1000
+
+    def to_json(self) -> dict[str, object]:
+        return {
+            **self.configuration.to_json(),
+            "first_request_id": self.waited_request_id,
+            "first_request_wait_us": self.waited_us,
+            "ready_observed_at_us": self.ready_observed_at_us,
+        }
 
 
 def _select_replay(
@@ -772,10 +827,21 @@ def _direct_phone_configuration(
     expected_qwen = models.expected_qwen
     expected_gemma = models.expected_gemma
     diagnostic_url = models.diagnostic_url
-    phone_models = {
-        manifests[expected_qwen.model_id].artifact_sha256: args.qwen_phone_model,
-        manifests[expected_gemma.model_id].artifact_sha256: args.gemma_phone_model,
-    }
+    phone_models = {}
+    for expected, phone_model, shards in (
+        (expected_qwen, args.qwen_phone_model, args.qwen_ffn_shards),
+        (expected_gemma, args.gemma_phone_model, args.gemma_ffn_shards),
+    ):
+        if phone_model is None:
+            # 2026-10-06: no phone copy (models.json phone_artifact_path null); the
+            # phone preflight skips the model and any phone shard resolution for it
+            # fails closed ("multi-session phone shard artifact is not deployed").
+            require(
+                shards is None,
+                "phone FFN shards need the phone model artifact: " + expected.model_id,
+            )
+            continue
+        phone_models[manifests[expected.model_id].artifact_sha256] = phone_model
     if args.llama_ffn_shards is not None:
         require(bool(args.llama_phone_model), "overlay phone parent artifact path")
         phone_models[manifests[models.llama_model_id].artifact_sha256] = args.llama_phone_model
@@ -1057,6 +1123,19 @@ def _preload_startup_parents(args, scheduler, rig, aliases, streams, epoch_ns, c
     return results
 
 
+def _require_phone_only_preparation(stage, catalog: RuntimeCapabilityCatalog) -> None:
+    """A remote-resident owner arm loads its owners only: the desktop never loads the full weights."""
+    devices = catalog.placement_profile.devices
+    require(
+        all(
+            devices[device_id].kind == "phone"
+            for row in stage.helper_envelope.preparation_transitions
+            for device_id in row.prepares_device_ids
+        ),
+        "remote-resident owner preload must not execute a desktop transition",
+    )
+
+
 def _preload_fixed_residency(args, scheduler, rig, aliases, streams, epoch_ns):
     """Invoke scheduler-owned assignment and transaction paths; persist evidence."""
     requests = scheduler.fixed_phone_residency_requests()
@@ -1075,7 +1154,11 @@ def _preload_fixed_residency(args, scheduler, rig, aliases, streams, epoch_ns):
     def now_us():
         return (time.monotonic_ns() - epoch_ns) // 1000
 
+    owners_only = scheduler.remote_resident_owner_configuration() is not None
+
     def payload(stage):
+        if owners_only:
+            _require_phone_only_preparation(stage, rig.configuration.catalog)
         return LlamaCppCompletionPayload(
             request_id=stage.request.request_id,
             expected_model_alias=aliases[stage.model_id], input_tokens=1,
@@ -1183,6 +1266,7 @@ def _submit_arrivals(
     snapshots: Path,
     aliases: dict[str, str],
     state: _ArrivalState,
+    before_submit: Callable[[str, str], None] | None = None,
 ) -> None:
     state.epoch_ns = epoch_ns
     for item in merged:
@@ -1201,6 +1285,8 @@ def _submit_arrivals(
         _note_next_arrival(rig, request.arrival_us)
         coordinator.wait_for_arrival(request.arrival_us)
         _note_arrival_observed(rig, request.request_id, model_id, coordinator.observed_at_us)
+        if before_submit is not None:
+            before_submit(request.request_id, model_id)
         snapshot_started_ns = time.monotonic_ns()
         captured_at_us = coordinator.observed_at_us()
         snapshot = rig.snapshot(request, model_id, captured_at_us)
@@ -1555,6 +1641,10 @@ def _request_result(
         "recoveries": [
             recovery.to_json() for recovery in execution.recoveries
         ],
+        # same-server re-execution: the FFN counters the first window inherited and set aside
+        # (absent for every ordinary execution, so existing records are unchanged)
+        **({"server_counter_baselines": execution.observation.payload["server_counter_baselines"]}
+           if execution.observation.payload.get("server_counter_baselines") else {}),
         "request_id": request_id,
         "scheduling_overhead": state.overheads[request_id],
         "source": item["source"],
@@ -1708,6 +1798,55 @@ class _TraceRun:
     startup_preloads: tuple[dict[str, object], ...] = ()
     rejections: dict[str, dict[str, Any]] = field(default_factory=dict)
     request_shape_preflight: dict[str, Any] = field(default_factory=dict)
+    remote_resident_owner: dict[str, Any] = field(default_factory=dict)
+
+
+def _remote_resident_owner_result(
+    scheduler: UnifiedScheduler,
+    rig: HeterogeneousPhysicalRig,
+    manifests: dict[str, ModelManifest],
+    request_results: list[dict[str, Any]],
+    gate: _RemoteResidentOwnerGate,
+) -> dict[str, Any]:
+    """RESULT section of a remote-resident owner arm: the pin, owner readiness, and the ledger of
+    every reduced launch (its own omission proof and the desktop RAM it saved)."""
+    owner = scheduler.remote_resident_owner_configuration()
+    group = RuntimeRemoteResidentFfn.from_json(owner["remote_resident_ffn"])
+    manifest = manifests[owner["model_id"]]
+    pinned = [row for row in request_results if row["model_id"] == owner["model_id"]]
+    require(
+        all(row["actual_executor_id"] == owner["executor_id"] for row in pinned),
+        "remote-resident owner arm executed another route of " + owner["model_id"],
+    )
+    phone = rig.configuration.catalog.composite_executor_by_id[
+        owner["executor_id"]
+    ].adapter_parameters["phone_device_id"]
+    workspace = max((
+        demand.required_bytes
+        for row in pinned
+        for demand in scheduler.runtime_ticket(row["request_id"]).execution_plan.memory_demands
+        if demand.kind == "workspace" and demand.device_id == phone
+    ), default=0)
+    return {
+        **owner,
+        "owner_ready": gate.to_json(),
+        "requests": len(pinned),
+        "ledger": remote_resident_run_ledger(
+            artifact_sha256=manifest.artifact_sha256,
+            desktop_pool_id=rig.configuration.host_memory_resource_id,
+            layer_mask=group.layer_mask,
+            desktop_weights_full_bytes=manifest.artifact_bytes,
+            omitted_bytes_planned=group.omitted_bytes,
+            phone_weights_bytes_by_session={
+                row.session_id: row.resident_bytes for row in group.sessions
+            },
+            phone_workspace_bytes=workspace,
+            launches=tuple(
+                row for row in rig.remote_resident_launches
+                if row["executor_id"] == owner["executor_id"]
+            ),
+        ),
+    }
 
 
 def _capture_phone_residency_evidence(rig):
@@ -1877,6 +2016,7 @@ def _assemble_result(
         **_elastic_drop_result(rig, request_results, scheduler),
         **_device_power_result(rig),
         **_speculative_rows_result(rig, request_results),
+        **({"remote_resident_owner": run.remote_resident_owner} if run.remote_resident_owner else {}),
         "candidate_device_families": [
             list(row) for row in sorted(candidate_device_families(records))
         ],
@@ -2225,6 +2365,9 @@ def main() -> int:
             "startup desktop preload requires paid preparation accounting")
     require(len({row.executor_id for row in startup_parents}) == len(startup_parents),
             "startup desktop executors are duplicated")
+    owner = _remote_resident_owner(args)
+    require(owner is None or all(row.model_id != owner.model_id for row in startup_parents),
+            "remote-resident owner model cannot have a full-weight startup desktop parent")
 
     models = _load_trace_models(args)
     scheduler, manifests, initial_adaptive_group_sha256s = _build_scheduler(
@@ -2253,6 +2396,7 @@ def main() -> int:
     primary_error: BaseException | None = None
     preload_pool = None
     preload_future = None
+    owner_gate = None
     persist_runtime_snapshot = _snapshot_provider(rig, scheduler, snapshots)
 
     try:
@@ -2280,9 +2424,14 @@ def main() -> int:
         )
         if scheduler.fixed_phone_residency_configuration() is not None:
             preload_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="fixed-residency")
+            preload_started_ns = time.monotonic_ns()
             preload_future = preload_pool.submit(
                 _preload_fixed_residency, args, scheduler, rig, aliases, streams, epoch_ns,
             )
+            if owner is not None:
+                owner_gate = _RemoteResidentOwnerGate(
+                    owner, preload_future, epoch_ns, preload_started_ns,
+                )
         coordinator = CanonicalArrivalCoordinator(
             scheduler,
             None,
@@ -2305,6 +2454,7 @@ def main() -> int:
             snapshots,
             aliases,
             state,
+            before_submit=owner_gate,
         )
         completed = coordinator.drain(timeout_s=14_400)
         if preload_future is not None:
@@ -2363,6 +2513,11 @@ def main() -> int:
                 startup_preloads=tuple(startup_preloads),
                 rejections=dict(state.rejections),
                 request_shape_preflight=request_shape_preflight,
+                remote_resident_owner=(
+                    {} if owner_gate is None else _remote_resident_owner_result(
+                        scheduler, rig, manifests, request_results, owner_gate,
+                    )
+                ),
                 **phone_residency_evidence,
             ),
         )
@@ -2389,7 +2544,10 @@ def main() -> int:
         raise
     finally:
         if preload_pool is not None:
-            preload_pool.shutdown(wait=True, cancel_futures=True)
+            # an owner preload past its deadline may be stuck on the phone: the rig closes it
+            preload_pool.shutdown(
+                wait=owner_gate is None or not owner_gate.timed_out, cancel_futures=True,
+            )
         _close_rig(args.output, rig, coordinator, primary_error)
 
 

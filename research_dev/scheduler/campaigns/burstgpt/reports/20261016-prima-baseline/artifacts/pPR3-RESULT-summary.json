@@ -1,0 +1,127 @@
+{
+ "counts": {
+  "completed": 14,
+  "failed": 0,
+  "llama": 1,
+  "qwen": 13,
+  "requests": 14
+ },
+ "harness": {
+  "argv": [
+   "/mnt/storage/s43-prima-baseline-20261016/prima_baseline.py",
+   "run",
+   "--plan",
+   "/mnt/storage/s43-two-phone-eval-20260925/inputs-prima-pPR3/PLAN.json",
+   "--out",
+   "/mnt/storage/s43-two-phone-eval-20260925/inputs-prima-pPR3/run-eval/run",
+   "--server",
+   "/mnt/storage/s43-prima-baseline-20261016/prima.cpp/llama-server",
+   "--phones",
+   "/mnt/storage/s43-prima-baseline-20261016/PHONES-q8-two.json",
+   "--ring-model",
+   "qwen3-32b-q8_0",
+   "--ctx",
+   "16384",
+   "--parallel",
+   "4",
+   "--library-dir",
+   "/mnt/storage/s21_deps/cuda-13.2.1/lib64",
+   "--workdir",
+   "/home/zhihao/prima-profile-scratch",
+   "--port",
+   "18620",
+   "--overlay-port",
+   "18621",
+   "--prefetch"
+  ],
+  "arm": "prima",
+  "hostname": "zhihao-Z690-C-ac",
+  "python": "3.14.4"
+ },
+ "paid_end_ns": 521013533298697,
+ "server": {
+  "binary": "/mnt/storage/s43-prima-baseline-20261016/prima.cpp/llama-server",
+  "binary_sha256": "sha256:175db9d967fed57f812bca0e5f5cd60c22ba7ac9746f76b7ceacb8559b7a7136",
+  "environment_overrides": {
+   "LD_LIBRARY_PATH": "/mnt/storage/s43-prima-baseline-20261016/prima.cpp:/mnt/storage/s21_deps/cuda-13.2.1/lib"
+  },
+  "environment_removed": [],
+  "exit_code": -11,
+  "host": "127.0.0.1",
+  "overlay_command": [
+   "/mnt/storage/s43-prima-baseline-20261016/prima.cpp/llama-server",
+   "-m",
+   "/home/zhihao/models/Llama-3.2-1B-Instruct-Q4_0.gguf",
+   "-a",
+   "llama-3.2-1b-instruct-q4_0",
+   "--host",
+   "127.0.0.1",
+   "--port",
+   "18621",
+   "-c",
+   "8192",
+   "-np",
+   "2",
+   "-cb",
+   "-ngl",
+   "99"
+  ],
+  "port": 18620,
+  "prima": {
+   "layer_windows": [
+    "| Property                        | Rank 0       | Rank 1       | Rank 2",
+    "- Assignment Set : M4",
+    "- N Layer Window : 39",
+    "- N GPU Layers   : 18",
+    "- Assignment Set : M3",
+    "- N Layer Window : 12",
+    "- N GPU Layers   : 0",
+    "- Assignment Set : M3",
+    "- N Layer Window : 13",
+    "- N GPU Layers   : 0",
+    "Using window size: 39, GPU layers: 18"
+   ],
+   "phones": [
+    "op15",
+    "pixel"
+   ],
+   "startup": {
+    "overlay_health_s": 1.0,
+    "ring_health_s": 21.0,
+    "total_s": 22.2
+   },
+   "world": 3
+  },
+  "router_command": [
+   "/mnt/storage/s43-prima-baseline-20261016/prima.cpp/llama-server",
+   "-m",
+   "/home/zhihao/models/Qwen3-32B-Q8_0.gguf",
+   "-a",
+   "qwen3-32b-q8_0",
+   "--host",
+   "127.0.0.1",
+   "--port",
+   "18620",
+   "-c",
+   "16384",
+   "-np",
+   "4",
+   "-cb",
+   "-b",
+   "2048",
+   "-ub",
+   "512",
+   "--world",
+   "3",
+   "--rank",
+   "0",
+   "--master",
+   "127.0.0.1",
+   "--next",
+   "127.0.0.1",
+   "--prefetch"
+  ],
+  "runtime_libraries_sha256": {}
+ },
+ "status": "PASS"
+}

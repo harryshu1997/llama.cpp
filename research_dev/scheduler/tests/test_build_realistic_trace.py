@@ -5,8 +5,8 @@ import unittest
 from pathlib import Path
 
 from research_dev.scheduler.campaigns.burstgpt.build_realistic_trace import (
-    same_model_overlaps,
-    assign_combined_indices, model_inventory, parse_execution_artifact, select_window,
+    same_model_overlaps, Codec,
+    assign_combined_indices, execution_role, model_inventory, parse_execution_artifact, select_window,
 )
 
 
@@ -18,6 +18,25 @@ class BuildRealisticTraceTests(unittest.TestCase):
         # same arrival: large rows first, then overlay, each by source index (trace_inputs.merge_rows)
         self.assertEqual(assign_combined_indices(large, overlay),
                          [("large", 0, 0), ("overlay", 0, 1), ("large", 1, 2), ("large", 2, 3), ("overlay", 1, 4)])
+
+    def test_single_model_puts_every_large_row_on_the_hot_role(self):
+        self.assertEqual(execution_role("ChatGPT", single_model=False), "hot")
+        self.assertEqual(execution_role("GPT-4", single_model=False), "cold")
+        self.assertEqual(execution_role("ChatGPT", single_model=True), "hot")
+        self.assertEqual(execution_role("GPT-4", single_model=True), "hot")
+
+    def test_an_unused_codec_closes_quietly_but_other_failures_raise(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            def fake(name, body):
+                path = Path(tmp) / name
+                path.write_text("#!/bin/sh\n" + body)
+                path.chmod(0o755)
+                return path
+            unused = fake("unused", "cat > /dev/null; echo 'token-codec: no requests received' >&2; exit 4\n")
+            Codec(unused, Path(tmp) / "model.gguf", "0" * 64, Path(tmp)).close()
+            broken = fake("broken", "cat > /dev/null; echo 'token-codec: model sha256 mismatch' >&2; exit 4\n")
+            with self.assertRaises(RuntimeError):
+                Codec(broken, Path(tmp) / "model.gguf", "0" * 64, Path(tmp)).close()
 
     def test_window_selection_scans_for_the_request_count_range(self):
         rows = [{"t": float(t), "model": "ChatGPT", "input": 100, "output": 50} for t in range(0, 3600, 60)]

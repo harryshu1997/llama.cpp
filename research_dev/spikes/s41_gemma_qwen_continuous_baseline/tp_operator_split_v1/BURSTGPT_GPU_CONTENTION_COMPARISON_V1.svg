@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="980" viewBox="0 0 1600 980" role="img" aria-labelledby="title description">
+<title id="title">GPU contention comparison for CPU plus OP15 cold inference</title>
+<desc id="description">Three-run median comparison of a resident-idle and saturated Qwen model on the RTX 4060 Ti while Gemma runs on the desktop CPU and OP15.</desc>
+<style>
+text { font-family: Inter, DejaVu Sans, Arial, sans-serif; }
+.title { font-size: 30px; font-weight: 700; fill: #172033; }
+.subtitle { font-size: 15px; fill: #64748b; }
+.section { font-size: 18px; font-weight: 700; fill: #172033; }
+.label { font-size: 14px; fill: #172033; }
+.tick { font-size: 12px; fill: #64748b; }
+.value { font-size: 13px; font-weight: 600; fill: #172033; }
+.card-value { font-size: 26px; font-weight: 700; fill: #172033; }
+.card-label { font-size: 13px; fill: #64748b; }
+.callout { font-size: 16px; font-weight: 600; fill: #172033; }
+.note { font-size: 12px; fill: #64748b; }
+</style>
+<rect x="0.00" y="0.00" width="1600.00" height="980.00" rx="0.00" fill="#ffffff" opacity="1.000"/>
+<text x="800.0" y="43.0" class="title" text-anchor="middle">Busy RTX 4060 Ti slows CPU + OP15 cold inference</text>
+<text x="800.0" y="70.0" class="subtitle" text-anchor="middle">same resident Qwen3-14B model | 3-run medians | default desktop frequency</text>
+<rect x="72.50" y="100.00" width="465.00" height="104.00" rx="12.00" fill="#f8fafc" opacity="1.000" stroke="#dbe2ea"/>
+<text x="94.5" y="128.0" class="card-label" text-anchor="start">Cold makespan</text>
+<text x="94.5" y="166.0" class="card-value" text-anchor="start">187.1s to 241.0s</text>
+<text x="515.5" y="188.0" class="value" text-anchor="end">+28.8%</text>
+<rect x="567.50" y="100.00" width="465.00" height="104.00" rx="12.00" fill="#f8fafc" opacity="1.000" stroke="#dbe2ea"/>
+<text x="589.5" y="128.0" class="card-label" text-anchor="start">Cold throughput</text>
+<text x="589.5" y="166.0" class="card-value" text-anchor="start">2.699 to 2.096 tok/s</text>
+<text x="1010.5" y="188.0" class="value" text-anchor="end">-22.4%</text>
+<rect x="1062.50" y="100.00" width="465.00" height="104.00" rx="12.00" fill="#f8fafc" opacity="1.000" stroke="#dbe2ea"/>
+<text x="1084.5" y="128.0" class="card-label" text-anchor="start">Saturated GPU load</text>
+<text x="1084.5" y="166.0" class="card-value" text-anchor="start">83% utilization p50</text>
+<text x="1505.5" y="188.0" class="value" text-anchor="end">100% p95</text>
+<rect x="55.00" y="230.00" width="950.00" height="635.00" rx="10.00" fill="#ffffff" opacity="1.000" stroke="#dbe2ea"/>
+<text x="80.0" y="265.0" class="section" text-anchor="start">Cold route latency</text>
+<text x="980.0" y="265.0" class="tick" text-anchor="end">seconds</text>
+<line x1="250.00" y1="305.00" x2="250.00" y2="810.00" stroke="#dbe2ea" stroke-width="1.00"/>
+<text x="250.0" y="296.0" class="tick" text-anchor="middle">0</text>
+<line x1="392.00" y1="305.00" x2="392.00" y2="810.00" stroke="#dbe2ea" stroke-width="1.00"/>
+<text x="392.0" y="296.0" class="tick" text-anchor="middle">50</text>
+<line x1="534.00" y1="305.00" x2="534.00" y2="810.00" stroke="#dbe2ea" stroke-width="1.00"/>
+<text x="534.0" y="296.0" class="tick" text-anchor="middle">100</text>
+<line x1="676.00" y1="305.00" x2="676.00" y2="810.00" stroke="#dbe2ea" stroke-width="1.00"/>
+<text x="676.0" y="296.0" class="tick" text-anchor="middle">150</text>
+<line x1="818.00" y1="305.00" x2="818.00" y2="810.00" stroke="#dbe2ea" stroke-width="1.00"/>
+<text x="818.0" y="296.0" class="tick" text-anchor="middle">200</text>
+<line x1="960.00" y1="305.00" x2="960.00" y2="810.00" stroke="#dbe2ea" stroke-width="1.00"/>
+<text x="960.0" y="296.0" class="tick" text-anchor="middle">250</text>
+<text x="232.0" y="352.0" class="label" text-anchor="end">Cold makespan</text>
+<rect x="250.00" y="323.00" width="531.32" height="21.00" rx="3.00" fill="#0072b2" opacity="1.000"/>
+<rect x="250.00" y="352.00" width="684.37" height="21.00" rx="3.00" fill="#d55e00" opacity="1.000"/>
+<text x="789.3" y="339.0" class="value" text-anchor="start">187.085</text>
+<text x="942.4" y="368.0" class="value" text-anchor="end">240.974 (+28.8%)</text>
+<text x="232.0" y="434.0" class="label" text-anchor="end">Completion p50</text>
+<rect x="250.00" y="405.00" width="226.39" height="21.00" rx="3.00" fill="#0072b2" opacity="1.000"/>
+<rect x="250.00" y="434.00" width="316.27" height="21.00" rx="3.00" fill="#d55e00" opacity="1.000"/>
+<text x="484.4" y="421.0" class="value" text-anchor="start">79.716</text>
+<text x="574.3" y="450.0" class="value" text-anchor="start">111.363 (+39.7%)</text>
+<text x="232.0" y="516.0" class="label" text-anchor="end">Queue p50</text>
+<rect x="250.00" y="487.00" width="204.62" height="21.00" rx="3.00" fill="#0072b2" opacity="1.000"/>
+<rect x="250.00" y="516.00" width="287.21" height="21.00" rx="3.00" fill="#d55e00" opacity="1.000"/>
+<text x="462.6" y="503.0" class="value" text-anchor="start">72.050</text>
+<text x="545.2" y="532.0" class="value" text-anchor="start">101.129 (+40.4%)</text>
+<text x="232.0" y="598.0" class="label" text-anchor="end">Service p50</text>
+<rect x="250.00" y="569.00" width="38.85" height="21.00" rx="3.00" fill="#0072b2" opacity="1.000"/>
+<rect x="250.00" y="598.00" width="52.10" height="21.00" rx="3.00" fill="#d55e00" opacity="1.000"/>
+<text x="296.9" y="585.0" class="value" text-anchor="start">13.681</text>
+<text x="310.1" y="614.0" class="value" text-anchor="start">18.345 (+34.1%)</text>
+<text x="232.0" y="680.0" class="label" text-anchor="end">Prefill p50</text>
+<rect x="250.00" y="651.00" width="24.14" height="21.00" rx="3.00" fill="#0072b2" opacity="1.000"/>
+<rect x="250.00" y="680.00" width="36.72" height="21.00" rx="3.00" fill="#d55e00" opacity="1.000"/>
+<text x="282.1" y="667.0" class="value" text-anchor="start">8.500</text>
+<text x="294.7" y="696.0" class="value" text-anchor="start">12.931 (+52.1%)</text>
+<text x="232.0" y="762.0" class="label" text-anchor="end">Decode p50</text>
+<rect x="250.00" y="733.00" width="14.54" height="21.00" rx="3.00" fill="#0072b2" opacity="1.000"/>
+<rect x="250.00" y="762.00" width="15.17" height="21.00" rx="3.00" fill="#d55e00" opacity="1.000"/>
+<text x="272.5" y="749.0" class="value" text-anchor="start">5.121</text>
+<text x="273.2" y="778.0" class="value" text-anchor="start">5.341 (+4.3%)</text>
+<rect x="250.00" y="827.00" width="24.00" height="13.00" rx="2.00" fill="#0072b2" opacity="1.000"/>
+<text x="282.0" y="840.0" class="label" text-anchor="start">Qwen resident-idle</text>
+<rect x="450.00" y="827.00" width="24.00" height="13.00" rx="2.00" fill="#d55e00" opacity="1.000"/>
+<text x="482.0" y="840.0" class="label" text-anchor="start">Qwen saturated</text>
+<rect x="1030.00" y="230.00" width="515.00" height="635.00" rx="10.00" fill="#ffffff" opacity="1.000" stroke="#dbe2ea"/>
+<text x="1055.0" y="265.0" class="section" text-anchor="start">Where the slowdown occurs</text>
+<text x="1055.0" y="291.0" class="tick" text-anchor="start">busy time relative to resident-idle = 100%</text>
+<line x1="1240.00" y1="314.00" x2="1240.00" y2="690.00" stroke="#dbe2ea" stroke-width="1.00"/>
+<text x="1240.0" y="307.0" class="tick" text-anchor="middle">100%</text>
+<line x1="1330.00" y1="314.00" x2="1330.00" y2="690.00" stroke="#dbe2ea" stroke-width="1.00"/>
+<text x="1330.0" y="307.0" class="tick" text-anchor="middle">120%</text>
+<line x1="1420.00" y1="314.00" x2="1420.00" y2="690.00" stroke="#dbe2ea" stroke-width="1.00"/>
+<text x="1420.0" y="307.0" class="tick" text-anchor="middle">140%</text>
+<line x1="1510.00" y1="314.00" x2="1510.00" y2="690.00" stroke="#dbe2ea" stroke-width="1.00"/>
+<text x="1510.0" y="307.0" class="tick" text-anchor="middle">160%</text>
+<line x1="1240.00" y1="314.00" x2="1240.00" y2="690.00" stroke="#0072b2" stroke-width="2.00"/>
+<text x="1224.0" y="335.0" class="label" text-anchor="end">Prefill FFN overlap</text>
+<rect x="1240.00" y="317.00" width="220.00" height="25.00" rx="3.00" fill="#d55e00" opacity="1.000"/>
+<text x="1468.0" y="335.0" class="value" text-anchor="end">90.31 to 134.46 ms (+48.9%)</text>
+<text x="1224.0" y="405.0" class="label" text-anchor="end">Prefill phone RPC</text>
+<rect x="1240.00" y="387.00" width="2.00" height="25.00" rx="3.00" fill="#d55e00" opacity="1.000"/>
+<text x="1250.0" y="405.0" class="value" text-anchor="start">63.05 to 63.33 ms (+0.4%)</text>
+<text x="1224.0" y="475.0" class="label" text-anchor="end">Prefill HTP compute</text>
+<rect x="1240.00" y="457.00" width="2.54" height="25.00" rx="3.00" fill="#d55e00" opacity="1.000"/>
+<text x="1250.5" y="475.0" class="value" text-anchor="start">10.11 to 10.16 ms (+0.6%)</text>
+<text x="1224.0" y="545.0" class="label" text-anchor="end">Prefill USB interval</text>
+<rect x="1240.00" y="527.00" width="2.11" height="25.00" rx="3.00" fill="#d55e00" opacity="1.000"/>
+<text x="1250.1" y="545.0" class="value" text-anchor="start">61.25 to 61.54 ms (+0.5%)</text>
+<text x="1224.0" y="615.0" class="label" text-anchor="end">Decode FFN overlap</text>
+<rect x="1240.00" y="597.00" width="7.40" height="25.00" rx="3.00" fill="#d55e00" opacity="1.000"/>
+<text x="1255.4" y="615.0" class="value" text-anchor="start">1.57 to 1.59 ms (+1.6%)</text>
+<rect x="1055.00" y="720.00" width="465.00" height="105.00" rx="9.00" fill="#fff7ed" opacity="1.000"/>
+<text x="1288.0" y="754.0" class="callout" text-anchor="middle">Prefill FFN overlap: +48.9%</text>
+<text x="1288.0" y="780.0" class="label" text-anchor="middle">Phone RPC, HTP, and USB: all below +1%</text>
+<text x="1288.0" y="806.0" class="label" text-anchor="middle">The desktop prefill branch is the bottleneck.</text>
+<text x="55.0" y="910.0" class="note" text-anchor="start">Workload: 17 serialized Gemma4-12B Q4_0 cold requests, 505 output tokens, dynamic FFN split on CPU + OP15.</text>
+<text x="55.0" y="934.0" class="note" text-anchor="start">Treatment: one Qwen3-14B Q4_K_M model, eight continuously refilled GPU slots. Error ranges are in the report.</text>
+<text x="55.0" y="958.0" class="note" text-anchor="start">All six runs returned identical cold token sequences; frequencies were not changed or locked.</text>
+</svg>

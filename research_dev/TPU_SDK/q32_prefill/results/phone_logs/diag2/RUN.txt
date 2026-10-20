@@ -1,0 +1,11 @@
+start 2026-10-08T11:22:52-04:00 boot=dbff3b27-a613-4e1e-a9ab-1f9cd3ae1d1e
+=== diag-i4emu-onehot 2026-10-08T11:22:52-04:00
+/mnt/storage/s43-ws17-quantized-20261003/q32-phone/tpu/stage/diag-i4emu-down.tflite: 1 file pushed, 0 skipped. 103.5 MB/s (1760944 bytes in 0.016s)
+pushed diag-i4emu-down.tflite bytes=1760944 s=.113656007
+exit diag-i4emu-onehot rc=0 2026-10-08T11:22:53-04:00
+=== diag-i4emu-rand 2026-10-08T11:22:53-04:00
+/mnt/storage/s43-ws17-quantized-20261003/q32-phone/tpu/stage/rand_M32_K512.f32: 1 file pushed, 0 skipped. 52.5 MB/s (131072 bytes in 0.002s)
+pushed rand_M32_K512.f32 bytes=131072 s=.048405445
+exit diag-i4emu-rand rc=0 2026-10-08T11:22:54-04:00
+done 2026-10-08T11:22:55-04:00 boot=dbff3b27-a613-4e1e-a9ab-1f9cd3ae1d1e same_boot=1
+ALLDONE

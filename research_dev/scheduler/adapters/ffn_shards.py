@@ -18,6 +18,9 @@ from pathlib import Path
 from typing import Mapping, Sequence
 
 INDEX_SCHEMA = "s42-ffn-shard-index-v1"
+# WS15: a record may name a fused kernel (pixel_packed_shard.py --fused-layers); FFN-only records omit it
+FFN_KERNEL = "ffn"
+FUSED_KERNEL = "attn_proj:fused"
 _SHA256 = re.compile(r"^sha256:[0-9a-f]{64}$")
 _REMOTE_PATH = re.compile(r"^/[A-Za-z0-9._:/-]+$")
 
@@ -37,6 +40,23 @@ class FfnShardRecord:
     n_ff: int
     shard_bytes: int
     weight_type: str
+    kernel: str = FFN_KERNEL
+    fused_layer_mask: int = 0
+    fused_next_mask: int = 0
+    # WS21: attention geometry of a fused record (n_q = heads*head_dim, n_kv = kv_heads*head_dim) when the index
+    # carries it (ffn_shard_gguf.py does; the Pixel tool's TCP-only records do not); 0 when absent or FFN-only
+    fused_n_q: int = 0
+    fused_n_kv: int = 0
+
+    def fused_row_elements(self, n_embd: int) -> int:
+        """Widest wire row of a fused call: input [attention | residual], output [delta | q | k | v];
+        n_embd for FFN-only records, 0 (unknown) for a fused record without geometry."""
+        if not self.fused_layer_mask:
+            return n_embd
+        if not self.fused_n_q:
+            return 0
+        out_row = n_embd + (self.fused_n_q + 2 * self.fused_n_kv if self.fused_next_mask else 0)
+        return max(n_embd, self.fused_n_q + n_embd, out_row)
 
     def covers(self, layer_mask: int, columns: int) -> bool:
         return (
@@ -78,8 +98,19 @@ class FfnShardIndex:
                 shard_bytes = int(row["shard_bytes"])
                 weight_type = str(row["weight_type"])
                 session_hint = str(row["session_id"])
-            except (KeyError, TypeError, ValueError) as error:
+                kernel = str(row.get("kernel", FFN_KERNEL))
+                fused_layer_mask = int(str(row.get("fused_layer_mask", "0")), 16)
+                fused_next_mask = int(str(row.get("fused_next_mask", "0")), 16)
+                fused_geometry = row.get("fused", {}) if fused_layer_mask else {}
+                fused_n_q = int(fused_geometry.get("n_q", 0))
+                fused_n_kv = int(fused_geometry.get("n_kv", 0))
+            except (KeyError, TypeError, ValueError, AttributeError) as error:
                 raise FfnShardIndexError("FFN shard index row is incomplete") from error
+            if kernel not in (FFN_KERNEL, FUSED_KERNEL) or (kernel == FUSED_KERNEL) != (fused_layer_mask != 0) or (
+                    fused_layer_mask & ~layer_mask) or (fused_next_mask & ~fused_layer_mask) or (
+                    fused_layer_mask and columns != n_ff) or (fused_n_q > 0) != (fused_n_kv > 0) or min(
+                    fused_n_q, fused_n_kv) < 0:
+                raise FfnShardIndexError(f"FFN shard index row {row.get('path')!r} has an invalid fused kernel")
             if (
                 row.get("parent_sha256") != parent
                 or not _SHA256.match(shard_sha256)
@@ -105,6 +136,11 @@ class FfnShardIndex:
                 n_ff=n_ff,
                 shard_bytes=shard_bytes,
                 weight_type=weight_type,
+                kernel=kernel,
+                fused_layer_mask=fused_layer_mask,
+                fused_next_mask=fused_next_mask,
+                fused_n_q=fused_n_q,
+                fused_n_kv=fused_n_kv,
             ))
         encoded = json.dumps(
             index,

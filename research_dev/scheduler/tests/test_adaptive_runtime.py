@@ -3476,6 +3476,22 @@ class AdaptiveRuntimeIntegrationTests(unittest.TestCase):
         self.assertEqual(record.call_args.args[3]["evidence_state"], "DIAGNOSTIC")
 
 
+    def test_preparation_status_is_recorded_once_per_generation_and_status(self):
+        """2026-10-05: the runtime watcher's swallowed preparation decisions (FOLLOWER / INCOMPATIBLE /
+        NOT_REQUIRED / DEFERRED) become PREPARATION_STATUS helper events, deduplicated."""
+        from research_dev.scheduler._internal.lifecycle import UnifiedScheduleError
+        record = self.scheduler.record_request_helper_preparation_status
+        self.assertTrue(record("request-a", status="FOLLOWER", reason=None, phone_layout_generation=2, observed_at_us=5_000))
+        self.assertFalse(record("request-a", status="FOLLOWER", reason=None, phone_layout_generation=2, observed_at_us=6_000))
+        self.assertTrue(record("request-a", status="INCOMPATIBLE", reason=None, phone_layout_generation=2, observed_at_us=7_000))
+        self.assertTrue(record("request-a", status="FOLLOWER", reason=None, phone_layout_generation=3, observed_at_us=8_000))
+        rows = [row for row in self.scheduler.request_helper_events()
+                if row["kind"] == "PREPARATION_STATUS" and row["request_id"] == "request-a"]
+        self.assertEqual([(row["status"], row["phone_layout_generation"], row["observed_at_us"]) for row in rows],
+                         [("FOLLOWER", 2, 5_000), ("INCOMPATIBLE", 2, 7_000), ("FOLLOWER", 3, 8_000)])
+        with self.assertRaises(UnifiedScheduleError):
+            record("request-a", status="", reason=None, phone_layout_generation=2, observed_at_us=9_000)
+
     def _record_window_at(self, ticket, directive, at_us, *, fleet_energy=200):
         boundary = self.scheduler.adaptive_decode_boundary(
             ticket.request.request_id,

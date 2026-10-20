@@ -20,6 +20,13 @@ Outputs: ``<out>`` (the shard), ``<out>.json`` (manifest: per-tensor payload sha
 ``<out>.index-record.json`` (its ``s42-ffn-shard-index-v1`` record) and ``PIXEL_FFN_SHARDS.json`` next to it (the
 single-record index ``helper_phone_ffn_shards.<device>.index_path`` points at; it passes ``FfnShardIndex``).
 
+WS15 fused shards (``--fused-layers``): for every fused layer l the shard also carries ``attn_output`` and
+``ffn_norm`` of l, and for every ``--fused-next-layers`` layer l (default: every fused l with l+1 < block_count)
+``attn_norm``/``attn_q``/``attn_k``/``attn_v`` of l+1, all copied byte-for-byte from the origin (norms are F32 there)
+and checked against the proxy (quantized: exhaustive dequantization; F32: identical bits). ``s43.fused.*``
+metadata (version, layer_mask, next_mask, n_q, n_kv, rms_eps) makes the WS15 worker serve fused calls; the
+manifest and index record name the kernel ``attn_proj:fused``.
+
     pixel_packed_shard.py ORIGIN.gguf PROXY_F16.gguf --layers 18-24 --out DIR/QWEN_PACKED_18_24.ffn.gguf \\
         --parent-sha256 sha256:d89e9e82... [--origin-sha256 sha256:500a8806...] [--session PIXEL10PRO0]
 """
@@ -49,6 +56,10 @@ from ffn_shard_gguf import layer_mask, layer_spec, parse_layer_spec, sha256_file
 METADATA_PREFIX = "s43.packed_shard."
 MANIFEST_SCHEMA = "s43-pixel-packed-shard-manifest-v1"
 FFN_TENSORS = ("ffn_gate", "ffn_up", "ffn_down")
+FUSED_PREFIX = "s43.fused."
+FUSED_KERNEL = "attn_proj:fused"
+FUSED_OWN_TENSORS = ("attn_output", "ffn_norm")          # of the fused layer l
+FUSED_NEXT_TENSORS = ("attn_norm", "attn_q", "attn_k", "attn_v")   # of layer l+1
 LEGACY_NAME = "Private Pixel original Q4_K/Q6_K FFN slice"
 
 
@@ -74,7 +85,15 @@ def _geometry(reader: gguf.GGUFReader) -> tuple[str, int, int, int]:
 
 
 def verify_exact(tensor, target, *, mode: str) -> dict[str, object]:
-    """Dequantize ``tensor`` (all rows, or 32 sampled rows) and compare its f16 bits with ``target``."""
+    """Dequantize ``tensor`` (all rows, or 32 sampled rows) and compare its f16 bits with ``target``.
+
+    An F32 tensor (a norm vector) must equal the proxy's F32 tensor bit for bit."""
+    if tensor.tensor_type == gguf.GGMLQuantizationType.F32:
+        if target.tensor_type != gguf.GGMLQuantizationType.F32 or not np.array_equal(tensor.shape, target.shape):
+            raise PackedShardError(f"proxy geometry or type differs: {tensor.name}")
+        left = np.asarray(tensor.data).view(np.uint32)
+        right = np.asarray(target.data).view(np.uint32)
+        return {"mode": "f32-bits", "values_checked": int(left.size), "mismatches": int(np.count_nonzero(left != right))}
     if target.tensor_type != gguf.GGMLQuantizationType.F16 or not np.array_equal(tensor.shape, target.shape):
         raise PackedShardError(f"proxy geometry or type differs: {tensor.name}")
     rows = tensor.data.shape[0]
@@ -95,7 +114,8 @@ def verify_exact(tensor, target, *, mode: str) -> dict[str, object]:
 
 def build(origin: Path, proxy: Path | None, layers: Sequence[int], output: Path, *, parent_sha256: str | None,
           origin_sha256: str | None = None, allowed_types: Sequence[str] = (), legacy: bool = False,
-          verify: str = "exhaustive", session_id: str = "PIXEL10PRO0") -> dict[str, object]:
+          verify: str = "exhaustive", session_id: str = "PIXEL10PRO0",
+          fused_layers: Sequence[int] = (), fused_next_layers: Sequence[int] | None = None) -> dict[str, object]:
     if output.exists():
         raise PackedShardError(f"{output} already exists")
     if verify not in ("exhaustive", "sampled", "none"):
@@ -107,6 +127,20 @@ def build(origin: Path, proxy: Path | None, layers: Sequence[int], output: Path,
     if max(layers) >= block_count:
         raise PackedShardError(f"layer {max(layers)} >= block_count {block_count}")
     selected = {f"blk.{layer}.{name}.weight" for layer in layers for name in FFN_TENSORS}
+    fused = sorted(set(fused_layers))
+    if fused and legacy:
+        raise PackedShardError("a fused shard cannot use the legacy layout")
+    if not set(fused) <= set(layers):
+        raise PackedShardError("fused layers must be a subset of --layers")
+    if fused_next_layers is None:
+        fused_next = [layer for layer in fused if layer + 1 < block_count]
+    else:
+        fused_next = sorted(set(fused_next_layers))
+    if not set(fused_next) <= set(fused) or any(layer + 1 >= block_count for layer in fused_next):
+        raise PackedShardError("fused next layers must be fused layers below the last block")
+    fused_names = {f"blk.{layer}.{name}.weight" for layer in fused for name in FUSED_OWN_TENSORS}
+    fused_names |= {f"blk.{layer + 1}.{name}.weight" for layer in fused_next for name in FUSED_NEXT_TENSORS}
+    selected |= fused_names
     proxy_tensors = {} if proxy is None else {tensor.name: tensor for tensor in gguf.GGUFReader(str(proxy)).tensors}
     if proxy is not None:
         proxy_architecture, proxy_blocks, proxy_embd, proxy_ff = _geometry(gguf.GGUFReader(str(proxy)))
@@ -123,7 +157,9 @@ def build(origin: Path, proxy: Path | None, layers: Sequence[int], output: Path,
         if tensor.name not in selected:
             continue
         type_name = gguf.GGMLQuantizationType(tensor.tensor_type).name
-        if allowed_types and type_name not in allowed_types:
+        if tensor.name in fused_names and type_name == "F32" and tensor.name.endswith("_norm.weight"):
+            pass                                  # norm vectors stay F32 in every origin
+        elif allowed_types and type_name not in allowed_types:
             raise PackedShardError(f"{tensor.name} is {type_name}, not one of {list(allowed_types)}")
         writer.add_tensor(tensor.name, tensor.data, raw_dtype=tensor.tensor_type)
         row = {"name": tensor.name, "type": type_name, "shape": [int(value) for value in tensor.shape],
@@ -131,9 +167,28 @@ def build(origin: Path, proxy: Path | None, layers: Sequence[int], output: Path,
         if verify != "none":
             row["exact_dequantization"] = verify_exact(tensor, proxy_tensors[tensor.name], mode=verify)
         rows.append(row)
-    if len(rows) != 3 * len(layers):
-        raise PackedShardError(f"found {len(rows)} of {3 * len(layers)} FFN tensors")
-    types = sorted({row["type"] for row in rows})
+    expected_rows = 3 * len(layers) + len(fused_names)
+    if len(rows) != expected_rows:
+        raise PackedShardError(f"found {len(rows)} of {expected_rows} FFN/fused tensors")
+    types = sorted({row["type"] for row in rows if row["name"] not in fused_names or not row["name"].endswith("_norm.weight")})
+    fused_geometry = {}
+    if fused:
+        origin_tensors = {tensor.name: tensor for tensor in reader.tensors}
+        n_q = int(origin_tensors[f"blk.{fused[0]}.attn_output.weight"].shape[0])
+        n_kv = int(origin_tensors["blk.0.attn_k.weight"].shape[1])
+        rms_eps = _field(reader, f"{architecture}.attention.layer_norm_rms_epsilon")
+        if not isinstance(rms_eps, float) or not rms_eps > 0:
+            raise PackedShardError("origin lacks attention.layer_norm_rms_epsilon")
+        fused_geometry = {"kernel": FUSED_KERNEL, "fused_layers": fused, "fused_next_layers": fused_next,
+                          "fused_layer_mask": f"{layer_mask(fused):016x}",
+                          "fused_next_mask": f"{layer_mask(fused_next):016x}" if fused_next else f"{0:016x}",
+                          "n_q": n_q, "n_kv": n_kv, "rms_eps": rms_eps}
+        writer.add_uint32(FUSED_PREFIX + "version", 1)
+        writer.add_uint64(FUSED_PREFIX + "layer_mask", layer_mask(fused))
+        writer.add_uint64(FUSED_PREFIX + "next_mask", layer_mask(fused_next) if fused_next else 0)
+        writer.add_uint64(FUSED_PREFIX + "n_q", n_q)
+        writer.add_uint64(FUSED_PREFIX + "n_kv", n_kv)
+        writer.add_float32(FUSED_PREFIX + "rms_eps", rms_eps)
     if not legacy:
         writer.add_uint32(METADATA_PREFIX + "version", 1)
         if parent_sha256:
@@ -166,12 +221,15 @@ def build(origin: Path, proxy: Path | None, layers: Sequence[int], output: Path,
         "weight_types": types, "legacy_layout": legacy, "verify": verify, "tensors": rows,
         "weight_copy": "all tensor bytes exact (re-hashed after writing)",
         "scope": "stored weights only; execution arithmetic is qualified separately (numerical rows + server tokens)",
+        **({"fused": fused_geometry} if fused else {}),
     }
     output.with_name(output.name + ".json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     if parent_sha256:
         record = {"path": output.name, "parent_sha256": parent_sha256, "shard_sha256": shard_sha256,
                   "layer_mask": f"{layer_mask(layers):016x}", "columns": n_ff, "n_ff": n_ff,
-                  "shard_bytes": output.stat().st_size, "weight_type": weight_type, "session_id": session_id}
+                  "shard_bytes": output.stat().st_size, "weight_type": weight_type, "session_id": session_id,
+                  **({"kernel": FUSED_KERNEL, "fused_layer_mask": fused_geometry["fused_layer_mask"],
+                      "fused_next_mask": fused_geometry["fused_next_mask"]} if fused else {})}
         output.with_name(output.name + ".index-record.json").write_text(
             json.dumps(record, indent=2, sort_keys=True) + "\n")
         # the single-record helper index (helper_phone_ffn_shards.<device>.index_path) the scheduler loads
@@ -194,12 +252,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--legacy", action="store_true", help="the qualified QWEN_PACKED layout, no metadata")
     parser.add_argument("--verify", default="exhaustive", choices=("exhaustive", "sampled", "none"))
     parser.add_argument("--session", default="PIXEL10PRO0")
+    parser.add_argument("--fused-layers", default="", help="WS15: layers whose calls also run O(l) (+ next Q/K/V)")
+    parser.add_argument("--fused-next-layers", default=None,
+                        help="fused layers that also return layer l+1's Q/K/V (default: all with l+1 < blocks)")
     args = parser.parse_args(argv)
     try:
         manifest = build(args.origin, args.proxy, parse_layer_spec(args.layers), args.out,
                          parent_sha256=args.parent_sha256, origin_sha256=args.origin_sha256,
                          allowed_types=tuple(filter(None, args.allowed_types.split(","))), legacy=args.legacy,
-                         verify=args.verify, session_id=args.session)
+                         verify=args.verify, session_id=args.session,
+                         fused_layers=parse_layer_spec(args.fused_layers) if args.fused_layers else (),
+                         fused_next_layers=(None if args.fused_next_layers is None else
+                                            (parse_layer_spec(args.fused_next_layers) if args.fused_next_layers else [])))
     except (PackedShardError, OSError, ValueError) as error:
         print(f"pixel_packed_shard: {error}", file=sys.stderr)
         return 1

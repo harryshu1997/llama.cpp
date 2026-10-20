@@ -13,6 +13,7 @@ from .._internal.plan_contracts.co_helpers import (
     phone_helper_layer_masks,
 )
 from .._internal.plan_contracts.common import RuntimePlanError
+from .._internal.route_generation.remote_resident import REMOTE_RESIDENT_CO_HELPER_DECODE_PARAMETER
 from .._internal.runtime_controller import RuntimeRequestTicket
 from .._internal.runtime_plan import (
     PhoneSessionReplacementAuthorization,
@@ -217,9 +218,76 @@ def validate_phone_session_replacement_command(
         )
 
 
+def remote_resident_co_helper_policy(
+    command: PhysicalExecutionCommand,
+) -> AdaptiveDecodePolicy | None:
+    """Static decode policy of a remote-resident parent's decode co-helpers (opt-in).
+
+    Every co-helper layer at full width from the request's first decode token; the owner's
+    remote-resident layers are never named (the owner computes them for every row, and the
+    server refuses a control that targets them). None without the opt-in.
+    """
+    parameters = command.adapter_parameters
+    remote = command.execution_contract.remote_resident_ffn
+    if remote is None or parameters.get(REMOTE_RESIDENT_CO_HELPER_DECODE_PARAMETER) != 1:
+        return None
+    plan = command.operator_plan
+    try:
+        masks = tuple(phone_helper_layer_masks(parameters.get(PHONE_HELPERS_PARAMETER)).items())
+    except RuntimePlanError as error:
+        raise PhysicalAdapterError("remote-resident decode co-helpers are absent") from error
+    layer_mask = sum(mask for _device_id, mask in masks[1:])
+    columns = parameters.get("ffn_resident_columns")
+    resources = plan.get("resource_ids")
+    if (
+        len(masks) < 2
+        or parameters.get("ffn_runtime_control_protocol") != "decode-boundary-v1"
+        or layer_mask & remote.layer_mask
+        or type(columns) is not int
+        or columns <= 0
+        or type(plan.get("desktop_placement_sha256")) is not str
+        or type(resources) is not list
+    ):
+        raise PhysicalAdapterError(
+            "remote-resident decode co-helper policy is absent from the ticket"
+        )
+    return AdaptiveDecodePolicy(
+        route_id=command.route_id,
+        executor_id=command.executor_id,
+        operator_plan_sha256=command.operator_plan_sha256,
+        desktop_parent_route_id=command.route_id,
+        desktop_placement_sha256=plan["desktop_placement_sha256"],
+        layer_indices=tuple(index for index in range(64) if layer_mask >> index & 1),
+        layer_mask=layer_mask,
+        columns=columns,
+        split_fraction_ppm=1_000_000,
+        resource_ids=tuple(resources),
+        device_layer_masks=masks,
+    )
+
+
+STATIC_CONTROL_TIMEOUT_MINIMUM_S = 5.0
+
+
+def static_control_timeout_s(command: PhysicalExecutionCommand) -> float:
+    """How long a request waits for its static FFN policy to be acknowledged.
+
+    The server applies the control at its next decode boundary. On a remote-resident
+    owner a co-tenant's prefill ubatch (all owner layers on the phone, seconds) can hold
+    that boundary past the 5 s default (pC1q8pa 2026-10-10), so the wait is the time the
+    server itself allows one phone FFN call (``ffn_timeout_ms``), never less than 5 s.
+    """
+    value = command.adapter_parameters.get("ffn_timeout_ms")
+    if type(value) is not int or value <= 0:
+        return STATIC_CONTROL_TIMEOUT_MINIMUM_S
+    return max(STATIC_CONTROL_TIMEOUT_MINIMUM_S, value / 1000)
+
+
 def static_decode_policy(
     command: PhysicalExecutionCommand,
 ) -> AdaptiveDecodePolicy | None:
+    if command.execution_contract.remote_resident_ffn is not None:
+        return remote_resident_co_helper_policy(command)
     parameters = command.adapter_parameters
     plan = command.operator_plan
     if (
@@ -361,6 +429,28 @@ def _validate_remote_resident_execution_command(
         raise PhysicalAdapterError(
             "assisted-copy helper overlaps remote-resident FFN layers"
         )
+    if PHONE_HELPERS_PARAMETER in parameters:
+        try:
+            masks = phone_helper_layer_masks(parameters[PHONE_HELPERS_PARAMETER])
+        except RuntimePlanError as error:
+            raise PhysicalAdapterError(
+                "phone helper binding is invalid"
+            ) from error
+        devices = tuple(masks)
+        if any(masks[device_id] & remote.layer_mask for device_id in devices[1:]):
+            raise PhysicalAdapterError(
+                "co-helper phone overlaps remote-resident FFN layers"
+            )
+        participants = tuple(row.device_id for row in command.participants)
+        if (
+            devices[0] != parameters.get("phone_device_id")
+            or remote.layer_mask & ~masks[devices[0]]
+            or sum(masks.values()) != resident_mask
+            or any(participants.count(device_id) != 1 for device_id in devices[1:])
+        ):
+            raise PhysicalAdapterError(
+                "phone helper binding differs from the remote-resident ticket"
+            )
     session_ids = set(remote.session_ids)
     for transition_command in (*command.transitions, *command.helper_transitions):
         evicted = {

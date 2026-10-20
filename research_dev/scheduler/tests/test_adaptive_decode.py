@@ -2007,6 +2007,69 @@ class AdaptiveDecodeControllerTests(unittest.TestCase):
         completed = controller.complete("request-a", "COMPLETED")
         self.assertEqual(completed.terminal_status, "COMPLETED")
 
+    def test_released_remainder_keeps_window_unmeasured_and_seals_to_terminal(self):
+        """2026-10-05 rig: the client read a MID-REQUEST window's statistics after the request had
+        finished (slot released). The window stays as an unmeasured record, the tokens from its end
+        to the terminal are an unmeasured tail with the remainder reason, nothing is cost evidence."""
+        controller = AdaptiveDecodeController()
+        directive = self.start(controller)
+        at_us = 1_000
+        while directive.target_token_index <= 27:
+            token = directive.target_token_index
+            active = controller.active_policy("request-a")
+            at_us += 2_000
+            directive = self.record(
+                controller, token, at_us, 100 if active.baseline else 30,
+                completed_phone_calls=0 if active.baseline else 4,
+            )
+            while directive.control is not None:
+                at_us += 1
+                directive = self.acknowledge(controller, directive.control, token, at_us)
+        before = controller.checkpoint()[1]["request-a"]
+        self.assertEqual(before.records[-1].token_end, 27)
+        self.assertIsNone(before.tail_seal_token)
+        boundary = controller.boundary(
+            "request-a", slot_id=7, token_index=28, at_us=at_us + 1_000, terminal=True,
+        ).boundary
+        self.assertEqual((boundary.token_start, boundary.token_end), (27, 28))
+        observation = AdaptiveDecodeRawWindowObservation(
+            fleet_energy_uj_by_domain={"fleet": 100}, phone_compute_us=0,
+            usb_transfer_us=0, rpc_us=0, exposed_tail_us=0, output_valid=True,
+            evidence_ids=("physical:terminal-release-confirmed",),
+            energy_boundary_id="synthetic-fleet", energy_attribution_kind="diagnostic",
+            failure_reason="released_slot_unmeasured_remainder",
+            completed_phone_calls=0, completed_phone_input_rows=0,
+        )
+        for changed, observed, token, when in (
+            (boundary, observation, 29, at_us + 3_000),                      # not the terminal
+            (boundary, observation, 30, at_us),                              # terminal before the window closed
+            (boundary, replace(observation, evidence_ids=("synthetic:missing",)), 30, at_us + 3_000),
+            (boundary, replace(observation, completed_phone_calls=3, completed_phone_input_rows=3), 30, at_us + 3_000),
+            (replace(boundary, token_end=30), observation, 30, at_us + 3_000),  # a terminal boundary is a tail
+        ):
+            with self.assertRaisesRegex(AdaptiveDecodeError, "transaction differs"):
+                controller.discard_stale_window(
+                    "request-a", changed, observed, "released_slot_unmeasured_remainder",
+                    terminal_token_index=token, terminal_at_us=when,
+                )
+        result = controller.discard_stale_window(
+            "request-a", boundary, observation, "released_slot_unmeasured_remainder",
+            terminal_token_index=30, terminal_at_us=at_us + 3_000,
+        )
+        self.assertEqual(result.reason, "STALE_SLOT_DIRECTIVE_DISCARDED")
+        preview = controller.preview_completion("request-a")
+        self.assertEqual(preview.windows[:-1], tuple(before.records))
+        tail = preview.windows[-1]
+        self.assertEqual((tail.token_start, tail.token_end), (27, 28))
+        self.assertFalse(tail.measurement_eligible)
+        self.assertEqual(tail.failure_reason, "released_slot_unmeasured_remainder")
+        self.assertEqual(tail.completed_phone_calls, 0)
+        self.assertEqual(preview.final_policy, before.current_policy)
+        self.assertEqual(preview.unmeasured_tail_tokens, 2)
+        self.assertEqual(preview.unmeasured_tail_reason, "released_slot_unmeasured_remainder")
+        self.assertEqual(AdaptiveDecodeGroupedObservation.from_json(preview.to_json()), preview)
+        self.assertEqual(controller.complete("request-a", "COMPLETED"), preview)
+
     def test_released_phone_tail_preserves_measured_prefix_and_ack(self):
         controller = AdaptiveDecodeController()
         directive = self.start(controller)

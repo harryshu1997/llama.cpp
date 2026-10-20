@@ -27,9 +27,19 @@ The worker may serve any ``--columns`` up to the stored width and any layer
 subset of the stored mask; it computes the same weight hash as it would from
 the complete model, so scheduler identities do not change.
 
+WS21 fused shards (``--fused-layers SPEC``, optionally ``--fused-next-layers SPEC``): a full-width
+shard also carries, for every fused layer l, ``attn_output`` and ``ffn_norm`` of l and, for every
+fused-next layer l (default: every fused l with l+1 < block_count), ``attn_norm``/``attn_q``/
+``attn_k``/``attn_v`` of l+1, byte-copied from the parent and re-hashed after writing. The
+``s43.fused.*`` metadata (version, layer_mask, next_mask, n_q, n_kv, rms_eps) is the one the WS15
+Pixel shard writes, so the worker serves fused calls from either; the index record names the
+kernel ``attn_proj:fused``. The FFN tensors, the ``s42.ffn_shard`` keys and the worker's FFN
+weight hash are unchanged, so an FFN-only shard and the identities built on it stay byte-identical.
+
 Usage:
     ffn_shard_gguf.py MODEL.gguf --parent-sha256 sha256:... --out-dir DIR \\
-        --shard HTP0=0-5:4096 --shard HTP1=6-11:4096 [--verify-parent]
+        --shard HTP0=0-5:4096 --shard HTP1=6-11:4096 [--verify-parent] \\
+        [--fused-layers 0-5 [--fused-next-layers 0-5]]
 """
 from __future__ import annotations
 
@@ -55,6 +65,10 @@ METADATA_PREFIX = "s42.ffn_shard."
 INDEX_SCHEMA = "s42-ffn-shard-index-v1"
 MANIFEST_SCHEMA = "s42-ffn-shard-manifest-v1"
 FFN_TENSORS = ("ffn_gate", "ffn_up", "ffn_down")
+FUSED_PREFIX = "s43.fused."
+FUSED_KERNEL = "attn_proj:fused"
+FUSED_OWN_TENSORS = ("attn_output", "ffn_norm")                 # of the fused layer l
+FUSED_NEXT_TENSORS = ("attn_norm", "attn_q", "attn_k", "attn_v")  # of layer l+1
 
 
 class FfnShardError(ValueError):
@@ -223,13 +237,35 @@ def slice_suffix_columns(tensor: gguf.ReaderTensor, columns: int) -> np.ndarray:
     return np.ascontiguousarray(data[:, begin:end])
 
 
+def fused_geometry(reader: gguf.GGUFReader, geometry: ParentGeometry) -> dict:
+    """n_q, n_kv and the RMS epsilon of the parent, from its tensors and metadata."""
+    tensors = {tensor.name: tensor for tensor in reader.tensors}
+    wo = tensors.get("blk.0.attn_output.weight")
+    wk = tensors.get("blk.0.attn_k.weight")
+    if wo is None or wk is None:
+        raise FfnShardError("parent GGUF lacks attention projections")
+    eps = _field_value(reader, f"{geometry.architecture}.attention.layer_norm_rms_epsilon")
+    if not isinstance(eps, float) or not eps > 0:
+        raise FfnShardError("parent GGUF lacks attention.layer_norm_rms_epsilon")
+    return {"n_q": int(wo.shape[0]), "n_kv": int(wk.shape[1]), "rms_eps": eps}
+
+
 def write_shard(
     reader: gguf.GGUFReader,
     geometry: ParentGeometry,
     parent_sha256: str,
     request: ShardRequest,
     output: Path,
+    *,
+    fused_layers: Sequence[int] = (),
+    fused_next_layers: Sequence[int] = (),
 ) -> dict:
+    fused = tuple(sorted(set(fused_layers) & set(request.layers)))
+    fused_next = tuple(sorted(set(fused_next_layers) & set(fused)))
+    if fused and request.columns != geometry.n_ff:
+        raise FfnShardError(f"{request.session_id}: fused layers need the full FFN width")
+    if any(layer + 1 >= geometry.n_layer for layer in fused_next):
+        raise FfnShardError(f"{request.session_id}: a fused-next layer has no next layer")
     if request.columns > geometry.n_ff:
         raise FfnShardError(
             f"{request.session_id}: {request.columns} columns exceed n_ff {geometry.n_ff}"
@@ -261,6 +297,15 @@ def write_shard(
     writer.add_array(METADATA_PREFIX + "layers", list(request.layers))
     writer.add_string(METADATA_PREFIX + "weight_type", geometry.weight_type.name)
     writer.add_string(METADATA_PREFIX + "session_id", request.session_id)
+    fused_info = {}
+    if fused:
+        fused_info = fused_geometry(reader, geometry)
+        writer.add_uint32(FUSED_PREFIX + "version", 1)
+        writer.add_uint64(FUSED_PREFIX + "layer_mask", layer_mask(fused))
+        writer.add_uint64(FUSED_PREFIX + "next_mask", layer_mask(fused_next) if fused_next else 0)
+        writer.add_uint64(FUSED_PREFIX + "n_q", fused_info["n_q"])
+        writer.add_uint64(FUSED_PREFIX + "n_kv", fused_info["n_kv"])
+        writer.add_float32(FUSED_PREFIX + "rms_eps", fused_info["rms_eps"])
     tensor_rows = []
     for layer in request.layers:
         prefix = f"blk.{layer}."
@@ -291,10 +336,50 @@ def write_shard(
                 "type": geometry.weight_type.name,
                 "bytes": int(payload.nbytes),
             })
+    fused_rows = []
+    for layer in fused:
+        # the WS15 fused math is the plain pre-norm block (Qwen3): a block with post norms (Gemma) is refused,
+        # and the single n_kv of the fused hello must hold for every fused-next layer
+        if any(f"blk.{layer}.{suffix}.weight" in tensors for suffix in ("post_attention_norm", "post_ffw_norm")):
+            raise FfnShardError(f"layer {layer} has post-attention/FFN norms; fused layers need a pre-norm block")
+        if layer in fused_next:
+            following = tensors.get(f"blk.{layer + 1}.attn_k.weight")
+            if following is None or int(following.shape[1]) != fused_info["n_kv"]:
+                raise FfnShardError(f"layer {layer + 1} n_kv differs from the fused geometry")
+        names = [f"blk.{layer}.{suffix}.weight" for suffix in FUSED_OWN_TENSORS]
+        if layer in fused_next:
+            names += [f"blk.{layer + 1}.{suffix}.weight" for suffix in FUSED_NEXT_TENSORS]
+        for name in names:
+            tensor = tensors.get(name)
+            if tensor is None:
+                raise FfnShardError(f"parent GGUF lacks {name}")
+            quant = GGMLQuantizationType(tensor.tensor_type)
+            if name.endswith("_norm.weight"):
+                if quant != GGMLQuantizationType.F32 or int(tensor.shape[0]) != geometry.n_embd:
+                    raise FfnShardError(f"{name} is not an F32 n_embd vector")
+            elif quant not in (GGMLQuantizationType.F16, GGMLQuantizationType.F32, geometry.weight_type):
+                raise FfnShardError(f"{name} type {quant.name} is not servable next to {geometry.weight_type.name}")
+            data = np.ascontiguousarray(tensor.data)
+            writer.add_tensor(name, data, raw_dtype=tensor.tensor_type)
+            fused_rows.append({
+                "name": name,
+                "ne": [int(value) for value in tensor.shape],
+                "type": quant.name,
+                "bytes": int(data.nbytes),
+                "payload_sha256": hashlib.sha256(data.tobytes()).hexdigest(),
+            })
+    tensor_rows.extend(fused_rows)
     writer.write_header_to_file()
     writer.write_kv_data_to_file()
     writer.write_tensors_to_file(progress=False)
     writer.close()
+    if fused_rows:
+        # the fused tensors are byte copies of the parent: re-read and re-hash them
+        copied = {tensor.name: tensor for tensor in gguf.GGUFReader(str(output)).tensors}
+        for row in fused_rows:
+            digest = hashlib.sha256(np.ascontiguousarray(copied[row["name"]].data).tobytes()).hexdigest()
+            if digest != row["payload_sha256"]:
+                raise FfnShardError(f"{row['name']} payload changed while writing")
     manifest = {
         "schema": MANIFEST_SCHEMA,
         "session_id": request.session_id,
@@ -312,6 +397,14 @@ def write_shard(
         "layer_mask": f"{layer_mask(request.layers):016x}",
         "weight_type": geometry.weight_type.name,
         "tensors": tensor_rows,
+        **({"fused": {
+            "kernel": FUSED_KERNEL,
+            "fused_layers": list(fused),
+            "fused_next_layers": list(fused_next),
+            "fused_layer_mask": f"{layer_mask(fused):016x}",
+            "fused_next_mask": f"{layer_mask(fused_next):016x}" if fused_next else f"{0:016x}",
+            **fused_info,
+        }} if fused else {}),
     }
     output.with_suffix(".json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="ascii"
@@ -326,6 +419,8 @@ def write_shards(
     requests: Sequence[ShardRequest],
     *,
     verify_parent: bool = False,
+    fused_layers: Sequence[int] = (),
+    fused_next_layers: Sequence[int] | None = None,
 ) -> dict:
     parent_sha256 = _sha256_text(parent_sha256)
     if verify_parent:
@@ -339,12 +434,32 @@ def write_shards(
     reader = gguf.GGUFReader(str(model))
     geometry = parent_geometry(reader)
     out_dir.mkdir(parents=True, exist_ok=True)
+    fused_layers = tuple(sorted(set(fused_layers)))
+    if any(layer < 0 or layer >= geometry.n_layer for layer in fused_layers):
+        raise FfnShardError("a fused layer is outside the parent")
+    if fused_next_layers is None:
+        # default: every fused layer that has a next layer also serves its raw Q/K/V
+        fused_next_layers = tuple(layer for layer in fused_layers if layer + 1 < geometry.n_layer)
+    if set(fused_next_layers) - set(fused_layers):
+        raise FfnShardError("fused-next layers must be fused layers")
+    owned = set()
+    for request in requests:
+        owned |= set(request.layers)
+    if set(fused_layers) - owned:
+        raise FfnShardError("a fused layer is not owned by any shard")
     shards = []
     for request in requests:
         output = out_dir / f"{request.session_id}.ffn.gguf"
         if output.exists():
             raise FfnShardError(f"{output} already exists")
-        shards.append(write_shard(reader, geometry, parent_sha256, request, output))
+        manifest = write_shard(reader, geometry, parent_sha256, request, output,
+                               fused_layers=fused_layers, fused_next_layers=fused_next_layers)
+        shards.append(manifest)
+        if "fused" in manifest:
+            # the index record names the kernel (FfnShardIndex reads these three keys)
+            manifest["kernel"] = FUSED_KERNEL
+            manifest["fused_layer_mask"] = manifest["fused"]["fused_layer_mask"]
+            manifest["fused_next_mask"] = manifest["fused"]["fused_next_mask"]
     index = {
         "schema": INDEX_SCHEMA,
         "parent_model": model.name,
@@ -387,12 +502,22 @@ def main(argv: Sequence[str] | None = None) -> int:
                         help="e.g. HTP0=0-5:4096 (repeatable)")
     parser.add_argument("--verify-parent", action="store_true",
                         help="hash the complete model and require it to match")
+    parser.add_argument("--fused-layers", metavar="LAYERS", default=None,
+                        help="WS21: layers whose full-width call runs fused (e.g. 0-5,8)")
+    parser.add_argument("--fused-next-layers", metavar="LAYERS", default=None,
+                        help="fused layers that also return raw Q/K/V of the next layer "
+                             "(default: every fused layer with a next layer)")
     args = parser.parse_args(argv)
     try:
         requests = [ShardRequest.parse(text) for text in args.shard]
+        fused_layers = parse_layer_spec(args.fused_layers) if args.fused_layers else ()
+        fused_next = parse_layer_spec(args.fused_next_layers) if args.fused_next_layers is not None else None
+        if args.fused_next_layers is not None and not fused_layers:
+            raise FfnShardError("--fused-next-layers needs --fused-layers")
         index = write_shards(
             args.model, args.parent_sha256, args.out_dir, requests,
             verify_parent=args.verify_parent,
+            fused_layers=fused_layers, fused_next_layers=fused_next,
         )
     except (FfnShardError, OSError) as error:
         print(f"ffn_shard_gguf: {error}", file=sys.stderr)
@@ -402,6 +527,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"{shard['session_id']}: layers {shard['layer_spec']} "
             f"columns {shard['columns']} -> {shard['path']} "
             f"({shard['shard_bytes']} bytes, {shard['shard_sha256']})"
+            + (f" fused {shard['fused']['fused_layers']} next {shard['fused']['fused_next_layers']}"
+               if "fused" in shard else "")
         )
     return 0
 

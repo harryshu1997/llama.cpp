@@ -1,0 +1,8 @@
+{"schema": "s43-prima-phones-v1", "world": 3, "phones": [
+  {"name": "op15", "rank": 1, "transport": "adb", "serial": "3C15AU002CL00000", "adb_port": 5037,
+   "phone_dir": "/data/local/tmp/s43-prima-v1", "model_path": "/data/local/tmp/s43-q8/Qwen3-32B-Q8_0.gguf",
+   "threads": null, "min_mem_available_bytes": 0},
+  {"name": "pixel", "rank": 2, "transport": "adb", "serial": "5A040DLCH004ES", "adb_port": 5037,
+   "phone_dir": "/data/local/tmp/s43-prima-v1", "model_path": "/data/local/tmp/s43-prima-v1/Qwen3-32B-Q8_0.gguf",
+   "threads": null, "min_mem_available_bytes": 0}
+]}

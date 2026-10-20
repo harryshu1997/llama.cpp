@@ -116,6 +116,7 @@ llama_model_qwen3::graph::graph(const llama_model & model, const llm_graph_param
     const bool is_tail = le == (int) n_layer;
 
     const dense_ffn_split_policy ffn_split_policy = resolve_dense_ffn_split_policy();
+    const fused_layer_policy fused_policy = resolve_fused_layer_policy();
 
     if (ls > 0) {
         auto inp = std::make_unique<llm_graph_input_embd_h>(n_embd);
@@ -135,22 +136,43 @@ llama_model_qwen3::graph::graph(const llama_model & model, const llm_graph_param
 
     ggml_tensor * inp_out_ids = is_tail ? build_inp_out_ids() : nullptr;
 
+    // WS15: raw Q/K/V of the current layer, returned by the previous layer's fused helper call
+    ggml_tensor * fed_q = nullptr;
+    ggml_tensor * fed_k = nullptr;
+    ggml_tensor * fed_v = nullptr;
+
     for (int il = ls; il < le; ++il) {
         res->t_layer_inp[il] = inpL;
 
         ggml_tensor * inpSA = inpL;
 
-        // norm
-        cur = build_norm(inpL,
-                model.layers[il].attn_norm, NULL,
-                LLM_NORM_RMS, il);
-        cb(cur, "attn_norm", il);
+        const bool fused = fused_layer_active(fused_policy, ffn_split_policy, model.layers[il], il) &&
+                !(il == n_layer - 1 && inp_out_ids);
 
         // self-attention
         {
-            // compute Q and K and RoPE them
-            auto [Qcur, Kcur, Vcur] = build_qkv(model.layers[il], cur,
-                    n_embd_head, n_head, n_head_kv, il);
+            ggml_tensor * Qcur;
+            ggml_tensor * Kcur;
+            ggml_tensor * Vcur;
+            if (fed_q != nullptr) {
+                Qcur = ggml_reshape_3d(ctx0, fed_q, n_embd_head, n_head,    n_tokens);
+                Kcur = ggml_reshape_3d(ctx0, fed_k, n_embd_head, n_head_kv, n_tokens);
+                Vcur = ggml_reshape_3d(ctx0, fed_v, n_embd_head, n_head_kv, n_tokens);
+                fed_q = fed_k = fed_v = nullptr;
+            } else {
+                // norm
+                cur = build_norm(inpL,
+                        model.layers[il].attn_norm, NULL,
+                        LLM_NORM_RMS, il);
+                cb(cur, "attn_norm", il);
+
+                // compute Q and K and RoPE them
+                auto [q, k, v] = build_qkv(model.layers[il], cur,
+                        n_embd_head, n_head, n_head_kv, il);
+                Qcur = q;
+                Kcur = k;
+                Vcur = v;
+            }
 
             Qcur = build_norm(Qcur, model.layers[il].attn_q_norm, NULL, LLM_NORM_RMS, il);
             cb(Qcur, "Qcur_normed", il);
@@ -174,9 +196,32 @@ llama_model_qwen3::graph::graph(const llama_model & model, const llm_graph_param
             cb(Kcur, "Kcur", il);
             cb(Vcur, "Vcur", il);
 
-            cur = build_attn(inp_attn,
-                    model.layers[il].wo, model.layers[il].wo_b, model.layers[il].wo_s,
-                    Qcur, Kcur, Vcur, nullptr, nullptr, nullptr, 1.0f/sqrtf(float(n_embd_head)), il);
+            if (fused) {
+                // attention output before W_o: the helper applies O, the FFN and (next) the next Q/K/V
+                cur = build_attn(inp_attn,
+                        nullptr, nullptr, nullptr,
+                        Qcur, Kcur, Vcur, nullptr, nullptr, nullptr, 1.0f/sqrtf(float(n_embd_head)), il);
+            } else {
+                cur = build_attn(inp_attn,
+                        model.layers[il].wo, model.layers[il].wo_b, model.layers[il].wo_s,
+                        Qcur, Kcur, Vcur, nullptr, nullptr, nullptr, 1.0f/sqrtf(float(n_embd_head)), il);
+            }
+        }
+        if (fused) {
+            GGML_ASSERT(model.layers[il].wo_b == nullptr && model.layers[il].wo_s == nullptr);
+            const bool next_qkv = (fused_policy.next_mask & (UINT64_C(1) << il)) != 0 && il + 1 < le;
+            const fused_layer_result fused_out = build_fused_layer_call(
+                    cur, inpSA, next_qkv, n_embd_head * n_head, n_embd_head * n_head_kv, il);
+            cur = ggml_add(ctx0, fused_out.delta, inpSA);
+            cur = build_cvec(cur, il);
+            cb(cur, "l_out", il);
+            if (next_qkv) {
+                fed_q = fused_out.q;
+                fed_k = fused_out.k;
+                fed_v = fused_out.v;
+            }
+            inpL = cur;
+            continue;
         }
         if (il == n_layer - 1 && inp_out_ids) {
             cur   = ggml_get_rows(ctx0,   cur, inp_out_ids);

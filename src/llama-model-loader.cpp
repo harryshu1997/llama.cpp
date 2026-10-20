@@ -1089,7 +1089,11 @@ static bool use_view_safe_dense_ffn_weights(const LLM_TN_IMPL & tn) {
 
 static ggml_backend_buffer_type_t select_view_safe_dense_ffn_buft(
         const llama_hparams & hparams, ggml_tensor * tensor, const LLM_TN_IMPL & tn, const buft_list_t * bufts) {
-    if (tensor->type == GGML_TYPE_Q4_0 && ggml_n_dims(tensor) == 2) {
+    // LLAMA_FFN_SPLIT_VIEW_SAFE_BUFT=cpu keeps Q4_0 split weights in the plain CPU buffer: the host prefix loses the
+    // repacked decode kernels, but large-batch (prefill) products stay offloadable to the GPU, as for unsplit layers
+    const char * choice = getenv("LLAMA_FFN_SPLIT_VIEW_SAFE_BUFT");
+    const bool plain_cpu = choice != nullptr && strcmp(choice, "cpu") == 0;
+    if (!plain_cpu && tensor->type == GGML_TYPE_Q4_0 && ggml_n_dims(tensor) == 2) {
         ggml_tensor prefix = *tensor;
         prefix.view_src = tensor;
         prefix.view_offs = 0;

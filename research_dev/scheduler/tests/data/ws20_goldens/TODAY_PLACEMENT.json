@@ -1,0 +1,1681 @@
+{
+ "assisted_tokens_per_run": {
+  "gemma-4-12b-q40-dequant-f16": 1499.0,
+  "qwen3-14b-q4km-dequant-f16": 1043.0
+ },
+ "fleet_full_system_kj": 114.4,
+ "profile": {
+  "call_energy": [
+   {
+    "device_id": "op15-phone",
+    "energy_j": 0.11649306555395066,
+    "evidence": [
+     "meters p0m1-3: OP15 0.129-0.145 J/call, Pixel 0.170-0.179 J/call above idle"
+    ],
+    "model_id": "gemma-4-12b-q40-dequant-f16",
+    "provenance": "derived",
+    "rows": 1
+   },
+   {
+    "device_id": "op15-phone",
+    "energy_j": 0.11783941308138485,
+    "evidence": [
+     "meters p0m1-3: OP15 0.129-0.145 J/call, Pixel 0.170-0.179 J/call above idle"
+    ],
+    "model_id": "gemma-4-12b-q40-dequant-f16",
+    "provenance": "derived",
+    "rows": 2
+   },
+   {
+    "device_id": "op15-phone",
+    "energy_j": 0.1685010232229835,
+    "evidence": [
+     "meters p0m1-3: OP15 0.129-0.145 J/call, Pixel 0.170-0.179 J/call above idle"
+    ],
+    "model_id": "qwen3-14b-q4km-dequant-f16",
+    "provenance": "derived",
+    "rows": 1
+   },
+   {
+    "device_id": "op15-phone",
+    "energy_j": 0.1706494683558011,
+    "evidence": [
+     "meters p0m1-3: OP15 0.129-0.145 J/call, Pixel 0.170-0.179 J/call above idle"
+    ],
+    "model_id": "qwen3-14b-q4km-dequant-f16",
+    "provenance": "derived",
+    "rows": 2
+   },
+   {
+    "device_id": "pixel10pro-phone",
+    "energy_j": 0.16933737446856886,
+    "evidence": [
+     "meters p0m1-3: OP15 0.129-0.145 J/call, Pixel 0.170-0.179 J/call above idle"
+    ],
+    "model_id": "qwen3-14b-q4km-dequant-f16",
+    "provenance": "derived",
+    "rows": 1
+   },
+   {
+    "device_id": "pixel10pro-phone",
+    "energy_j": 0.19338981241758238,
+    "evidence": [
+     "meters p0m1-3: OP15 0.129-0.145 J/call, Pixel 0.170-0.179 J/call above idle"
+    ],
+    "model_id": "qwen3-14b-q4km-dequant-f16",
+    "provenance": "derived",
+    "rows": 2
+   }
+  ],
+  "calls": [
+   {
+    "calls": 230848.0,
+    "compute_ms": 6.400717887579706,
+    "device_id": "op15-phone",
+    "evidence": [
+     "p2m1er/large-model-10-physical-cold-desktop.stderr",
+     "p2m1er/large-model-16-physical-cold-desktop.stderr",
+     "p2m1er/large-model-2-physical-cold-desktop.stderr",
+     "p2m1pa/large-model-10-physical-cold-desktop.stderr",
+     "p2m1pa/large-model-14-physical-cold-desktop.stderr",
+     "p2m1pa/large-model-1-physical-cold-desktop.stderr",
+     "p2m2dpon/large-model-2-physical-cold-desktop.stderr",
+     "p2m2er/large-model-10-physical-cold-desktop.stderr",
+     "p2m2er/large-model-12-physical-cold-desktop.stderr",
+     "p2m2er/large-model-1-physical-cold-desktop.stderr",
+     "p2m2pa/large-model-10-physical-cold-desktop.stderr",
+     "p2m2pa/large-model-12-physical-cold-desktop.stderr",
+     "p2m2pa/large-model-1-physical-cold-desktop.stderr",
+     "s2a/large-model-10-physical-cold-desktop.stderr",
+     "s2a/large-model-14-physical-cold-desktop.stderr",
+     "s2a/large-model-1-physical-cold-desktop.stderr"
+    ],
+    "format": "f16",
+    "model_id": "gemma-4-12b-q40-dequant-f16",
+    "provenance": "measured",
+    "rows": 1,
+    "rpc_ms": 6.991916513307456,
+    "transport": "functionfs-usb"
+   },
+   {
+    "calls": 111608.0,
+    "compute_ms": 6.4746930264497164,
+    "device_id": "op15-phone",
+    "evidence": [
+     "p0m1/large-model-10-physical-cold-desktop.stderr",
+     "p0m1/large-model-14-physical-cold-desktop.stderr",
+     "p0m3/large-model-10-physical-cold-desktop.stderr",
+     "p2m1ctl/large-model-10-physical-cold-desktop.stderr",
+     "p2m1ctl/large-model-18-physical-cold-desktop.stderr",
+     "p2m1dpon/large-model-10-physical-cold-desktop.stderr",
+     "p2m1dpor/large-model-10-physical-cold-desktop.stderr",
+     "p2m1er/large-model-10-physical-cold-desktop.stderr",
+     "p2m1er/large-model-16-physical-cold-desktop.stderr",
+     "p2m1pa/large-model-10-physical-cold-desktop.stderr",
+     "p2m2er/large-model-10-physical-cold-desktop.stderr",
+     "p2m2pa/large-model-12-physical-cold-desktop.stderr",
+     "s2a/large-model-10-physical-cold-desktop.stderr"
+    ],
+    "format": "f16",
+    "model_id": "gemma-4-12b-q40-dequant-f16",
+    "provenance": "measured",
+    "rows": 2,
+    "rpc_ms": 7.205384526485557,
+    "transport": "functionfs-usb"
+   },
+   {
+    "calls": 155538.0,
+    "compute_ms": 9.258297979284807,
+    "device_id": "op15-phone",
+    "evidence": [
+     "p2m1dpor/large-model-14-physical-hot-desktop.stderr",
+     "p2m1dpor/large-model-23-physical-hot-desktop.stderr",
+     "p2m1dpor/large-model-6-physical-hot-desktop.stderr",
+     "p2m1er/large-model-14-physical-hot-desktop.stderr",
+     "p2m1er/large-model-18-physical-hot-desktop.stderr",
+     "p2m1er/large-model-6-physical-hot-desktop.stderr",
+     "p2m1pa/large-model-17-physical-hot-desktop.stderr",
+     "p2m1pa/large-model-6-physical-hot-desktop.stderr",
+     "p2m2er/large-model-11-physical-hot-desktop.stderr",
+     "p2m2er/large-model-14-physical-hot-desktop.stderr",
+     "p2m2er/large-model-6-physical-hot-desktop.stderr",
+     "p2m2pa/large-model-11-physical-hot-desktop.stderr",
+     "p2m2pa/large-model-14-physical-hot-desktop.stderr",
+     "p2m2pa/large-model-6-physical-hot-desktop.stderr",
+     "s2a/large-model-16-physical-hot-desktop.stderr",
+     "s2a/large-model-6-physical-hot-desktop.stderr"
+    ],
+    "format": "f16",
+    "model_id": "qwen3-14b-q4km-dequant-f16",
+    "provenance": "measured",
+    "rows": 1,
+    "rpc_ms": 9.839115478416849,
+    "transport": "functionfs-usb"
+   },
+   {
+    "calls": 38010.0,
+    "compute_ms": 9.376344415153907,
+    "device_id": "op15-phone",
+    "evidence": [
+     "p0m3/large-model-17-physical-hot-desktop.stderr",
+     "p2m1ctl/large-model-22-physical-hot-desktop.stderr",
+     "p2m1ctl/large-model-6-physical-hot-desktop.stderr",
+     "p2m1dpon/large-model-13-physical-hot-desktop.stderr",
+     "p2m1dpor/large-model-14-physical-hot-desktop.stderr",
+     "p2m1dpor/large-model-23-physical-hot-desktop.stderr",
+     "p2m1dpor/large-model-6-physical-hot-desktop.stderr",
+     "p2m1er/large-model-18-physical-hot-desktop.stderr",
+     "p2m1pa/large-model-17-physical-hot-desktop.stderr",
+     "p2m1pa/large-model-6-physical-hot-desktop.stderr",
+     "p2m2er/large-model-11-physical-hot-desktop.stderr",
+     "p2m2er/large-model-14-physical-hot-desktop.stderr",
+     "p2m2er/large-model-6-physical-hot-desktop.stderr",
+     "p2m2pa/large-model-11-physical-hot-desktop.stderr",
+     "p2m2pa/large-model-6-physical-hot-desktop.stderr",
+     "s2a/large-model-16-physical-hot-desktop.stderr"
+    ],
+    "format": "f16",
+    "model_id": "qwen3-14b-q4km-dequant-f16",
+    "provenance": "measured",
+    "rows": 2,
+    "rpc_ms": 10.226409450355169,
+    "transport": "functionfs-usb"
+   },
+   {
+    "calls": 52782.0,
+    "compute_ms": 8.466868723428442,
+    "device_id": "pixel10pro-phone",
+    "evidence": [
+     "p2m1dpor/large-model-23-physical-hot-desktop.stderr",
+     "p2m1dpor/large-model-6-physical-hot-desktop.stderr",
+     "p2m1er/large-model-14-physical-hot-desktop.stderr",
+     "p2m1er/large-model-18-physical-hot-desktop.stderr",
+     "p2m1er/large-model-6-physical-hot-desktop.stderr",
+     "p2m1pa/large-model-17-physical-hot-desktop.stderr",
+     "p2m1pa/large-model-6-physical-hot-desktop.stderr",
+     "p2m2er/large-model-11-physical-hot-desktop.stderr",
+     "p2m2er/large-model-14-physical-hot-desktop.stderr",
+     "p2m2er/large-model-6-physical-hot-desktop.stderr",
+     "p2m2pa/large-model-11-physical-hot-desktop.stderr",
+     "p2m2pa/large-model-14-physical-hot-desktop.stderr",
+     "p2m2pa/large-model-6-physical-hot-desktop.stderr",
+     "s2a/large-model-16-physical-hot-desktop.stderr",
+     "s2a/large-model-6-physical-hot-desktop.stderr",
+     "s43-pixel-aoa-20261001-v1/server-identity-adb-r5/SERVER_FFN_SHAPES.json"
+    ],
+    "format": "q4k-packed",
+    "model_id": "qwen3-14b-q4km-dequant-f16",
+    "provenance": "measured",
+    "rows": 1,
+    "rpc_ms": 13.37788590462658,
+    "transport": "adb-tcp"
+   },
+   {
+    "calls": 372.0,
+    "compute_ms": 7.335535,
+    "device_id": "pixel10pro-phone",
+    "evidence": [
+     "s43-pixel-aoa-20261001-v1/server-identity-aoa-r4/SERVER_FFN_SHAPES.json"
+    ],
+    "format": "q4k-packed",
+    "model_id": "qwen3-14b-q4km-dequant-f16",
+    "provenance": "measured",
+    "rows": 1,
+    "rpc_ms": 8.203274,
+    "transport": "aoa-bridge"
+   },
+   {
+    "calls": 13104.0,
+    "compute_ms": 9.669490620879118,
+    "device_id": "pixel10pro-phone",
+    "evidence": [
+     "p0m3/large-model-17-physical-hot-desktop.stderr",
+     "p2m1ctl/large-model-22-physical-hot-desktop.stderr",
+     "p2m1ctl/large-model-6-physical-hot-desktop.stderr",
+     "p2m1dpon/large-model-13-physical-hot-desktop.stderr",
+     "p2m1dpor/large-model-14-physical-hot-desktop.stderr",
+     "p2m1dpor/large-model-23-physical-hot-desktop.stderr",
+     "p2m1dpor/large-model-6-physical-hot-desktop.stderr",
+     "p2m1er/large-model-18-physical-hot-desktop.stderr",
+     "p2m1pa/large-model-17-physical-hot-desktop.stderr",
+     "p2m1pa/large-model-6-physical-hot-desktop.stderr",
+     "p2m2er/large-model-11-physical-hot-desktop.stderr",
+     "p2m2er/large-model-14-physical-hot-desktop.stderr",
+     "p2m2er/large-model-6-physical-hot-desktop.stderr",
+     "p2m2pa/large-model-11-physical-hot-desktop.stderr",
+     "p2m2pa/large-model-6-physical-hot-desktop.stderr",
+     "s2a/large-model-16-physical-hot-desktop.stderr"
+    ],
+    "format": "q4k-packed",
+    "model_id": "qwen3-14b-q4km-dequant-f16",
+    "provenance": "measured",
+    "rows": 2,
+    "rpc_ms": 15.015460864010986,
+    "transport": "adb-tcp"
+   }
+  ],
+  "desktop": {
+   "bytes_per_s": 28603645699.61489,
+   "ffn_layer_ms": [
+    {
+     "evidence": [
+      "fitted with the desktop power states (4 operating points)"
+     ],
+     "model_id": "gemma-4-12b-q40-dequant-f16",
+     "ms": 13.11,
+     "provenance": "derived",
+     "rows": 1
+    },
+    {
+     "evidence": [
+      "2 x host branch at half width, server identity adb-r5/aoa-r4 2026-10-01"
+     ],
+     "model_id": "qwen3-14b-q4km-dequant-f16",
+     "ms": 18.696,
+     "provenance": "measured",
+     "rows": 1
+    }
+   ],
+   "power": {
+    "evidence": [
+     "WS2 operating points (joint_planner_model PROVENANCE): qwen desktop-only b1 (tp2 audit); qwen assisted b1 OP15 18 + Pixel 6 (s1c-s2a); gemma desktop-only b1 (tp2 audit); gemma assisted b1 OP15 24 (s1a-s2a)",
+     "fit residual 1.25e-04 J^2 over 4 points, 4 unknowns: exactly determined, no redundancy"
+    ],
+    "ffn_w": 154.09233226230825,
+    "other_w": 25.70236184174318,
+    "provenance": "derived",
+    "wait_w": 63.50736040465343
+   },
+   "rows_factor": {
+    "1": 1.0,
+    "2": 1.025,
+    "3": 1.029,
+    "4": 1.034
+   }
+  },
+  "devices": {
+   "op15-phone": {
+    "active_marginal_w": 18.2,
+    "bytes_per_s": {
+     "f16": 57763421905.37913
+    },
+    "idle_w": 1.11,
+    "overhead_ms": {
+     "functionfs-usb": {
+      "1": 0.58,
+      "2": 0.85,
+      "3": 3.0,
+      "4": 3.6
+     }
+    },
+    "provenance": {
+     "f16": "measured rate (S41SERVERFFNSHAPE rows 1)",
+     "functionfs-usb": "measured rows 1/2, s1c rows 3/4",
+     "rows_factor": "measured rows 2, s1c rows 3/4"
+    },
+    "rows_factor": {
+     "1": 1.0,
+     "2": 1.013,
+     "3": 1.07,
+     "4": 1.23
+    }
+   },
+   "pixel10pro-phone": {
+    "active_marginal_w": 20.0,
+    "bytes_per_s": {
+     "f16": 29236988682.958828,
+     "q4_0-packed": 8878696576.151121,
+     "q4k-packed": 17757393152.302242
+    },
+    "idle_w": 0.44,
+    "overhead_ms": {
+     "adb-tcp": {
+      "1": 4.92,
+      "2": 5.35,
+      "4": 6.5
+     },
+     "aoa-bridge": {
+      "1": 0.87,
+      "2": 1.28,
+      "4": 2.0
+     }
+    },
+    "provenance": {
+     "adb-tcp": "measured (S41SERVERFFNSHAPE rpc - compute)",
+     "aoa-bridge": "measured rows 1 (2026-10-01 identity run); rows 2 = half-width row; rows 4 prior",
+     "f16": "derived: PIXEL_BANDWIDTH_RESULTS six-thread CPU f16 FFN, not in-server",
+     "q4_0-packed": "prior: no Q4_0 packed kernel measured; two passes over the weights assumed",
+     "q4k-packed": "measured rate (S41SERVERFFNSHAPE adb rows 1)",
+     "rows_factor": "measured adb rows 2 + s1c rows 3/4"
+    },
+    "rows_factor": {
+     "1": 1.0,
+     "2": 1.14,
+     "3": 1.46,
+     "4": 1.98
+    }
+   }
+  },
+  "keep": 1.0,
+  "revision": 146,
+  "schema": "research-scheduler-layer-placement-profile-v1"
+ },
+ "schema": "ws11-today-placement-v1",
+ "summary": [
+  {
+   "models": {
+    "gemma-4-12b-q40-dequant-f16": {
+     "chain_ms_rows1": 181.7898,
+     "chain_ms_rows1_now": 194.026,
+     "j_per_token": 11.301467,
+     "owners": {
+      "op15-phone": "0-25"
+     },
+     "saving_j_per_token": 2.233588,
+     "saving_kj_per_run": 3.348
+    },
+    "qwen3-14b-q4km-dequant-f16": {
+     "chain_ms_rows1": 257.3714,
+     "chain_ms_rows1_now": 257.371,
+     "j_per_token": 17.589223,
+     "owners": {
+      "op15-phone": "0-17",
+      "pixel10pro-phone": "18-23"
+     },
+     "saving_j_per_token": 0.0,
+     "saving_kj_per_run": 0.0
+    }
+   },
+   "name": "measured-adb",
+   "priors_used": [],
+   "saving_kj_per_run": 3.348,
+   "saving_pct_of_fleet": 2.93,
+   "solver": "exact"
+  },
+  {
+   "models": {
+    "gemma-4-12b-q40-dequant-f16": {
+     "chain_ms_rows1": 181.7898,
+     "chain_ms_rows1_now": 194.026,
+     "j_per_token": 11.301467,
+     "owners": {
+      "op15-phone": "0-25"
+     },
+     "saving_j_per_token": 2.233588,
+     "saving_kj_per_run": 3.348
+    },
+    "qwen3-14b-q4km-dequant-f16": {
+     "chain_ms_rows1": 226.3237,
+     "chain_ms_rows1_now": 257.371,
+     "j_per_token": 15.971939,
+     "owners": {
+      "op15-phone": "0-17",
+      "pixel10pro-phone": "18-23"
+     },
+     "saving_j_per_token": 0.0,
+     "saving_kj_per_run": 0.0
+    }
+   },
+   "name": "measured-aoa-risk",
+   "priors_used": [
+    "pixel10pro-phone:qwen3-14b-q4km-dequant-f16:q4k-packed:rows2:rpc_ms"
+   ],
+   "saving_kj_per_run": 3.348,
+   "saving_pct_of_fleet": 2.93,
+   "solver": "exact"
+  },
+  {
+   "models": {
+    "gemma-4-12b-q40-dequant-f16": {
+     "chain_ms_rows1": 181.7898,
+     "chain_ms_rows1_now": 194.026,
+     "j_per_token": 11.301467,
+     "owners": {
+      "op15-phone": "0-25"
+     },
+     "saving_j_per_token": 2.233588,
+     "saving_kj_per_run": 3.348
+    },
+    "qwen3-14b-q4km-dequant-f16": {
+     "chain_ms_rows1": 198.5144,
+     "chain_ms_rows1_now": 257.371,
+     "j_per_token": 14.960974,
+     "owners": {
+      "op15-phone": "0",
+      "pixel10pro-phone": "1-23"
+     },
+     "saving_j_per_token": 1.010965,
+     "saving_kj_per_run": 1.054
+    }
+   },
+   "name": "measured-aoa-expected",
+   "priors_used": [
+    "pixel10pro-phone:qwen3-14b-q4km-dequant-f16:q4k-packed:rows2:rpc_ms"
+   ],
+   "saving_kj_per_run": 4.403,
+   "saving_pct_of_fleet": 3.85,
+   "solver": "exact"
+  },
+  {
+   "models": {
+    "gemma-4-12b-q40-dequant-f16": {
+     "chain_ms_rows1": 181.7898,
+     "chain_ms_rows1_now": 194.026,
+     "j_per_token": 11.301467,
+     "owners": {
+      "op15-phone": "0-25"
+     },
+     "saving_j_per_token": 2.233588,
+     "saving_kj_per_run": 3.348
+    },
+    "qwen3-14b-q4km-dequant-f16": {
+     "chain_ms_rows1": 216.5087,
+     "chain_ms_rows1_now": 257.371,
+     "j_per_token": 15.615128,
+     "owners": {
+      "op15-phone": "0-11",
+      "pixel10pro-phone": "12-23"
+     },
+     "saving_j_per_token": 0.356811,
+     "saving_kj_per_run": 0.372
+    }
+   },
+   "name": "measured-aoa-envelope",
+   "priors_used": [
+    "pixel10pro-phone:qwen3-14b-q4km-dequant-f16:q4k-packed:rows2:rpc_ms"
+   ],
+   "saving_kj_per_run": 3.72,
+   "saving_pct_of_fleet": 3.25,
+   "solver": "exact"
+  },
+  {
+   "models": {
+    "gemma-4-12b-q40-dequant-f16": {
+     "chain_ms_rows1": 181.7898,
+     "chain_ms_rows1_now": 194.026,
+     "j_per_token": 11.301467,
+     "owners": {
+      "op15-phone": "0-25"
+     },
+     "saving_j_per_token": 2.233588,
+     "saving_kj_per_run": 3.348
+    },
+    "qwen3-14b-q4km-dequant-f16": {
+     "chain_ms_rows1": 260.9102,
+     "chain_ms_rows1_now": 257.371,
+     "j_per_token": 17.799301,
+     "owners": {
+      "op15-phone": "0-16",
+      "pixel10pro-phone": "17-23"
+     },
+     "saving_j_per_token": -0.210079,
+     "saving_kj_per_run": -0.219
+    }
+   },
+   "name": "op15-capacity-lowest-live",
+   "priors_used": [],
+   "saving_kj_per_run": 3.129,
+   "saving_pct_of_fleet": 2.74,
+   "solver": "exact"
+  },
+  {
+   "models": {
+    "gemma-4-12b-q40-dequant-f16": {
+     "chain_ms_rows1": 200.0486,
+     "chain_ms_rows1_now": 194.026,
+     "j_per_token": 12.431881,
+     "owners": {
+      "op15-phone": "0-23",
+      "pixel10pro-phone": "24-25"
+     },
+     "saving_j_per_token": 1.103174,
+     "saving_kj_per_run": 1.654
+    },
+    "qwen3-14b-q4km-dequant-f16": {
+     "chain_ms_rows1": 257.3714,
+     "chain_ms_rows1_now": 257.371,
+     "j_per_token": 17.589223,
+     "owners": {
+      "op15-phone": "0-17",
+      "pixel10pro-phone": "18-23"
+     },
+     "saving_j_per_token": 0.0,
+     "saving_kj_per_run": 0.0
+    }
+   },
+   "name": "op15-gemma-held-24-q4_0",
+   "priors_used": [
+    "pixel10pro-phone:gemma-4-12b-q40-dequant-f16:q4_0-packed:rows1:compute_ms",
+    "pixel10pro-phone:gemma-4-12b-q40-dequant-f16:q4_0-packed:rows1:energy_j",
+    "pixel10pro-phone:gemma-4-12b-q40-dequant-f16:q4_0-packed:rows1:rpc_ms",
+    "pixel10pro-phone:gemma-4-12b-q40-dequant-f16:q4_0-packed:rows2:compute_ms",
+    "pixel10pro-phone:gemma-4-12b-q40-dequant-f16:q4_0-packed:rows2:energy_j",
+    "pixel10pro-phone:gemma-4-12b-q40-dequant-f16:q4_0-packed:rows2:rpc_ms"
+   ],
+   "saving_kj_per_run": 1.654,
+   "saving_pct_of_fleet": 1.45,
+   "solver": "exact"
+  },
+  {
+   "models": {
+    "gemma-4-12b-q40-dequant-f16": {
+     "chain_ms_rows1": 201.8367,
+     "chain_ms_rows1_now": 194.026,
+     "j_per_token": 12.551821,
+     "owners": {
+      "op15-phone": "0-23",
+      "pixel10pro-phone": "24-25"
+     },
+     "saving_j_per_token": 0.983234,
+     "saving_kj_per_run": 1.474
+    },
+    "qwen3-14b-q4km-dequant-f16": {
+     "chain_ms_rows1": 257.3714,
+     "chain_ms_rows1_now": 257.371,
+     "j_per_token": 17.589223,
+     "owners": {
+      "op15-phone": "0-17",
+      "pixel10pro-phone": "18-23"
+     },
+     "saving_j_per_token": 0.0,
+     "saving_kj_per_run": 0.0
+    }
+   },
+   "name": "op15-gemma-held-24-f16",
+   "priors_used": [
+    "pixel10pro-phone:gemma-4-12b-q40-dequant-f16:f16:rows1:compute_ms",
+    "pixel10pro-phone:gemma-4-12b-q40-dequant-f16:f16:rows1:energy_j",
+    "pixel10pro-phone:gemma-4-12b-q40-dequant-f16:f16:rows1:rpc_ms",
+    "pixel10pro-phone:gemma-4-12b-q40-dequant-f16:f16:rows2:compute_ms",
+    "pixel10pro-phone:gemma-4-12b-q40-dequant-f16:f16:rows2:energy_j",
+    "pixel10pro-phone:gemma-4-12b-q40-dequant-f16:f16:rows2:rpc_ms"
+   ],
+   "saving_kj_per_run": 1.474,
+   "saving_pct_of_fleet": 1.29,
+   "solver": "exact"
+  },
+  {
+   "models": {
+    "gemma-4-12b-q40-dequant-f16": {
+     "chain_ms_rows1": 340.86,
+     "chain_ms_rows1_now": 194.026,
+     "j_per_token": 40.050424,
+     "owners": {
+      "desktop-cpu": "0-25"
+     },
+     "saving_j_per_token": 0.287681,
+     "saving_kj_per_run": 0.431
+    },
+    "qwen3-14b-q4km-dequant-f16": {
+     "chain_ms_rows1": 448.704,
+     "chain_ms_rows1_now": 257.371,
+     "j_per_token": 58.241875,
+     "owners": {
+      "desktop-cpu": "0-23"
+     },
+     "saving_j_per_token": -8.904047,
+     "saving_kj_per_run": -9.287
+    }
+   },
+   "name": "op15-absent",
+   "priors_used": [],
+   "saving_kj_per_run": -8.856,
+   "saving_pct_of_fleet": -7.74,
+   "solver": "exact"
+  },
+  {
+   "models": {
+    "gemma-4-12b-q40-dequant-f16": {
+     "chain_ms_rows1": 181.7898,
+     "chain_ms_rows1_now": 194.026,
+     "j_per_token": 11.24054,
+     "owners": {
+      "op15-phone": "0-25"
+     },
+     "saving_j_per_token": 2.294515,
+     "saving_kj_per_run": 3.439
+    },
+    "qwen3-14b-q4km-dequant-f16": {
+     "chain_ms_rows1": 289.2801,
+     "chain_ms_rows1_now": 257.371,
+     "j_per_token": 26.804523,
+     "owners": {
+      "desktop-cpu": "18-23",
+      "op15-phone": "0-17"
+     },
+     "saving_j_per_token": 0.107096,
+     "saving_kj_per_run": 0.112
+    }
+   },
+   "name": "pixel-absent",
+   "priors_used": [],
+   "saving_kj_per_run": 3.551,
+   "saving_pct_of_fleet": 3.1,
+   "solver": "exact"
+  }
+ ],
+ "variants": [
+  {
+   "growth_ppm": null,
+   "name": "measured-adb",
+   "note": "today's deployed Pixel transport (adb forward), expected value",
+   "pixel_gemma_format": "q4_0-packed",
+   "pixel_runtime": "co-helper",
+   "plan": {
+    "device_busy_ms_per_step": {
+     "op15-phone": {
+      "gemma-4-12b-q40-dequant-f16": 181.7898,
+      "qwen3-14b-q4km-dequant-f16": 177.1041
+     },
+     "pixel10pro-phone": {
+      "qwen3-14b-q4km-dequant-f16": 80.2673
+     }
+    },
+    "device_usage_bytes": {
+     "op15-phone": {
+      "gemma-4-12b-q40-dequant-f16": 9201254400,
+      "qwen3-14b-q4km-dequant-f16": 9625927680
+     },
+     "pixel10pro-phone": {
+      "*": 948387840
+     }
+    },
+    "gap_bound_j_per_step": 0.0,
+    "infeasible_current": [],
+    "models": {
+     "gemma-4-12b-q40-dequant-f16": {
+      "column_fraction": 1.0,
+      "cpu_only_energy_j_per_token": 40.338105,
+      "cpu_only_ffn_chain_ms_by_rows": {
+       "1": 340.86,
+       "2": 349.3815
+      },
+      "current_energy_j_per_token": 13.535055,
+      "energy_j_per_token": 11.301467,
+      "ffn_chain_ms_by_rows": {
+       "1": 181.7898,
+       "2": 187.34
+      },
+      "model_id": "gemma-4-12b-q40-dequant-f16",
+      "objective_j_per_token": 11.301467,
+      "owners": {
+       "desktop-cpu": {
+        "count": 0,
+        "layer_mask": "0000000000000000",
+        "layers": ""
+       },
+       "op15-phone": {
+        "count": 26,
+        "layer_mask": "0000000003ffffff",
+        "layers": "0-25"
+       }
+      },
+      "saving_vs_cpu_j_per_token": 29.036638,
+      "saving_vs_current_j_per_token": 2.233588,
+      "tokens_per_step": 1.325905
+     },
+     "qwen3-14b-q4km-dequant-f16": {
+      "column_fraction": 1.0,
+      "cpu_only_energy_j_per_token": 58.660224,
+      "cpu_only_ffn_chain_ms_by_rows": {
+       "1": 448.704,
+       "2": 459.9216
+      },
+      "current_energy_j_per_token": 17.589223,
+      "energy_j_per_token": 17.589223,
+      "ffn_chain_ms_by_rows": {
+       "1": 257.3714,
+       "2": 274.1681
+      },
+      "model_id": "qwen3-14b-q4km-dequant-f16",
+      "objective_j_per_token": 17.589223,
+      "owners": {
+       "desktop-cpu": {
+        "count": 0,
+        "layer_mask": "0000000000000000",
+        "layers": ""
+       },
+       "op15-phone": {
+        "count": 18,
+        "layer_mask": "000000000003ffff",
+        "layers": "0-17"
+       },
+       "pixel10pro-phone": {
+        "count": 6,
+        "layer_mask": "0000000000fc0000",
+        "layers": "18-23"
+       }
+      },
+      "saving_vs_cpu_j_per_token": 41.071001,
+      "saving_vs_current_j_per_token": 0.0,
+      "tokens_per_step": 1.196385
+     }
+    },
+    "priors_used": [],
+    "schema": "research-scheduler-layer-placement-v1",
+    "solver": "exact"
+   },
+   "provisioning_needs": [
+    {
+     "bytes": 0,
+     "device_id": "op15-phone",
+     "layers": "24-25",
+     "model_id": "gemma-4-12b-q40-dequant-f16",
+     "needs_qualification": true,
+     "needs_shard": false
+    }
+   ],
+   "risk": false,
+   "transport": "adb-tcp"
+  },
+  {
+   "growth_ppm": null,
+   "name": "measured-aoa-risk",
+   "note": "Pixel over the qualified AOA bridge, risk premiums (scaled +10 %, prior +25 %, < 2000 calls = scaled)",
+   "pixel_gemma_format": "q4_0-packed",
+   "pixel_runtime": "co-helper",
+   "plan": {
+    "device_busy_ms_per_step": {
+     "op15-phone": {
+      "gemma-4-12b-q40-dequant-f16": 181.7898,
+      "qwen3-14b-q4km-dequant-f16": 177.1041
+     },
+     "pixel10pro-phone": {
+      "qwen3-14b-q4km-dequant-f16": 49.2196
+     }
+    },
+    "device_usage_bytes": {
+     "op15-phone": {
+      "gemma-4-12b-q40-dequant-f16": 9201254400,
+      "qwen3-14b-q4km-dequant-f16": 9625927680
+     },
+     "pixel10pro-phone": {
+      "*": 948387840
+     }
+    },
+    "gap_bound_j_per_step": 0.0,
+    "infeasible_current": [],
+    "models": {
+     "gemma-4-12b-q40-dequant-f16": {
+      "column_fraction": 1.0,
+      "cpu_only_energy_j_per_token": 40.338105,
+      "cpu_only_ffn_chain_ms_by_rows": {
+       "1": 340.86,
+       "2": 349.3815
+      },
+      "current_energy_j_per_token": 13.535055,
+      "energy_j_per_token": 11.301467,
+      "ffn_chain_ms_by_rows": {
+       "1": 181.7898,
+       "2": 187.34
+      },
+      "model_id": "gemma-4-12b-q40-dequant-f16",
+      "objective_j_per_token": 11.301467,
+      "owners": {
+       "desktop-cpu": {
+        "count": 0,
+        "layer_mask": "0000000000000000",
+        "layers": ""
+       },
+       "op15-phone": {
+        "count": 26,
+        "layer_mask": "0000000003ffffff",
+        "layers": "0-25"
+       }
+      },
+      "saving_vs_cpu_j_per_token": 29.036638,
+      "saving_vs_current_j_per_token": 2.233588,
+      "tokens_per_step": 1.325905
+     },
+     "qwen3-14b-q4km-dequant-f16": {
+      "column_fraction": 1.0,
+      "cpu_only_energy_j_per_token": 58.660224,
+      "cpu_only_ffn_chain_ms_by_rows": {
+       "1": 448.704,
+       "2": 459.9216
+      },
+      "current_energy_j_per_token": 15.971939,
+      "energy_j_per_token": 15.971939,
+      "ffn_chain_ms_by_rows": {
+       "1": 226.3237,
+       "2": 249.7723
+      },
+      "model_id": "qwen3-14b-q4km-dequant-f16",
+      "objective_j_per_token": 16.903283,
+      "owners": {
+       "desktop-cpu": {
+        "count": 0,
+        "layer_mask": "0000000000000000",
+        "layers": ""
+       },
+       "op15-phone": {
+        "count": 18,
+        "layer_mask": "000000000003ffff",
+        "layers": "0-17"
+       },
+       "pixel10pro-phone": {
+        "count": 6,
+        "layer_mask": "0000000000fc0000",
+        "layers": "18-23"
+       }
+      },
+      "saving_vs_cpu_j_per_token": 42.688285,
+      "saving_vs_current_j_per_token": 0.0,
+      "tokens_per_step": 1.196385
+     }
+    },
+    "priors_used": [
+     "pixel10pro-phone:qwen3-14b-q4km-dequant-f16:q4k-packed:rows2:rpc_ms"
+    ],
+    "schema": "research-scheduler-layer-placement-v1",
+    "solver": "exact"
+   },
+   "provisioning_needs": [
+    {
+     "bytes": 0,
+     "device_id": "op15-phone",
+     "layers": "24-25",
+     "model_id": "gemma-4-12b-q40-dequant-f16",
+     "needs_qualification": true,
+     "needs_shard": false
+    }
+   ],
+   "risk": true,
+   "transport": "aoa-bridge"
+  },
+  {
+   "growth_ppm": null,
+   "name": "measured-aoa-expected",
+   "note": "AOA, plain expected value",
+   "pixel_gemma_format": "q4_0-packed",
+   "pixel_runtime": "co-helper",
+   "plan": {
+    "device_busy_ms_per_step": {
+     "op15-phone": {
+      "gemma-4-12b-q40-dequant-f16": 181.7898,
+      "qwen3-14b-q4km-dequant-f16": 9.8391
+     },
+     "pixel10pro-phone": {
+      "qwen3-14b-q4km-dequant-f16": 188.6753
+     }
+    },
+    "device_usage_bytes": {
+     "op15-phone": {
+      "gemma-4-12b-q40-dequant-f16": 9201254400,
+      "qwen3-14b-q4km-dequant-f16": 534773760
+     },
+     "pixel10pro-phone": {
+      "*": 3689103360
+     }
+    },
+    "gap_bound_j_per_step": 0.0,
+    "infeasible_current": [],
+    "models": {
+     "gemma-4-12b-q40-dequant-f16": {
+      "column_fraction": 1.0,
+      "cpu_only_energy_j_per_token": 40.338105,
+      "cpu_only_ffn_chain_ms_by_rows": {
+       "1": 340.86,
+       "2": 349.3815
+      },
+      "current_energy_j_per_token": 13.535055,
+      "energy_j_per_token": 11.301467,
+      "ffn_chain_ms_by_rows": {
+       "1": 181.7898,
+       "2": 187.34
+      },
+      "model_id": "gemma-4-12b-q40-dequant-f16",
+      "objective_j_per_token": 11.301467,
+      "owners": {
+       "desktop-cpu": {
+        "count": 0,
+        "layer_mask": "0000000000000000",
+        "layers": ""
+       },
+       "op15-phone": {
+        "count": 26,
+        "layer_mask": "0000000003ffffff",
+        "layers": "0-25"
+       }
+      },
+      "saving_vs_cpu_j_per_token": 29.036638,
+      "saving_vs_current_j_per_token": 2.233588,
+      "tokens_per_step": 1.325905
+     },
+     "qwen3-14b-q4km-dequant-f16": {
+      "column_fraction": 1.0,
+      "cpu_only_energy_j_per_token": 58.660224,
+      "cpu_only_ffn_chain_ms_by_rows": {
+       "1": 448.704,
+       "2": 459.9216
+      },
+      "current_energy_j_per_token": 15.971939,
+      "energy_j_per_token": 14.960974,
+      "ffn_chain_ms_by_rows": {
+       "1": 198.5144,
+       "2": 262.0647
+      },
+      "model_id": "qwen3-14b-q4km-dequant-f16",
+      "objective_j_per_token": 14.960974,
+      "owners": {
+       "desktop-cpu": {
+        "count": 0,
+        "layer_mask": "0000000000000000",
+        "layers": ""
+       },
+       "op15-phone": {
+        "count": 1,
+        "layer_mask": "0000000000000001",
+        "layers": "0"
+       },
+       "pixel10pro-phone": {
+        "count": 23,
+        "layer_mask": "0000000000fffffe",
+        "layers": "1-23"
+       }
+      },
+      "saving_vs_cpu_j_per_token": 43.69925,
+      "saving_vs_current_j_per_token": 1.010965,
+      "tokens_per_step": 1.196385
+     }
+    },
+    "priors_used": [
+     "pixel10pro-phone:qwen3-14b-q4km-dequant-f16:q4k-packed:rows2:rpc_ms"
+    ],
+    "schema": "research-scheduler-layer-placement-v1",
+    "solver": "exact"
+   },
+   "provisioning_needs": [
+    {
+     "bytes": 0,
+     "device_id": "op15-phone",
+     "layers": "24-25",
+     "model_id": "gemma-4-12b-q40-dequant-f16",
+     "needs_qualification": true,
+     "needs_shard": false
+    },
+    {
+     "bytes": 2740715520,
+     "device_id": "pixel10pro-phone",
+     "layers": "1-17",
+     "model_id": "qwen3-14b-q4km-dequant-f16",
+     "needs_qualification": true,
+     "needs_shard": true
+    }
+   ],
+   "risk": false,
+   "transport": "aoa-bridge"
+  },
+  {
+   "growth_ppm": 250000,
+   "name": "measured-aoa-envelope",
+   "note": "AOA, safe exploration: busy/step <= 1.25 x measured envelope",
+   "pixel_gemma_format": "q4_0-packed",
+   "pixel_runtime": "co-helper",
+   "plan": {
+    "device_busy_ms_per_step": {
+     "op15-phone": {
+      "gemma-4-12b-q40-dequant-f16": 181.7898,
+      "qwen3-14b-q4km-dequant-f16": 118.0694
+     },
+     "pixel10pro-phone": {
+      "qwen3-14b-q4km-dequant-f16": 98.4393
+     }
+    },
+    "device_usage_bytes": {
+     "op15-phone": {
+      "gemma-4-12b-q40-dequant-f16": 9201254400,
+      "qwen3-14b-q4km-dequant-f16": 6417285120
+     },
+     "pixel10pro-phone": {
+      "*": 1896775680
+     }
+    },
+    "gap_bound_j_per_step": 0.0,
+    "infeasible_current": [],
+    "models": {
+     "gemma-4-12b-q40-dequant-f16": {
+      "column_fraction": 1.0,
+      "cpu_only_energy_j_per_token": 40.338105,
+      "cpu_only_ffn_chain_ms_by_rows": {
+       "1": 340.86,
+       "2": 349.3815
+      },
+      "current_energy_j_per_token": 13.535055,
+      "energy_j_per_token": 11.301467,
+      "ffn_chain_ms_by_rows": {
+       "1": 181.7898,
+       "2": 187.34
+      },
+      "model_id": "gemma-4-12b-q40-dequant-f16",
+      "objective_j_per_token": 11.301467,
+      "owners": {
+       "desktop-cpu": {
+        "count": 0,
+        "layer_mask": "0000000000000000",
+        "layers": ""
+       },
+       "op15-phone": {
+        "count": 26,
+        "layer_mask": "0000000003ffffff",
+        "layers": "0-25"
+       }
+      },
+      "saving_vs_cpu_j_per_token": 29.036638,
+      "saving_vs_current_j_per_token": 2.233588,
+      "tokens_per_step": 1.325905
+     },
+     "qwen3-14b-q4km-dequant-f16": {
+      "column_fraction": 1.0,
+      "cpu_only_energy_j_per_token": 58.660224,
+      "cpu_only_ffn_chain_ms_by_rows": {
+       "1": 448.704,
+       "2": 459.9216
+      },
+      "current_energy_j_per_token": 15.971939,
+      "energy_j_per_token": 15.615128,
+      "ffn_chain_ms_by_rows": {
+       "1": 216.5087,
+       "2": 254.1108
+      },
+      "model_id": "qwen3-14b-q4km-dequant-f16",
+      "objective_j_per_token": 15.615128,
+      "owners": {
+       "desktop-cpu": {
+        "count": 0,
+        "layer_mask": "0000000000000000",
+        "layers": ""
+       },
+       "op15-phone": {
+        "count": 12,
+        "layer_mask": "0000000000000fff",
+        "layers": "0-11"
+       },
+       "pixel10pro-phone": {
+        "count": 12,
+        "layer_mask": "0000000000fff000",
+        "layers": "12-23"
+       }
+      },
+      "saving_vs_cpu_j_per_token": 43.045096,
+      "saving_vs_current_j_per_token": 0.356811,
+      "tokens_per_step": 1.196385
+     }
+    },
+    "priors_used": [
+     "pixel10pro-phone:qwen3-14b-q4km-dequant-f16:q4k-packed:rows2:rpc_ms"
+    ],
+    "schema": "research-scheduler-layer-placement-v1",
+    "solver": "exact"
+   },
+   "provisioning_needs": [
+    {
+     "bytes": 0,
+     "device_id": "op15-phone",
+     "layers": "24-25",
+     "model_id": "gemma-4-12b-q40-dequant-f16",
+     "needs_qualification": true,
+     "needs_shard": false
+    },
+    {
+     "bytes": 948387840,
+     "device_id": "pixel10pro-phone",
+     "layers": "12-17",
+     "model_id": "qwen3-14b-q4km-dequant-f16",
+     "needs_qualification": true,
+     "needs_shard": true
+    }
+   ],
+   "risk": false,
+   "transport": "aoa-bridge"
+  },
+  {
+   "growth_ppm": null,
+   "name": "op15-capacity-lowest-live",
+   "note": "OP15 capacity = lowest live HTP limit seen (9.27 GB, 2026-09-24)",
+   "pixel_gemma_format": "q4_0-packed",
+   "pixel_runtime": "co-helper",
+   "plan": {
+    "device_busy_ms_per_step": {
+     "op15-phone": {
+      "gemma-4-12b-q40-dequant-f16": 181.7898,
+      "qwen3-14b-q4km-dequant-f16": 167.265
+     },
+     "pixel10pro-phone": {
+      "qwen3-14b-q4km-dequant-f16": 93.6452
+     }
+    },
+    "device_usage_bytes": {
+     "op15-phone": {
+      "gemma-4-12b-q40-dequant-f16": 9201254400,
+      "qwen3-14b-q4km-dequant-f16": 9091153920
+     },
+     "pixel10pro-phone": {
+      "*": 1098792960
+     }
+    },
+    "gap_bound_j_per_step": 0.0,
+    "infeasible_current": [],
+    "models": {
+     "gemma-4-12b-q40-dequant-f16": {
+      "column_fraction": 1.0,
+      "cpu_only_energy_j_per_token": 40.338105,
+      "cpu_only_ffn_chain_ms_by_rows": {
+       "1": 340.86,
+       "2": 349.3815
+      },
+      "current_energy_j_per_token": 13.535055,
+      "energy_j_per_token": 11.301467,
+      "ffn_chain_ms_by_rows": {
+       "1": 181.7898,
+       "2": 187.34
+      },
+      "model_id": "gemma-4-12b-q40-dequant-f16",
+      "objective_j_per_token": 11.301467,
+      "owners": {
+       "desktop-cpu": {
+        "count": 0,
+        "layer_mask": "0000000000000000",
+        "layers": ""
+       },
+       "op15-phone": {
+        "count": 26,
+        "layer_mask": "0000000003ffffff",
+        "layers": "0-25"
+       }
+      },
+      "saving_vs_cpu_j_per_token": 29.036638,
+      "saving_vs_current_j_per_token": 2.233588,
+      "tokens_per_step": 1.325905
+     },
+     "qwen3-14b-q4km-dequant-f16": {
+      "column_fraction": 1.0,
+      "cpu_only_energy_j_per_token": 58.660224,
+      "cpu_only_ffn_chain_ms_by_rows": {
+       "1": 448.704,
+       "2": 459.9216
+      },
+      "current_energy_j_per_token": 17.589223,
+      "energy_j_per_token": 17.799301,
+      "ffn_chain_ms_by_rows": {
+       "1": 260.9102,
+       "2": 278.9572
+      },
+      "model_id": "qwen3-14b-q4km-dequant-f16",
+      "objective_j_per_token": 17.799301,
+      "owners": {
+       "desktop-cpu": {
+        "count": 0,
+        "layer_mask": "0000000000000000",
+        "layers": ""
+       },
+       "op15-phone": {
+        "count": 17,
+        "layer_mask": "000000000001ffff",
+        "layers": "0-16"
+       },
+       "pixel10pro-phone": {
+        "count": 7,
+        "layer_mask": "0000000000fe0000",
+        "layers": "17-23"
+       }
+      },
+      "saving_vs_cpu_j_per_token": 40.860923,
+      "saving_vs_current_j_per_token": -0.210079,
+      "tokens_per_step": 1.196385
+     }
+    },
+    "priors_used": [],
+    "schema": "research-scheduler-layer-placement-v1",
+    "solver": "exact"
+   },
+   "provisioning_needs": [
+    {
+     "bytes": 0,
+     "device_id": "op15-phone",
+     "layers": "24-25",
+     "model_id": "gemma-4-12b-q40-dequant-f16",
+     "needs_qualification": true,
+     "needs_shard": false
+    },
+    {
+     "bytes": 150405120,
+     "device_id": "pixel10pro-phone",
+     "layers": "17",
+     "model_id": "qwen3-14b-q4km-dequant-f16",
+     "needs_qualification": true,
+     "needs_shard": true
+    }
+   ],
+   "risk": false,
+   "transport": "adb-tcp"
+  },
+  {
+   "growth_ppm": null,
+   "name": "op15-gemma-held-24-q4_0",
+   "note": "OP15 Gemma kept at 0-23 (no new OP15 shards): Pixel Q4_0 packed (prior); assumes multi-artifact helper support (not built)",
+   "pixel_gemma_format": "q4_0-packed",
+   "pixel_runtime": "hypothetical-multi-model",
+   "plan": {
+    "device_busy_ms_per_step": {
+     "op15-phone": {
+      "gemma-4-12b-q40-dequant-f16": 167.806,
+      "qwen3-14b-q4km-dequant-f16": 177.1041
+     },
+     "pixel10pro-phone": {
+      "gemma-4-12b-q40-dequant-f16": 32.2426,
+      "qwen3-14b-q4km-dequant-f16": 80.2673
+     }
+    },
+    "device_usage_bytes": {
+     "op15-phone": {
+      "gemma-4-12b-q40-dequant-f16": 8493465600,
+      "qwen3-14b-q4km-dequant-f16": 9625927680
+     },
+     "pixel10pro-phone": {
+      "*": 1147453440
+     }
+    },
+    "gap_bound_j_per_step": 0.0,
+    "infeasible_current": [],
+    "models": {
+     "gemma-4-12b-q40-dequant-f16": {
+      "column_fraction": 1.0,
+      "cpu_only_energy_j_per_token": 40.338105,
+      "cpu_only_ffn_chain_ms_by_rows": {
+       "1": 340.86,
+       "2": 349.3815
+      },
+      "current_energy_j_per_token": 13.535055,
+      "energy_j_per_token": 12.431881,
+      "ffn_chain_ms_by_rows": {
+       "1": 200.0486,
+       "2": 209.1806
+      },
+      "model_id": "gemma-4-12b-q40-dequant-f16",
+      "objective_j_per_token": 12.431881,
+      "owners": {
+       "desktop-cpu": {
+        "count": 0,
+        "layer_mask": "0000000000000000",
+        "layers": ""
+       },
+       "op15-phone": {
+        "count": 24,
+        "layer_mask": "0000000000ffffff",
+        "layers": "0-23"
+       },
+       "pixel10pro-phone": {
+        "count": 2,
+        "layer_mask": "0000000003000000",
+        "layers": "24-25"
+       }
+      },
+      "saving_vs_cpu_j_per_token": 27.906224,
+      "saving_vs_current_j_per_token": 1.103174,
+      "tokens_per_step": 1.325905
+     },
+     "qwen3-14b-q4km-dequant-f16": {
+      "column_fraction": 1.0,
+      "cpu_only_energy_j_per_token": 58.660224,
+      "cpu_only_ffn_chain_ms_by_rows": {
+       "1": 448.704,
+       "2": 459.9216
+      },
+      "current_energy_j_per_token": 17.589223,
+      "energy_j_per_token": 17.589223,
+      "ffn_chain_ms_by_rows": {
+       "1": 257.3714,
+       "2": 274.1681
+      },
+      "model_id": "qwen3-14b-q4km-dequant-f16",
+      "objective_j_per_token": 17.589223,
+      "owners": {
+       "desktop-cpu": {
+        "count": 0,
+        "layer_mask": "0000000000000000",
+        "layers": ""
+       },
+       "op15-phone": {
+        "count": 18,
+        "layer_mask": "000000000003ffff",
+        "layers": "0-17"
+       },
+       "pixel10pro-phone": {
+        "count": 6,
+        "layer_mask": "0000000000fc0000",
+        "layers": "18-23"
+       }
+      },
+      "saving_vs_cpu_j_per_token": 41.071001,
+      "saving_vs_current_j_per_token": 0.0,
+      "tokens_per_step": 1.196385
+     }
+    },
+    "priors_used": [
+     "pixel10pro-phone:gemma-4-12b-q40-dequant-f16:q4_0-packed:rows1:compute_ms",
+     "pixel10pro-phone:gemma-4-12b-q40-dequant-f16:q4_0-packed:rows1:energy_j",
+     "pixel10pro-phone:gemma-4-12b-q40-dequant-f16:q4_0-packed:rows1:rpc_ms",
+     "pixel10pro-phone:gemma-4-12b-q40-dequant-f16:q4_0-packed:rows2:compute_ms",
+     "pixel10pro-phone:gemma-4-12b-q40-dequant-f16:q4_0-packed:rows2:energy_j",
+     "pixel10pro-phone:gemma-4-12b-q40-dequant-f16:q4_0-packed:rows2:rpc_ms"
+    ],
+    "schema": "research-scheduler-layer-placement-v1",
+    "solver": "exact"
+   },
+   "provisioning_needs": [
+    {
+     "bytes": 199065600,
+     "device_id": "pixel10pro-phone",
+     "layers": "24-25",
+     "model_id": "gemma-4-12b-q40-dequant-f16",
+     "needs_qualification": true,
+     "needs_shard": true
+    }
+   ],
+   "risk": false,
+   "transport": "adb-tcp"
+  },
+  {
+   "growth_ppm": null,
+   "name": "op15-gemma-held-24-f16",
+   "note": "same, Pixel Gemma as f16 shards (derived rate)",
+   "pixel_gemma_format": "f16",
+   "pixel_runtime": "hypothetical-multi-model",
+   "plan": {
+    "device_busy_ms_per_step": {
+     "op15-phone": {
+      "gemma-4-12b-q40-dequant-f16": 167.806,
+      "qwen3-14b-q4km-dequant-f16": 177.1041
+     },
+     "pixel10pro-phone": {
+      "gemma-4-12b-q40-dequant-f16": 34.0307,
+      "qwen3-14b-q4km-dequant-f16": 80.2673
+     }
+    },
+    "device_usage_bytes": {
+     "op15-phone": {
+      "gemma-4-12b-q40-dequant-f16": 8493465600,
+      "qwen3-14b-q4km-dequant-f16": 9625927680
+     },
+     "pixel10pro-phone": {
+      "*": 1656176640
+     }
+    },
+    "gap_bound_j_per_step": 0.0,
+    "infeasible_current": [],
+    "models": {
+     "gemma-4-12b-q40-dequant-f16": {
+      "column_fraction": 1.0,
+      "cpu_only_energy_j_per_token": 40.338105,
+      "cpu_only_ffn_chain_ms_by_rows": {
+       "1": 340.86,
+       "2": 349.3815
+      },
+      "current_energy_j_per_token": 13.535055,
+      "energy_j_per_token": 12.551821,
+      "ffn_chain_ms_by_rows": {
+       "1": 201.8367,
+       "2": 211.2191
+      },
+      "model_id": "gemma-4-12b-q40-dequant-f16",
+      "objective_j_per_token": 12.551821,
+      "owners": {
+       "desktop-cpu": {
+        "count": 0,
+        "layer_mask": "0000000000000000",
+        "layers": ""
+       },
+       "op15-phone": {
+        "count": 24,
+        "layer_mask": "0000000000ffffff",
+        "layers": "0-23"
+       },
+       "pixel10pro-phone": {
+        "count": 2,
+        "layer_mask": "0000000003000000",
+        "layers": "24-25"
+       }
+      },
+      "saving_vs_cpu_j_per_token": 27.786284,
+      "saving_vs_current_j_per_token": 0.983234,
+      "tokens_per_step": 1.325905
+     },
+     "qwen3-14b-q4km-dequant-f16": {
+      "column_fraction": 1.0,
+      "cpu_only_energy_j_per_token": 58.660224,
+      "cpu_only_ffn_chain_ms_by_rows": {
+       "1": 448.704,
+       "2": 459.9216
+      },
+      "current_energy_j_per_token": 17.589223,
+      "energy_j_per_token": 17.589223,
+      "ffn_chain_ms_by_rows": {
+       "1": 257.3714,
+       "2": 274.1681
+      },
+      "model_id": "qwen3-14b-q4km-dequant-f16",
+      "objective_j_per_token": 17.589223,
+      "owners": {
+       "desktop-cpu": {
+        "count": 0,
+        "layer_mask": "0000000000000000",
+        "layers": ""
+       },
+       "op15-phone": {
+        "count": 18,
+        "layer_mask": "000000000003ffff",
+        "layers": "0-17"
+       },
+       "pixel10pro-phone": {
+        "count": 6,
+        "layer_mask": "0000000000fc0000",
+        "layers": "18-23"
+       }
+      },
+      "saving_vs_cpu_j_per_token": 41.071001,
+      "saving_vs_current_j_per_token": 0.0,
+      "tokens_per_step": 1.196385
+     }
+    },
+    "priors_used": [
+     "pixel10pro-phone:gemma-4-12b-q40-dequant-f16:f16:rows1:compute_ms",
+     "pixel10pro-phone:gemma-4-12b-q40-dequant-f16:f16:rows1:energy_j",
+     "pixel10pro-phone:gemma-4-12b-q40-dequant-f16:f16:rows1:rpc_ms",
+     "pixel10pro-phone:gemma-4-12b-q40-dequant-f16:f16:rows2:compute_ms",
+     "pixel10pro-phone:gemma-4-12b-q40-dequant-f16:f16:rows2:energy_j",
+     "pixel10pro-phone:gemma-4-12b-q40-dequant-f16:f16:rows2:rpc_ms"
+    ],
+    "schema": "research-scheduler-layer-placement-v1",
+    "solver": "exact"
+   },
+   "provisioning_needs": [
+    {
+     "bytes": 707788800,
+     "device_id": "pixel10pro-phone",
+     "layers": "24-25",
+     "model_id": "gemma-4-12b-q40-dequant-f16",
+     "needs_qualification": true,
+     "needs_shard": true
+    }
+   ],
+   "risk": false,
+   "transport": "adb-tcp"
+  },
+  {
+   "growth_ppm": null,
+   "name": "op15-absent",
+   "note": "robustness: OP15 unavailable",
+   "pixel_gemma_format": "q4_0-packed",
+   "pixel_runtime": "co-helper",
+   "plan": {
+    "device_busy_ms_per_step": {},
+    "device_usage_bytes": {},
+    "gap_bound_j_per_step": 0.0,
+    "infeasible_current": [],
+    "models": {
+     "gemma-4-12b-q40-dequant-f16": {
+      "column_fraction": 1.0,
+      "cpu_only_energy_j_per_token": 40.050424,
+      "cpu_only_ffn_chain_ms_by_rows": {
+       "1": 340.86,
+       "2": 349.3815
+      },
+      "current_energy_j_per_token": 40.338105,
+      "energy_j_per_token": 40.050424,
+      "ffn_chain_ms_by_rows": {
+       "1": 340.86,
+       "2": 349.3815
+      },
+      "model_id": "gemma-4-12b-q40-dequant-f16",
+      "objective_j_per_token": 40.050424,
+      "owners": {
+       "desktop-cpu": {
+        "count": 26,
+        "layer_mask": "0000000003ffffff",
+        "layers": "0-25"
+       }
+      },
+      "saving_vs_cpu_j_per_token": 0.0,
+      "saving_vs_current_j_per_token": 0.287681,
+      "tokens_per_step": 1.325905
+     },
+     "qwen3-14b-q4km-dequant-f16": {
+      "column_fraction": 1.0,
+      "cpu_only_energy_j_per_token": 58.241875,
+      "cpu_only_ffn_chain_ms_by_rows": {
+       "1": 448.704,
+       "2": 459.9216
+      },
+      "current_energy_j_per_token": 49.337828,
+      "energy_j_per_token": 58.241875,
+      "ffn_chain_ms_by_rows": {
+       "1": 448.704,
+       "2": 459.9216
+      },
+      "model_id": "qwen3-14b-q4km-dequant-f16",
+      "objective_j_per_token": 58.241875,
+      "owners": {
+       "desktop-cpu": {
+        "count": 24,
+        "layer_mask": "0000000000ffffff",
+        "layers": "0-23"
+       }
+      },
+      "saving_vs_cpu_j_per_token": 0.0,
+      "saving_vs_current_j_per_token": -8.904047,
+      "tokens_per_step": 1.196385
+     }
+    },
+    "priors_used": [],
+    "schema": "research-scheduler-layer-placement-v1",
+    "solver": "exact"
+   },
+   "provisioning_needs": [],
+   "risk": false,
+   "transport": "adb-tcp"
+  },
+  {
+   "growth_ppm": null,
+   "name": "pixel-absent",
+   "note": "robustness: Pixel unavailable",
+   "pixel_gemma_format": "q4_0-packed",
+   "pixel_runtime": "co-helper",
+   "plan": {
+    "device_busy_ms_per_step": {
+     "op15-phone": {
+      "gemma-4-12b-q40-dequant-f16": 181.7898,
+      "qwen3-14b-q4km-dequant-f16": 177.1041
+     }
+    },
+    "device_usage_bytes": {
+     "op15-phone": {
+      "gemma-4-12b-q40-dequant-f16": 9201254400,
+      "qwen3-14b-q4km-dequant-f16": 9625927680
+     }
+    },
+    "gap_bound_j_per_step": 0.0,
+    "infeasible_current": [],
+    "models": {
+     "gemma-4-12b-q40-dequant-f16": {
+      "column_fraction": 1.0,
+      "cpu_only_energy_j_per_token": 40.224069,
+      "cpu_only_ffn_chain_ms_by_rows": {
+       "1": 340.86,
+       "2": 349.3815
+      },
+      "current_energy_j_per_token": 13.535055,
+      "energy_j_per_token": 11.24054,
+      "ffn_chain_ms_by_rows": {
+       "1": 181.7898,
+       "2": 187.34
+      },
+      "model_id": "gemma-4-12b-q40-dequant-f16",
+      "objective_j_per_token": 11.24054,
+      "owners": {
+       "desktop-cpu": {
+        "count": 0,
+        "layer_mask": "0000000000000000",
+        "layers": ""
+       },
+       "op15-phone": {
+        "count": 26,
+        "layer_mask": "0000000003ffffff",
+        "layers": "0-25"
+       }
+      },
+      "saving_vs_cpu_j_per_token": 28.983529,
+      "saving_vs_current_j_per_token": 2.294515,
+      "tokens_per_step": 1.325905
+     },
+     "qwen3-14b-q4km-dequant-f16": {
+      "column_fraction": 1.0,
+      "cpu_only_energy_j_per_token": 58.494392,
+      "cpu_only_ffn_chain_ms_by_rows": {
+       "1": 448.704,
+       "2": 459.9216
+      },
+      "current_energy_j_per_token": 26.911619,
+      "energy_j_per_token": 26.804523,
+      "ffn_chain_ms_by_rows": {
+       "1": 289.2801,
+       "2": 299.0558
+      },
+      "model_id": "qwen3-14b-q4km-dequant-f16",
+      "objective_j_per_token": 26.804523,
+      "owners": {
+       "desktop-cpu": {
+        "count": 6,
+        "layer_mask": "0000000000fc0000",
+        "layers": "18-23"
+       },
+       "op15-phone": {
+        "count": 18,
+        "layer_mask": "000000000003ffff",
+        "layers": "0-17"
+       }
+      },
+      "saving_vs_cpu_j_per_token": 31.689869,
+      "saving_vs_current_j_per_token": 0.107096,
+      "tokens_per_step": 1.196385
+     }
+    },
+    "priors_used": [],
+    "schema": "research-scheduler-layer-placement-v1",
+    "solver": "exact"
+   },
+   "provisioning_needs": [
+    {
+     "bytes": 0,
+     "device_id": "op15-phone",
+     "layers": "24-25",
+     "model_id": "gemma-4-12b-q40-dequant-f16",
+     "needs_qualification": true,
+     "needs_shard": false
+    }
+   ],
+   "risk": false,
+   "transport": "adb-tcp"
+  }
+ ]
+}

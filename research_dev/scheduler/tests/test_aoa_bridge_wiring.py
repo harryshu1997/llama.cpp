@@ -404,6 +404,20 @@ class PrepareAoaEvidenceTests(unittest.TestCase):
         self.assertEqual(worker.expected_sha256_by_path["/p/worker"], "sha256:" + "a" * 64)
         self.assertEqual(worker.phone_lock_path, "/data/local/tmp/.s42-pixel-ffn-kernels.lock")
 
+    def test_server_identity_tool_can_drive_another_phone_worker(self) -> None:
+        from research_dev.scheduler.campaigns.burstgpt.tools.qualify_pixel_server_transport import worker_configuration
+        config = {"serial": "3C15AU002CL00000", "phone_worker": "/o/worker", "phone_model": "/o/HTP0.ffn.gguf",
+                  "phone_library_dir": "/o", "phone_environment": {"GGML_HEXAGON_NDEV": "1"}, "phone_root": True,
+                  "phone_backend": "HTP0", "phone_port": 27313, "output_tokens": 64, "device_id": "op15-phone",
+                  "phone_lock_path": "/data/local/tmp/.ws16-op15-microbench.lock",
+                  "expected_phone_sha256": {"/o/worker": "a" * 64, "/o/HTP0.ffn.gguf": "b" * 64},
+                  "phone": {"artifact_sha256": SHA, "layers": list(range(11)), "n_embd": 5120,
+                            "columns": 25600, "quantum": 25600}}
+        worker = worker_configuration(config, 27313)
+        self.assertEqual((worker.device_id, worker.backend, worker.layer_mask, worker.columns),
+                         ("op15-phone", "HTP0", (1 << 11) - 1, 25600))
+        self.assertEqual(worker.phone_lock_path, "/data/local/tmp/.ws16-op15-microbench.lock")
+
     def test_derived_arm_changes_only_the_pixel_transport(self) -> None:
         from research_dev.scheduler.campaigns.burstgpt.tools import prepare_aoa_evidence as tool
         with tempfile.TemporaryDirectory() as directory:

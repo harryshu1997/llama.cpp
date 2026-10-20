@@ -1,0 +1,53 @@
+diff --git a/drivers/usb/gadget/function/android_f_accessory.c b/drivers/usb/gadget/function/android_f_accessory.c
+index 0d096fa0a..c11256214 100644
+--- a/drivers/usb/gadget/function/android_f_accessory.c
++++ b/drivers/usb/gadget/function/android_f_accessory.c
+@@ -34,7 +34,8 @@
+ #include <linux/usb/composite.h>
+ 
+ #define MAX_INST_NAME_LEN 40
+-#define BULK_BUFFER_SIZE 16384
++#define TX_BULK_BUFFER_SIZE 16384
++#define RX_BULK_BUFFER_SIZE 65536
+ 
+ #define PROTOCOL_VERSION 2
+ 
+@@ -674,14 +675,14 @@ static int create_bulk_endpoints(struct acc_dev *dev,
+ 
+ 	/* now allocate requests for our endpoints */
+ 	for (i = 0; i < TX_REQ_MAX; i++) {
+-		req = acc_request_new(dev->ep_in, BULK_BUFFER_SIZE);
++		req = acc_request_new(dev->ep_in, TX_BULK_BUFFER_SIZE);
+ 		if (!req)
+ 			goto fail;
+ 		req->complete = acc_complete_in;
+ 		req_put(dev, &dev->tx_idle, req);
+ 	}
+ 	for (i = 0; i < RX_REQ_MAX; i++) {
+-		req = acc_request_new(dev->ep_out, BULK_BUFFER_SIZE);
++		req = acc_request_new(dev->ep_out, RX_BULK_BUFFER_SIZE);
+ 		if (!req)
+ 			goto fail;
+ 		req->complete = acc_complete_out;
+@@ -712,8 +713,8 @@ static ssize_t acc_read(struct file *fp, char __user *buf,
+ 		return -ENODEV;
+ 	}
+ 
+-	if (count > BULK_BUFFER_SIZE)
+-		count = BULK_BUFFER_SIZE;
++	if (count > RX_BULK_BUFFER_SIZE)
++		count = RX_BULK_BUFFER_SIZE;
+ 
+ 	/* we will block until we're online */
+ 	pr_debug("waiting for online\n");
+@@ -820,8 +821,8 @@ static ssize_t acc_write(struct file *fp, const char __user *buf,
+ 			break;
+ 		}
+ 
+-		if (count > BULK_BUFFER_SIZE) {
+-			xfer = BULK_BUFFER_SIZE;
++		if (count > TX_BULK_BUFFER_SIZE) {
++			xfer = TX_BULK_BUFFER_SIZE;
+ 			/* ZLP, They will be more TX requests so not yet. */
+ 			req->zero = 0;
+ 		} else {

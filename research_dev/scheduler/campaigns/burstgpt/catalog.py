@@ -35,6 +35,7 @@ from research_dev.scheduler import (  # noqa: E402
     load_cached_gguf_manifest,
     ModelManifest,
     RuntimeCapabilityCatalog,
+    RuntimeCapabilityError,
     RuntimeDesktopControlProfile,
     RuntimePhonePowerProfile,
     RuntimeRouteShapeProfile,
@@ -53,6 +54,7 @@ from research_dev.scheduler.adapters.speculative_rows import (  # noqa: E402
     speculative_adapter_parameters,
 )
 from research_dev.scheduler.adapters import (  # noqa: E402
+    CatalogMaterializationError,
     add_phone_session_memory_pools,
     apply_assumed_phone_power_profile,
     RuntimeModelEndpointCapability,
@@ -64,6 +66,7 @@ from research_dev.scheduler.adapters import (  # noqa: E402
     materialize_measured_usb_links,
     materialize_desktop_control,
     materialize_cpu_phone_endpoints,
+    materialize_remote_resident_owner,
     materialize_whole_model_endpoint,
     measured_desktop_control_profile,
     measured_ffn_assist_profile,
@@ -392,6 +395,31 @@ def latency_model(
     return latency, ranges
 
 
+def assisted_profile_targets(
+    role: str,
+    executor_id: str,
+    devices: tuple[str, ...],
+    composite_ids: frozenset[str] | None,
+) -> tuple[tuple[str, tuple[str, ...], str], ...]:
+    """(executor id, device ids, selector suffix) the measured phone-assisted profile of ``role`` binds to.
+
+    WS23 (2026-10-05): when the primary phone stores no shard of the model, the primary-anchored family is not
+    materialized and the calibrated profile would name an absent executor ("runtime route profile executor is
+    absent"); the same measurement then describes the helper-led sibling families (same server, the co-helper
+    serving), one profile per led composite with the led device in the phone seat."""
+    if composite_ids is None or executor_id in composite_ids:
+        return ((executor_id, devices, ""),)
+    family = executor_id.rsplit(":", 1)[1]
+    prefix = f"physical:{role}:phone-assisted-led:"
+    led = sorted(cid for cid in composite_ids if cid.startswith(prefix) and cid.endswith(":" + family))
+    if not led:
+        return ((executor_id, devices, ""),)
+    return tuple(
+        (cid, (*devices[:2], cid[len(prefix):].rsplit(":", 1)[0]), ":led:" + cid[len(prefix):].rsplit(":", 1)[0])
+        for cid in led
+    )
+
+
 def route_profiles(
     model_configs: tuple[CampaignModelConfiguration, ...],
     manifests: dict[str, ModelManifest],
@@ -399,21 +427,27 @@ def route_profiles(
     device_ids: tuple[str, str, str],
     desktop_arm: str,
     assisted_arm: str,
+    composite_ids: frozenset[str] | None = None,
 ) -> tuple[RuntimeRouteShapeProfile, ...]:
     rows = []
     for config in model_configs:
         role = config.model_key
         manifest = manifests[role]
         assert config.calibration_key is not None
-        phone_profile = measured_ffn_assist_profile(
-            manifest,
-            tuple(
-                result["fp16_resident_scheduler"]["phase_decisions"][
-                    config.calibration_key
-                ]
-                for result, _, _ in calibration[assisted_arm]
-            ),
+        prior = config.calibration_prior
+        decisions = tuple(
+            result["fp16_resident_scheduler"]["phase_decisions"][
+                config.calibration_key
+            ]
+            for result, _, _ in calibration[assisted_arm]
         )
+        if prior is not None:
+            # WS17: a new artifact of the role reuses its role's runs (geometry rescaled when asked)
+            decisions = tuple(
+                prior.rescale_decision(row, manifest.feed_forward_length)
+                for row in decisions
+            )
+        phone_profile = measured_ffn_assist_profile(manifest, decisions)
         for arm, executor_id, route_family, assisted, axis, fraction in (
             (
                 desktop_arm,
@@ -455,11 +489,25 @@ def route_profiles(
                 for _, _, evidence_ids in arm_rows
                 for evidence_id in evidence_ids
             }))
+            ucb_add_us = latency["ucb_add_us"]
+            fixed_us = model["fixed"]
+            if prior is not None:
+                # WS17: measured service-time ratio of the new artifact to the calibrated one, per route
+                scale = prior.scale(arm == desktop_arm)
+                fixed_us = _scaled(fixed_us, scale)
+                input_coefficient = _scaled(input_coefficient, scale)
+                output_coefficient = _scaled(output_coefficient, scale)
+                ucb_add_us = _scaled(ucb_add_us, scale)
+                coefficients = {name: _scaled(value, scale) for name, value in coefficients.items()}
+                evidence = tuple(sorted({*evidence, prior.receipt_sha256}))
             devices = device_ids[:2] if arm == desktop_arm else device_ids
-            for residency in ("cold", "hot", "warm"):
+            targets = ((executor_id, devices, ""),) if arm == desktop_arm else assisted_profile_targets(
+                role, executor_id, devices, composite_ids)
+            for executor_id, devices, suffix in targets:
+              for residency in ("cold", "hot", "warm"):
                 rows.append(RuntimeRouteShapeProfile(
                     selector_id=(
-                        f"physical:{role}:{arm}:{residency}:v1"
+                        f"physical:{role}:{arm}:{residency}{suffix}:v1"
                     ),
                     artifact_sha256=manifest.artifact_sha256,
                     route_family=route_family,
@@ -472,10 +520,10 @@ def route_profiles(
                     maximum_input_tokens=max(input_values),
                     minimum_output_tokens=min(output_values),
                     maximum_output_tokens=max(output_values),
-                    service_fixed_us=model["fixed"],
+                    service_fixed_us=fixed_us,
                     service_input_token_us=input_coefficient,
                     service_output_token_us=output_coefficient,
-                    service_upper_add_us=latency["ucb_add_us"],
+                    service_upper_add_us=ucb_add_us,
                     energy_fixed_uj=0,
                     energy_input_token_uj=0,
                     energy_output_token_uj=0,
@@ -490,6 +538,13 @@ def route_profiles(
                     executor_id=executor_id,
                 ))
     return tuple(rows)
+
+
+def _scaled(value, scale: float):
+    """A route coefficient times a calibration-prior ratio, keeping its numeric type (int stays int)."""
+    if type(value) is int:
+        return int(round(value * scale))
+    return value * scale
 
 
 def write_new(path: Path, value: object) -> None:
@@ -769,6 +824,8 @@ def helper_phone_co_helpers(rig, config, manifest: ModelManifest) -> RuntimeCoHe
                 session_id=label.upper() + "0", layer_mask=record.layer_mask,
                 column_quantum=row.column_quantum, max_tokens=row.max_tokens,
                 shard_sha256=record.shard_sha256, resident_bytes=record.shard_bytes,
+                # WS15: a fused shard record names its fused layers (the helper's full-width calls run O + FFN)
+                fused_layer_mask=record.fused_layer_mask, fused_next_mask=record.fused_next_mask,
                 transport_parameters={
                     "adb_port": row.adb_port, "adb_serial": row.serial, "ffn_transport": "adb-tcp",
                     "ffn_worker_host": "127.0.0.1", "ffn_worker_port": row.link_delay_proxy_port or row.forward_port,
@@ -779,14 +836,29 @@ def helper_phone_co_helpers(rig, config, manifest: ModelManifest) -> RuntimeCoHe
                     **({"ffn_link_transport": "aoa-bridge"} if row.transport == "aoa-bridge" else {}),
                 },
             ))
+        primary_fused_layer_mask = 0
+        primary_fused_next_mask = 0
+        primary_geometry = set()
+        if config.phone_ffn_shard_index_path is not None:
+            primary = FfnShardIndex.load(config.phone_ffn_shard_index_path, config.phone_ffn_shard_directory)
+            # WS21: the primary's fused layers are the union of its fused shard records
+            for row in primary.records:
+                if row.fused_layer_mask:
+                    primary_fused_layer_mask |= row.fused_layer_mask
+                    primary_fused_next_mask |= row.fused_next_mask
+                    primary_geometry.add((row.fused_n_q, row.fused_n_kv))
+            require(len(primary_geometry) <= 1, f"primary phone fused shards of {manifest.model_id} disagree on geometry")
         declaration = RuntimeCoHelperDeclaration(
             primary_label=rig.topology.phone_device_id.split("-", 1)[0],
             primary_serial=rig.phone.serial,
             helpers=tuple(helpers),
+            primary_fused_layer_mask=primary_fused_layer_mask,
+            primary_fused_next_mask=primary_fused_next_mask,
+            **(dict(zip(("primary_fused_n_q", "primary_fused_n_kv"), next(iter(primary_geometry))))
+               if primary_geometry else {}),
         )
         if config.phone_ffn_shard_index_path is not None:
             # per-model disjointness: the primary phone's stored slices never reach a co-helper layer
-            primary = FfnShardIndex.load(config.phone_ffn_shard_index_path, config.phone_ffn_shard_directory)
             require(
                 not any(row.layer_mask & declaration.layer_mask for row in primary.records),
                 f"primary phone shards of {manifest.model_id} overlap co-helper layers",
@@ -794,6 +866,36 @@ def helper_phone_co_helpers(rig, config, manifest: ModelManifest) -> RuntimeCoHe
         return declaration
     except (FfnShardIndexError, RuntimePlanError) as error:
         raise MaterializationError(f"helper phone co-helper of {manifest.model_id}: {error}") from error
+
+
+def remote_resident_owner_catalog(
+    catalog: RuntimeCapabilityCatalog,
+    configuration,
+) -> RuntimeCapabilityCatalog:
+    """Campaign ``remote_resident_owner`` (opt-in): add the model's remote-resident desktop parent.
+
+    Its owner sessions are the campaign's ``fixed_phone_residency`` assignments (full width, this
+    model only) backed by the model's phone FFN shard index. Without the opt-in the catalog is
+    returned unchanged; an equal parent already in the catalog is kept."""
+    owner = configuration.campaign.remote_resident_owner
+    if owner is None:
+        return catalog
+    config = next(row for row in configuration.models.assisted_models if row.model_id == owner.model_id)
+    manifest = ModelManifest.from_json(load(config.checked_manifest_path))
+    assignments = configuration.campaign.fixed_phone_residency.assignments
+    require(
+        all(artifact == manifest.artifact_sha256 and columns == manifest.feed_forward_length
+            for _session, artifact, _mask, columns in assignments),
+        f"fixed phone residency must hold only full-width owner shards of {owner.model_id}",
+    )
+    try:
+        index = FfnShardIndex.load(config.phone_ffn_shard_index_path, config.phone_ffn_shard_directory)
+        return materialize_remote_resident_owner(
+            catalog, manifest, {session: mask for session, _artifact, mask, _columns in assignments}, index,
+            co_helper_decode=owner.static_co_helpers,
+        )
+    except (CatalogMaterializationError, FfnShardIndexError, RuntimeCapabilityError) as error:
+        raise MaterializationError(f"remote-resident owner of {owner.model_id}: {error}") from error
 
 
 def _desktop_controls(
@@ -1196,6 +1298,7 @@ def main() -> int:
         )
     withheld_co_helpers = {}
     declared_helpers = set()
+    helper_independence = bool((configuration.campaign.elastic_phones or {}).get("helper_independence"))
     for role, manifest in manifests.items():
         declaration = helper_phone_co_helpers(rig, model_config_by_key[role], manifest)
         if declaration is not None:
@@ -1208,7 +1311,16 @@ def main() -> int:
                 for device in declaration.device_ids:
                     rig_row = next(row for row in rig.helper_phones if row.device_id == device)
                     validate_helper_declaration(declaration, manifest, helper_evidence[device], rig_row)
-                model_endpoints[role] = replace(model_endpoints[role], co_helpers=declaration)
+                model_endpoints[role] = replace(
+                    model_endpoints[role], co_helpers=declaration,
+                    # WS23 opt-in (campaign elastic_phones.helper_independence): every helper phone is its own
+                    # resource and may anchor a phone-assisted route of its own
+                    **({"per_helper_outage": True, "led_helper_device_ids": declaration.device_ids,
+                        # the primary phone owns no shard of this model -> no primary-anchored route for it
+                        "primary_phone_stores_model":
+                            model_config_by_key[role].phone_ffn_shard_index_path is not None}
+                       if helper_independence else {}),
+                )
             else:
                 withheld_co_helpers[role] = declaration.declaration_sha256
     require(set(helper_evidence) <= declared_helpers, "helper evidence has no owning model")
@@ -1272,6 +1384,7 @@ def main() -> int:
             ),
             evidence.desktop_calibration_arm,
             evidence.assisted_calibration_arm,
+            composite_ids=frozenset(row.executor_id for row in composites),
         ),
         system_cost_profiles=(),
         phone_power_profiles=phone_power_profiles,
@@ -1299,6 +1412,7 @@ def main() -> int:
         minimum_energy_saving_ppm=configuration.campaign.minimum_energy_saving_ppm,
         maximum_latency_ppm=configuration.campaign.maximum_latency_ppm,
     )
+    catalog = remote_resident_owner_catalog(catalog, configuration)
     validate_final_catalog(
         catalog,
         tuple(manifests.values()),

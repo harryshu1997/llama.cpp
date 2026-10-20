@@ -249,6 +249,17 @@ struct ffn_shard_info {
     std::string weight_type;
 };
 
+// WS21 fused attention projections (the WS15 call) served by this worker:
+// s43.fused.* metadata of a fused shard (ffn_shard_gguf.py --fused-layers).
+struct fused_shard_info {
+    bool present = false;
+    uint64_t layer_mask = 0;
+    uint64_t next_mask = 0;
+    int64_t n_q = 0;
+    int64_t n_kv = 0;
+    float rms_eps = 0.0f;
+};
+
 uint64_t now_us() {
     return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
             steady_clock::now().time_since_epoch()).count());
@@ -536,6 +547,37 @@ bool read_ffn_shard_info(
     return true;
 }
 
+bool read_fused_shard_info(
+        const gguf_context * gguf, fused_shard_info & fused, std::string & error) {
+    uint64_t version = 0;
+    if (!read_u64_key(gguf, "s43.fused.version", version)) {
+        fused.present = false;
+        return true;
+    }
+    uint64_t n_q = 0;
+    uint64_t n_kv = 0;
+    const int64_t eps_key = gguf_find_key(gguf, "s43.fused.rms_eps");
+    if (version != 1 || eps_key < 0 || gguf_get_kv_type(gguf, eps_key) != GGUF_TYPE_FLOAT32 ||
+        !read_u64_key(gguf, "s43.fused.layer_mask", fused.layer_mask) ||
+        !read_u64_key(gguf, "s43.fused.next_mask", fused.next_mask) ||
+        !read_u64_key(gguf, "s43.fused.n_q", n_q) ||
+        !read_u64_key(gguf, "s43.fused.n_kv", n_kv) ||
+        fused.layer_mask == 0 || (fused.next_mask & ~fused.layer_mask) != 0 ||
+        n_q == 0 || n_kv == 0 || n_q > INT32_MAX || n_kv > INT32_MAX) {
+        error = "fused shard metadata is invalid";
+        return false;
+    }
+    fused.rms_eps = gguf_get_val_f32(gguf, eps_key);
+    if (!(fused.rms_eps > 0.0f) || !std::isfinite(fused.rms_eps)) {
+        error = "fused shard rms epsilon is invalid";
+        return false;
+    }
+    fused.present = true;
+    fused.n_q = static_cast<int64_t>(n_q);
+    fused.n_kv = static_cast<int64_t>(n_kv);
+    return true;
+}
+
 bool open_gguf(
         const std::string & path, gguf_reader & reader,
         bool & swiglu, ffn_shard_info & shard, std::string & error) {
@@ -668,15 +710,15 @@ bool slice_columns(
     return true;
 }
 
+// branch-free scans (vectorized; a payload is finite in the normal case, so no early exit is lost)
 bool all_finite(const float * values, size_t count) {
+    uint32_t non_finite = 0;
     for (size_t i = 0; i < count; ++i) {
         uint32_t bits = 0;
         memcpy(&bits, values + i, sizeof(bits));
-        if ((bits & 0x7f800000U) == 0x7f800000U) {
-            return false;
-        }
+        non_finite |= static_cast<uint32_t>((bits & 0x7f800000U) == 0x7f800000U);
     }
-    return true;
+    return non_finite == 0;
 }
 
 bool all_finite(const std::vector<float> & values) {
@@ -684,14 +726,13 @@ bool all_finite(const std::vector<float> & values) {
 }
 
 bool all_finite(const ggml_fp16_t * values, size_t count) {
+    uint32_t non_finite = 0;
     for (size_t i = 0; i < count; ++i) {
         uint16_t bits = 0;
         memcpy(&bits, values + i, sizeof(bits));
-        if ((bits & 0x7c00U) == 0x7c00U) {
-            return false;
-        }
+        non_finite |= static_cast<uint32_t>((bits & 0x7c00U) == 0x7c00U);
     }
-    return true;
+    return non_finite == 0;
 }
 
 #if defined(__ANDROID__)
@@ -776,6 +817,22 @@ struct layer_state {
         }
     };
     std::vector<block> blocks;
+    // WS21 fused call of this layer: O(l) and ffn_norm(l); with next_qkv also
+    // attn_norm(l+1) and the raw Q/K/V projections of layer l+1
+    bool fused = false;
+    bool next_qkv = false;
+    host_tensor wo;
+    host_tensor ffn_norm;
+    host_tensor attn_norm_next;
+    host_tensor wq_next;
+    host_tensor wk_next;
+    host_tensor wv_next;
+    ggml_tensor * wo_weight = nullptr;
+    ggml_tensor * ffn_norm_weight = nullptr;
+    ggml_tensor * attn_norm_next_weight = nullptr;
+    ggml_tensor * wq_next_weight = nullptr;
+    ggml_tensor * wk_next_weight = nullptr;
+    ggml_tensor * wv_next_weight = nullptr;
     // secondary columns of all blocks concatenated in block order, so any
     // trailing block selection is one trailing column range (one GPU matmul)
     int64_t secondary_columns = 0;
@@ -823,6 +880,18 @@ int ffn_split_worker_main(int argc, char ** argv) {
         fprintf(stderr, "[ffn-worker] %s\n", error.c_str());
         return 1;
     }
+    fused_shard_info fused_info;
+    if (!read_fused_shard_info(reader.gguf, fused_info, error)) {
+        fprintf(stderr, "[ffn-worker] %s\n", error.c_str());
+        return 1;
+    }
+    // fused capability: the shard's fused layers this worker serves (opt-in by
+    // the shard; an FFN-only shard leaves every fused path inert)
+    const uint64_t fused_layer_mask = fused_info.present ?
+            (fused_info.layer_mask & cfg.layer_mask) : 0;
+    const uint64_t fused_next_mask = fused_info.present ?
+            (fused_info.next_mask & fused_layer_mask) : 0;
+    uint64_t fused_weight_hash = 14695981039346656037ULL;
     if (shard.present) {
         // The shard must derive from the requested artifact and must cover
         // the requested layers and column suffix; the served suffix may be a
@@ -1020,7 +1089,64 @@ int ffn_split_worker_main(int argc, char ** argv) {
             state.blocks.push_back(std::move(weight_block));
             block_offset += block_columns;
         }
+        if ((fused_layer_mask & (UINT64_C(1) << layer)) != 0) {
+            state.fused = true;
+            state.next_qkv = (fused_next_mask & (UINT64_C(1) << layer)) != 0;
+            const std::string next_prefix = "blk." + std::to_string(layer + 1);
+            if (!read_tensor(reader, prefix + ".attn_output.weight", state.wo, error) ||
+                !read_tensor(reader, prefix + ".ffn_norm.weight", state.ffn_norm, error) ||
+                (state.next_qkv &&
+                 (!read_tensor(reader, next_prefix + ".attn_norm.weight", state.attn_norm_next, error) ||
+                  !read_tensor(reader, next_prefix + ".attn_q.weight", state.wq_next, error) ||
+                  !read_tensor(reader, next_prefix + ".attn_k.weight", state.wk_next, error) ||
+                  !read_tensor(reader, next_prefix + ".attn_v.weight", state.wv_next, error)))) {
+                fprintf(stderr, "[ffn-worker] fused layer %d: %s\n", layer, error.c_str());
+                return 1;
+            }
+            const auto projection_ok = [&](const host_tensor & tensor, int64_t ne0, int64_t ne1) {
+                return tensor.ne0 == ne0 && tensor.ne1 == ne1 &&
+                        (tensor.type == GGML_TYPE_F16 || tensor.type == GGML_TYPE_F32 ||
+                         tensor.type == weight_type);
+            };
+            const auto norm_ok = [&](const host_tensor & tensor) {
+                return tensor.ne0 == n_embd && tensor.ne1 == 1 && tensor.type == GGML_TYPE_F32;
+            };
+            if (!projection_ok(state.wo, fused_info.n_q, n_embd) || !norm_ok(state.ffn_norm) ||
+                (state.next_qkv &&
+                 (!norm_ok(state.attn_norm_next) ||
+                  !projection_ok(state.wq_next, n_embd, fused_info.n_q) ||
+                  !projection_ok(state.wk_next, n_embd, fused_info.n_kv) ||
+                  !projection_ok(state.wv_next, n_embd, fused_info.n_kv)))) {
+                fprintf(stderr, "[ffn-worker] fused layer %d tensor type or shape mismatch\n", layer);
+                return 1;
+            }
+            const host_tensor * fused_tensors[] = {
+                &state.wo, &state.ffn_norm, &state.attn_norm_next,
+                &state.wq_next, &state.wk_next, &state.wv_next,
+            };
+            const uint64_t fused_metadata[] = {
+                static_cast<uint64_t>(layer), static_cast<uint64_t>(n_embd),
+                static_cast<uint64_t>(fused_info.n_q), static_cast<uint64_t>(fused_info.n_kv),
+                state.next_qkv ? UINT64_C(1) : UINT64_C(0),
+            };
+            fused_weight_hash = ffn_split::hash64_update(
+                    fused_weight_hash, fused_metadata, sizeof(fused_metadata));
+            for (const host_tensor * tensor : fused_tensors) {
+                fused_weight_hash = ffn_split::hash64_update(
+                        fused_weight_hash, tensor->bytes.data(), tensor->bytes.size());
+            }
+        }
         states.push_back(std::move(state));
+    }
+    if (fused_layer_mask != 0 && (cfg.columns != n_ff || offset != 0)) {
+        fprintf(stderr,
+                "[ffn-worker] fused calls need the full FFN width (columns=%lld n_ff=%lld)\n",
+                static_cast<long long>(cfg.columns), static_cast<long long>(n_ff));
+        return 1;
+    }
+    if (fused_layer_mask != 0 && dual) {
+        fprintf(stderr, "[ffn-worker] fused calls do not support a secondary backend\n");
+        return 1;
     }
     if (states.empty()) {
         fprintf(stderr, "[ffn-worker] no layers selected\n");
@@ -1159,6 +1285,81 @@ int ffn_split_worker_main(int argc, char ** argv) {
         }
         ggml_backend_synchronize(backend);
     }
+    if (fused_layer_mask != 0) {
+        // projections share the FFN weight buffer type; the F32 norm vectors live in the
+        // backend's default buffer (on Hexagon every graph source must be a session buffer)
+        const size_t fused_layers = static_cast<size_t>(__builtin_popcountll(fused_layer_mask));
+        ggml_init_params fused_params = {
+            ggml_tensor_overhead() * (fused_layers * 4 + 8), nullptr, true,
+        };
+        ggml_context * projection_ctx = ggml_init(fused_params);
+        ggml_context * norm_ctx = ggml_init(fused_params);
+        const auto new_weight = [](ggml_context * ctx, const host_tensor & tensor) {
+            return ggml_new_tensor_2d(ctx, tensor.type, tensor.ne0, tensor.ne1);
+        };
+        for (layer_state & state : states) {
+            if (!state.fused) {
+                continue;
+            }
+            state.wo_weight = new_weight(projection_ctx, state.wo);
+            state.ffn_norm_weight = ggml_new_tensor_1d(norm_ctx, GGML_TYPE_F32, n_embd);
+            if (state.next_qkv) {
+                state.attn_norm_next_weight = ggml_new_tensor_1d(norm_ctx, GGML_TYPE_F32, n_embd);
+                state.wq_next_weight = new_weight(projection_ctx, state.wq_next);
+                state.wk_next_weight = new_weight(projection_ctx, state.wk_next);
+                state.wv_next_weight = new_weight(projection_ctx, state.wv_next);
+            }
+        }
+        ggml_backend_buffer_t projection_buffer =
+                ggml_backend_alloc_ctx_tensors_from_buft(projection_ctx, weight_buft);
+        ggml_backend_buffer_t norm_buffer = ggml_backend_alloc_ctx_tensors_from_buft(
+                norm_ctx, ggml_backend_get_default_buffer_type(backend));
+        if (projection_buffer == nullptr || norm_buffer == nullptr) {
+            fprintf(stderr, "[ffn-worker] fused weight allocation failed\n");
+            return 1;
+        }
+        weight_contexts.push_back(projection_ctx);
+        weight_contexts.push_back(norm_ctx);
+        weight_buffers.push_back(projection_buffer);
+        weight_buffers.push_back(norm_buffer);
+        weight_buffer_bytes += ggml_backend_buffer_get_size(projection_buffer) +
+                ggml_backend_buffer_get_size(norm_buffer);
+        for (layer_state & state : states) {
+            if (!state.fused) {
+                continue;
+            }
+            const std::pair<ggml_tensor *, host_tensor *> uploads[] = {
+                {state.wo_weight, &state.wo}, {state.ffn_norm_weight, &state.ffn_norm},
+                {state.attn_norm_next_weight, &state.attn_norm_next},
+                {state.wq_next_weight, &state.wq_next}, {state.wk_next_weight, &state.wk_next},
+                {state.wv_next_weight, &state.wv_next},
+            };
+            for (const auto & upload : uploads) {
+                if (upload.first == nullptr) {
+                    continue;
+                }
+                if (ggml_nbytes(upload.first) != upload.second->bytes.size()) {
+                    fprintf(stderr, "[ffn-worker] fused layer %d weight allocation mismatch\n",
+                            state.layer);
+                    return 1;
+                }
+                ggml_backend_tensor_set(
+                        upload.first, upload.second->bytes.data(), 0, upload.second->bytes.size());
+                std::vector<uint8_t>().swap(upload.second->bytes);
+            }
+        }
+        ggml_backend_synchronize(backend);
+        fprintf(stderr,
+                "S43FUSEDWEIGHTS layers=%016llx next=%016llx n_q=%lld n_kv=%lld rms_eps=%g "
+                "bytes=%zu hash=%016llx\n",
+                static_cast<unsigned long long>(fused_layer_mask),
+                static_cast<unsigned long long>(fused_next_mask),
+                static_cast<long long>(fused_info.n_q), static_cast<long long>(fused_info.n_kv),
+                static_cast<double>(fused_info.rms_eps),
+                ggml_backend_buffer_get_size(projection_buffer) +
+                        ggml_backend_buffer_get_size(norm_buffer),
+                static_cast<unsigned long long>(fused_weight_hash));
+    }
     ggml_backend_t secondary_backend = nullptr;
     ggml_context * secondary_weight_ctx = nullptr;
     ggml_backend_buffer_t secondary_weight_buffer = nullptr;
@@ -1257,8 +1458,18 @@ int ffn_split_worker_main(int argc, char ** argv) {
             ggml_backend_get_default_buffer_type(backend);
     const size_t wire_element_size = cfg.f16_io ?
             sizeof(ggml_fp16_t) : sizeof(float);
-    const size_t max_elements = static_cast<size_t>(n_embd) *
-            static_cast<size_t>(cfg.max_tokens);
+    // fused calls carry [attention | residual] rows in and [delta (| q | k | v)] rows out:
+    // the arenas, DMA-BUF slots and payload limits are sized for the widest row served
+    const int64_t fused_n_q = fused_info.present ? fused_info.n_q : 0;
+    const int64_t fused_n_kv = fused_info.present ? fused_info.n_kv : 0;
+    const size_t fused_in_row = fused_layer_mask != 0 ?
+            static_cast<size_t>(fused_n_q + n_embd) : 0;
+    const size_t fused_out_row = fused_layer_mask != 0 ?
+            ffn_split::fused_response_row(
+                    static_cast<uint32_t>(n_embd), static_cast<uint32_t>(fused_n_q),
+                    static_cast<uint32_t>(fused_n_kv), fused_next_mask != 0) : 0;
+    const size_t max_row = std::max({static_cast<size_t>(n_embd), fused_in_row, fused_out_row});
+    const size_t max_elements = max_row * static_cast<size_t>(cfg.max_tokens);
     const size_t max_payload_bytes = max_elements * wire_element_size;
     const size_t graph_arena_count = 1;
     const int64_t max_tokens_per_arena = cfg.max_tokens;
@@ -1409,6 +1620,96 @@ int ffn_split_worker_main(int argc, char ** argv) {
              node_index < ggml_graph_n_nodes(graph); ++node_index) {
             if (!ggml_backend_supports_op(
                         backend, ggml_graph_node(graph, node_index))) {
+                return false;
+            }
+        }
+        if (!ggml_gallocr_alloc_graph(arena.allocator, graph)) {
+            return false;
+        }
+        instance.input = input_wire;
+        instance.output = output_wire;
+        instance.graph = graph;
+        return true;
+    };
+    // WS21 fused call of an owned layer: rows [attention (n_q) | residual (n_embd)] ->
+    // [delta (n_embd) (| q (n_q) | k (n_kv) | v (n_kv))], the same backend as the FFN
+    auto build_fused_graph = [&](
+            layer_state & state, int64_t tokens, bool next_qkv,
+            size_t arena_index, graph_instance & instance) {
+        if (!state.fused || (next_qkv && !state.next_qkv) || tokens <= 0 ||
+            tokens > max_tokens_per_arena || arena_index >= graph_arenas.size() || dual) {
+            return false;
+        }
+        graph_arena & arena = graph_arenas[arena_index];
+        ggml_context * graph_ctx = arena.context;
+        ggml_reset(graph_ctx);
+        const ggml_type input_type = cfg.f16_io ? GGML_TYPE_F16 : GGML_TYPE_F32;
+        ggml_tensor * input_wire = ggml_new_tensor_2d(
+                graph_ctx, input_type, fused_n_q + n_embd, tokens);
+        if (direct_dmabuf_transport &&
+            ggml_backend_tensor_alloc(
+                    arena.input_buffer, input_wire,
+                    static_cast<uint8_t *>(ggml_backend_buffer_get_base(arena.input_buffer)) +
+                            ffn_split::dmabuf_payload_offset) != GGML_STATUS_SUCCESS) {
+            return false;
+        }
+        ggml_set_input(input_wire);
+        ggml_tensor * input = input_type == GGML_TYPE_F16 ?
+                ggml_cast(graph_ctx, input_wire, GGML_TYPE_F32) : input_wire;
+        ggml_tensor * attention = ggml_cont(graph_ctx, ggml_view_2d(
+                graph_ctx, input, fused_n_q, tokens, input->nb[1], 0));
+        ggml_tensor * residual = ggml_cont(graph_ctx, ggml_view_2d(
+                graph_ctx, input, n_embd, tokens, input->nb[1],
+                static_cast<size_t>(fused_n_q) * ggml_element_size(input)));
+        ggml_tensor * attention_out = ggml_mul_mat(graph_ctx, state.wo_weight, attention);
+        ggml_tensor * ffn_input = ggml_add(graph_ctx, attention_out, residual);
+        ggml_tensor * normed = ggml_mul(graph_ctx,
+                ggml_rms_norm(graph_ctx, ffn_input, fused_info.rms_eps), state.ffn_norm_weight);
+        ggml_tensor * ffn_out = nullptr;
+        for (layer_state::block & block : state.blocks) {
+            if (block.primary_columns() == 0) {
+                continue;
+            }
+            ggml_tensor * gate = ggml_mul_mat(graph_ctx, block.gate_weight, normed);
+            ggml_tensor * up = ggml_mul_mat(graph_ctx, block.up_weight, normed);
+            ggml_tensor * activation = swiglu ?
+                    ggml_swiglu_split(graph_ctx, gate, up) :
+                    ggml_geglu_split(graph_ctx, gate, up);
+            ggml_tensor * partial = ggml_mul_mat(graph_ctx, block.down_weight, activation);
+            ffn_out = ffn_out == nullptr ? partial : ggml_add(graph_ctx, ffn_out, partial);
+        }
+        if (ffn_out == nullptr) {
+            return false;
+        }
+        ggml_tensor * delta = ggml_add(graph_ctx, attention_out, ffn_out);
+        ggml_tensor * out = delta;
+        if (next_qkv) {
+            ggml_tensor * layer_out = ggml_add(graph_ctx, residual, delta);
+            ggml_tensor * next_input = ggml_mul(graph_ctx,
+                    ggml_rms_norm(graph_ctx, layer_out, fused_info.rms_eps),
+                    state.attn_norm_next_weight);
+            ggml_tensor * q = ggml_mul_mat(graph_ctx, state.wq_next_weight, next_input);
+            ggml_tensor * k = ggml_mul_mat(graph_ctx, state.wk_next_weight, next_input);
+            ggml_tensor * v = ggml_mul_mat(graph_ctx, state.wv_next_weight, next_input);
+            out = ggml_concat(graph_ctx,
+                    ggml_concat(graph_ctx, ggml_concat(graph_ctx, delta, q, 0), k, 0), v, 0);
+        }
+        ggml_tensor * output_wire = cfg.f16_io ? ggml_cast(graph_ctx, out, GGML_TYPE_F16) : out;
+        if (direct_dmabuf_transport &&
+            ggml_backend_tensor_alloc(
+                    arena.output_buffer, output_wire,
+                    static_cast<uint8_t *>(ggml_backend_buffer_get_base(arena.output_buffer)) +
+                            ffn_split::dmabuf_payload_offset) != GGML_STATUS_SUCCESS) {
+            return false;
+        }
+        ggml_set_output(output_wire);
+        ggml_cgraph * graph = ggml_new_graph(graph_ctx);
+        ggml_build_forward_expand(graph, output_wire);
+        graph->uid = 0;
+        for (int node_index = 0; node_index < ggml_graph_n_nodes(graph); ++node_index) {
+            if (!ggml_backend_supports_op(backend, ggml_graph_node(graph, node_index))) {
+                fprintf(stderr, "[ffn-worker] fused graph op unsupported by the backend: %s\n",
+                        ggml_op_desc(ggml_graph_node(graph, node_index)));
                 return false;
             }
         }
@@ -1922,6 +2223,7 @@ int ffn_split_worker_main(int argc, char ** argv) {
 
         int run_status = 0;
         long served = 0;
+        long fused_served = 0;
         long reset_recoveries = 0;
         size_t maximum_pending_outputs = 0;
         size_t d2h_completions = 0;
@@ -1971,7 +2273,7 @@ int ffn_split_worker_main(int argc, char ** argv) {
                     hello.max_tokens == cfg.max_tokens &&
                     ffn_split::same_artifact_sha256(
                             hello.artifact_sha256, artifact_sha256) &&
-                    hello.flags ==
+                    (hello.flags & ~ffn_split::flag_fast_hash) ==
                             ((cfg.f16_io ? ffn_split::flag_f16_io : 0) |
                              (swiglu ? ffn_split::flag_swiglu : 0));
             ffn_split::hello_response hello_response = {};
@@ -1980,9 +2282,11 @@ int ffn_split_worker_main(int argc, char ** argv) {
             hello_response.message = static_cast<uint16_t>(
                     ffn_split::message_type::hello_response);
             hello_response.status = hello_ok ? 0 : 1;
-            hello_response.flags =
+            // the payload hashes of this session follow the client's flag_fast_hash
+            hello_response.flags = static_cast<uint16_t>(
                     (cfg.f16_io ? ffn_split::flag_f16_io : 0) |
-                    (swiglu ? ffn_split::flag_swiglu : 0);
+                    (swiglu ? ffn_split::flag_swiglu : 0) |
+                    (hello.flags & ffn_split::flag_fast_hash));
             hello_response.n_embd = static_cast<uint32_t>(n_embd);
             hello_response.n_ff = static_cast<uint32_t>(n_ff);
             hello_response.offset = static_cast<uint32_t>(offset);
@@ -2114,36 +2418,66 @@ int ffn_split_worker_main(int argc, char ** argv) {
                     input_sync_started = true;
                     memcpy(&request, input_base, sizeof(request));
                 }
-                const bool shutdown =
+                const bool frame_ok =
                         request.magic == ffn_split::protocol_magic &&
-                        request.version == ffn_split::protocol_version &&
+                        request.version == ffn_split::protocol_version;
+                const bool execute_frame = frame_ok &&
                         request.message == static_cast<uint16_t>(
-                                ffn_split::message_type::execute_request) &&
-                        request.request_id == 0;
+                                ffn_split::message_type::execute_request);
+                // WS21 fused frames share the ring: a fused hello (once per session, before
+                // the fused calls) and the fused execute requests of owned fused layers
+                const bool fused_hello_frame = frame_ok &&
+                        request.message == static_cast<uint16_t>(
+                                ffn_split::message_type::fused_hello_request);
+                const bool fused_plain = frame_ok &&
+                        request.message == static_cast<uint16_t>(
+                                ffn_split::message_type::fused_execute_request);
+                const bool fused_next = frame_ok &&
+                        request.message == static_cast<uint16_t>(
+                                ffn_split::message_type::fused_next_execute_request);
+                const bool is_fused = fused_plain || fused_next;
+                const uint64_t layer_bit = request.layer >= 0 && request.layer < 64 ?
+                        UINT64_C(1) << request.layer : 0;
+                const bool shutdown = execute_frame && request.request_id == 0;
                 const size_t payload_bytes = request.payload_bytes;
                 const size_t wire_bytes =
                         ffn_split::dmabuf_payload_offset + payload_bytes;
+                const uint64_t expected_row = is_fused ?
+                        static_cast<uint64_t>(fused_in_row) :
+                        static_cast<uint64_t>(n_embd);
                 const bool request_header_ok =
-                        request.magic == ffn_split::protocol_magic &&
-                        request.version == ffn_split::protocol_version &&
-                        request.message == static_cast<uint16_t>(
-                                ffn_split::message_type::execute_request) &&
-                        request.request_id != 0 && request.layer >= 0 &&
-                        request.layer < 64 &&
-                        (cfg.layer_mask &
-                         (UINT64_C(1) << request.layer)) != 0 &&
+                        (execute_frame || is_fused) &&
+                        request.request_id != 0 && layer_bit != 0 &&
+                        (cfg.layer_mask & layer_bit) != 0 &&
+                        (!is_fused ||
+                         ((fused_layer_mask & layer_bit) != 0 &&
+                          (!fused_next || (fused_next_mask & layer_bit) != 0) &&
+                          request.columns == cfg.columns)) &&
+                        (is_fused || supported_columns(request.columns)) &&
                         request.tokens > 0 &&
                         request.tokens <= max_tokens_per_arena &&
-                        request.elements ==
-                                static_cast<uint64_t>(n_embd) *
-                                        request.tokens &&
+                        request.elements == expected_row * request.tokens &&
                         request.payload_bytes ==
                                 static_cast<uint64_t>(request.elements) *
                                         wire_element_size &&
-                        wire_bytes <= max_wire_bytes &&
-                        supported_columns(request.columns);
+                        wire_bytes <= max_wire_bytes;
+                const bool fused_hello_ok = fused_hello_frame &&
+                        request.payload_bytes == sizeof(ffn_split::fused_hello_payload) &&
+                        wire_bytes <= max_wire_bytes;
+                // the response rows: the FFN echoes its input shape, fused calls return
+                // delta (| q | k | v), the fused hello returns its 40-byte capability payload
+                const size_t output_elements = fused_hello_frame ? 0 :
+                        is_fused ? static_cast<size_t>(ffn_split::fused_response_row(
+                                static_cast<uint32_t>(n_embd), static_cast<uint32_t>(fused_n_q),
+                                static_cast<uint32_t>(fused_n_kv), fused_next)) * request.tokens :
+                        static_cast<size_t>(request.elements);
+                const size_t output_payload_bytes = fused_hello_frame ?
+                        sizeof(ffn_split::fused_hello_payload) :
+                        output_elements * wire_element_size;
+                const size_t output_wire_bytes =
+                        ffn_split::dmabuf_payload_offset + output_payload_bytes;
                 if (cfg.staged_dmabuf && !shutdown) {
-                    if (!request_header_ok) {
+                    if (!request_header_ok && !fused_hello_ok) {
                         fprintf(stderr,
                                 "[ffn-worker] invalid DMA-BUF execute header\n");
                         run_status = 1;
@@ -2173,7 +2507,7 @@ int ffn_split_worker_main(int argc, char ** argv) {
                     };
                     if (!prepare_staged_buffer(
                                 staged_input, payload_bytes) ||
-                        !prepare_staged_buffer(staged_output, wire_bytes)) {
+                        !prepare_staged_buffer(staged_output, output_wire_bytes)) {
                         fprintf(stderr,
                                 "[ffn-worker] staged DMA-BUF resize failed: %s\n",
                                 strerror(errno));
@@ -2220,8 +2554,11 @@ int ffn_split_worker_main(int argc, char ** argv) {
                         (cfg.staged_dmabuf ? 0 :
                          ffn_split::dmabuf_payload_offset);
                 const bool request_ok = shutdown ||
+                        (fused_hello_ok &&
+                         request.payload_hash == ffn_split::payload_hash(hello_response.flags,
+                                 input_payload, payload_bytes)) ||
                         (request_header_ok &&
-                         request.payload_hash == ffn_split::hash_bytes(
+                         request.payload_hash == ffn_split::payload_hash(hello_response.flags,
                                  input_payload, payload_bytes) &&
                          (cfg.f16_io ?
                                   all_finite(
@@ -2259,6 +2596,9 @@ int ffn_split_worker_main(int argc, char ** argv) {
                 }
                 if (shutdown) {
                     fprintf(stderr, "[ffn-worker] DMA-BUF host disconnected\n");
+                    if (fused_layer_mask != 0) {
+                        fprintf(stderr, "S43FUSEDCALLS calls=%ld\n", fused_served);
+                    }
                     complete = true;
                     break;
                 }
@@ -2269,22 +2609,68 @@ int ffn_split_worker_main(int argc, char ** argv) {
                     break;
                 }
 
-                const auto state_it = std::lower_bound(
-                        states.begin(), states.end(), request.layer,
-                        [](const layer_state & state, int layer) {
-                            return state.layer < layer;
-                        });
-                if (state_it == states.end() ||
-                    state_it->layer != request.layer) {
-                    fprintf(stderr, "[ffn-worker] layer lookup failed\n");
-                    run_status = 1;
-                    break;
+                layer_state * state_ptr = nullptr;
+                if (!fused_hello_frame) {
+                    const auto state_it = std::lower_bound(
+                            states.begin(), states.end(), request.layer,
+                            [](const layer_state & state, int layer) {
+                                return state.layer < layer;
+                            });
+                    if (state_it == states.end() ||
+                        state_it->layer != request.layer) {
+                        fprintf(stderr, "[ffn-worker] layer lookup failed\n");
+                        run_status = 1;
+                        break;
+                    }
+                    state_ptr = &*state_it;
                 }
-                layer_state & state = *state_it;
+                layer_state & state = state_ptr != nullptr ? *state_ptr : states.front();
                 graph_instance execution;
                 ggml_status status = GGML_STATUS_SUCCESS;
                 uint64_t compute_us = 0;
-                if (dual) {
+                ffn_split::fused_hello_payload fused_offered = {};
+                bool fused_hello_accepted = false;
+                if (fused_hello_frame) {
+                    ffn_split::fused_hello_payload asked = {};
+                    memcpy(&asked, input_payload, sizeof(asked));
+                    fused_hello_accepted = fused_layer_mask != 0 &&
+                            (asked.fused_layer_mask & ~fused_layer_mask) == 0 &&
+                            (asked.next_qkv_mask & ~fused_next_mask) == 0 &&
+                            (asked.next_qkv_mask & ~asked.fused_layer_mask) == 0 &&
+                            (asked.n_q == 0 || asked.n_q == static_cast<uint32_t>(fused_n_q)) &&
+                            (asked.n_kv == 0 || asked.n_kv == static_cast<uint32_t>(fused_n_kv));
+                    fused_offered.fused_layer_mask = fused_layer_mask;
+                    fused_offered.next_qkv_mask = fused_next_mask;
+                    fused_offered.n_q = static_cast<uint32_t>(fused_n_q);
+                    fused_offered.n_kv = static_cast<uint32_t>(fused_n_kv);
+                    fused_offered.fused_weight_hash = fused_weight_hash;
+                    fused_offered.rms_eps = fused_info.rms_eps;
+                    fprintf(stderr, "[ffn-worker] DMA-BUF fused hello layers=%016llx next=%016llx %s\n",
+                            static_cast<unsigned long long>(asked.fused_layer_mask),
+                            static_cast<unsigned long long>(asked.next_qkv_mask),
+                            fused_hello_accepted ? "accepted" : "refused");
+                    trace_first_request("compute_done");
+                } else if (is_fused) {
+                    if (!build_fused_graph(
+                                state, request.tokens, fused_next, 0, execution)) {
+                        fprintf(stderr,
+                                "[ffn-worker] fused FFN graph build failed\n");
+                        run_status = 1;
+                        break;
+                    }
+                    trace_first_request("graph_built");
+                    if (dmabuf_transport) {
+                        ggml_backend_tensor_set(
+                                execution.input, input_payload, 0,
+                                payload_bytes);
+                        trace_first_request("input_staged");
+                    }
+                    const uint64_t started = now_us();
+                    status = ggml_backend_graph_compute_async(backend, execution.graph);
+                    ggml_backend_synchronize(backend);
+                    trace_first_request("compute_done");
+                    compute_us = now_us() - started;
+                } else if (dual) {
                     if (!run_dual(
                                 state, request.request_id, request.columns,
                                 request.tokens, input_payload, payload_bytes,
@@ -2330,37 +2716,43 @@ int ffn_split_worker_main(int argc, char ** argv) {
 
                 void * output_payload =
                         output_base + ffn_split::dmabuf_payload_offset;
-                if (dual) {
+                if (fused_hello_frame) {
+                    memcpy(output_payload, &fused_offered, sizeof(fused_offered));
+                    trace_first_request("output_staged");
+                } else if (dual) {
                     memcpy(output_payload, dual_output.data(), payload_bytes);
                     trace_first_request("output_staged");
                 } else if (dmabuf_transport) {
                     ggml_backend_tensor_get(
                             execution.output, output_payload, 0,
-                            payload_bytes);
+                            output_payload_bytes);
                     trace_first_request("output_staged");
                 }
 
-                const bool output_ok = cfg.f16_io ?
+                const bool output_ok = fused_hello_frame ? fused_hello_accepted :
+                        cfg.f16_io ?
                         all_finite(
                                 static_cast<const ggml_fp16_t *>(
                                         output_payload),
-                                request.elements) :
+                                output_elements) :
                         all_finite(
                                 static_cast<const float *>(
                                         output_payload),
-                                request.elements);
+                                output_elements);
                 ffn_split::execute_response response = {};
                 response.magic = ffn_split::protocol_magic;
                 response.version = ffn_split::protocol_version;
                 response.message = static_cast<uint16_t>(
+                        fused_hello_frame ? ffn_split::message_type::fused_hello_response :
+                        is_fused ? ffn_split::message_type::fused_execute_response :
                         ffn_split::message_type::execute_response);
                 response.status = output_ok ? 0 : 1;
                 response.request_id = request.request_id;
                 response.layer = request.layer;
-                response.elements = request.elements;
-                response.payload_bytes = static_cast<uint32_t>(payload_bytes);
-                response.payload_hash = ffn_split::hash_bytes(
-                        output_payload, payload_bytes);
+                response.elements = static_cast<uint32_t>(output_elements);
+                response.payload_bytes = static_cast<uint32_t>(output_payload_bytes);
+                response.payload_hash = ffn_split::payload_hash(hello_response.flags,
+                        output_payload, output_payload_bytes);
                 response.columns = request.columns;
                 response.tokens = request.tokens;
                 response.compute_us = compute_us;
@@ -2371,7 +2763,7 @@ int ffn_split_worker_main(int argc, char ** argv) {
                     break;
                 }
                 trace_first_request("output_sync_done");
-                if (!output_ok) {
+                if (!output_ok && !fused_hello_frame) {
                     fprintf(stderr, "[ffn-worker] non-finite output\n");
                     run_status = 1;
                     break;
@@ -2388,7 +2780,7 @@ int ffn_split_worker_main(int argc, char ** argv) {
                 }
                 if (!event_monitor.current(session_generation) ||
                     !ffn_split::functionfs_dmabuf_queue(
-                            device_to_host, output_fd, wire_bytes) ||
+                            device_to_host, output_fd, output_wire_bytes) ||
                     !event_monitor.current(session_generation)) {
                     recover("output transfer");
                     break;
@@ -2401,7 +2793,7 @@ int ffn_split_worker_main(int argc, char ** argv) {
                     output_slot.output_layer = request.layer;
                     output_slot.output_tokens = request.tokens;
                     output_slot.output_columns = request.columns;
-                    output_slot.output_wire_bytes = wire_bytes;
+                    output_slot.output_wire_bytes = output_wire_bytes;
                     output_slot.output_queued_us = now_us();
                     const size_t pending_outputs = static_cast<size_t>(
                             std::count_if(
@@ -2413,9 +2805,14 @@ int ffn_split_worker_main(int argc, char ** argv) {
                             maximum_pending_outputs, pending_outputs);
                 }
                 trace_first_request("output_queued");
-                compute_samples.push_back(static_cast<double>(compute_us));
-                ++served;
-                if (served % 32 == 0) {
+                if (!fused_hello_frame) {
+                    compute_samples.push_back(static_cast<double>(compute_us));
+                    ++served;
+                    if (is_fused) {
+                        ++fused_served;
+                    }
+                }
+                if (!fused_hello_frame && served % 32 == 0) {
                     std::vector<double> sorted = compute_samples;
                     std::sort(sorted.begin(), sorted.end());
                     fprintf(stderr,
@@ -2571,6 +2968,14 @@ int ffn_split_worker_main(int argc, char ** argv) {
             static_cast<long long>(cfg.alternate_columns), block_count,
             static_cast<double>(weight_buffer_bytes) / (1024.0 * 1024.0),
             static_cast<unsigned long long>(weight_hash));
+    if (fused_layer_mask != 0) {
+        fprintf(stderr,
+                "[ffn-worker] fused layers=%016llx next=%016llx n_q=%lld n_kv=%lld hash=%016llx\n",
+                static_cast<unsigned long long>(fused_layer_mask),
+                static_cast<unsigned long long>(fused_next_mask),
+                static_cast<long long>(fused_n_q), static_cast<long long>(fused_n_kv),
+                static_cast<unsigned long long>(fused_weight_hash));
+    }
     fflush(stderr);
 
     std::vector<uint8_t> request_payload;
@@ -2579,6 +2984,7 @@ int ffn_split_worker_main(int argc, char ** argv) {
     std::vector<ggml_fp16_t> input_f16;
     std::vector<ggml_fp16_t> output_f16;
     long served = 0;
+    long fused_served = 0;
     std::vector<double> compute_samples;
 
     for (;;) {
@@ -2603,7 +3009,8 @@ int ffn_split_worker_main(int argc, char ** argv) {
                 (hello.layer_mask & cfg.layer_mask) == cfg.layer_mask &&
                 hello.max_columns == cfg.columns &&
                 hello.max_tokens == cfg.max_tokens &&
-                hello.n_embd == n_embd && hello.flags == expected_flags &&
+                hello.n_embd == n_embd &&
+                (hello.flags & ~ffn_split::flag_fast_hash) == expected_flags &&
                 ffn_split::same_artifact_sha256(
                         hello.artifact_sha256, artifact_sha256);
         ffn_split::hello_response hello_response = {};
@@ -2611,7 +3018,9 @@ int ffn_split_worker_main(int argc, char ** argv) {
         hello_response.version = ffn_split::protocol_version;
         hello_response.message = static_cast<uint16_t>(ffn_split::message_type::hello_response);
         hello_response.status = hello_ok ? 0 : 1;
-        hello_response.flags = expected_flags;
+        // the payload hashes of this session follow the client's flag_fast_hash
+        hello_response.flags = static_cast<uint16_t>(
+                expected_flags | (hello.flags & ffn_split::flag_fast_hash));
         hello_response.n_embd = static_cast<uint32_t>(n_embd);
         hello_response.n_ff = static_cast<uint32_t>(n_ff);
         hello_response.offset = static_cast<uint32_t>(offset);
@@ -2640,6 +3049,154 @@ int ffn_split_worker_main(int argc, char ** argv) {
                 break;
             }
             const size_t payload_bytes = request.payload_bytes;
+            const bool protocol_frame = request.magic == ffn_split::protocol_magic &&
+                    request.version == ffn_split::protocol_version;
+            if (protocol_frame &&
+                request.message == static_cast<uint16_t>(ffn_split::message_type::fused_hello_request)) {
+                // WS21: the client's fused capability request (once, after HELLO)
+                ffn_split::fused_hello_payload asked = {};
+                if (request.payload_bytes != sizeof(asked) ||
+                    !read_exact(client_fd, &asked, sizeof(asked)) ||
+                    request.payload_hash != ffn_split::payload_hash(hello_response.flags, &asked, sizeof(asked))) {
+                    fprintf(stderr, "[ffn-worker] invalid fused hello\n");
+                    break;
+                }
+                const bool fused_ok = fused_layer_mask != 0 &&
+                        (asked.fused_layer_mask & ~fused_layer_mask) == 0 &&
+                        (asked.next_qkv_mask & ~fused_next_mask) == 0 &&
+                        (asked.next_qkv_mask & ~asked.fused_layer_mask) == 0 &&
+                        (asked.n_q == 0 || asked.n_q == static_cast<uint32_t>(fused_n_q)) &&
+                        (asked.n_kv == 0 || asked.n_kv == static_cast<uint32_t>(fused_n_kv));
+                ffn_split::fused_hello_payload offered = {};
+                offered.fused_layer_mask = fused_layer_mask;
+                offered.next_qkv_mask = fused_next_mask;
+                offered.n_q = static_cast<uint32_t>(fused_n_q);
+                offered.n_kv = static_cast<uint32_t>(fused_n_kv);
+                offered.fused_weight_hash = fused_weight_hash;
+                offered.rms_eps = fused_info.rms_eps;
+                ffn_split::execute_response reply = {};
+                reply.magic = ffn_split::protocol_magic;
+                reply.version = ffn_split::protocol_version;
+                reply.message = static_cast<uint16_t>(ffn_split::message_type::fused_hello_response);
+                reply.status = fused_ok ? 0 : 1;
+                reply.layer = -1;
+                reply.payload_bytes = sizeof(offered);
+                reply.payload_hash = ffn_split::payload_hash(hello_response.flags, &offered, sizeof(offered));
+                response_frame.resize(sizeof(reply) + sizeof(offered));
+                memcpy(response_frame.data(), &reply, sizeof(reply));
+                memcpy(response_frame.data() + sizeof(reply), &offered, sizeof(offered));
+                if (!write_exact(client_fd, response_frame.data(), response_frame.size()) || !fused_ok) {
+                    fprintf(stderr, "[ffn-worker] fused hello %s\n", fused_ok ? "write failed" : "refused");
+                    break;
+                }
+                fprintf(stderr, "[ffn-worker] fused session layers=%016llx next=%016llx\n",
+                        static_cast<unsigned long long>(asked.fused_layer_mask),
+                        static_cast<unsigned long long>(asked.next_qkv_mask));
+                continue;
+            }
+            const bool fused_plain = protocol_frame &&
+                    request.message == static_cast<uint16_t>(ffn_split::message_type::fused_execute_request);
+            const bool fused_next = protocol_frame &&
+                    request.message == static_cast<uint16_t>(ffn_split::message_type::fused_next_execute_request);
+            if (fused_plain || fused_next) {
+                const uint64_t bit = request.layer >= 0 && request.layer < 64 ?
+                        UINT64_C(1) << request.layer : 0;
+                const uint64_t in_row = static_cast<uint64_t>(fused_n_q + n_embd);
+                const uint64_t out_row = ffn_split::fused_response_row(
+                        static_cast<uint32_t>(n_embd), static_cast<uint32_t>(fused_n_q),
+                        static_cast<uint32_t>(fused_n_kv), fused_next);
+                const bool fused_request_ok = bit != 0 && (fused_layer_mask & bit) != 0 &&
+                        (!fused_next || (fused_next_mask & bit) != 0) &&
+                        request.request_id != 0 && request.tokens > 0 && request.tokens <= cfg.max_tokens &&
+                        request.columns == cfg.columns &&
+                        request.elements == in_row * request.tokens &&
+                        request.payload_bytes == static_cast<uint64_t>(request.elements) * wire_element_size &&
+                        payload_bytes <= max_payload_bytes;
+                if (!fused_request_ok) {
+                    fprintf(stderr, "[ffn-worker] invalid fused execute request\n");
+                    break;
+                }
+                request_payload.resize(payload_bytes);
+                if (!read_exact(client_fd, request_payload.data(), request_payload.size()) ||
+                    request.payload_hash != ffn_split::payload_hash(hello_response.flags, request_payload.data(), request_payload.size())) {
+                    fprintf(stderr, "[ffn-worker] invalid fused execute payload\n");
+                    break;
+                }
+                const bool input_finite = cfg.f16_io ?
+                        all_finite(reinterpret_cast<const ggml_fp16_t *>(request_payload.data()), request.elements) :
+                        all_finite(reinterpret_cast<const float *>(request_payload.data()), request.elements);
+                if (!input_finite) {
+                    fprintf(stderr, "[ffn-worker] non-finite fused input\n");
+                    break;
+                }
+                const uint64_t started = now_us();
+                const auto fused_state_it = std::lower_bound(
+                        states.begin(), states.end(), request.layer,
+                        [](const layer_state & state, int layer) { return state.layer < layer; });
+                graph_instance fused_execution;
+                if (fused_state_it == states.end() || fused_state_it->layer != request.layer ||
+                    !build_fused_graph(*fused_state_it, request.tokens, fused_next, 0, fused_execution)) {
+                    fprintf(stderr, "[ffn-worker] fused graph build failed\n");
+                    break;
+                }
+                ggml_backend_tensor_set(fused_execution.input, request_payload.data(), 0, request_payload.size());
+                const ggml_status fused_status = ggml_backend_graph_compute(backend, fused_execution.graph);
+                const size_t out_elements = static_cast<size_t>(out_row * request.tokens);
+                response_payload.resize(out_elements * wire_element_size);
+                if (fused_status == GGML_STATUS_SUCCESS) {
+                    ggml_backend_tensor_get(fused_execution.output, response_payload.data(), 0,
+                            response_payload.size());
+                }
+                const uint64_t compute_us = now_us() - started;
+                const bool output_finite = cfg.f16_io ?
+                        all_finite(reinterpret_cast<const ggml_fp16_t *>(response_payload.data()), out_elements) :
+                        all_finite(reinterpret_cast<const float *>(response_payload.data()), out_elements);
+                if (fused_status != GGML_STATUS_SUCCESS || !output_finite) {
+                    fprintf(stderr, "[ffn-worker] fused graph execution failed\n");
+                    break;
+                }
+                ffn_split::execute_response response = {};
+                response.magic = ffn_split::protocol_magic;
+                response.version = ffn_split::protocol_version;
+                response.message = static_cast<uint16_t>(ffn_split::message_type::fused_execute_response);
+                response.status = 0;
+                response.request_id = request.request_id;
+                response.layer = request.layer;
+                response.elements = static_cast<uint32_t>(out_elements);
+                response.payload_bytes = static_cast<uint32_t>(response_payload.size());
+                response.payload_hash = ffn_split::payload_hash(hello_response.flags, response_payload.data(), response_payload.size());
+                response.columns = request.columns;
+                response.tokens = request.tokens;
+                response.compute_us = compute_us;
+                response_frame.resize(sizeof(response) + response_payload.size());
+                memcpy(response_frame.data(), &response, sizeof(response));
+                memcpy(response_frame.data() + sizeof(response), response_payload.data(), response_payload.size());
+                if (!write_exact(client_fd, response_frame.data(), response_frame.size())) {
+                    break;
+                }
+                ++fused_served;
+                compute_samples.push_back(static_cast<double>(compute_us));
+                ++served;
+                if (cfg.max_requests > 0 && served >= cfg.max_requests) {
+                    fprintf(stderr, "S43FUSEDCALLS calls=%ld\n", fused_served);
+                    close(client_fd);
+                    close(listen_fd);
+                    for (graph_arena & arena : graph_arenas) {
+                        ggml_gallocr_free(arena.allocator);
+                        ggml_free(arena.context);
+                    }
+                    for (ggml_backend_buffer_t weight_buffer : weight_buffers) {
+                        ggml_backend_buffer_free(weight_buffer);
+                    }
+                    for (ggml_context * weight_ctx : weight_contexts) {
+                        ggml_free(weight_ctx);
+                    }
+                    free_secondary();
+                    ggml_backend_free(backend);
+                    return 0;
+                }
+                continue;
+            }
             const bool request_ok =
                     request.magic == ffn_split::protocol_magic &&
                     request.version == ffn_split::protocol_version &&
@@ -2661,7 +3218,7 @@ int ffn_split_worker_main(int argc, char ** argv) {
             if (!read_exact(
                         client_fd, request_payload.data(),
                         request_payload.size()) ||
-                request.payload_hash != ffn_split::hash_bytes(
+                request.payload_hash != ffn_split::payload_hash(hello_response.flags,
                         request_payload.data(), request_payload.size())) {
                 fprintf(stderr, "[ffn-worker] invalid execute payload\n");
                 break;
@@ -2762,7 +3319,7 @@ int ffn_split_worker_main(int argc, char ** argv) {
             response.layer = request.layer;
             response.elements = request.elements;
             response.payload_bytes = static_cast<uint32_t>(payload_bytes);
-            response.payload_hash = ffn_split::hash_bytes(
+            response.payload_hash = ffn_split::payload_hash(hello_response.flags,
                     response_payload.data(), response_payload.size());
             response.columns = request.columns;
             response.tokens = request.tokens;

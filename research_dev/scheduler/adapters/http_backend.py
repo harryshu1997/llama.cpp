@@ -14,6 +14,7 @@ from typing import Callable, Mapping, Sequence
 from urllib.parse import urlsplit
 
 from .contracts import (
+    CompletionRejectedError,
     CompletionStreamError,
     dormant_phone_ffn_parameters,
     PhysicalAdapterError,
@@ -27,6 +28,7 @@ from .ticket import (
     PhysicalExecutionCommand,
     PhysicalTransitionCommand,
     bind_ready_helper_to_physical_command,
+    static_control_timeout_s,
     static_decode_policy,
     validate_physical_execution_command,
 )
@@ -64,6 +66,34 @@ def _canonical(value: object) -> bytes:
         )
         + "\n"
     ).encode("ascii")
+
+
+def _response_error_message(response: object) -> str | None:
+    """The server's error text of a non-200 response body (JSON ``error.message`` or plain text)."""
+    try:
+        raw = response.read(65536)
+    except Exception:  # noqa: BLE001 - a body that cannot be read is no evidence
+        return None
+    if not raw:
+        return None
+    try:
+        text = raw.decode("utf-8", errors="replace").strip()
+    except Exception:  # noqa: BLE001
+        return None
+    try:
+        message = _stream_error_message(json.loads(text))
+    except ValueError:
+        message = None
+    if message is None:
+        message = text[:200] if text else None
+    return message
+
+
+def prompt_cache_requested(command: PhysicalExecutionCommand) -> bool:
+    """Whether completions on this endpoint may reuse the server's prompt cache: the model's opt-in
+    ``cache_idle_slots`` (1 / true in the runtime adapter parameters; WS24, 2026-10-05)."""
+    value = command.adapter_parameters.get("cache_idle_slots", 0)
+    return value is True or value == 1
 
 
 def _stream_error_message(value: object) -> str | None:
@@ -232,34 +262,29 @@ class LlamaCppHttpClient:
         finally:
             connection.close()
 
-    def complete(
-        self,
-        endpoint: str,
-        payload: LlamaCppCompletionPayload,
-        control_check: Callable[[], None],
-        *,
-        scheduler_headers: Mapping[str, str] | None = None,
-    ) -> dict[str, object]:
-        if not isinstance(payload, LlamaCppCompletionPayload):
-            raise PhysicalAdapterError("completion payload is invalid")
-        if not callable(control_check):
-            raise PhysicalAdapterError("completion control check is invalid")
-        extra_headers = (
-            {} if scheduler_headers is None else dict(scheduler_headers)
+    @staticmethod
+    def _prompt_accounting_ok(timings: Mapping[str, object], input_tokens: int, cache_prompt: bool) -> bool:
+        """Every prompt token is accounted for: prefilled (``prompt_n``) or, only when the request asked
+        for the prompt cache, served from it (``cache_n``; the server still prefills at least one token).
+        2026-10-05 (p9lpc1nph request 001): a cached 2,003-token document failed the exact prompt_n check."""
+        prompt_n = timings.get("prompt_n")
+        cache_n = timings.get("cache_n", 0) if cache_prompt else 0
+        return (
+            type(prompt_n) is int and type(cache_n) is int and prompt_n >= 0 and cache_n >= 0
+            and prompt_n + cache_n == input_tokens
+            and (cache_n == 0 or prompt_n >= 1)
         )
-        if any(
-            type(name) is not str
-            or not name.startswith("X-Scheduler-")
-            or not name.isascii()
-            or type(value) is not str
-            or not value
-            or not value.isascii()
-            for name, value in extra_headers.items()
-        ):
-            raise PhysicalAdapterError("scheduler HTTP headers are invalid")
-        host, port = parse_http_endpoint(endpoint)
+
+    @staticmethod
+    def _completion_request_body(
+        payload: LlamaCppCompletionPayload, cache_prompt: bool = False,
+    ) -> dict[str, object]:
+        """The llama-server completion body. ``cache_prompt`` is False by default (every prompt is
+        prefilled in full: the paper arms' determinism); WS24 (2026-10-05) turns it on for endpoints
+        launched with the opt-in ``cache_idle_slots``, so a conversation turn or a cached document
+        reuses the prefix the server saved from the previous request."""
         request_body = {
-            "cache_prompt": False,
+            "cache_prompt": cache_prompt,
             "ignore_eos": True,
             "n_predict": payload.output_tokens,
             "prompt": list(payload.prompt_tokens),
@@ -275,6 +300,38 @@ class LlamaCppHttpClient:
             })
         if payload.speculative is not None:
             request_body.update(payload.speculative.body_fields())
+        return request_body
+
+    def complete(
+        self,
+        endpoint: str,
+        payload: LlamaCppCompletionPayload,
+        control_check: Callable[[], None],
+        *,
+        scheduler_headers: Mapping[str, str] | None = None,
+        cache_prompt: bool = False,
+    ) -> dict[str, object]:
+        if not isinstance(payload, LlamaCppCompletionPayload):
+            raise PhysicalAdapterError("completion payload is invalid")
+        if not callable(control_check):
+            raise PhysicalAdapterError("completion control check is invalid")
+        if type(cache_prompt) is not bool:
+            raise PhysicalAdapterError("completion cache_prompt must be a boolean")
+        extra_headers = (
+            {} if scheduler_headers is None else dict(scheduler_headers)
+        )
+        if any(
+            type(name) is not str
+            or not name.startswith("X-Scheduler-")
+            or not name.isascii()
+            or type(value) is not str
+            or not value
+            or not value.isascii()
+            for name, value in extra_headers.items()
+        ):
+            raise PhysicalAdapterError("scheduler HTTP headers are invalid")
+        host, port = parse_http_endpoint(endpoint)
+        request_body = self._completion_request_body(payload, cache_prompt)
         body = _canonical(request_body)
         connection = http.client.HTTPConnection(
             host, port, timeout=payload.timeout_s
@@ -317,8 +374,12 @@ class LlamaCppHttpClient:
                 raise HttpEndpointFailure("request", error, False) from error
             response = connection.getresponse()
             if response.status != 200:
-                raise PhysicalAdapterError(
-                    f"completion status is {response.status}"
+                # keep the server's own error text (a lost helper aborts the batch a request
+                # just joined with "Compute aborted."): the classifier's evidence, as for a
+                # cut stream
+                raise CompletionRejectedError(
+                    response.status,
+                    server_error_message=_response_error_message(response),
                 )
             with payload.stream_path.open("xb") as raw_stream:
                 while raw_line := response.readline():
@@ -449,7 +510,7 @@ class LlamaCppHttpClient:
             and type(final_slot) is int
             and final_slot in task_by_slot
             and final.get("model") == payload.expected_model_alias
-            and timings.get("prompt_n") == payload.input_tokens
+            and self._prompt_accounting_ok(timings, payload.input_tokens, cache_prompt)
             and timings.get("predicted_n") == payload.output_tokens
             and len(tokens) == payload.output_tokens
         ):
@@ -870,6 +931,7 @@ class _AdaptivePayloadController:
         self.started = False
         self.closed = False
         self.pending_stale_boundary = None
+        self.pending_stale_remainder = False
         self.cohort_contract = command.decode_cohort
         original_members = (
             () if self.cohort_contract is None
@@ -888,6 +950,8 @@ class _AdaptivePayloadController:
         self.window_active_batch = self.live_active_batch
         self.live_members: tuple[tuple[int, int], ...] | None = None
         self.live_context_available = True
+        # latest closed window's per-token latency (live_membership_probe_timeout_auto)
+        self.latest_window_step_us: int | None = None
         if (
             type(self.live_active_batch) is not int
             or self.live_active_batch <= 0
@@ -910,6 +974,10 @@ class _AdaptivePayloadController:
             *self._CUMULATIVE_NAMES,
         )
         self.last_stats = {name: 0 for name in names}
+        self._baseline_pending = (
+            (command.endpoint, command.request_id) in backend._server_counter_owners
+        )
+        self.inherited_counters: dict[str, int] | None = None
         self.last_cohort_tokens: dict[str, int] | None = None
         self.accounting_members: tuple[str, ...] = ()
         self.last_window_end_token: int | None = None
@@ -985,6 +1053,27 @@ class _AdaptivePayloadController:
     def _stats_delta(
         self, current: Mapping[str, int]
     ) -> dict[str, int]:
+        self.backend._server_counter_owners.add(
+            (self.command.endpoint, self.command.request_id)
+        )
+        if self._baseline_pending:
+            # 2026-10-03 fault run: the recovered attempt of request 003 reused its id on the same server and
+            # its first window reported the failed attempt's thousands of calls against a fraction-0 binding
+            self._baseline_pending = False
+            inherited = {
+                name: int(current.get(name, 0)) for name in self.last_stats
+                if name not in self._GAUGE_NAMES
+            }
+            self.last_stats.update(inherited)
+            self.inherited_counters = inherited
+            self.backend._server_counter_baselines.append({
+                "endpoint": self.command.endpoint,
+                "inherited_counters": dict(inherited),
+                "kind": "server_counters_baselined",
+                "observed_at_us": self._relative_us(time.monotonic_ns()),
+                "request_id": self.command.request_id,
+                "ticket_id": self.command.ticket_id,
+            })
         moved_backward = tuple(
             name for name in sorted(self.last_stats)
             if name not in self._GAUGE_NAMES
@@ -1046,8 +1135,10 @@ class _AdaptivePayloadController:
                         phone_helper_bindings_from_parameters(self.command.adapter_parameters) or ())
         except PhysicalAdapterError:
             bindings = ()
+        # WS23: a route anchored by a static co-helper charges that helper (below), never the scheduled phone
+        anchored = self.command.adapter_parameters.get("static_helper_anchor") == 1
         # a device set without the primary phone (co-helpers only) leaves the primary idle
-        if not bindings or bindings[0].device_id in {device for device, _mask in owners}:
+        if not anchored and (not bindings or bindings[0].device_id in {device for device, _mask in owners}):
             record(
                 work_id,
                 "adaptive_phone_window",
@@ -1060,7 +1151,9 @@ class _AdaptivePayloadController:
             if not owners:
                 bindings = phone_helper_bindings_from_parameters(self.command.adapter_parameters) or ()
                 owners = tuple((row.device_id, row.layer_mask) for row in
-                               bindings[1:])
+                               (bindings if anchored else bindings[1:]))
+                if anchored and not owners:
+                    owners = ((self.command.adapter_parameters["phone_device_id"], 1),)
             helper_record(work_id, self.backend._epoch_ns + started_at_us * 1000,
                           self.backend._epoch_ns + finished_at_us * 1000,
                           tuple(device for device, mask in owners if mask))
@@ -1434,10 +1527,12 @@ class _AdaptivePayloadController:
         if not callable(discard):
             raise
         released = terminal_token_index is not None
-        end_us = terminal_at_us if released else boundary.finished_at_us
+        remainder = released and self.pending_stale_remainder
+        end_us = terminal_at_us if released and not remainder else boundary.finished_at_us
         reason = (
-            ("released_slot_baseline_tail" if boundary.policy.baseline
-             else "released_slot_phone_tail")
+            "released_slot_unmeasured_remainder" if remainder
+            else ("released_slot_baseline_tail" if boundary.policy.baseline
+                  else "released_slot_phone_tail")
             if released else "stale_slot_stats_discarded"
         )
         energy = self.backend._energy_meter.measure(
@@ -1465,7 +1560,7 @@ class _AdaptivePayloadController:
                 evidence_id=("physical:terminal-release-confirmed" if released
                              else "physical:stale-slot-stats-discarded"),
                 token_count=(terminal_token_index - boundary.token_start
-                             if released else boundary.token_count),
+                             if released and not remainder else boundary.token_count),
                 positions=positions,
                 failure_reason=reason,
             ),
@@ -1473,14 +1568,14 @@ class _AdaptivePayloadController:
             **({"terminal_token_index": terminal_token_index,
                 "terminal_at_us": terminal_at_us} if released else {}),
         )
-        if released and not boundary.policy.baseline:
+        if released and (remainder or not boundary.policy.baseline):
             self.backend._record_adaptive_timing({
                 "kind": "SLOT_STATS_UNMEASURED_TAIL",
                 "request_id": self.command.request_id,
                 "ticket_id": self.command.ticket_id,
-                "observed_at_us": end_us,
+                "observed_at_us": terminal_at_us if released else end_us,
                 "slot_id": boundary.slot_id,
-                "measured_through_token": boundary.token_start,
+                "measured_through_token": boundary.token_end if remainder else boundary.token_start,
                 "terminal_token_index": terminal_token_index,
                 "policy_hash": boundary.policy.policy_hash,
                 "plan_generation": (boundary.applied_ack.plan_generation
@@ -1491,6 +1586,15 @@ class _AdaptivePayloadController:
         self.last_window_finished_at_us = end_us
         return directive
 
+    def _live_membership_probe_timeout_s(self) -> int | float:
+        """The configured membership probe timeout (AdaptiveDecodeConfig
+        live_membership_probe_timeout_ms / _auto); a scheduler without the accessor keeps the
+        historical 1 s."""
+        timeout = getattr(getattr(self, "scheduler", None),
+                          "adaptive_live_membership_probe_timeout_s", None)
+        value = None if timeout is None else timeout(getattr(self, "latest_window_step_us", None))
+        return value if type(value) in (int, float) and 0 < value <= 30 else 1
+
     def _refresh_active_members(self) -> bool:
         if self.cohort is not None:
             return False
@@ -1499,7 +1603,7 @@ class _AdaptivePayloadController:
             return self.live_active_batch != self.window_active_batch
         try:
             host, port = parse_http_endpoint(self.command.endpoint)
-            slots = probe(host, port, 1)
+            slots = probe(host, port, self._live_membership_probe_timeout_s())
             members = tuple(sorted(
                 (row["id"], row["id_task"]) for row in slots
                 if row.get("is_processing") is True
@@ -1536,6 +1640,8 @@ class _AdaptivePayloadController:
         return changed
 
     def _process_boundary(self, boundary):
+        self.latest_window_step_us = max(
+            1, (boundary.finished_at_us - boundary.started_at_us) // max(1, boundary.token_count))
         try:
             (
                 raw,
@@ -1558,8 +1664,23 @@ class _AdaptivePayloadController:
                 and boundary.token_start == self.last_window_end_token
                 and self.last_stats.get("calls", 0) > 0
             )
-            if self.cohort is None and (baseline_tail or phone_tail):
+            # 2026-10-05 (p7f21ffn request 007, p7k1pixf request 009): the server answers "slot differ"
+            # only when the slot no longer runs this request, i.e. the request FINISHED while this client
+            # was stalled (seconds behind the stream after another request's completion). Any window of a
+            # request that is alone in its batch is therefore deferred to the terminal: a tail boundary
+            # becomes the released tail, an earlier one an unmeasured remainder. A live cohort still
+            # takes its statistics from a surviving member.
+            try:
+                alone = self.cohort is None or len(self._cohort_rows()) <= 1
+            except PhysicalAdapterError:
+                alone = False
+            remainder = (
+                alone and not (baseline_tail or phone_tail)
+                and boundary.token_end < self._tail_seal_at()
+            )
+            if remainder or (alone and (baseline_tail or phone_tail)):
                 self.pending_stale_boundary = boundary
+                self.pending_stale_remainder = remainder
                 self.backend._record_adaptive_timing({
                     "kind": "SLOT_STATS_DEFERRED_UNTIL_TERMINAL",
                     "request_id": self.command.request_id,
@@ -1568,6 +1689,7 @@ class _AdaptivePayloadController:
                     "slot_id": boundary.slot_id,
                     "token_index": boundary.token_end,
                     "policy_hash": boundary.policy.policy_hash,
+                    "unmeasured_remainder": remainder,
                 })
                 return None
             return self._discard_stale_boundary(boundary)
@@ -1674,6 +1796,10 @@ class _AdaptivePayloadController:
             )
             self.backend.notify_control_ack(self.command.endpoint, self.command.request_id, initial)
             self.last_stats = dict(initial["runtime_stats"])
+            self._baseline_pending = False
+            self.backend._server_counter_owners.add(
+                (self.command.endpoint, self.command.request_id)
+            )
             self.last_cohort_tokens = dict(
                 self.cohort.token_positions()
             )
@@ -1896,6 +2022,11 @@ class CanonicalHttpExecutionBackend:
         # (server stderr since its marker, SSE error, process exit) into a
         # helper_lost / server_exited failure; None keeps today's failures.
         self._failure_classifier = failure_classifier
+        # (endpoint, request id) pairs whose FFN runtime counters exist on that server: llama-server keys
+        # them by request id, so a request re-executed on the same server (same-server recovery after a
+        # helper loss) inherits the failed attempt's totals; its first snapshot is then a baseline, not work
+        self._server_counter_owners: set[tuple[str, str]] = set()
+        self._server_counter_baselines: list[dict[str, object]] = []
         self._control_guard = control_guard
         self._measurement_started_ns: dict[str, int] = {}
         self._measurement_lock = threading.Lock()
@@ -2066,7 +2197,8 @@ class CanonicalHttpExecutionBackend:
             self._guard_control(command, control)
             with self._static_control_lock:
                 raw, _acknowledged_ns = self._client.apply_ffn_control(
-                    command.endpoint, control
+                    command.endpoint, control,
+                    timeout_s=static_control_timeout_s(command),
                 )
             if (
                 raw.get("slot_id") != slot_id
@@ -2569,6 +2701,8 @@ class CanonicalHttpExecutionBackend:
             payload,
             control_check,
             scheduler_headers=self._scheduler_headers(command),
+            # only the opt-in endpoints add the keyword: every other call stays byte-identical
+            **({"cache_prompt": True} if prompt_cache_requested(command) else {}),
         )
         inference_finished_ns = time.monotonic_ns()
         inference_finished_us = self._relative_us(inference_finished_ns)
@@ -2579,6 +2713,16 @@ class CanonicalHttpExecutionBackend:
         result = dict(value)
         if static_ack:
             result["static_ffn_control_ack"] = static_ack[0]
+        baselines = [
+            row for row in self._server_counter_baselines
+            if row["ticket_id"] == command.ticket_id
+        ]
+        if baselines:
+            self._server_counter_baselines = [
+                row for row in self._server_counter_baselines
+                if row["ticket_id"] != command.ticket_id
+            ]
+            result["server_counter_baselines"] = baselines
         if adaptive_fences:
             result["request_slot_final_d2h_fences"] = [
                 dict(row) for row in adaptive_fences

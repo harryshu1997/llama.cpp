@@ -232,18 +232,31 @@ class DirectPhoneFfnSessionConfiguration:
                 raise PhysicalAdapterError(
                     "phone USB controller is invalid"
                 )
+        # 2026-10-06: the session may serve no artifact at all (every campaign
+        # model declares ``phone_artifact_path: null``, e.g. the all-GPU Q4
+        # desktop baseline). The preflight then checks the transport, the
+        # scripts and the USB link only, and a phone residency transition fails
+        # closed on the undeployed artifact.
         object.__setattr__(
             self,
             "worker_paths_by_artifact",
             _artifact_mapping(
-                "phone worker", self.worker_paths_by_artifact
+                "phone worker", self.worker_paths_by_artifact, allow_empty=True
             ),
         )
         object.__setattr__(
             self,
             "model_paths_by_artifact",
-            _artifact_mapping("phone model", self.model_paths_by_artifact),
+            _artifact_mapping(
+                "phone model", self.model_paths_by_artifact, allow_empty=True
+            ),
         )
+        if bool(self.worker_paths_by_artifact) != bool(
+            self.model_paths_by_artifact
+        ):
+            raise PhysicalAdapterError(
+                "phone worker and model mappings must be both empty or both set"
+            )
         ffn_indexes = dict(self.ffn_shards_by_artifact)
         if any(
             artifact not in self.model_paths_by_artifact

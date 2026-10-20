@@ -39,6 +39,8 @@ from research_dev.scheduler._internal.layer_placement_io import (
 
 DATA = Path(__file__).resolve().parent / "data" / "layer_placement"
 RECORDED_SHAPES = DATA / "RECORDED_SERVER_FFN_SHAPES_20261001.json"
+MODEL_GEOMETRY = DATA / "MODEL_GEOMETRY_20261001.json"          # WS14: GGUF headers (layer_placement geometry)
+TRACE_CONTEXTS = DATA / "TRACE_CONTEXTS_LONGTAIL_EVAL_V2.json"   # WS14: per-request prompt / output tokens
 QWEN = "qwen3-14b-q4km-dequant-f16"
 GEMMA = "gemma-4-12b-q40-dequant-f16"
 OP15 = "op15-phone"
@@ -72,10 +74,12 @@ QWEN_CPU_LAYER_MS = 9.348 * 2
 DESKTOP_ROWS_FACTOR = MappingProxyType({1: 1.0, 2: 1.025, 3: 1.029, 4: 1.034})   # Qwen step 611/626/629/632 ms
 # WS2 decode operating points (joint_planner_model.PROVENANCE): (step s, host W, CPU FFN layers, waits)
 OPERATING_POINTS = (
-    ("qwen desktop-only b1 (tp2 audit)", 0.611, 120.0, QWEN, 25, ()),
-    ("qwen assisted b1 OP15 18 + Pixel 6 (s1c-s2a)", 0.489, 45.6, QWEN, 1, ((OP15, QWEN, 18), (PIXEL, QWEN, 6))),
-    ("gemma desktop-only b1 (tp2 audit)", 0.464, 120.0, GEMMA, 27, ()),
-    ("gemma assisted b1 OP15 24 (s1a-s2a)", 0.398, 50.1, GEMMA, 3, ((OP15, GEMMA, 24),)),
+    # CPU layers follow llama.cpp: the first GPU layer is n_layer - n_gpu_layers (Qwen 40 - 16 = 24, Gemma 48 - 22 = 26),
+    # so Qwen runs layers 0-23 and Gemma 0-25 on the CPU (2026-10-02 fix: 25 / 27 before, one layer too many)
+    ("qwen desktop-only b1 (tp2 audit)", 0.611, 120.0, QWEN, 24, ()),
+    ("qwen assisted b1 OP15 18 + Pixel 6 (s1c-s2a)", 0.489, 45.6, QWEN, 0, ((OP15, QWEN, 18), (PIXEL, QWEN, 6))),
+    ("gemma desktop-only b1 (tp2 audit)", 0.464, 120.0, GEMMA, 26, ()),
+    ("gemma assisted b1 OP15 24 (s1a-s2a)", 0.398, 50.1, GEMMA, 2, ((OP15, GEMMA, 24),)),
 )
 
 PIXEL_PRIORS = DeviceCostPriors(
@@ -228,27 +232,38 @@ def busy_envelopes_v1(path: Path = RECORDED_SHAPES, sustained_calls: int = 2000)
 def rig_inventory_v1(*, pixel_transport: str = "aoa-bridge", gemma_pixel_format: str = "q4_0-packed",
                      op15_capacity: int = OP15_SESSIONS * OP15_SESSION_LIMIT, op15_busy_cap_ms: float | None = None,
                      pixel_busy_cap_ms: float | None = None, available: Mapping[str, bool] | None = None,
-                     gemma_desktop_ms: float | None = None, profile: LayerPlacementProfile | None = None) -> dict:
-    """Today's rig as a placement inventory (JSON form)."""
+                     gemma_desktop_ms: float | None = None, profile: LayerPlacementProfile | None = None,
+                     pixel_runtime: str = "co-helper") -> dict:
+    """Today's rig as a placement inventory (JSON form).
+
+    ``pixel_runtime``: what the runtime can do with the Pixel. ``co-helper`` (today, WS12): a static co-helper
+    -- it adds layers to the OP15's route only (``route_anchor`` false) and serves one model per campaign
+    (its worker and evidence are per artifact, ``max_models`` 1). ``hypothetical-multi-model``: the WS11
+    analysis variants that assume multi-artifact helper support (not built); still a co-helper.
+    ``helper-anchored`` (WS23, runtime opt-in ``elastic_phones.helper_independence``): the Pixel may anchor a
+    phone-assisted route of its own (``route_anchor`` stays true), still one model per campaign.
+    """
+    if pixel_runtime not in ("co-helper", "hypothetical-multi-model", "helper-anchored"):
+        raise ValueError("unknown pixel runtime " + pixel_runtime)
     profile = profile or measured_profile_v1()
     qwen_ms = QWEN_CPU_LAYER_MS
     gemma_ms = gemma_desktop_ms or profile.desktop_ffn_ms[(GEMMA, 1)].value
     available = dict(available or {})
     envelope = busy_envelopes_v1()
-    qwen_overrides = {str(layer): QWEN_Q4K_Q6K_DOWN_LAYER for layer in QWEN_Q6K_DOWN_LAYERS if layer <= 24}
+    qwen_overrides = {str(layer): QWEN_Q4K_Q6K_DOWN_LAYER for layer in QWEN_Q6K_DOWN_LAYERS if layer <= 23}
     mix = rows_mix_v1()
     return {
         "schema": LAYER_PLACEMENT_INVENTORY_SCHEMA,
         "models": [
-            {"model_id": QWEN, "cpu_layers": "0-24", "n_embd": 5120, "n_ff": 17408, "column_quantum": 4352,
+            {"model_id": QWEN, "cpu_layers": "0-23", "n_embd": 5120, "n_ff": 17408, "column_quantum": 4352,
              "layer_bytes": {"f16": QWEN_F16_LAYER, "q4k-packed": QWEN_Q4K_LAYER},
              "layer_bytes_overrides": {"q4k-packed": qwen_overrides},
              "rows_mix": {str(k): round(v, 6) for k, v in mix[QWEN].items()},
-             "other_step_ms": {"1": round(611.0 - 25 * qwen_ms, 3)}},
-            {"model_id": GEMMA, "cpu_layers": "0-26", "n_embd": 3840, "n_ff": 15360, "column_quantum": 3840,
+             "other_step_ms": {"1": round(611.0 - 24 * qwen_ms, 3)}},
+            {"model_id": GEMMA, "cpu_layers": "0-25", "n_embd": 3840, "n_ff": 15360, "column_quantum": 3840,
              "layer_bytes": {"f16": GEMMA_F16_LAYER, "q4_0-packed": GEMMA_Q4_0_LAYER},
              "rows_mix": {str(k): round(v, 6) for k, v in mix[GEMMA].items()},
-             "other_step_ms": {"1": round(464.0 - 27 * gemma_ms, 3)}},
+             "other_step_ms": {"1": round(464.0 - 26 * gemma_ms, 3)}},
         ],
         "devices": [
             {"device_id": OP15, "formats": {QWEN: "f16", GEMMA: "f16"}, "capacity_bytes": op15_capacity,
@@ -264,12 +279,67 @@ def rig_inventory_v1(*, pixel_transport: str = "aoa-bridge", gemma_pixel_format:
              "available": available.get(PIXEL, True),
              "unavailable_reason": None if available.get(PIXEL, True) else "ABSENT",
              "max_busy_ms_per_token": pixel_busy_cap_ms, "busy_envelope_ms": round(envelope[PIXEL], 3),
-             "stored_layers": {QWEN: "18-23"}, "qualified_layers": {QWEN: "18-23"}},
+             "stored_layers": {QWEN: "18-23"}, "qualified_layers": {QWEN: "18-23"},
+             # a rig helper phone is a static co-helper: the runtime's assisted route belongs to the primary
+             # phone (catalog phone-assisted composites, phone_helpers row 0 = the ticket's phone), so a
+             # model may use it only while the OP15 owns >= 1 of its layers (WS12)
+             **({"route_anchor": False} if pixel_runtime != "helper-anchored" else {}),
+             **({"max_models": 1} if pixel_runtime in ("co-helper", "helper-anchored") else {})},
         ],
         "current": {QWEN: {OP15: "0-17", PIXEL: "18-23"}, GEMMA: {OP15: "0-23"}},
         "latency_ppm": 1_250_000,
         "column_fractions": {QWEN: [1.0, 0.75, 0.5], GEMMA: [1.0, 0.75, 0.5]},
     }
+
+
+# WS14 operator groups: inputs that are not in the WS11 profile, each a prior unless stated
+LINK_BYTES_PER_S = MappingProxyType({
+    # prior: S9 ADB staged push 216-262 MiB/s on these phones (USB 3.2 Gen 1); the low end for every link
+    "functionfs-usb": 216 * 1024 ** 2, "adb-tcp": 216 * 1024 ** 2, "aoa-bridge": 216 * 1024 ** 2,
+})
+OPGROUP_PROVENANCE = MappingProxyType({
+    "geometry": "GGUF headers of the rig's f16 proxies and their quantized origins (MODEL_GEOMETRY_20261001.json)",
+    "contexts": "longtail_eval_v2 as executed (TRACE_CONTEXTS_LONGTAIL_EVAL_V2.json, run p2m1ctl)",
+    "slots": "server n_seq_max: Qwen 4 / Gemma 2 (2026-09-27 audit)",
+    "link_bytes_per_s": "prior: S9 ADB staged push 216 MiB/s (low end of 216-262), used for every transport",
+    "gpu_head": "prior: RTX 4060 Ti peak 288 GB/s; GPU board 34 W active / 27.6 W loaded idle (2026-09-27 audit)",
+    "kv_cache": "f16 KV cache (llama.cpp default); gemma4 global layers cache V = rms_norm(K) separately",
+    "loss_rate_per_h": "prior: 1 helper loss per device-hour (no unplanned loss recorded in blocks 1-2; conservative)",
+    "prefill_j_per_token": "prior: ~74 W host (GPU 45 + CPU 29 W, s42 prefill note) / ~197 prompt tok/s (p2m streams)",
+    "projection_rates": "scaled: each device's measured FFN compute ms per stored byte (same row count); desktop CPU "
+                        "streams projections and KV at its measured FFN rate (28.6 GB/s) and streaming power",
+    "phone_energy": "derived: meter J per compute-ms (block 1) x the added compute time",
+})
+
+
+def model_geometry_v1(path: Path = MODEL_GEOMETRY):
+    from research_dev.scheduler._internal.layer_placement_opgroups import ModelGeometry
+    return {model: ModelGeometry.from_json(row) for model, row in json.loads(path.read_text())["models"].items()}
+
+
+def trace_contexts_v1(path: Path = TRACE_CONTEXTS):
+    """Per model (ContextStats of its requests, slots) of longtail_eval_v2."""
+    from research_dev.scheduler._internal.layer_placement_opgroups import ContextStats
+    data = json.loads(path.read_text())
+    by_model: dict[str, list] = {}
+    for row in data["requests"]:
+        by_model.setdefault(row["model_id"], []).append((row["prompt_tokens"], row["output_tokens"]))
+    return ({model: ContextStats.from_requests(rows) for model, rows in by_model.items()},
+            {str(model): int(value) for model, value in data["slots"].items()})
+
+
+def opgroup_inputs_v1(*, contexts=None, link_bytes_per_s: Mapping[str, float] | None = None, **overrides):
+    """WS14 inputs for the two rig models (geometry, trace contexts, slots, link and GPU priors)."""
+    from research_dev.scheduler._internal.layer_placement_opgroups import OpGroupInputs
+    stats, slots = trace_contexts_v1()
+    geometry = model_geometry_v1()
+    models = (QWEN, GEMMA)
+    return OpGroupInputs(
+        geometry=MappingProxyType({model: geometry[model] for model in models}),
+        contexts=MappingProxyType(dict(contexts) if contexts is not None else {model: stats[model] for model in models}),
+        slots=MappingProxyType({model: slots[model] for model in models}),
+        link_bytes_per_s=MappingProxyType(dict(link_bytes_per_s or LINK_BYTES_PER_S)),
+        provenance=OPGROUP_PROVENANCE, **overrides)
 
 
 def restart_energy_j() -> dict[str, float]:

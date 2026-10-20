@@ -1036,6 +1036,39 @@ struct llm_graph_context {
     const dense_ffn_split_policy & policy,
                      int   il) const;
 
+    // WS15 fused attention-projection call of layer il. The eval-callback owner sends
+    // [attention | residual] (marker fused_in-<il>) to the helper and fills the returned delta
+    // (fused_delta-<il>; l_out = residual + delta) and, with next_qkv, the raw Q/K/V of layer il+1
+    // (fused_q-/fused_k-/fused_v-<il+1>). Fused layers come from LLAMA_FFN_FUSED_LAYER_MASK and
+    // LLAMA_FFN_FUSED_NEXT_MASK; a layer runs fused only while its dense split is active at full width.
+    struct fused_layer_policy {
+        uint64_t layer_mask = 0;
+        uint64_t next_mask  = 0;
+    };
+
+    struct fused_layer_result {
+        ggml_tensor * delta = nullptr;
+        ggml_tensor * q     = nullptr;
+        ggml_tensor * k     = nullptr;
+        ggml_tensor * v     = nullptr;
+    };
+
+    fused_layer_policy resolve_fused_layer_policy() const;
+
+    bool fused_layer_active(
+            const fused_layer_policy & fused,
+            const dense_ffn_split_policy & split,
+            const llama_layer & layer,
+            int il) const;
+
+    fused_layer_result build_fused_layer_call(
+             ggml_tensor * attention,
+             ggml_tensor * residual,
+                    bool   next_qkv,
+                 int64_t   n_q,
+                 int64_t   n_kv,
+                     int   il) const;
+
     // build MoE FFN without bias tensors
     ggml_tensor * build_moe_ffn(
              ggml_tensor * cur,

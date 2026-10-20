@@ -43,6 +43,8 @@ def _android_path(name: str, value: object) -> str:
 def _artifact_mapping(
     name: str,
     values: Mapping[str, str],
+    *,
+    allow_empty: bool = False,
 ) -> Mapping[str, str]:
     result = {}
     for artifact, path in values.items():
@@ -54,6 +56,6 @@ def _artifact_mapping(
         ):
             raise PhysicalAdapterError(name + " artifact is invalid")
         result[artifact] = _android_path(name + " path", path)
-    if not result:
+    if not result and not allow_empty:
         raise PhysicalAdapterError(name + " mapping is empty")
     return MappingProxyType(dict(sorted(result.items())))

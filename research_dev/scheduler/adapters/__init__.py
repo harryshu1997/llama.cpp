@@ -40,6 +40,7 @@ from .catalog_materialization import (
     desktop_operator_placements,
     materialize_desktop_control,
     materialize_cpu_phone_endpoints,
+    materialize_remote_resident_owner,
     materialize_whole_model_endpoint,
     merge_runtime_capability_catalogs,
     measured_desktop_control_profile,
@@ -47,6 +48,8 @@ from .catalog_materialization import (
     model_composite_capabilities,
     model_manifest_transition_capabilities,
     model_transition_capabilities,
+    remote_resident_owner_executor_id,
+    remote_resident_payload_qualification,
     resource_profiles_for_catalog,
 )
 from .android_llama_server import (
@@ -344,6 +347,7 @@ __all__ = [
     "materialize_measured_usb_links",
     "materialize_desktop_control",
     "materialize_cpu_phone_endpoints",
+    "materialize_remote_resident_owner",
     "materialize_whole_model_endpoint",
     "materialize_preflight_executor_samples",
     "merge_runtime_capability_catalogs",
@@ -378,6 +382,8 @@ __all__ = [
     "phone_ffn_execution_contract",
     "qualify_functionfs_bridge",
     "run_physical_preflight",
+    "remote_resident_owner_executor_id",
+    "remote_resident_payload_qualification",
     "resource_profiles_for_catalog",
     "server_energy_summary",
     "static_split_contract_values",

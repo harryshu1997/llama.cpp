@@ -15,6 +15,7 @@ from .._internal.model_placement_controller import ModelPlacementControllerError
 from .._internal.phone_shards import PhoneShardPlacementError, artifact_layout_identity_sha256
 from .._internal.runtime_controller import RuntimeControllerError, RuntimeRequestTicket
 from .._internal.plan_contracts.co_helpers import co_helper_declaration
+from .._internal.route_generation.common import per_helper_outage_enabled, route_helper_devices
 from .._internal.adaptive_decode_ops.coherence import INHERITED_REASON
 from .._internal.types import canonical_sha256
 from .._internal.adaptive_decode_contracts import (
@@ -42,6 +43,7 @@ from .common import (
 
 
 DEVICE_ABSENT_AT_START = "DEVICE_ABSENT_AT_START"
+HELPER_DEFERRED = "HELPER_DEFERRED"
 DEVICE_MEMBERSHIP_EVENT_KINDS = (
     DEVICE_ABSENT_AT_START, "DEVICE_QUARANTINED", "DEVICE_READMITTED",
 )
@@ -58,6 +60,10 @@ def device_quarantine_resource_ids(catalog: RuntimeCapabilityCatalog, device_id:
             co_helper_declaration(row.adapter_parameters) for row in catalog.composite_executors
         )
         if declaration is not None
+    ) or any(
+        # WS23 ``per_helper_outage``: every helper of such a route is its own resource, the scheduled phone included
+        device_id in route_helper_devices(row)
+        for row in catalog.composite_executors if per_helper_outage_enabled(row)
     ):
         return ()
     shared = {
@@ -66,6 +72,30 @@ def device_quarantine_resource_ids(catalog: RuntimeCapabilityCatalog, device_id:
         for resource_id in row.execution_resource_ids
     }
     return tuple(sorted(set(executor.execution_resource_ids) - shared))
+
+
+def anchored_policy_devices(catalog: RuntimeCapabilityCatalog | None, policies) -> tuple[str, ...]:
+    """Preloaded devices of the helper-anchored composites the given adaptive policies execute on."""
+    if catalog is None:
+        return ()
+    devices: list[str] = []
+    for policy in policies:
+        composite = catalog.composite_executor_by_id.get(getattr(policy, "executor_id", None))
+        if composite is None or composite.adapter_parameters.get("static_helper_anchor") != 1:
+            continue
+        raw = composite.adapter_parameters.get("preloaded_resident_device_ids")
+        if type(raw) is str and raw:
+            devices.extend(device for device in raw.split(",") if device and device not in devices)
+    return tuple(devices)
+
+
+def anchored_devices_are_members(devices, membership_events) -> bool:
+    """A device is a member unless its latest membership event quarantined it (readmission restores it)."""
+    latest: dict[str, str] = {}
+    for event in membership_events:
+        if isinstance(event, dict) and type(event.get("device_id")) is str:
+            latest[event["device_id"]] = str(event.get("kind"))
+    return all(latest.get(device) not in {"DEVICE_QUARANTINED", DEVICE_ABSENT_AT_START} for device in devices)
 
 
 class _AdaptiveStartHelperState(NamedTuple):
@@ -160,6 +190,34 @@ class AdaptiveDecodeControlMixin:
                 self, device_id, at_us, "DEVICE_READMITTED", quarantined_at_us
             )
 
+    def _sync_deferred_helpers(self, at_us: int) -> None:
+        """WS23 ``per_helper_outage``: a route that kept running without a thermally deferred helper
+        takes that helper out of every device set (the quarantine of one device, no identity needed);
+        the helper returns when the thermal gate clears. A no-op unless a route opted in."""
+        log = getattr(self, "_thermal_gate_log", None)
+        if log is None or self._runtime_capabilities is None:
+            return
+        deferred = dict(log.deferred_helpers())
+        held = self.__dict__.setdefault("_deferred_helper_devices", set())
+        for device_id in sorted(set(deferred) - held):
+            if device_id not in self._adaptive_decode.quarantined_devices:
+                self.quarantine_device(device_id, reason=HELPER_DEFERRED, at_us=at_us)
+                held.add(device_id)
+        for device_id in sorted(held - set(deferred)):
+            held.discard(device_id)
+            if self._adaptive_decode.quarantined_devices.get(device_id) == HELPER_DEFERRED:
+                self._readmit_deferred_device(device_id, at_us)
+
+    @_runtime_serialized
+    def _readmit_deferred_device(self, device_id: str, at_us: int) -> None:
+        adaptive = self._adaptive_decode.readmit_device(device_id)
+        runtime = self._runtime_controller.readmit_device(device_id)
+        if adaptive or runtime:
+            self._membership_events().append({
+                "at_us": at_us, "device_id": device_id, "kind": "DEVICE_READMITTED",
+                "reason": "THERMAL_DEFERRAL_CLEARED",
+            })
+
     def quarantined_devices(self) -> Mapping[str, str]:
         """Quarantined phone -> reason (the controller's own lock: rig probes poll it)."""
         return dict(self._adaptive_decode.quarantined_devices)
@@ -185,6 +243,9 @@ class AdaptiveDecodeControlMixin:
             return {"outcome": "JOINER_NOT_ACQUIRED"}
         if plan is None or plan.desktop_placement_sha256 is None:
             return {"outcome": "JOINER_WITHOUT_DESKTOP_PARENT"}
+        if getattr(plan.execution_contract, "remote_resident_ffn", None) is not None:
+            # its owner layers have no host copy, so no co-tenant can be told to run them on the host
+            return {"outcome": "JOINER_REMOTE_RESIDENT"}
         if (plan.execution_contract.execution_mode != "adaptive-split"
                 and plan.helper_envelope is None and not self._has_dormant_phone_ffn_runtime(plan)):
             return {"outcome": "JOINER_NOT_ADAPTIVE"}
@@ -391,7 +452,8 @@ class AdaptiveDecodeControlMixin:
             )
             allow_assumed_phone_power = (
                 self._adaptive_start_allow_assumed_phone_power(
-                    plan, helper, dormant_opportunity
+                    plan, helper, dormant_opportunity,
+                    anchored_devices=anchored_policy_devices(self._runtime_capabilities, candidates),
                 )
             )
             directive = self._adaptive_decode.start(
@@ -517,9 +579,25 @@ class AdaptiveDecodeControlMixin:
                 )
         elif plan.execution_contract.execution_mode == "adaptive-split":
             helper_ready = True
+        if not helper_ready and self._anchored_helpers_available(ticket):
+            # WS23 (2026-10-05): a helper-led route has no session-backed request helper (its envelope names no
+            # phone residency layout, so the ready check above fails); its static co-helper worker is the
+            # trace-lifetime helper, available while the device is a member (no quarantine)
+            helper_ready = True
+            helper_generation = helper_geometry = helper_identity = None
         return _AdaptiveStartHelperState(
             helper_ready, helper_generation, helper_geometry, helper_identity
         )
+
+    def _anchored_helpers_available(self, ticket: RuntimeRequestTicket) -> bool:
+        """True when the ticket's adaptive candidates run on helper-anchored composites whose preloaded
+        devices are all members (never quarantined, or readmitted since)."""
+        try:
+            _baseline, candidates, _policy = self._adaptive_policies_from_ticket(ticket)
+        except UnifiedScheduleError:
+            return False
+        devices = anchored_policy_devices(self._runtime_capabilities, candidates)
+        return bool(devices) and anchored_devices_are_members(devices, self._membership_events())
 
     def _adaptive_layout_identity_sha256(
         self, ticket: RuntimeRequestTicket, generation: int,
@@ -592,6 +670,7 @@ class AdaptiveDecodeControlMixin:
         plan,
         helper,
         dormant_opportunity,
+        anchored_devices: tuple[str, ...] = (),
     ) -> bool:
         execution_contract = (
             plan.execution_contract
@@ -606,6 +685,14 @@ class AdaptiveDecodeControlMixin:
             dormant_opportunity.helper_operator_plan
                 .execution_contract.phone_device_id
         )
+        if phone_device_id is None and anchored_devices:
+            # WS23 (2026-10-05): a helper-led route's desktop ticket names no phone; the anchored policies' preloaded
+            # devices are the phones whose (assumed) power evidence decides whether their policies may be explored
+            profiles = [
+                self._runtime_capabilities.phone_power_profile_by_device.get(device_id)
+                for device_id in anchored_devices
+            ]
+            return all(profile is not None and profile.allow_assumed_for_scheduling for profile in profiles)
         phone_power_profile = (
             None
             if phone_device_id is None
@@ -913,6 +1000,15 @@ class AdaptiveDecodeControlMixin:
                 "token_index": token_index,
             },
         )
+
+    def adaptive_live_membership_probe_timeout_s(
+        self, latest_step_us: int | None = None,
+    ) -> int | float:
+        """Timeout of the HTTP adapter's live decode-membership probe (``AdaptiveDecodeConfig``
+        ``live_membership_probe_timeout_ms`` / ``_auto``); the immutable configuration needs no
+        runtime lock."""
+        config = getattr(self, "_adaptive_decode_config", None)
+        return 1 if config is None else config.live_membership_probe_timeout_s(latest_step_us)
 
     @_runtime_serialized
     def adaptive_decode_boundary(

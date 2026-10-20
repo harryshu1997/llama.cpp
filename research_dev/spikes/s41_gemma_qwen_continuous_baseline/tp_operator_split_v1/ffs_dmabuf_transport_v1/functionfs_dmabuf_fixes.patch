@@ -1,0 +1,107 @@
+From: upstream Linux stable fixes, adapted without semantic changes
+Subject: usb: gadget: f_fs: fix DMA-BUF direction and lifetime
+
+Backports:
+
+- 0145e7acd29855dfba4a2f387d455b5d9a520f0e
+- 2796646f6d892c1eb6818c7ca41fdfa12568e8d1
+- baa6b6068a3f2bf2ed525a1cb37975905dadc658
+
+The first fix gives OUT queues writable IOMMU mappings. The second serializes
+request cleanup against detach and close. The third releases the initial
+DMA-fence reference after transferring ownership to dma-resv.
+
+diff --git a/drivers/usb/gadget/function/f_fs.c b/drivers/usb/gadget/function/f_fs.c
+index bfe71e778..a7b9b03cb 100644
+--- a/drivers/usb/gadget/function/f_fs.c
++++ b/drivers/usb/gadget/function/f_fs.c
+@@ -151,6 +151,8 @@ struct ffs_dma_fence {
+ 	struct dma_fence base;
+ 	struct ffs_dmabuf_priv *priv;
+ 	struct work_struct work;
++	struct usb_ep *ep;
++	struct usb_request *req;
+ };
+ 
+ struct ffs_epfile {
+@@ -1375,6 +1377,21 @@ static void ffs_dmabuf_cleanup(struct work_struct *work)
+ 	struct ffs_dmabuf_priv *priv = dma_fence->priv;
+ 	struct dma_buf_attachment *attach = priv->attach;
+ 	struct dma_fence *fence = &dma_fence->base;
++	struct usb_request *req = dma_fence->req;
++	struct usb_ep *ep = dma_fence->ep;
++
++	/*
++	 * eps_lock pairs with the cancel paths so they cannot pass a freed
++	 * req to usb_ep_dequeue(). Only clear if priv->req still names ours;
++	 * a re-queue on the same attachment may have taken that slot.
++	 */
++	spin_lock_irq(&priv->ffs->eps_lock);
++	if (priv->req == req)
++		priv->req = NULL;
++	spin_unlock_irq(&priv->ffs->eps_lock);
++
++	if (ep && req)
++		usb_ep_free_request(ep, req);
+ 
+ 	ffs_dmabuf_put(attach);
+ 	dma_fence_put(fence);
+@@ -1404,8 +1421,8 @@ static void ffs_epfile_dmabuf_io_complete(struct usb_ep *ep,
+ 					  struct usb_request *req)
+ {
+ 	pr_vdebug("FFS: DMABUF transfer complete, status=%d\n", req->status);
++	/* req is freed by ffs_dmabuf_cleanup() under eps_lock. */
+ 	ffs_dmabuf_signal_done(req->context, req->status);
+-	usb_ep_free_request(ep, req);
+ }
+ 
+ static const char *ffs_dmabuf_get_driver_name(struct dma_fence *fence)
+@@ -1499,7 +1516,7 @@ static int ffs_dmabuf_attach(struct file *file, int fd)
+ 		goto err_dmabuf_detach;
+ 	}
+ 
+-	dir = epfile->in ? DMA_FROM_DEVICE : DMA_TO_DEVICE;
++	dir = epfile->in ? DMA_TO_DEVICE : DMA_FROM_DEVICE;
+ 
+ 	err = ffs_dma_resv_lock(dmabuf, nonblock);
+ 	if (err)
+@@ -1629,7 +1646,7 @@ static int ffs_dmabuf_transfer(struct file *file,
+ 	/* Make sure we don't have writers */
+ 	timeout = nonblock ? 0 : msecs_to_jiffies(DMABUF_ENQUEUE_TIMEOUT_MS);
+ 	retl = dma_resv_wait_timeout(dmabuf->resv,
+-				     dma_resv_usage_rw(epfile->in),
++				     dma_resv_usage_rw(!epfile->in),
+ 				     true, timeout);
+ 	if (retl == 0)
+ 		retl = -EBUSY;
+@@ -1674,9 +1691,10 @@ static int ffs_dmabuf_transfer(struct file *file,
+ 	dma_fence_init(&fence->base, &ffs_dmabuf_fence_ops,
+ 		       &priv->lock, priv->context, seqno);
+ 
+-	resv_dir = epfile->in ? DMA_RESV_USAGE_WRITE : DMA_RESV_USAGE_READ;
++	resv_dir = epfile->in ? DMA_RESV_USAGE_READ : DMA_RESV_USAGE_WRITE;
+ 
+ 	dma_resv_add_fence(dmabuf->resv, &fence->base, resv_dir);
++	dma_fence_put(&fence->base);
+ 	dma_resv_unlock(dmabuf->resv);
+ 
+ 	/* Now that the dma_fence is in place, queue the transfer. */
+@@ -1689,6 +1707,10 @@ static int ffs_dmabuf_transfer(struct file *file,
+ 	usb_req->context  = fence;
+ 	usb_req->complete = ffs_epfile_dmabuf_io_complete;
+ 
++	/* ffs_dmabuf_cleanup() frees usb_req via these two fields. */
++	fence->req = usb_req;
++	fence->ep = ep->ep;
++
+ 	cookie = dma_fence_begin_signalling();
+ 	ret = usb_ep_queue(ep->ep, usb_req, GFP_ATOMIC);
+ 	dma_fence_end_signalling(cookie);
+@@ -1698,7 +1720,6 @@ static int ffs_dmabuf_transfer(struct file *file,
+ 	} else {
+ 		pr_warn("FFS: Failed to queue DMABUF: %d\n", ret);
+ 		ffs_dmabuf_signal_done(fence, ret);
+-		usb_ep_free_request(ep->ep, usb_req);
+ 	}
+ 
+ 	spin_unlock_irq(&epfile->ffs->eps_lock);

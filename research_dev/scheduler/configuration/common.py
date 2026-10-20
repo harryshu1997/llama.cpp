@@ -120,16 +120,18 @@ def _scalar_map(
     value: object, name: str
 ) -> Mapping[str, int | str]:
     rows = _object(value, name)
-    result: dict[str, int | str] = {}
+    result: dict[str, int | str | bool] = {}
     for key, item in rows.items():
         field = _text(key, name + " key")
+        # WS24 (2026-10-05): JSON booleans are allowed too (``cache_idle_slots``); ``bool`` is not ``int`` here on purpose
         _require(
-            type(item) is int
+            type(item) is bool
+            or type(item) is int
             and item >= 0
             or type(item) is str
             and bool(item)
             and item.isascii(),
-            name + "." + field + " must be nonnegative integer or ASCII text",
+            name + "." + field + " must be a boolean, nonnegative integer or ASCII text",
         )
         result[field] = item
     return MappingProxyType(dict(sorted(result.items())))

@@ -1,0 +1,150 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" font-family="DejaVu Sans, Helvetica, Arial, sans-serif">
+  <defs>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#10243e" flood-opacity="0.10"/>
+    </filter>
+    <style>
+      .title { font-size: 42px; font-weight: 700; fill: #132238; }
+      .subtitle { font-size: 20px; fill: #546275; }
+      .card-title { font-size: 25px; font-weight: 700; fill: #132238; }
+      .section { font-size: 17px; font-weight: 700; fill: #34445a; }
+      .body { font-size: 16px; fill: #405066; }
+      .small { font-size: 14px; fill: #607086; }
+      .mono { font-family: DejaVu Sans Mono, monospace; }
+      .white { fill: #ffffff; }
+      .blue { fill: #1976d2; }
+      .green { fill: #009e73; }
+      .orange { fill: #d97706; }
+      .red { fill: #c2413b; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="900" fill="#f5f7fb"/>
+  <rect x="0" y="0" width="1600" height="12" fill="#1976d2"/>
+
+  <text x="60" y="70" class="title">Shape-aware matmul offload planning</text>
+  <text x="60" y="108" class="subtitle">Search legal cuts, model the complete critical path, then reject unsafe wins.</text>
+  <rect x="1285" y="43" width="255" height="42" rx="21" fill="#e5eefb"/>
+  <text x="1412" y="70" font-size="15" font-weight="700" fill="#185fa9" text-anchor="middle">OFFLINE SCREENING SOLVER</text>
+
+  <rect x="60" y="145" width="345" height="590" rx="18" fill="#ffffff" filter="url(#shadow)"/>
+  <circle cx="96" cy="188" r="23" fill="#1976d2"/>
+  <text x="96" y="196" font-size="22" font-weight="700" class="white" text-anchor="middle">1</text>
+  <text x="132" y="197" class="card-title">Describe work</text>
+
+  <rect x="84" y="228" width="297" height="92" rx="12" fill="#132238"/>
+  <text x="232" y="260" font-size="15" fill="#b9c8da" text-anchor="middle">ONE MATMUL</text>
+  <text x="232" y="293" font-size="22" font-weight="700" fill="#ffffff" class="mono" text-anchor="middle">W[N,K] x X[K,M]</text>
+
+  <text x="84" y="358" class="section">Or an ordered chain</text>
+  <rect x="84" y="378" width="72" height="48" rx="8" fill="#e5eefb"/>
+  <rect x="194" y="378" width="72" height="48" rx="8" fill="#e5eefb"/>
+  <rect x="304" y="378" width="72" height="48" rx="8" fill="#e5eefb"/>
+  <text x="120" y="408" font-size="15" font-weight="700" fill="#185fa9" text-anchor="middle">MM 0</text>
+  <text x="230" y="408" font-size="15" font-weight="700" fill="#185fa9" text-anchor="middle">MM 1</text>
+  <text x="340" y="408" font-size="15" font-weight="700" fill="#185fa9" text-anchor="middle">MM 2</text>
+  <text x="175" y="409" font-size="22" fill="#607086" text-anchor="middle">-&gt;</text>
+  <text x="285" y="409" font-size="22" fill="#607086" text-anchor="middle">-&gt;</text>
+
+  <text x="84" y="470" class="section">Decision context</text>
+  <circle cx="94" cy="502" r="4" fill="#1976d2"/>
+  <text x="110" y="508" class="body">M, N, K and quant block alignment</text>
+  <circle cx="94" cy="540" r="4" fill="#1976d2"/>
+  <text x="110" y="546" class="body">CPU RAM or desktop VRAM origin</text>
+  <circle cx="94" cy="578" r="4" fill="#1976d2"/>
+  <text x="110" y="584" class="body">Prepared phone kernels and weights</text>
+  <circle cx="94" cy="616" r="4" fill="#1976d2"/>
+  <text x="110" y="622" class="body">AOA/NCM payload and cadence</text>
+
+  <rect x="84" y="658" width="297" height="48" rx="10" fill="#fff5df"/>
+  <text x="232" y="688" font-size="15" font-weight="700" fill="#9a5a00" text-anchor="middle">Weights are resident before timing</text>
+
+  <rect x="430" y="145" width="685" height="590" rx="18" fill="#ffffff" filter="url(#shadow)"/>
+  <circle cx="466" cy="188" r="23" fill="#009e73"/>
+  <text x="466" y="196" font-size="22" font-weight="700" class="white" text-anchor="middle">2</text>
+  <text x="502" y="197" class="card-title">Enumerate legal cuts</text>
+
+  <text x="458" y="245" class="section">Single matmul</text>
+  <rect x="458" y="264" width="305" height="90" rx="12" fill="#f4f8fd" stroke="#d6e4f5"/>
+  <text x="476" y="288" font-size="15" font-weight="700" fill="#34445a">N / output rows</text>
+  <rect x="476" y="306" width="166" height="25" rx="5" fill="#1976d2"/>
+  <rect x="642" y="306" width="94" height="25" rx="5" fill="#009e73"/>
+  <text x="559" y="324" font-size="13" font-weight="700" class="white" text-anchor="middle">HOST Y rows</text>
+  <text x="689" y="324" font-size="13" font-weight="700" class="white" text-anchor="middle">PHONE</text>
+  <text x="476" y="345" class="small">Return phone rows, then concatenate.</text>
+
+  <rect x="782" y="264" width="305" height="90" rx="12" fill="#f4f8fd" stroke="#d6e4f5"/>
+  <text x="800" y="288" font-size="15" font-weight="700" fill="#34445a">K / reduction columns</text>
+  <rect x="800" y="306" width="166" height="25" rx="5" fill="#1976d2"/>
+  <rect x="966" y="306" width="94" height="25" rx="5" fill="#009e73"/>
+  <text x="883" y="324" font-size="13" font-weight="700" class="white" text-anchor="middle">HOST partial Y</text>
+  <text x="1013" y="324" font-size="13" font-weight="700" class="white" text-anchor="middle">PHONE</text>
+  <text x="800" y="345" class="small">Return full partial Y, then sum.</text>
+
+  <text x="458" y="394" class="section">Structured operators</text>
+  <rect x="458" y="413" width="196" height="74" rx="10" fill="#eef8f5"/>
+  <text x="476" y="439" font-size="15" font-weight="700" fill="#006b50">FFN</text>
+  <text x="476" y="463" class="small">Split intermediate I across</text>
+  <text x="476" y="480" class="small">gate + up + down together.</text>
+  <rect x="665" y="413" width="196" height="74" rx="10" fill="#eef8f5"/>
+  <text x="683" y="439" font-size="15" font-weight="700" fill="#006b50">MoE</text>
+  <text x="683" y="463" class="small">Assign whole experts;</text>
+  <text x="683" y="480" class="small">never cut routing semantics.</text>
+  <rect x="872" y="413" width="215" height="74" rx="10" fill="#eef8f5"/>
+  <text x="890" y="439" font-size="15" font-weight="700" fill="#006b50">Chain</text>
+  <text x="890" y="463" class="small">Keep dependent matmuls in</text>
+  <text x="890" y="480" class="small">one phone island.</text>
+
+  <rect x="458" y="520" width="629" height="104" rx="12" fill="#132238"/>
+  <text x="772" y="552" font-size="15" fill="#b9c8da" text-anchor="middle">COMPLETE CRITICAL PATH</text>
+  <text x="772" y="586" font-size="20" font-weight="700" fill="#ffffff" class="mono" text-anchor="middle">Tsplit = max(Thost, Tstage + Twire + Tphone) + Tmerge</text>
+  <text x="772" y="612" font-size="14" fill="#b9c8da" text-anchor="middle">Ordered chain: dependent host segments + phone islands are summed.</text>
+
+  <rect x="458" y="646" width="305" height="61" rx="10" fill="#fff5df"/>
+  <text x="610" y="671" font-size="14" font-weight="700" fill="#9a5a00" text-anchor="middle">AUTO TRANSPORT</text>
+  <text x="610" y="694" font-size="14" fill="#7a520d" text-anchor="middle">AOA small  |  NCM above about 263 KiB</text>
+  <rect x="782" y="646" width="305" height="61" rx="10" fill="#fcebea"/>
+  <text x="934" y="671" font-size="14" font-weight="700" fill="#a8322d" text-anchor="middle">ACCEPTANCE GATE</text>
+  <text x="934" y="694" font-size="14" fill="#81342f" text-anchor="middle">median gain &gt;= 5% and p90 &lt;= desktop</text>
+
+  <rect x="1140" y="145" width="400" height="590" rx="18" fill="#ffffff" filter="url(#shadow)"/>
+  <circle cx="1176" cy="188" r="23" fill="#d97706"/>
+  <text x="1176" y="196" font-size="22" font-weight="700" class="white" text-anchor="middle">3</text>
+  <text x="1212" y="197" class="card-title">Rank or reject</text>
+
+  <rect x="1164" y="228" width="352" height="65" rx="11" fill="#fff5df"/>
+  <text x="1182" y="254" font-size="16" font-weight="700" fill="#9a5a00">Gemma-4-26B-A4B working shape</text>
+  <text x="1182" y="278" class="small">Synthetic Q8 top-8 experts, H=2816, M=1</text>
+
+  <text x="1164" y="330" class="section">Selected partition</text>
+  <text x="1164" y="360" class="body">CPU</text>
+  <rect x="1212" y="340" width="228" height="30" rx="6" fill="#1976d2"/>
+  <text x="1326" y="361" font-size="14" font-weight="700" class="white" text-anchor="middle">6 experts</text>
+  <text x="1164" y="402" class="body">HTP</text>
+  <rect x="1212" y="382" width="76" height="30" rx="6" fill="#009e73"/>
+  <text x="1250" y="403" font-size="14" font-weight="700" class="white" text-anchor="middle">2</text>
+
+  <line x1="1164" y1="438" x2="1516" y2="438" stroke="#dce2ea"/>
+  <text x="1164" y="468" class="small">All desktop model</text>
+  <rect x="1294" y="450" width="191" height="19" rx="4" fill="#bac6d5"/>
+  <text x="1508" y="467" font-size="14" font-weight="700" fill="#405066" text-anchor="end">1.014 ms</text>
+  <text x="1164" y="504" class="small">Planned model</text>
+  <rect x="1294" y="486" width="144" height="19" rx="4" fill="#009e73"/>
+  <text x="1508" y="503" font-size="14" font-weight="700" fill="#006b50" text-anchor="end">0.764 ms</text>
+
+  <rect x="1164" y="530" width="352" height="86" rx="10" fill="#eef8f5"/>
+  <text x="1182" y="556" font-size="15" font-weight="700" fill="#006b50">Model result: 24.6% faster</text>
+  <text x="1182" y="580" class="small">Phone weights: 12.1 MiB working / 771.4 MiB resident</text>
+  <text x="1182" y="602" class="small">Wire: 5.5 KiB request + 5.5 KiB response via AOA</text>
+
+  <rect x="1164" y="636" width="352" height="71" rx="10" fill="#fcebea"/>
+  <text x="1182" y="662" font-size="14" font-weight="700" fill="#a8322d">PROVISIONAL - exact-shape benchmark required</text>
+  <text x="1182" y="685" class="small">This is a roofline screening result, not a model claim.</text>
+
+  <rect x="60" y="765" width="1480" height="90" rx="16" fill="#132238"/>
+  <text x="88" y="797" font-size="15" font-weight="700" fill="#b9c8da">HARD REJECTIONS</text>
+  <circle cx="98" cy="827" r="6" fill="#ef6a62"/>
+  <text x="116" y="833" font-size="15" class="white">RTX 4060 Ti phone path: reject until pinned VRAM D2H/H2D staging is measured.</text>
+  <circle cx="842" cy="827" r="6" fill="#ef6a62"/>
+  <text x="860" y="833" font-size="15" class="white">Persistent phone GPU: reject until a real quantized matmul kernel is qualified.</text>
+</svg>

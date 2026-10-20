@@ -116,6 +116,15 @@ class PhoneResidencyMixin:
         )
 
     @_runtime_serialized
+    def configure_remote_resident_owner(self, model_id: str) -> None:
+        """Pin a model to its remote-resident parent (campaign ``remote_resident_owner``)."""
+        return _fixed.configure_remote_resident_owner(self, model_id)
+
+    @_runtime_serialized
+    def remote_resident_owner_configuration(self) -> Mapping[str, object] | None:
+        return _fixed.remote_resident_owner_configuration(self)
+
+    @_runtime_serialized
     def fixed_phone_residency_configuration(self) -> Mapping[str, object] | None:
         return _fixed.fixed_phone_residency_configuration(self)
 

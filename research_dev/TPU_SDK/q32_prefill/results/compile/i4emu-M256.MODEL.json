@@ -1,0 +1,14 @@
+{
+  "fmt": "i4emu",
+  "scale_dtype": "f16",
+  "nibble_order": "lo",
+  "batch": 256,
+  "part": "all",
+  "columns": 25600,
+  "ops": 18,
+  "tflite_bytes": 245764336,
+  "weight_payload_bytes": 245760000,
+  "model_sha256": "d89baf3bd73e98a828b07ad2ee39046b293ac406aead3902ab981e4b55760c25",
+  "weights_sha256": "fc8a9faf92a0a2776b71a44cf03425b7003e9adb0cd6610247ffbe99b9ca6e6f",
+  "exporter_sha256": "80758663203add547881d3b29460eb02e735623262d7b19a5aab6f84eb936574"
+}

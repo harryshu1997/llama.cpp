@@ -287,9 +287,36 @@ def smoke_plan(trace_plan: Mapping[str, Any], model_path: str, *, time_scale: fl
     }
 
 
+PRESET_OPTION_KEY = re.compile(r"[a-z][a-z0-9-]*")
+RESERVED_PRESET_KEYS = {"model", "host", "port", "alias", "models-dir", "models-max", "models-preset",
+                        "models-autoload", "hf-repo", "mmproj"}
+
+
+def _validate_extension(plan: Mapping[str, Any]) -> None:
+    """Opt-in fields of derived arms: per-model ``preset_options`` and a plan-level ``arm_extension``."""
+    for row in plan["models"]:
+        options = row.get("preset_options")
+        if options is None:
+            continue
+        if not isinstance(options, dict):
+            raise ValueError("preset_options must be an object: " + row["model_id"])
+        for key, value in options.items():
+            if (not isinstance(key, str) or not PRESET_OPTION_KEY.fullmatch(key) or key in RESERVED_PRESET_KEYS
+                    or not isinstance(value, str) or not value or any(c in value for c in "\r\n;#")):
+                raise ValueError("preset option is not a plain key = value line: %s %r" % (row["model_id"], key))
+    extension = plan.get("arm_extension")
+    if extension is not None:
+        if not isinstance(extension, dict) or not isinstance(extension.get("arm"), str):
+            raise ValueError("arm_extension needs an arm name")
+        for flag in extension.get("required_server_flags", ()):
+            if not isinstance(flag, str) or not flag.startswith("--"):
+                raise ValueError("arm_extension required_server_flags must be --flags")
+
+
 def validate_plan(plan: Mapping[str, Any]) -> None:
     if plan.get("schema") != PLAN_SCHEMA:
         raise ValueError("plan schema")
+    _validate_extension(plan)
     names = [row["model_id"] for row in plan["models"]]
     if len(set(names)) != len(names) or not names:
         raise ValueError("plan model names")
@@ -310,10 +337,17 @@ def validate_plan(plan: Mapping[str, Any]) -> None:
 
 
 def preset_text(models: Sequence[Mapping[str, Any]]) -> str:
-    """The router preset: one section per model with its GGUF path and nothing else."""
-    lines = ["; ws7 default llama.cpp baseline: model name -> GGUF path only; every other option is the default", ""]
+    """The router preset: one section per model with its GGUF path and nothing else. A derived arm (WS18 RPC
+    offload) may add ``preset_options`` to a model row; each becomes one ``key = value`` line of that section."""
+    if any(row.get("preset_options") for row in models):
+        lines = ["; derived arm: model name -> GGUF path plus the arm's recorded preset options "
+                 "(RESULT deviations_from_defaults); every other option is the default", ""]
+    else:
+        lines = ["; ws7 default llama.cpp baseline: model name -> GGUF path only; every other option is the default", ""]
     for row in models:
-        lines += ["[" + row["model_id"] + "]", "model = " + row["path"], ""]
+        lines += ["[" + row["model_id"] + "]", "model = " + row["path"]]
+        lines += ["%s = %s" % (key, value) for key, value in sorted((row.get("preset_options") or {}).items())]
+        lines += [""]
     return "\n".join(lines)
 
 
@@ -1033,11 +1067,15 @@ def build_result(plan: Mapping[str, Any], outcome: ReplayOutcome, instances: Seq
     if log_verbosity is not None and log_verbosity != 3:
         deviations.append({**DEVIATIONS["log_verbosity"], "flag": "-lv %d" % log_verbosity})
     deviations.append(DEVIATIONS["request_model_field"])
+    extension = plan.get("arm_extension") or {}
+    deviations += [dict(row) for row in extension.get("deviations", ())]
+    result_extension = {"arm_extension": dict(extension)} if extension else {}
     return {
-        "arm": "default-llamacpp-router",
+        **result_extension,
+        "arm": extension.get("arm", "default-llamacpp-router"),
         "client_inflight_peak": dict(outcome.inflight_peak),
         "counts": counts,
-        "defaults_relied_on": list(DEFAULTS_RELIED_ON),
+        "defaults_relied_on": list(DEFAULTS_RELIED_ON) + list(extension.get("defaults_relied_on", ())),
         "deviations_from_defaults": deviations,
         "duration_us": (paid_end_ns - epoch_ns) // 1000,
         "energy_evidence": evidence,
@@ -1105,7 +1143,10 @@ def router_environment(base: Mapping[str, str], library_dirs: Sequence[str], ser
     for name in removed:
         del environment[name]
     overrides: dict[str, str] = {}
-    library_path = ":".join(dict.fromkeys([*library_dirs, str(server_dir)]))
+    # the server's own build directory comes first (2026-10-06): the rig's library directories hold another
+    # build's libllama-common.so / libllama-server-impl.so, and loading those from cuda-build-rpc's server made
+    # it lose its --rpc flag ("error: invalid argument: --rpc")
+    library_path = ":".join(dict.fromkeys([str(server_dir), *library_dirs]))
     environment["LD_LIBRARY_PATH"] = library_path + (":" + base["LD_LIBRARY_PATH"]
                                                      if base.get("LD_LIBRARY_PATH") else "")
     overrides["LD_LIBRARY_PATH"] = environment["LD_LIBRARY_PATH"]
@@ -1115,11 +1156,11 @@ def router_environment(base: Mapping[str, str], library_dirs: Sequence[str], ser
     return environment, overrides, removed
 
 
-def check_router_support(binary: Path, environment: Mapping[str, str]) -> None:
+def check_router_support(binary: Path, environment: Mapping[str, str], extra_flags: Sequence[str] = ()) -> None:
     completed = subprocess.run([str(binary), "--help"], capture_output=True, text=True, env=dict(environment),
                                timeout=60, check=False)
     text = completed.stdout + completed.stderr
-    missing = [flag for flag in ("--models-preset", "--models-max", "--fit") if flag not in text]
+    missing = [flag for flag in ("--models-preset", "--models-max", "--fit", *extra_flags) if flag not in text]
     if missing:
         raise SystemExit("server binary lacks router/fit support (%s): %s" % (", ".join(missing), binary))
 
@@ -1178,7 +1219,7 @@ def run(args: argparse.Namespace, *, sampler_factory: Callable[[HostMetricCallba
     library_dirs = list(args.library_dir or (rig.get("library_directories") or {}).values())
     environment, overrides, removed = router_environment(os.environ, library_dirs, binary.parent,
                                                          args.cuda_visible_devices)
-    check_router_support(binary, environment)
+    check_router_support(binary, environment, (plan.get("arm_extension") or {}).get("required_server_flags", ()))
     model_checks = check_models(plan, not args.skip_model_size_check)
     host = "127.0.0.1"
     if port_in_use(host, args.port):

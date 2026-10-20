@@ -524,6 +524,175 @@ class PhysicalAdapterTests(unittest.TestCase):
                 handle.thread.join(timeout=1.0)
         self.assertFalse(handle.thread.is_alive())
 
+    def test_watcher_records_rejected_and_failed_preparation_decisions(
+        self,
+    ) -> None:
+        """2026-10-06: on the single-user traces the OnePlus never loaded Gemma.
+        The request-helper watcher died (a) after 60 swallowed ValueErrors from
+        the scheduler ("memory replacement credit differs from transition
+        plan") and (b) on the REJECTED status of a stale proposal, both times
+        without a trace in the run artifacts. REJECTED is now a re-plan hint
+        the watcher survives, every swallowed exception is recorded once, and
+        a dying watcher records WATCHER_FAILED before it re-raises."""
+        request_value = SimpleNamespace(request_id="watch-reject", arrival_us=0)
+        ticket = SimpleNamespace(
+            request=request_value,
+            dispatch_state="ACTIVE",
+            ticket_id="watch-reject:attempt:0",
+        )
+        helper = SimpleNamespace(
+            phone_layout_generation=2,
+            phone_layout_geometry_sha256="sha256:" + "a" * 64,
+            operator_plan_sha256="sha256:" + "b" * 64,
+            preparation_ticket_id=lambda ticket_id: "prep:" + ticket_id,
+        )
+        command = SimpleNamespace(adapter_parameters={}, helper_envelope=helper)
+
+        class Scheduler:
+            def __init__(self) -> None:
+                self.decisions = [
+                    {"status": "REJECTED",
+                     "reason": "PHONE_RESIDENCY_PROPOSAL_STALE"},
+                    ValueError(
+                        "memory replacement credit differs from transition plan"
+                    ),
+                    {"status": "BOGUS"},
+                ]
+                self.recorded = []
+                self.calls = 0
+
+            def runtime_ticket(self, _request_id):
+                return ticket
+
+            def runtime_background_helper_preparation_allowed(self, *_a, **_k):
+                return True
+
+            def runtime_request_helper_preparation_envelope(self, *_a, **_k):
+                return helper
+
+            def begin_request_helper_preparation(self, *_a, **_k):
+                self.calls += 1
+                decision = (
+                    self.decisions.pop(0) if self.decisions
+                    else {"status": "DEFERRED"}
+                )
+                if isinstance(decision, Exception):
+                    raise decision
+                return decision
+
+            def record_request_helper_preparation_status(
+                self, request_id, *, status, reason,
+                phone_layout_generation, observed_at_us,
+            ):
+                self.assertions = None
+                self.recorded.append(
+                    (request_id, status, reason, phone_layout_generation)
+                )
+                return True
+
+            def check_request_helper_preparation(self, *_a, **_k):
+                return None
+
+            def complete_request_helper_preparation(self, *_a, **_k):
+                return None
+
+            def fail_request_helper_preparation(self, *_a, **_k):
+                return None
+
+        scheduler = Scheduler()
+        adapter = object.__new__(CanonicalPhysicalAdapter)
+        adapter._scheduler = scheduler
+        adapter._epoch_ns = time.monotonic_ns()
+        adapter._helper_preparation_lock = threading.Lock()
+        adapter._helper_preparation_watchers = set()
+        adapter._started_helper_preparations = set()
+        adapter._helper_preparations = []
+        adapter._snapshot = lambda _ticket, at_us: SimpleNamespace(
+            captured_at_us=at_us
+        )
+        hooked = []
+        with mock.patch(
+            "research_dev.scheduler.adapters.runtime.interpret_runtime_ticket",
+            return_value=command,
+        ), mock.patch.object(
+            threading, "excepthook", lambda args: hooked.append(args)
+        ):
+            handle = adapter._start_helper_preparation(ticket, command, object())
+            self.assertIsNotNone(handle)
+            handle.thread.join(timeout=5.0)
+            handle.stop.set()
+        self.assertFalse(handle.thread.is_alive())
+        self.assertEqual(scheduler.calls, 3)
+        self.assertEqual(
+            [row[:2] for row in scheduler.recorded],
+            [
+                ("watch-reject", "REJECTED"),
+                ("watch-reject", "REJECTED"),
+                ("watch-reject", "WATCHER_FAILED"),
+            ],
+        )
+        self.assertEqual(
+            scheduler.recorded[0][2:], ("PHONE_RESIDENCY_PROPOSAL_STALE", 2)
+        )
+        self.assertIn("memory replacement credit", scheduler.recorded[1][2])
+        self.assertEqual(scheduler.recorded[1][3], 2)
+        self.assertIn("decision is invalid", scheduler.recorded[2][2])
+        self.assertIsNone(scheduler.recorded[2][3])
+        self.assertEqual(len(hooked), 1)
+        self.assertIsInstance(hooked[0].exc_value, PhysicalAdapterError)
+        self.assertEqual(
+            [row["reason"] for row in adapter._helper_preparation_rejections],
+            [scheduler.recorded[1][2]],
+        )
+
+    def test_all_sessions_replacement_is_a_whole_relaunch(self) -> None:
+        """2026-10-06: on a one-session phone (OnePlus holding only Qwen layer 0)
+        the Gemma replacement changes every live session; the in-place partial
+        reconfiguration needs >= 2 target shards, so the rig raised "exact
+        partial phone residency transition is unavailable" 361 times in one
+        conversation run. Such a transition is a whole relaunch, and the
+        watcher pauses after a physical failure instead of retrying at once."""
+        from research_dev.scheduler.adapters.heterogeneous_rig_ops.transitions import (
+            _replaces_every_live_phone_session,
+        )
+
+        class Residency:
+            def __init__(self, sessions, error=None):
+                self.sessions = sessions
+                self.error = error
+
+            def physical_session_identities(self):
+                if self.error is not None:
+                    raise self.error
+                return {name: object() for name in self.sessions}
+
+        self.assertFalse(_replaces_every_live_phone_session(None, ("HTP0",)))
+        self.assertFalse(
+            _replaces_every_live_phone_session(Residency(()), ("HTP0",))
+        )
+        self.assertTrue(
+            _replaces_every_live_phone_session(Residency(("HTP0",)), ("HTP0",))
+        )
+        self.assertFalse(
+            _replaces_every_live_phone_session(
+                Residency(("HTP0", "HTP1", "HTP2")), ("HTP2",)
+            )
+        )
+        self.assertTrue(
+            _replaces_every_live_phone_session(
+                Residency(("HTP0", "HTP1")), ("HTP0", "HTP1", "HTP2")
+            )
+        )
+        self.assertFalse(
+            _replaces_every_live_phone_session(
+                Residency(("HTP0",), PhysicalAdapterError("ambiguous")),
+                ("HTP0",),
+            )
+        )
+        self.assertGreaterEqual(
+            CanonicalPhysicalAdapter._helper_physical_failure_backoff_s, 1.0
+        )
+
     def test_ready_helper_refresh_precedes_new_preparation(self) -> None:
         request_value = SimpleNamespace(
             request_id="ready-helper-first",

@@ -77,8 +77,10 @@ from research_dev.scheduler.adapters.speculative_rows import (  # noqa: E402
 )
 from research_dev.scheduler.configuration.campaign import speculative_rows_configuration  # noqa: E402
 from research_dev.scheduler._internal.model_manifest import _sha256_file  # noqa: E402
+from research_dev.scheduler._internal import matrix_precision  # noqa: E402
 from research_dev.scheduler.adapters.device_power import device_power_capability  # noqa: E402
 from research_dev.scheduler.configuration.campaign import DevicePowerConfiguration  # noqa: E402
+from research_dev.scheduler.configuration.campaign import RemoteResidentOwnerConfiguration  # noqa: E402
 from research_dev.scheduler.adapters.ffn_shards import (  # noqa: E402
     FfnShardIndex,
     FfnShardIndexError,
@@ -196,6 +198,11 @@ def _local_port_available(
         return True, "endpoint is live"
     family = socket.AF_INET6 if ":" in parsed.hostname else socket.AF_INET
     probe = socket.socket(family, socket.SOCK_STREAM)
+    # 2026-10-06: the previous arm's server port sits in TIME_WAIT for up to
+    # 60 s after that run ends (pQ41nphc preflight 9 s after pQ41nph: "Address
+    # already in use"). llama-server binds with SO_REUSEADDR, so probe the same
+    # way: a TIME_WAIT remnant is not a conflict, a live listener still is.
+    probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
         probe.bind((parsed.hostname, parsed.port))
         return True, "endpoint port is free for canonical launch"
@@ -574,21 +581,31 @@ def _phone_router_identity(args: argparse.Namespace) -> tuple[str, str]:
     return phone_router_sha256, phone_router_detail
 
 
+def _spec_precision_check(
+    check_id: str, manifest: ModelManifest, spec: "matrix_precision.MatrixPrecisionSpec"
+) -> PhysicalPreflightCheck:
+    ok, detail = matrix_precision.evaluate(manifest.tensors, spec)
+    return check(check_id, ok, detail)
+
+
 def _model_checks(
     catalog: RuntimeCapabilityCatalog,
     manifests: dict[str, ModelManifest],
     expected_qwen: ModelManifest,
     expected_gemma: ModelManifest,
     llama_model_id: str,
+    *,
+    qwen_precision: "matrix_precision.MatrixPrecisionSpec | None" = None,
+    gemma_precision: "matrix_precision.MatrixPrecisionSpec | None" = None,
 ) -> list[PhysicalPreflightCheck]:
     rig_checks = []
+    qwen_manifest = manifests[expected_qwen.model_id]
+    gemma_manifest = manifests[expected_gemma.model_id]
     rig_checks.extend((
-        _precision_check("qwen-matrix-precision", manifests[
-            expected_qwen.model_id
-        ], "F16"),
-        _precision_check("gemma-matrix-precision", manifests[
-            expected_gemma.model_id
-        ], "F16"),
+        _precision_check("qwen-matrix-precision", qwen_manifest, "F16") if qwen_precision is None
+        else _spec_precision_check("qwen-matrix-precision", qwen_manifest, qwen_precision),
+        _precision_check("gemma-matrix-precision", gemma_manifest, "F16") if gemma_precision is None
+        else _spec_precision_check("gemma-matrix-precision", gemma_manifest, gemma_precision),
         _precision_check(
             "llama-matrix-precision",
             manifests[llama_model_id],
@@ -1263,11 +1280,23 @@ def _result_details(
     }
 
 
+def _idle_trace_models(
+    trace_manifest: dict[str, Any],
+    role_models: dict[str, str],
+) -> set[str]:
+    """Models whose trace role the manifest declares with zero rows (a single-model trace leaves the cold one idle)."""
+    execution_models = trace_manifest.get("execution_models")
+    if type(execution_models) is not dict:
+        return set()
+    return {model_id for role, model_id in role_models.items() if execution_models.get(role) == 0}
+
+
 def run(args: argparse.Namespace) -> dict[str, object]:
+    trace_manifest = load_object(args.trace_manifest)
     large_rows, overlay_rows = validate_trace(
         args.large_requests,
         args.overlay_requests,
-        load_object(args.trace_manifest),
+        trace_manifest,
     )
     expected_qwen = ModelManifest.from_json(load_object(args.qwen_manifest))
     expected_gemma = ModelManifest.from_json(load_object(args.gemma_manifest))
@@ -1295,21 +1324,33 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     if ffn_shard_indexes:
         scheduler.register_phone_ffn_shard_storage(_ffn_shard_storage(ffn_shard_indexes))
     aliases = artifact_aliases(catalog, manifests)
-    merged = merge_rows(large_rows, overlay_rows, {
+    role_models = {
         QWEN_ROLE: expected_qwen.model_id,
         GEMMA_ROLE: expected_gemma.model_id,
-    })
+    }
+    merged = merge_rows(large_rows, overlay_rows, role_models)
     if getattr(args, "replay_schedule", None) is not None:
         merged, _ = apply_named_replay_schedule(merged, load_object(args.replay_schedule))
     first_by_model = {}
     for item in merged:
         first_by_model.setdefault(item["model_id"], item["row"])
-    require(set(first_by_model) == set(manifests), "three-model trace coverage")
+    idle_models = _idle_trace_models(trace_manifest, role_models)
+    require(
+        set(first_by_model) <= set(manifests)
+        and set(manifests) - set(first_by_model) == idle_models,
+        "three-model trace coverage",
+    )
+    # An idle model stays registered (the catalog carries its routes); plan it for the trace's
+    # first large-model request so those routes are still checked.
+    for model_id in sorted(idle_models):
+        first_by_model[model_id] = next(item["row"] for item in merged if item["source"] == "large")
 
     phone_router_sha256, phone_router_detail = _phone_router_identity(args)
 
     rig_checks = _model_checks(
-        catalog, manifests, expected_qwen, expected_gemma, llama_model_id
+        catalog, manifests, expected_qwen, expected_gemma, llama_model_id,
+        qwen_precision=getattr(args, "qwen_matrix_precision", None),
+        gemma_precision=getattr(args, "gemma_matrix_precision", None),
     )
     rig_checks.extend(ffn_shard_checks)
     host = LinuxHostRuntimeProbe().sample()
@@ -1403,6 +1444,12 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             (_trace_request_for_row(item["row"], item["model_id"]), item["model_id"])
             for item in merged
         ),
+        remote_resident_owner_models=(
+            () if getattr(args, "remote_resident_owner_json", None) is None
+            else (RemoteResidentOwnerConfiguration.from_json(
+                json.loads(args.remote_resident_owner_json)
+            ).model_id,)
+        ),
     )
     result = report.to_json()
     result.update(_result_details(
@@ -1478,6 +1525,12 @@ def parse_args() -> argparse.Namespace:
                         help="campaign device_power: the sudoers capability is probed (advisory)")
     parser.add_argument("--speculative-rows-json", dest="speculative_rows", type=speculative_rows_json,
                         help="campaign speculative_rows: the draft GGUF, its vocabulary and the server pin are checked")
+    parser.add_argument("--qwen-matrix-precision", type=matrix_precision.parse_cli,
+                        help="WS17 quantized artifact: JSON {allowed: [...], ffn?: TYPE}; absent = all matrices F16")
+    parser.add_argument("--gemma-matrix-precision", type=matrix_precision.parse_cli,
+                        help="WS17 quantized artifact: JSON {allowed: [...], ffn?: TYPE}; absent = all matrices F16")
+    parser.add_argument("--remote-resident-owner-json",
+                        help="campaign remote_resident_owner: its remote-resident parent must plan")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     require(args.output.is_absolute() and not args.output.exists(), "new output")

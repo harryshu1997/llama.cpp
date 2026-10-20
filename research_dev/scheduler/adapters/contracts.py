@@ -25,12 +25,20 @@ class StalePhysicalSlotError(PhysicalAdapterError):
 
 DORMANT_PHONE_FFN_RUNTIME_PARAMETER = "dormant_phone_ffn_runtime_v1"
 DORMANT_PHONE_FFN_RUNTIME_KEYS = frozenset({
+    "static_helper_anchor",
+    "adb_port",
+    "adb_serial",
+    "ffn_link_transport",
+    "ffn_worker_host",
+    "ffn_worker_port",
+    "phone_worker_port",
     "bridge_allocator",
     "bridge_queue_depth",
     "ffn_activation",
     "ffn_assistance_phase",
     "ffn_bridge_host",
     "ffn_bridge_port",
+    "ffn_fast_hash",
     "ffn_host_share_release",
     "ffn_host_share_drop_cache",
     "ffn_host_share_populate",
@@ -84,6 +92,13 @@ _DORMANT_PHONE_FFN_FUNCTIONFS_KEYS = frozenset({
     "usb_transport_profile_id",
     "usb_vendor_id",
     "usbfs_available_bytes",
+})
+_DORMANT_PHONE_FFN_ADB_TCP_KEYS = frozenset({
+    "adb_port",
+    "adb_serial",
+    "ffn_worker_host",
+    "ffn_worker_port",
+    "phone_worker_port",
 })
 _DORMANT_PHONE_FFN_TCP_KEYS = frozenset({
     "bridge_allocator",
@@ -166,6 +181,9 @@ def dormant_phone_ffn_parameters(
         required.update(_DORMANT_PHONE_FFN_FUNCTIONFS_KEYS)
     elif transport == "tcp":
         required.update(_DORMANT_PHONE_FFN_TCP_KEYS)
+    elif transport == "adb-tcp":
+        # WS23: a helper phone's TCP worker anchoring its own route (the AOA bridge owns the forward port)
+        required.update(_DORMANT_PHONE_FFN_ADB_TCP_KEYS)
     else:
         raise PhysicalAdapterError(
             "dormant phone FFN runtime transport is invalid"
@@ -378,6 +396,25 @@ class CompletionStreamError(PhysicalAdapterError):
                 "completion stream error message is invalid"
             )
         self.server_error_message = server_error_message
+
+
+class CompletionRejectedError(CompletionStreamError):
+    """A ``/completion`` request the server answered with a non-200 status.
+
+    The server's error body (``error.message``, e.g. "Compute aborted." when a lost FFN helper
+    aborted the batch the request had just joined) travels as ``server_error_message``: the same
+    evidence a cut stream carries, so the drop-recovery classifier reads the server log for it.
+    Before 2026-10-03 a bare status error was a local failure to the classifier, and the
+    co-tenant of a helper loss ended the run (fault run p6f1flt, request 004).
+    """
+
+    def __init__(self, status: int, *, server_error_message: str | None = None) -> None:
+        if type(status) is not int:
+            raise PhysicalAdapterError("completion status is invalid")
+        super().__init__(
+            f"completion status is {status}", server_error_message=server_error_message
+        )
+        self.status = status
 
 
 @dataclass(frozen=True)

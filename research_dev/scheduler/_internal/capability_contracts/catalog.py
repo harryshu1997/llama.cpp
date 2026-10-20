@@ -192,16 +192,36 @@ def _validate_composite_co_helpers(
         ) from error
     if declaration is None:
         return
+    declared = coordinator.adapter_parameters.get("remote_resident_ffn_v1")
+    if declared is not None:
+        # a remote-resident parent: the co-helpers sit next to the owner phone, not a scheduled helper
+        try:
+            remote = RuntimeRemoteResidentFfn.from_json(json.loads(declared))
+        except (TypeError, ValueError, RuntimePlanError) as error:
+            raise RuntimeCapabilityError(
+                "composite remote-resident declaration is invalid"
+            ) from error
+        if declaration.layer_mask & remote.layer_mask:
+            raise RuntimeCapabilityError(
+                "composite co-helper overlaps remote-resident layers"
+            )
+        anchored = coordinator.helper_device_id is None
+        anchors = {
+            coordinator.coordinator_device_id,
+            coordinator.adapter_parameters.get("phone_device_id"),
+        }
+    else:
+        anchored = (
+            coordinator.assisted_operator_kind == "ffn"
+            and coordinator.helper_device_id is not None
+            and coordinator.baseline_executor_id is not None
+        )
+        anchors = {coordinator.coordinator_device_id, coordinator.helper_device_id}
     if (
-        coordinator.assisted_operator_kind != "ffn"
-        or coordinator.helper_device_id is None
-        or coordinator.baseline_executor_id is None
+        not anchored
         or any(
             device_id not in coordinator.participant_device_ids
-            or device_id in {
-                coordinator.coordinator_device_id,
-                coordinator.helper_device_id,
-            }
+            or device_id in anchors
             or "ffn" not in executor_by_device[device_id].operator_kinds
             or not catalog.placement_profile.devices[device_id].kind.startswith(
                 "phone"

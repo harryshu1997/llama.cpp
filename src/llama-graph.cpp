@@ -1691,6 +1691,64 @@ const dense_ffn_split_policy & policy,
     return cur;
 }
 
+llm_graph_context::fused_layer_policy llm_graph_context::resolve_fused_layer_policy() const {
+    fused_layer_policy policy;
+    if (const char * value = getenv("LLAMA_FFN_FUSED_LAYER_MASK")) {
+        policy.layer_mask = strtoull(value, nullptr, 10);
+    }
+    if (const char * value = getenv("LLAMA_FFN_FUSED_NEXT_MASK")) {
+        policy.next_mask = strtoull(value, nullptr, 10);
+    }
+    policy.next_mask &= policy.layer_mask;
+    return policy;
+}
+
+bool llm_graph_context::fused_layer_active(
+        const fused_layer_policy & fused,
+        const dense_ffn_split_policy & split,
+        const llama_layer & layer,
+        int il) const {
+    if (il < 0 || il >= 64 || (fused.layer_mask & (UINT64_C(1) << il)) == 0) {
+        return false;
+    }
+    const uint64_t bit = UINT64_C(1) << il;
+    GGML_ASSERT((ffn_remote_resident_layer_mask & bit) == 0 && "a fused layer cannot be remote-resident");
+    // the helper runs O + the whole FFN: only a full-width split of this layer becomes a fused call
+    return (split.layer_mask & bit) != 0 && split.columns == layer.ffn_up->ne[1];
+}
+
+llm_graph_context::fused_layer_result llm_graph_context::build_fused_layer_call(
+         ggml_tensor * attention,
+         ggml_tensor * residual,
+                bool   next_qkv,
+             int64_t   n_q,
+             int64_t   n_kv,
+                 int   il) const {
+    const int64_t n_tok = attention->ne[1];
+    GGML_ASSERT(attention->ne[0] == n_q && residual->ne[0] == n_embd && residual->ne[1] == n_tok);
+    GGML_ASSERT(attention->type == GGML_TYPE_F32 && residual->type == GGML_TYPE_F32);
+    ggml_tensor * input = ggml_concat(ctx0, attention, residual, 0);
+    cb(input, "fused_in", il);
+    // the callback overwrites these zero placeholders with the helper's rows; deriving them from the
+    // input orders them after it
+    auto placeholder = [&](int64_t rows, const char * name, int layer) {
+        GGML_ASSERT(rows <= input->ne[0]);
+        ggml_tensor * view = ggml_view_2d(ctx0, input, rows, n_tok, input->nb[1], 0);
+        ggml_tensor * value = ggml_scale(ctx0, ggml_cont(ctx0, view), 0.0f);
+        ggml_set_input(value);
+        cb(value, name, layer);
+        return value;
+    };
+    fused_layer_result result;
+    result.delta = placeholder(n_embd, "fused_delta", il);
+    if (next_qkv) {
+        result.q = placeholder(n_q,  "fused_q", il + 1);
+        result.k = placeholder(n_kv, "fused_k", il + 1);
+        result.v = placeholder(n_kv, "fused_v", il + 1);
+    }
+    return result;
+}
+
 ggml_tensor * llm_graph_context::build_ffn(
          ggml_tensor * cur,
          ggml_tensor * up,

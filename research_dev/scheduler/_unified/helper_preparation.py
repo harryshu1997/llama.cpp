@@ -162,6 +162,39 @@ class HelperPreparationMixin:
         return _memory._copy_on_write_preparation_yielding_resources(source, target)
 
     @_runtime_serialized
+    def record_request_helper_preparation_status(
+        self,
+        request_id: str,
+        *,
+        status: str,
+        reason: str | None,
+        phone_layout_generation: int | None,
+        observed_at_us: int,
+    ) -> bool:
+        """Record (once per request, layout generation, status and reason) a preparation decision
+        the runtime watcher otherwise swallows (DEFERRED / FOLLOWER / INCOMPATIBLE / NOT_REQUIRED).
+
+        2026-10-05: on the single-user traces the OnePlus 15 never loaded its Gemma session although the
+        residency change was proposed and confirmed; the watcher's status was invisible in the run
+        artifacts. Returns True when an event was recorded."""
+        if type(status) is not str or not status or not status.isascii():
+            raise UnifiedScheduleError("preparation status is invalid")
+        placement = self._model_placement_controller
+        payload = {
+            "status": status,
+            "reason": reason,
+            "phone_layout_generation": phone_layout_generation,
+        }
+        for row in placement.request_helper_events(request_id):
+            if row.get("kind") == "PREPARATION_STATUS" and all(
+                row.get(key) == value for key, value in payload.items()
+            ):
+                return False
+        placement.record_request_helper_event(
+            request_id, "PREPARATION_STATUS", observed_at_us, payload,
+        )
+        return True
+
     def begin_request_helper_preparation(
         self,
         request_id: str,

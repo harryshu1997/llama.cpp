@@ -106,10 +106,11 @@ def profile_from_probe(profile: LayerPlacementProfile, plan: ProbePlan, model_id
     """Fold probe calls into ``profile`` and register the device's priors.
 
     ``calls`` rows carry ``rows``, ``compute_us``, ``rpc_us`` (or ``overhead_us``) and optionally ``step``
-    (negative = warm-up, skipped). ``meter_j_above_idle`` is the phone meter's energy above its idle
-    baseline over the measured calls; it is spread over calls in proportion to compute time.
+    (negative = warm-up, skipped; rows without ``step`` but with ``token``, e.g. ``pixel_transport_ab``
+    CALLS.json, use the token index the same way). ``meter_j_above_idle`` is the phone meter's energy above
+    its idle baseline over the measured calls; it is spread over calls in proportion to compute time.
     """
-    measured = [row for row in calls if int(row.get("step", 0)) >= 0]
+    measured = [row for row in calls if int(row.get("step", row.get("token", 0))) >= 0]
     by_rows: dict[int, dict[str, float]] = {}
     for rows in plan.rows:
         group = [row for row in measured if int(row["rows"]) == rows]
@@ -217,6 +218,7 @@ class DeviceCapability:
     session_limit_bytes: int = 0
     residency: str = "co-resident"
     allow_approximate: bool = False
+    route_anchor: bool = True    # False = a co-helper (see HelperDevice.route_anchor)
 
 
 def onboard_model(metadata: Mapping[str, object], *, n_gpu_layers: int, devices: Sequence[DeviceCapability],
@@ -361,7 +363,8 @@ def helper_device_for(verdict: DeviceVerdict, capability: DeviceCapability, mode
     if base is None:
         return HelperDevice(capability.device_id, MappingProxyType({model_id: verdict.shard_format}),
                             capability.capacity_bytes, capability.transport, capability.sessions,
-                            capability.session_limit_bytes, capability.residency)
+                            capability.session_limit_bytes, capability.residency,
+                            route_anchor=capability.route_anchor)
     formats = dict(base.formats)
     formats[model_id] = verdict.shard_format
     return replace(base, formats=MappingProxyType(formats))

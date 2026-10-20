@@ -141,6 +141,41 @@ class FixedPhoneResidencyConfiguration:
 
 
 @dataclass(frozen=True)
+class RemoteResidentOwnerConfiguration:
+    """Opt-in Phase 2 arm: ``model_id`` runs only on its remote-resident desktop parent.
+
+    The owner sessions are the campaign's ``fixed_phone_residency`` assignments; the runner
+    submits none of the model's arrivals before they are READY and fails the run after
+    ``owner_ready_timeout_s``. The full-weight desktop parent of the model is never used.
+    ``static_co_helpers`` (target B) adds the model's static co-helper phones as decode
+    co-helpers of their own desktop-resident layers (static policy, own row cap)."""
+
+    model_id: str
+    owner_ready_timeout_s: int = 1800
+    static_co_helpers: bool = False
+
+    def __post_init__(self) -> None:
+        _text(self.model_id, "remote-resident owner model")
+        _integer(self.owner_ready_timeout_s, "remote-resident owner ready timeout", minimum=1)
+        _boolean(self.static_co_helpers, "remote-resident owner static co-helpers")
+
+    @classmethod
+    def from_json(cls, value: object) -> "RemoteResidentOwnerConfiguration":
+        row = _object(value, "remote-resident owner")
+        _require({"model_id"} <= set(row) <= {"model_id", "owner_ready_timeout_s", "static_co_helpers"},
+                 "remote-resident owner fields are invalid")
+        return cls(row["model_id"], row.get("owner_ready_timeout_s", 1800),
+                   row.get("static_co_helpers", False))
+
+    def to_json(self) -> dict[str, object]:
+        return {
+            "model_id": self.model_id,
+            "owner_ready_timeout_s": self.owner_ready_timeout_s,
+            **({"static_co_helpers": True} if self.static_co_helpers else {}),
+        }
+
+
+@dataclass(frozen=True)
 class PhoneHtpMemoryCapConfiguration:
     phone_device_id: str
     cap_bytes: int
@@ -368,7 +403,7 @@ def elastic_phones_configuration(value: object) -> Mapping[str, object] | None:
     if value is None:
         return None
     row = _object(value, "elastic phones")
-    _require(set(row) <= {*ELASTIC_PHONES_DEFAULTS, "helper_loss_recovery"},
+    _require(set(row) <= {*ELASTIC_PHONES_DEFAULTS, "helper_loss_recovery", "helper_independence"},
              "elastic phones has unknown fields")
     checked = dict(ELASTIC_PHONES_DEFAULTS)
     for name in ("drop_recovery", "join"):
@@ -384,6 +419,10 @@ def elastic_phones_configuration(value: object) -> Mapping[str, object] | None:
                  "elastic phones helper_loss_recovery must be mask_out or retire")
         _require(checked["drop_recovery"], "elastic phones helper_loss_recovery requires drop_recovery")
         checked["helper_loss_recovery"] = row["helper_loss_recovery"]
+    if "helper_independence" in row:
+        # WS23 opt-in: each helper phone is its own resource; a thermally deferred / absent helper removes only
+        # its own layers from a phone-assisted route (appears only when given: absent keeps every default)
+        checked["helper_independence"] = _boolean(row["helper_independence"], "elastic phones helper_independence")
     return MappingProxyType(dict(sorted(checked.items())))
 
 
@@ -698,6 +737,7 @@ class CampaignManifest:
     elastic_phones: Mapping[str, object] | None = None
     device_power: DevicePowerConfiguration | None = None
     speculative_rows: Mapping[str, SpeculativeRowsModelConfiguration] | None = None
+    remote_resident_owner: RemoteResidentOwnerConfiguration | None = None
 
     @classmethod
     def from_json(cls, value: object, base: Path) -> "CampaignManifest":
@@ -764,6 +804,20 @@ class CampaignManifest:
         reprovisioning = row.get("phone_resident_model_reprovisioning")
         _require(reprovisioning is None or row.get("fixed_phone_residency") is None,
                  "fixed phone residency cannot be re-provisioned")
+        remote_owner = (
+            None if row.get("remote_resident_owner") is None
+            else RemoteResidentOwnerConfiguration.from_json(row["remote_resident_owner"])
+        )
+        _require(remote_owner is None or row.get("fixed_phone_residency") is not None,
+                 "remote-resident owner needs the fixed phone residency that loads its owners")
+        _require(remote_owner is None or selection_mode != "desktop-baseline",
+                 "remote-resident owner cannot run a desktop-baseline arm")
+        _require(remote_owner is None or all(value.model_id != remote_owner.model_id for value in startup),
+                 "remote-resident owner model cannot have a full-weight startup desktop parent")
+        # a remote parent's server cannot keep serving without a lost helper: no S2a mask-out
+        _require(remote_owner is None
+                 or (row.get("elastic_phones") or {}).get("helper_loss_recovery") != "mask_out",
+                 "remote-resident owner arm cannot mask out a lost helper")
         _require(
             all(value is None for value in reference_values)
             or all(value is not None for value in reference_values),
@@ -848,6 +902,7 @@ class CampaignManifest:
             device_power=(None if row.get("device_power") is None
                           else DevicePowerConfiguration.from_json(row["device_power"])),
             speculative_rows=speculative_rows_configuration(row.get("speculative_rows"), base),
+            remote_resident_owner=remote_owner,
         )
 
     def to_json(self) -> dict[str, object]:
@@ -876,6 +931,9 @@ class CampaignManifest:
                if self.phone_thermal_status_limits else {}),
             **({} if self.phone_resident_model_reprovisioning is None else {
                 "phone_resident_model_reprovisioning": self.phone_resident_model_reprovisioning.to_json(),
+            }),
+            **({} if self.remote_resident_owner is None else {
+                "remote_resident_owner": self.remote_resident_owner.to_json(),
             }),
             "campaign_id": self.campaign_id,
             "energy_attribution_kind": self.energy_attribution_kind,

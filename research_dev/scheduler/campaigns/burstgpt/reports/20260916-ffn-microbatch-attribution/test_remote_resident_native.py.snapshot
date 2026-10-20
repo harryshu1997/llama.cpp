@@ -1,0 +1,292 @@
+"""Native gate for remote-resident FFN weights (first milestone, software validation).
+
+Runs the real llama.cpp loader and graph on a tiny llama-architecture GGUF in two arms:
+
+* ``full``   - every weight local, no FFN client;
+* ``remote`` - the gate/up/down weights of the masked layers are omitted from the desktop
+  process and executed by ``llama-ffn-split-worker`` (the phone worker binary, host build)
+  over TCP through the server's FFN split client.
+
+Checks (loader, identity, execution, controls groups of the milestone plan):
+
+* allocation proof: the loader reports the omitted bytes, releases the page-exact interior of
+  every omitted tensor, and ``/proc/self/smaps`` shows no VMA of the model file over those
+  pages (an independent kernel-level record, not a view or a smaller virtual span);
+* the file mapping shrinks by at least the released bytes relative to the full arm;
+* execution: prefill plus greedy decode produce identical argmax traces and logits within
+  ``LOGITS_ABS_TOLERANCE`` (f16 weights, f32 activations in both arms);
+* fail closed: a context without an eval-callback owner is refused, and a runtime control
+  that targets a remote-resident layer is rejected by the client.
+
+The binaries are looked up in ``build-cpu/bin`` (override with ``S42_LLAMA_BUILD_BIN``); the
+test is skipped when they are absent so the canonical suite stays runnable everywhere.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+import unittest
+from pathlib import Path
+
+import numpy as np
+
+TESTS_DIR = Path(__file__).resolve().parent
+SCHEDULER_DIR = TESTS_DIR.parent
+REPO_ROOT = SCHEDULER_DIR.parents[1]
+if str(TESTS_DIR) not in sys.path:
+    sys.path.insert(0, str(TESTS_DIR))
+if str(REPO_ROOT / "gguf-py") not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT / "gguf-py"))
+
+from tiny_llama_gguf import N_EMBD, N_FF, write_tiny_llama_gguf  # noqa: E402
+
+BIN_DIR = Path(os.environ.get("S42_LLAMA_BUILD_BIN", REPO_ROOT / "build-cpu" / "bin"))
+PROBE = BIN_DIR / "llama-ffn-remote-resident-probe"
+WORKER = BIN_DIR / "llama-ffn-split-worker"
+SHARD_TOOL = SCHEDULER_DIR / "native" / "ffn_shard_gguf.py"
+
+REMOTE_LAYERS = (1, 2)
+REMOTE_MASK = sum(1 << layer for layer in REMOTE_LAYERS)
+MAX_TOKENS = 16
+PROMPT = (1, 2, 3, 4, 5, 6, 7, 8)
+DECODE_STEPS = 4
+LOGITS_ABS_TOLERANCE = 1e-4
+PAGE = os.sysconf("SC_PAGE_SIZE")
+
+
+def _free_port() -> int:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return int(probe.getsockname()[1])
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return "sha256:" + digest.hexdigest()
+
+
+class RemoteResidentNativeTests(unittest.TestCase):
+    """Loader omission, kernel proof, numerical identity and fail-closed controls."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        if not PROBE.exists() or not WORKER.exists():
+            raise unittest.SkipTest(f"native binaries missing under {BIN_DIR}")
+        cls.tmp = Path(tempfile.mkdtemp(prefix="s42-remote-resident-"))
+        cls.model = write_tiny_llama_gguf(cls.tmp / "tiny_llama.gguf", n_layer=4)
+        cls.parent_sha256 = _sha256(cls.model)
+        shard_dir = cls.tmp / "shards"
+        layer_spec = f"{REMOTE_LAYERS[0]}-{REMOTE_LAYERS[-1]}"
+        subprocess.run(
+            [sys.executable, str(SHARD_TOOL), str(cls.model),
+             "--parent-sha256", cls.parent_sha256, "--out-dir", str(shard_dir),
+             "--shard", f"HTP0={layer_spec}:{N_FF}", "--verify-parent"],
+            check=True, capture_output=True, text=True,
+            env={**os.environ, "PYTHONPATH": str(REPO_ROOT / "gguf-py")},
+        )
+        cls.shard_index = json.loads((shard_dir / "FFN_SHARDS.json").read_text())
+        cls.port = _free_port()
+        cls.worker_log = (cls.tmp / "worker.log").open("w")
+        cls.worker = subprocess.Popen(
+            [str(WORKER), "-m", str(shard_dir / "HTP0.ffn.gguf"),
+             "--artifact-sha256", cls.parent_sha256, "--layers", layer_spec,
+             "--columns", str(N_FF), "--backend", "CPU", "--port", str(cls.port),
+             "--max-tokens", str(MAX_TOKENS)],
+            stdout=cls.worker_log, stderr=subprocess.STDOUT,
+        )
+        deadline = time.monotonic() + 30.0
+        while time.monotonic() < deadline:
+            if "ready backend" in (cls.tmp / "worker.log").read_text():
+                break
+            if cls.worker.poll() is not None:
+                raise RuntimeError("FFN worker exited: " + (cls.tmp / "worker.log").read_text())
+            time.sleep(0.1)
+        else:
+            raise RuntimeError("FFN worker did not become ready")
+        cls.full = cls._probe("full", [])
+        cls.remote = cls._probe("remote", [
+            "--remote-mask", str(REMOTE_MASK), "--worker-port", str(cls.port),
+            "--artifact-sha256", cls.parent_sha256, "--max-tokens", str(MAX_TOKENS),
+        ])
+        cls.no_owner = cls._probe("noowner", [
+            "--remote-mask", str(REMOTE_MASK), "--expect-no-owner",
+        ], logits=False)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        worker = getattr(cls, "worker", None)
+        if worker is not None and worker.poll() is None:
+            worker.terminate()
+            try:
+                worker.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                worker.kill()
+        log = getattr(cls, "worker_log", None)
+        if log is not None:
+            log.close()
+        if os.environ.get("S42_KEEP_NATIVE_ARTIFACTS") != "1" and hasattr(cls, "tmp"):
+            shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    @classmethod
+    def _probe(cls, name: str, extra: list[str], *, logits: bool = True) -> dict:
+        out = cls.tmp / f"{name}.json"
+        command = [str(PROBE), "--model", str(cls.model), "--out", str(out),
+                   "--tokens", ",".join(str(token) for token in PROMPT),
+                   "--decode", str(DECODE_STEPS), *extra]
+        if logits:
+            command += ["--logits", str(cls.tmp / f"{name}.bin")]
+        completed = subprocess.run(command, capture_output=True, text=True, timeout=300)
+        if completed.returncode != 0 or not out.exists():
+            raise RuntimeError(f"probe {name} failed rc={completed.returncode}: {completed.stderr[-2000:]}")
+        record = json.loads(out.read_text())
+        record["stderr"] = completed.stderr
+        if logits:
+            record["logits"] = np.fromfile(cls.tmp / f"{name}.bin", dtype=np.float32)
+        return record
+
+    # ---- loader group -------------------------------------------------------------------
+
+    def test_loader_reports_exact_omission(self) -> None:
+        loader = self.remote["loader"]
+        per_tensor = N_FF * N_EMBD * 2  # f16
+        self.assertEqual(loader["remote_mask"], REMOTE_MASK)
+        self.assertEqual(loader["omitted_bytes"], 3 * len(REMOTE_LAYERS) * per_tensor)
+        self.assertEqual(loader["model_size_bytes"], self.full["loader"]["model_size_bytes"],
+                         "the artifact size is a fact about the file and must not change")
+        expected_unmapped = sum(
+            max(0, row["page_last"] - row["page_first"]) for row in self.remote["omitted_tensors"]
+        )
+        self.assertEqual(loader["unmapped_bytes"], expected_unmapped)
+        self.assertGreater(loader["unmapped_bytes"], 0)
+        self.assertLessEqual(loader["unmapped_bytes"], loader["omitted_bytes"])
+        self.assertEqual(self.full["loader"]["omitted_bytes"], 0)
+        self.assertEqual(self.full["loader"]["unmapped_bytes"], 0)
+
+    def test_kernel_mapping_has_no_vma_over_omitted_pages(self) -> None:
+        rows = self.remote["omitted_tensors"]
+        self.assertEqual(len(rows), 3 * len(REMOTE_LAYERS))
+        for row in rows:
+            with self.subTest(tensor=row["name"]):
+                self.assertGreater(row["page_last"], row["page_first"],
+                                   "fixture tensors must span whole pages for the proof to bite")
+                self.assertEqual(row["vma_overlap_bytes"], 0)
+                self.assertEqual(row["rss_overlap_bytes"], 0)
+        full_mapped = self.full["file_mapping"]["mapped_bytes"]
+        remote_mapped = self.remote["file_mapping"]["mapped_bytes"]
+        self.assertGreaterEqual(full_mapped - remote_mapped, self.remote["loader"]["unmapped_bytes"])
+        self.assertGreater(self.remote["file_mapping"]["vma_count"], self.full["file_mapping"]["vma_count"],
+                           "interior holes split the single file mapping into several VMAs")
+        self.assertTrue(any("REMOTE_RESIDENT_FFN" in line for line in self.remote["log"]))
+
+    # ---- execution / identity group -------------------------------------------------------
+
+    def test_microbatch_context_tracks_rows_and_request_generations(self) -> None:
+        prompt = list(range(1, 38))
+        for sequences in (1, 2):
+            with self.subTest(sequences=sequences):
+                shape = ["--tokens", ",".join(map(str, prompt)), "--batch-size", "64",
+                         "--ubatch-size", "8", "--sequence-count", str(sequences),
+                         "--runtime-context", "ubatch"]
+                full = self._probe(f"micro-full-{sequences}", shape)
+                remote = self._probe(f"micro-remote-{sequences}", [*shape,
+                    "--remote-mask", str(REMOTE_MASK), "--worker-port", str(self.port),
+                    "--artifact-sha256", self.parent_sha256])
+                self.assertEqual(remote["decode"]["status"], 0, remote["decode"]["error"])
+                self.assertEqual(remote["decode"]["argmax"], full["decode"]["argmax"])
+                self.assertLessEqual(float(np.max(np.abs(remote["logits"] - full["logits"]))),
+                                     LOGITS_ABS_TOLERANCE)
+                counts = [0] * sequences
+                for batch in remote["runtime_batches"]:
+                    self.assertLessEqual(sum(row["rows"] for row in batch), 8)
+                    for row in batch:
+                        slot = row["slot_id"]
+                        self.assertEqual(row["request_id"], f"probe-{slot}")
+                        self.assertEqual(row["plan_generation"], 11 + slot)
+                        counts[slot] += row["rows"]
+                expected = [len(prompt[slot::sequences]) for slot in range(sequences)]
+                expected[0] += DECODE_STEPS
+                self.assertEqual(counts, expected)
+                self.assertEqual(remote["request_rows"], [n * len(REMOTE_LAYERS) for n in expected])
+                calls = [line for line in remote["stderr"].splitlines()
+                         if line.startswith("S41SERVERFFNCALL")]
+                self.assertEqual(len(calls), len(remote["runtime_batches"]) * len(REMOTE_LAYERS))
+
+    def test_logical_batch_context_still_fails_closed(self) -> None:
+        result = self._probe("logical-context-rejected", [
+            "--tokens", ",".join(map(str, range(1, 38))), "--batch-size", "64",
+            "--ubatch-size", "8", "--runtime-context", "logical",
+            "--remote-mask", str(REMOTE_MASK), "--worker-port", str(self.port),
+            "--artifact-sha256", self.parent_sha256], logits=False)
+        self.assertNotEqual(result["decode"]["status"], 0)
+        self.assertIn("runtime context differs from tensor rows", result["decode"]["error"])
+        self.assertEqual(result["request_rows"], [0])
+        self.assertNotIn("S41SERVERFFNCALL", result["stderr"])
+
+    def test_rejected_microbatch_context_executes_no_phone_calls(self) -> None:
+        result = self._probe("micro-context-rejected", [
+            "--runtime-context", "reject", "--remote-mask", str(REMOTE_MASK),
+            "--worker-port", str(self.port), "--artifact-sha256", self.parent_sha256], logits=False)
+        self.assertEqual(result["decode"]["status"], 2)
+        self.assertEqual(result["runtime_batches"], [])
+        self.assertEqual(result["request_rows"], [0])
+        self.assertNotIn("S41SERVERFFNCALL", result["stderr"])
+
+    def test_remote_execution_matches_full_weights(self) -> None:
+        self.assertEqual(self.full["decode"]["status"], 0, self.full["decode"]["error"])
+        self.assertEqual(self.remote["decode"]["status"], 0, self.remote["decode"]["error"])
+        self.assertEqual(self.remote["decode"]["error"], "")
+        self.assertEqual(self.remote["decode"]["argmax"], self.full["decode"]["argmax"])
+        self.assertEqual(len(self.full["decode"]["argmax"]), DECODE_STEPS + 1)
+        full_logits = self.full["logits"]
+        remote_logits = self.remote["logits"]
+        self.assertEqual(full_logits.shape, remote_logits.shape)
+        self.assertLessEqual(float(np.max(np.abs(full_logits - remote_logits))), LOGITS_ABS_TOLERANCE)
+
+    def test_every_remote_layer_call_goes_to_the_phone_at_full_width(self) -> None:
+        calls = [line for line in self.remote["stderr"].splitlines() if line.startswith("S41SERVERFFNCALL")]
+        # prefill (one call per remote layer) + one call per remote layer per decode step
+        self.assertEqual(len(calls), len(REMOTE_LAYERS) * (1 + DECODE_STEPS))
+        layers = []
+        for line in calls:
+            fields = dict(item.split("=", 1) for item in line.split()[1:])
+            layers.append(int(fields["layer"]))
+            self.assertEqual(int(fields["columns"]), N_FF)
+        self.assertEqual(set(layers), set(REMOTE_LAYERS))
+        self.assertEqual(int(dict(item.split("=", 1) for item in calls[0].split()[1:])["tokens"]), len(PROMPT))
+
+    # ---- controls / fail-closed group -----------------------------------------------------
+
+    def test_context_without_owner_is_refused(self) -> None:
+        self.assertFalse(self.no_owner["context_created"])
+        self.assertEqual(self.no_owner["loader"]["remote_mask"], REMOTE_MASK)
+        self.assertTrue(any("no FFN eval callback owner" in line for line in self.no_owner["log"]))
+
+    def test_control_targeting_remote_layer_is_rejected(self) -> None:
+        self.assertTrue(self.remote["client"]["connected"], self.remote["client"]["error"])
+        self.assertEqual(self.remote["client"]["remote_policy_rejection"],
+                         "FFN split runtime policy targets remote-resident layers")
+
+    def test_shard_is_a_complete_group_with_parent_identity(self) -> None:
+        shard = self.shard_index["shards"][0]
+        self.assertEqual(shard["parent_sha256"], self.parent_sha256)
+        self.assertEqual(shard["column_offset"], 0)
+        self.assertEqual(shard["columns"], N_FF)
+        self.assertEqual(int(shard["layer_mask"], 16), REMOTE_MASK)
+        names = {row["name"] for row in shard["tensors"]}
+        for layer in REMOTE_LAYERS:
+            for kind in ("ffn_gate", "ffn_up", "ffn_down"):
+                self.assertIn(f"blk.{layer}.{kind}.weight", names)
+
+
+if __name__ == "__main__":
+    unittest.main()

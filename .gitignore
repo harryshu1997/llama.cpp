@@ -247,3 +247,51 @@ a.out.*
 
 AGENTS.local.md
 .pi/SYSTEM.md
+
+# Scheduler campaign raw run outputs: metered run trees, phone captures,
+# source snapshots and failed attempts (tens of GB). READMEs, tools and
+# small summaries in the same report directories stay tracked.
+/research_dev/scheduler/campaigns/burstgpt/reports/*/physical*/
+/research_dev/scheduler/campaigns/burstgpt/reports/*/software/
+/research_dev/scheduler/campaigns/burstgpt/reports/*/raw*/
+/research_dev/scheduler/campaigns/burstgpt/reports/*/source-before*/
+/research_dev/scheduler/campaigns/burstgpt/reports/*/failed-*/
+/research_dev/scheduler/campaigns/burstgpt/reports/**/*.f16
+/research_dev/scheduler/campaigns/burstgpt/reports/**/*.raw
+/research_dev/scheduler/campaigns/burstgpt/reports/**/*.spv
+/research_dev/scheduler/campaigns/burstgpt/reports/**/*.obj
+/research_dev/scheduler/campaigns/burstgpt/reports/**/*.bin
+/research_dev/scheduler/campaigns/burstgpt/reports/**/*.gguf
+/research_dev/scheduler/campaigns/burstgpt/outputs/
+
+# CUDA-graph baseline: raw attempts, reference source copy and run trees
+/research_dev/scheduler/baselines/cuda_graph_v1/failed-attempts/
+/research_dev/scheduler/baselines/cuda_graph_v1/references-source-v7/
+/research_dev/scheduler/baselines/cuda_graph_v1/fixed-*/
+/research_dev/scheduler/baselines/cuda_graph_v1/bounded-check/
+/research_dev/scheduler/baselines/cuda_graph_v1/provenance/
+/research_dev/scheduler/baselines/cuda_graph_v1/qualification/
+/research_dev/scheduler/baselines/cuda_graph_v1/desktop-*-cuda/
+
+# Vendor TPU SDK install and archive
+/research_dev/TPU_SDK/installed/
+/research_dev/TPU_SDK/*.zip
+
+# Stray local files
+/update
+/device
+/arch_info.png
+/research_dev/*.png
+/research_dev/lazyllm_scheduler_timeline.*
+
+# September development-run summaries under reports (tens of MB of JSON/TSV);
+# their READMEs, tools and scripts remain tracked.
+/research_dev/scheduler/campaigns/burstgpt/reports/202609*/**/*.json
+/research_dev/scheduler/campaigns/burstgpt/reports/202609*/**/*.jsonl
+/research_dev/scheduler/campaigns/burstgpt/reports/202609*/**/*.txt
+/research_dev/scheduler/campaigns/burstgpt/reports/202609*/**/*.csv
+/research_dev/scheduler/campaigns/burstgpt/reports/202609*/**/*.tsv
+/research_dev/scheduler/campaigns/burstgpt/reports/202609*/**/*.hashes
+/research_dev/scheduler/campaigns/burstgpt/reports/202609*/**/*.diff
+/research_dev/scheduler/campaigns/burstgpt/reports/202609*/**/*.patch
+/research_dev/scheduler/campaigns/burstgpt/reports/202609*/**/*.log

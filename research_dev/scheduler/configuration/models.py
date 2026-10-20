@@ -7,6 +7,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Mapping
 
+from .._internal.matrix_precision import CalibrationPrior, MatrixPrecisionSpec
 from .common import (
     MODELS_MANIFEST_SCHEMA,
     _integer,
@@ -54,7 +55,7 @@ class CampaignModelConfiguration:
     kind: str
     host_artifact_path: Path
     checked_manifest_path: Path | None
-    phone_artifact_path: str
+    phone_artifact_path: str | None
     phone_ffn_shard_index_path: Path | None
     phone_ffn_shard_directory: str | None
     endpoint_ids: Mapping[str, str]
@@ -74,6 +75,10 @@ class CampaignModelConfiguration:
     cpu_evidence_ids: tuple[str, ...] = ()
     # offline FFN shards on secondary helper phones: device id -> (local index, phone directory)
     helper_phone_ffn_shards: Mapping[str, tuple[Path, str]] = field(default_factory=dict)
+    # opt-in (WS17): matrix precision rule of a quantized artifact; absent = the frozen F16 preflight rule
+    matrix_precision: MatrixPrecisionSpec | None = None
+    # opt-in (WS17): route profiles derived from the role's calibration runs, scaled by a measured receipt
+    calibration_prior: CalibrationPrior | None = None
 
     @classmethod
     def from_json(
@@ -114,6 +119,18 @@ class CampaignModelConfiguration:
             (ffn_shard_index is None) == (ffn_shard_directory is None),
             "phone FFN shard configuration is incomplete",
         )
+        # 2026-10-06 (WS17 all-GPU Q4 baseline): a model may hold no phone copy
+        # (``phone_artifact_path: null``) when phones never serve it; the phone
+        # preflight then skips it. Phone FFN shards and the overlay (whole-phone
+        # server) need the artifact.
+        phone_artifact = _optional_text(
+            row.get("phone_artifact_path"), "phone model artifact"
+        )
+        _require(
+            phone_artifact is not None
+            or (ffn_shard_index is None and kind != "overlay"),
+            "phone model artifact is required for phone FFN shards and overlay models",
+        )
         residency_mode = _text(
             row.get("phone_residency_mode", "transition"),
             "phone residency mode",
@@ -149,9 +166,7 @@ class CampaignModelConfiguration:
                 row.get("host_artifact_path"), base, "host model artifact"
             ),
             checked_manifest_path=manifest,
-            phone_artifact_path=_text(
-                row.get("phone_artifact_path"), "phone model artifact"
-            ),
+            phone_artifact_path=phone_artifact,
             phone_ffn_shard_index_path=ffn_shard_index,
             phone_ffn_shard_directory=ffn_shard_directory,
             endpoint_ids=_text_map(row.get("endpoint_ids"), "model endpoints"),
@@ -203,6 +218,14 @@ class CampaignModelConfiguration:
                     row.get("helper_phone_ffn_shards", {}), "helper phone FFN shards"
                 ).items())
             }),
+            matrix_precision=(
+                None if row.get("matrix_precision") is None
+                else MatrixPrecisionSpec.from_json(row["matrix_precision"])
+            ),
+            calibration_prior=(
+                None if row.get("calibration_prior") is None
+                else CalibrationPrior.from_json(row["calibration_prior"])
+            ),
         )
 
     def to_json(self) -> dict[str, object]:
@@ -247,6 +270,14 @@ class CampaignModelConfiguration:
                     for device_id, (index_path, directory) in self.helper_phone_ffn_shards.items()
                 }}
                 if self.helper_phone_ffn_shards else {}
+            ),
+            **(
+                {"matrix_precision": self.matrix_precision.to_json()}
+                if self.matrix_precision is not None else {}
+            ),
+            **(
+                {"calibration_prior": self.calibration_prior.to_json()}
+                if self.calibration_prior is not None else {}
             ),
         }
 

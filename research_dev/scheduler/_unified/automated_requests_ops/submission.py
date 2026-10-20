@@ -18,6 +18,7 @@ from ..._internal.runtime_controller import (
 )
 from ..._internal.types import canonical_sha256
 from ..._internal.route_generation import candidate_set_to_runtime_costs
+from ..common import remote_resident_owner_pinned
 
 
 def submit_startup_parent_preload(
@@ -91,6 +92,9 @@ def submit_automated_request(
     selection_mode: str = "energy-aware",
 ) -> RuntimeRequestTicket:
     """Repair causal predecessors, then admit one observed arrival."""
+    if remote_resident_owner_pinned(controller, model_id):
+        # a pinned remote-resident parent is admitted as a calibration sample (no route profile)
+        selection_mode = "calibration"
     observed = (
         request.arrival_us
         if observed_at_us is None else observed_at_us

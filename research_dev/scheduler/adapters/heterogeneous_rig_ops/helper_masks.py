@@ -148,6 +148,9 @@ class RigHelperMaskMixin:
             if getattr(contract, "execution_mode", None) != "desktop":
                 # a split server's requests recover on the paired desktop route: nothing to keep
                 reason = "NOT_A_DESKTOP_PARENT"
+            elif getattr(contract, "remote_resident_ffn", None) is not None:
+                # a remote-resident parent's arm has no recovery route: retire, never mask out
+                reason = "REMOTE_RESIDENT_PARENT"
             elif state is None or state.server is not expected_server:
                 reason = "SERVER_NOT_LIVE"
             elif executor_id in getattr(self, "_retiring_executors", {}):

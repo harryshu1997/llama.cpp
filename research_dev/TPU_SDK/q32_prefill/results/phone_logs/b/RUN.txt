@@ -1,0 +1,19 @@
+start 2026-10-08T12:09:56-04:00 boot=dbff3b27-a613-4e1e-a9ab-1f9cd3ae1d1e
+=== bf16-M512 2026-10-08T12:09:56-04:00
+/mnt/storage/s43-ws17-quantized-20261003/q32-phone/tpu/stage/bf16-M512.tflite: 1 file pushed, 0 skipped. 135.6 MB/s (786997168 bytes in 5.534s)
+pushed bf16-M512.tflite bytes=786997168 s=5.608170935
+exit bf16-M512 rc=0 2026-10-08T12:10:15-04:00
+=== bf16-M1 2026-10-08T12:10:16-04:00
+/mnt/storage/s43-ws17-quantized-20261003/q32-phone/tpu/stage/bf16-M1.tflite: 1 file pushed, 0 skipped. 229.4 MB/s (786694576 bytes in 3.270s)
+pushed bf16-M1.tflite bytes=786694576 s=3.329211161
+exit bf16-M1 rc=0 2026-10-08T12:10:27-04:00
+=== i8drq-M1 2026-10-08T12:10:27-04:00
+/mnt/storage/s43-ws17-quantized-20261003/q32-phone/tpu/stage/i8drq-M1.tflite: 1 file pushed, 0 skipped. 151.2 MB/s (411925152 bytes in 2.599s)
+pushed i8drq-M1.tflite bytes=411925152 s=2.688462220
+exit i8drq-M1 rc=0 2026-10-08T12:10:37-04:00
+=== i4pcdrq-M1 2026-10-08T12:10:37-04:00
+/mnt/storage/s43-ws17-quantized-20261003/q32-phone/tpu/stage/i4pcdrq-M1.tflite: 1 file pushed, 0 skipped. 278.9 MB/s (197467808 bytes in 0.675s)
+pushed i4pcdrq-M1.tflite bytes=197467808 s=.712268463
+exit i4pcdrq-M1 rc=0 2026-10-08T12:10:44-04:00
+done 2026-10-08T12:10:44-04:00 boot=dbff3b27-a613-4e1e-a9ab-1f9cd3ae1d1e same_boot=1
+ALLDONE

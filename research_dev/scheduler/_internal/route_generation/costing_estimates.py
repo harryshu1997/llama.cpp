@@ -199,6 +199,7 @@ class RouteEstimateMixin:
         residency_holds: Mapping[str, RuntimeResidencyCohortHold],
         resource_slots: Mapping[str, int],
         service: _CandidateServiceEstimate,
+        share_keys: Mapping[str, str] | None = None,
     ) -> _CandidateScheduleEstimate:
         reasons = list(self._eligibility(
             manifest,
@@ -273,6 +274,7 @@ class RouteEstimateMixin:
                     service.service_upper_us,
                     snapshot,
                     transitions=transitions,
+                    share_keys=share_keys,
                 )
             except SchedulerError:
                 reasons.append("RESOURCE_CALENDAR_INFEASIBLE")

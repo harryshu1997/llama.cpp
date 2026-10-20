@@ -16,11 +16,49 @@ from .._internal.runtime_capabilities import (
     HeterogeneousRuntimeSnapshot,
     RuntimeCapabilityCatalog,
 )
+from .._internal.route_generation.remote_resident import REMOTE_RESIDENT_FFN_PARAMETER
+from .catalog_materialization import remote_resident_payload_qualification
 from .contracts import PhysicalAdapterError
 from .coverage import catalog_structural_device_families
 
 
 PHYSICAL_PREFLIGHT_SCHEMA = "research-scheduler-physical-preflight-v1"
+
+# Rejection reasons that come from planning the route itself (the catalog, transfer and memory budgets), as
+# opposed to live state that changes during a run (residency, readiness, observations). Phones are rarely
+# resident at preflight, so admission is not the test of a usable phone route; planning is.
+PLACEMENT_REJECTION_REASONS = frozenset({
+    "KERNEL_SUPPORT_ABSENT",
+    "MEMORY_CAPACITY",
+    "PLACEMENT_INFEASIBLE",
+    "SLO_UPPER_BOUND",
+    "TRANSFER_PLAN_ABSENT",
+})
+
+
+# A remote-resident owner arm (campaign ``remote_resident_owner``) loads its owners after
+# preflight, so its parent is rejected for that alone (REMOTE_RESIDENT_OWNER_NOT_READY:<session>,
+# with the owner residency it brings); the pinned arm admits the rest like a calibration sample.
+REMOTE_RESIDENT_OWNER_NOT_READY_PREFIX = "REMOTE_RESIDENT_OWNER_NOT_READY:"
+REMOTE_RESIDENT_PREFLIGHT_REASONS = frozenset({
+    "COLD_RESIDENCY_BREAK_EVEN",
+    "ENERGY_UNKNOWN",
+    "ROUTE_NOT_QUALIFIED",
+    "SLO_UPPER_BOUND",
+})
+
+
+def remote_resident_route_blockers(reasons: Sequence[str]) -> tuple[str, ...]:
+    """Rejections of a remote-resident parent that owner loading at run start does not resolve."""
+    owners_pending = any(
+        reason.startswith(REMOTE_RESIDENT_OWNER_NOT_READY_PREFIX) for reason in reasons
+    )
+    return tuple(sorted(
+        reason for reason in reasons
+        if not reason.startswith(REMOTE_RESIDENT_OWNER_NOT_READY_PREFIX)
+        and reason not in REMOTE_RESIDENT_PREFLIGHT_REASONS
+        and not (owners_pending and reason == "RESIDENCY_TRANSITION_ABSENT")
+    ))
 
 
 def _sha256(path: Path) -> str:
@@ -178,6 +216,20 @@ class PhysicalPreflightReport:
         )
 
     @property
+    def phone_route_plannable_models(self) -> tuple[str, ...]:
+        """Models with a generated phone route that planning did not reject.
+
+        2026-10-08: a Qwen3-32B two-phone arm passed preflight while its column quantum left no phone route, and
+        ran desktop-only. Its hot phone routes were absent or PLACEMENT_INFEASIBLE; in the working arms the same
+        routes were rejected only for live state (COLD_RESIDENCY_BREAK_EVEN before the phones were resident).
+        """
+        return tuple(sorted({
+            row.model_id for row in self.phone_routes
+            if "CANDIDATE_NOT_VISITED" not in row.rejection_reasons
+            and not PLACEMENT_REJECTION_REASONS.intersection(row.rejection_reasons)
+        }))
+
+    @property
     def status(self) -> str:
         return "PASS" if self.desktop_baseline_ready else "BLOCKED"
 
@@ -193,6 +245,7 @@ class PhysicalPreflightReport:
             "desktop_baselines": dict(self.desktop_baselines),
             "energy_boundary_id": self.energy_boundary_id,
             "phone_assistance_ready": self.phone_assistance_ready,
+            "phone_route_plannable_models": list(self.phone_route_plannable_models),
             "phone_routes": [row.to_json() for row in self.phone_routes],
             "request_shapes": {
                 "checked": len(self.request_shapes),
@@ -812,6 +865,55 @@ def _unvisited_phone_routes(
     return phone_routes
 
 
+def _check_remote_resident_owner(
+    checks: list[PhysicalPreflightCheck],
+    catalog: RuntimeCapabilityCatalog,
+    row: PhysicalPreflightModel,
+    candidates: object,
+) -> None:
+    """Block an owner arm whose remote-resident parent does not plan or lacks its transport."""
+    model_id = row.manifest.model_id
+    routes = tuple(
+        candidate for candidate in candidates.candidates
+        if candidate.plan.execution_contract.remote_resident_ffn is not None
+    )
+    blockers = {
+        candidate.candidate_id: remote_resident_route_blockers(candidate.rejection_reasons)
+        for candidate in routes
+    }
+    _append_check(
+        checks,
+        "remote-resident-route:" + model_id,
+        any(not value for value in blockers.values()),
+        "remote-resident parent routes: " + (
+            "; ".join(
+                route_id + " blocked by " + (",".join(value) or "nothing")
+                for route_id, value in sorted(blockers.items())
+            ) or "none generated"
+        ),
+    )
+    parents = tuple(
+        capability for capability in catalog.composite_executors
+        if capability.artifact_sha256 == row.manifest.artifact_sha256
+        and REMOTE_RESIDENT_FFN_PARAMETER in capability.adapter_parameters
+    )
+    payloads = tuple(
+        remote_resident_payload_qualification(catalog, capability.adapter_parameters)
+        for capability in parents
+    )
+    _append_check(
+        checks,
+        "remote-resident-transport:" + model_id,
+        len(payloads) == 1 and bool(payloads[0]["qualified"]),
+        "remote-resident parents=" + str(len(parents)) + "; " + "; ".join(
+            "whole-ubatch payload needs " + str(value["required_payload_bytes"])
+            + " bytes per call, the transport identity qualifies "
+            + str(value["qualified_maximum_payload_bytes"])
+            for value in payloads
+        ),
+    )
+
+
 def run_physical_preflight(
     scheduler: object,
     catalog: RuntimeCapabilityCatalog,
@@ -822,12 +924,16 @@ def run_physical_preflight(
     library_directories: Mapping[str, Path] = MappingProxyType({}),
     rig_checks: Sequence[PhysicalPreflightCheck] = (),
     trace_requests: Sequence[tuple[Request, str]] = (),
+    remote_resident_owner_models: Sequence[str] = (),
 ) -> PhysicalPreflightReport:
     """Validate dependencies and scheduler plans without executing inference.
 
     trace_requests: every (request, model_id) the campaign will submit; each
     shape is judged against the catalog's preallocated context capacity so
     a permanently unsupported request blocks preflight before any paid run.
+    remote_resident_owner_models: models of a remote-resident owner arm; each
+    must plan its remote-resident parent (only owner readiness may reject it)
+    with a qualified whole-ubatch transport, or preflight is BLOCKED.
     """
     required_methods = (
         "generate_automated_candidates",
@@ -855,6 +961,9 @@ def run_physical_preflight(
     )
 
     manifests = {row.manifest.model_id: row.manifest for row in model_rows}
+    owner_models = frozenset(remote_resident_owner_models)
+    if not owner_models <= set(manifests):
+        raise PhysicalAdapterError("remote-resident owner model is not a preflight model")
     kind_by_device = {
         device.device_id: device.kind
         for device in catalog.placement_profile.devices.values()
@@ -920,6 +1029,8 @@ def run_physical_preflight(
         phone_routes.extend(_unvisited_phone_routes(
             catalog, row, kind_by_device, represented_phone_executors
         ))
+        if row.manifest.model_id in owner_models:
+            _check_remote_resident_owner(checks, catalog, row, candidates)
 
     request_shapes = _check_request_shapes(checks, scheduler, trace_requests)
 

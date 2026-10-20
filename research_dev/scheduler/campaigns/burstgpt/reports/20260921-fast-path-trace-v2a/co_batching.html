@@ -1,0 +1,245 @@
+<title>Decode Co-Batching</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --surface: #fcfcfb;
+    --surface-sunk: #f4f3ef;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --ink-muted: #898781;
+    --rule: rgba(11, 11, 11, 0.12);
+    --accent: #2a78d6;
+    --accent-soft: rgba(42, 120, 214, 0.10);
+    --good: #006300;
+    --warn: #8a5a00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --surface: #1a1a19;
+      --surface-sunk: #232321;
+      --ink: #ffffff;
+      --ink-2: #c3c2b7;
+      --ink-muted: #898781;
+      --rule: rgba(255, 255, 255, 0.14);
+      --accent: #3987e5;
+      --accent-soft: rgba(57, 135, 229, 0.16);
+      --good: #0ca30c;
+      --warn: #d7a13a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --surface: #1a1a19;
+    --surface-sunk: #232321;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --ink-muted: #898781;
+    --rule: rgba(255, 255, 255, 0.14);
+    --accent: #3987e5;
+    --accent-soft: rgba(57, 135, 229, 0.16);
+    --good: #0ca30c;
+    --warn: #d7a13a;
+  }
+
+  body {
+    background: var(--surface);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    line-height: 1.5;
+  }
+  .page { max-width: 1000px; margin: 0 auto; padding-inline: 20px; padding-block: 40px 64px; }
+  .eyebrow {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11px; letter-spacing: 0.10em; text-transform: uppercase;
+    color: var(--ink-muted); margin: 0 0 14px;
+  }
+  h1 { font-size: clamp(26px, 4.4vw, 38px); line-height: 1.15; margin: 0 0 14px; text-wrap: balance; font-weight: 600; letter-spacing: -0.015em; }
+  .lede { color: var(--ink-2); max-width: 64ch; margin: 0 0 36px; font-size: 16px; }
+  h2 { font-size: 17px; font-weight: 600; margin: 0 0 6px; letter-spacing: -0.005em; }
+  .sub { color: var(--ink-muted); font-size: 13px; margin: 0 0 18px; }
+
+  .panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 26px; }
+  .panel { border: 1px solid var(--rule); border-radius: 10px; padding: 16px 16px 14px; background: var(--surface); }
+  .panel.after { border-color: var(--accent); background: var(--accent-soft); }
+  .panel h3 {
+    font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 11px; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--ink-muted); margin: 0 0 12px; font-weight: 500;
+  }
+  .panel.after h3 { color: var(--accent); }
+  .panel svg { display: block; width: 100%; height: auto; max-width: 100%; color: var(--ink-2); }
+  .measure {
+    font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12.5px; color: var(--ink);
+    margin: 12px 0 0; padding-top: 11px; border-top: 1px solid var(--rule); font-variant-numeric: tabular-nums;
+  }
+  .measure span { color: var(--ink-muted); }
+  figure { margin: 0 0 40px; }
+  figcaption { color: var(--ink-muted); font-size: 12.5px; margin-top: 16px; max-width: 76ch; }
+
+  .wrap { overflow-x: auto; margin-bottom: 14px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 620px; }
+  caption {
+    text-align: left; font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 11px;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-muted); padding-bottom: 10px;
+  }
+  th, td { text-align: right; padding: 9px 10px; border-bottom: 1px solid var(--rule); }
+  th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+  thead th { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-muted); font-weight: 500; }
+  td { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  td:first-child, td:nth-child(2) { font-family: "IBM Plex Sans", system-ui, sans-serif; }
+  tr.rule-top td { border-top: 2px solid var(--rule); }
+  tr.dim td { color: var(--ink-muted); }
+  .exact { color: var(--good); font-weight: 500; }
+  .partial { color: var(--warn); }
+  .best td { background: var(--accent-soft); }
+  .note { color: var(--ink-2); font-size: 13.5px; max-width: 74ch; }
+  .note p { margin: 0 0 12px; }
+  .note code { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12.5px; background: var(--surface-sunk); padding: 1px 5px; border-radius: 4px; color: var(--ink); }
+  h2.section { margin-top: 44px; }
+</style>
+
+<div class="page">
+  <p class="eyebrow">RTX 4060 Ti + OnePlus 15 &middot; 24-request BurstGPT trace &middot; 2026-09-20 to 09-22</p>
+  <h1>One forward pass, one phone call, several tokens</h1>
+  <p class="lede">A decode slot whose feed-forward layers run on the phone cannot share a batch with a slot
+  that keeps them on the host, so the two alternate. That single constraint decided every energy result
+  for three days. Here is what it does, and what happened when it was removed.</p>
+
+  <figure>
+    <div class="panels">
+      <div class="panel">
+        <h3>Mixed policies &middot; before</h3>
+        <svg viewBox="0 0 430 208" role="img" aria-label="Timeline: slot 1 waits for slot 2's host pass, then runs its own pass, and the phone call carries one row, so one token costs two passes">
+          <defs>
+            <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <polygon points="0,1 10,5 0,9" fill="currentColor"></polygon>
+            </marker>
+          </defs>
+
+          <text x="96" y="41" font-size="11" fill="currentColor" text-anchor="end">slot 1</text>
+          <text x="96" y="54" font-size="10" fill="currentColor" text-anchor="end" opacity="0.7" font-family="IBM Plex Mono, monospace">phone</text>
+          <text x="96" y="86" font-size="11" fill="currentColor" text-anchor="end">slot 2</text>
+          <text x="96" y="99" font-size="10" fill="currentColor" text-anchor="end" opacity="0.7" font-family="IBM Plex Mono, monospace">host</text>
+          <text x="96" y="144" font-size="11" fill="currentColor" text-anchor="end">phone</text>
+
+          <rect x="104" y="26" width="104" height="30" rx="5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 4" opacity="0.65"></rect>
+          <text x="156" y="46" font-size="11" fill="currentColor" text-anchor="middle" opacity="0.7">waiting</text>
+          <rect x="212" y="26" width="104" height="30" rx="5" fill="none" stroke="currentColor" stroke-width="1.6"></rect>
+          <text x="264" y="46" font-size="11.5" fill="currentColor" text-anchor="middle">pass A</text>
+
+          <rect x="104" y="72" width="104" height="30" rx="5" fill="none" stroke="currentColor" stroke-width="1.6"></rect>
+          <text x="156" y="92" font-size="11.5" fill="currentColor" text-anchor="middle">pass B</text>
+
+          <line x1="104" y1="116" x2="424" y2="116" stroke="currentColor" stroke-width="1" opacity="0.28"></line>
+
+          <line x1="264" y1="58" x2="264" y2="126" stroke="currentColor" stroke-width="1.2" marker-end="url(#a1)"></line>
+          <rect x="238" y="128" width="52" height="28" rx="5" fill="none" stroke="currentColor" stroke-width="1.6"></rect>
+          <text x="264" y="146" font-size="11" fill="currentColor" text-anchor="middle" font-family="IBM Plex Mono, monospace">1 row</text>
+
+          <line x1="104" y1="176" x2="316" y2="176" stroke="currentColor" stroke-width="1.2"></line>
+          <line x1="104" y1="171" x2="104" y2="181" stroke="currentColor" stroke-width="1.2"></line>
+          <line x1="316" y1="171" x2="316" y2="181" stroke="currentColor" stroke-width="1.2"></line>
+          <text x="210" y="196" font-size="11" fill="currentColor" text-anchor="middle">one token &middot; two passes</text>
+        </svg>
+        <p class="measure">128&ndash;138 J/token <span>measured at two concurrent slots</span></p>
+      </div>
+
+      <div class="panel after">
+        <h3>One policy per server &middot; after</h3>
+        <svg viewBox="0 0 430 208" role="img" aria-label="Timeline: both slots decode in one shared pass and a single phone call carries both rows, so one token costs one pass">
+          <defs>
+            <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <polygon points="0,1 10,5 0,9" fill="currentColor"></polygon>
+            </marker>
+          </defs>
+
+          <text x="96" y="41" font-size="11" fill="currentColor" text-anchor="end">slot 1</text>
+          <text x="96" y="54" font-size="10" fill="currentColor" text-anchor="end" opacity="0.7" font-family="IBM Plex Mono, monospace">phone</text>
+          <text x="96" y="86" font-size="11" fill="currentColor" text-anchor="end">slot 2</text>
+          <text x="96" y="99" font-size="10" fill="currentColor" text-anchor="end" opacity="0.7" font-family="IBM Plex Mono, monospace">phone</text>
+          <text x="96" y="144" font-size="11" fill="currentColor" text-anchor="end">phone</text>
+
+          <rect x="98" y="18" width="116" height="92" rx="7" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 4" opacity="0.6"></rect>
+          <text x="222" y="24" font-size="10.5" fill="currentColor" opacity="0.75" font-family="IBM Plex Mono, monospace">one batch</text>
+
+          <rect x="104" y="26" width="104" height="30" rx="5" fill="none" stroke="currentColor" stroke-width="1.6"></rect>
+          <text x="156" y="46" font-size="11.5" fill="currentColor" text-anchor="middle">shared pass</text>
+          <rect x="104" y="72" width="104" height="30" rx="5" fill="none" stroke="currentColor" stroke-width="1.6"></rect>
+          <text x="156" y="92" font-size="11.5" fill="currentColor" text-anchor="middle">shared pass</text>
+
+          <line x1="104" y1="116" x2="424" y2="116" stroke="currentColor" stroke-width="1" opacity="0.28"></line>
+
+          <line x1="156" y1="110" x2="156" y2="126" stroke="currentColor" stroke-width="1.6" marker-end="url(#a2)"></line>
+          <rect x="130" y="128" width="52" height="28" rx="5" fill="none" stroke="currentColor" stroke-width="2"></rect>
+          <text x="156" y="146" font-size="11" fill="currentColor" text-anchor="middle" font-family="IBM Plex Mono, monospace">2 rows</text>
+
+          <line x1="104" y1="176" x2="208" y2="176" stroke="currentColor" stroke-width="1.2"></line>
+          <line x1="104" y1="171" x2="104" y2="181" stroke="currentColor" stroke-width="1.2"></line>
+          <line x1="208" y1="171" x2="208" y2="181" stroke="currentColor" stroke-width="1.2"></line>
+          <text x="156" y="196" font-size="11" fill="currentColor" text-anchor="middle">one token &middot; one pass</text>
+          <text x="232" y="180" font-size="11" fill="currentColor" opacity="0.75">half the wall time</text>
+        </svg>
+        <p class="measure">38 J/token <span>measured, 19 windows at batch &ge; 2</span></p>
+      </div>
+    </div>
+    <figcaption>Time runs left to right; each lane is one decode slot of the same server, and the bottom lane is
+    the phone. The constraint lives in <code>server_slot::can_batch_with</code>, which refuses to batch slots whose
+    FFN split policy differs, so on the left slot 1 cannot join slot 2 and must wait for it: one token costs two
+    passes, the phone call carries a single row, and the window that measures slot 1 is charged slot 2&rsquo;s host
+    energy as well, which is why the adaptive controller kept rejecting the phone. On the right the policy is
+    decided per server, so both slots enter one batch and a single USB round trip carries both rows.</figcaption>
+  </figure>
+
+  <h2 class="section">Results</h2>
+  <p class="sub">Every completed arm of the 24-request trace, against the same 132.3 kJ desktop-only baseline.</p>
+  <div class="wrap">
+    <table>
+      <caption>24-request BurstGPT trace &middot; measured host energy, CPU package plus GPU board</caption>
+      <thead>
+        <tr><th>Arm</th><th>What changed</th><th>Host kJ</th><th>Saving</th><th>Outputs exact</th></tr>
+      </thead>
+      <tbody>
+        <tr class="dim"><td>baseline</td><td>desktop only</td><td>132.3</td><td>&mdash;</td><td class="exact">24/24</td></tr>
+        <tr><td>treatment 4</td><td>decode-only relocation, as designed</td><td>117.5</td><td>11.1%</td><td class="exact">24/24</td></tr>
+        <tr><td>m4a2</td><td>cheap 16-token probe</td><td>125.3</td><td>5.3%</td><td class="exact">24/24</td></tr>
+        <tr><td>m4a6-r2</td><td>shared policy, first attempt</td><td>138.7</td><td>&minus;4.9%</td><td class="exact">24/24</td></tr>
+        <tr class="rule-top"><td>m4a1</td><td>release only when slots agree</td><td>113.3</td><td>14.3%</td><td class="partial">22/24</td></tr>
+        <tr><td>m4a3</td><td>per-server policy coherence</td><td>113.9</td><td>13.8%</td><td class="partial">23/24</td></tr>
+        <tr><td>noshardgemma</td><td>Gemma without phone shards</td><td>112.7</td><td>14.8%</td><td class="partial">22/24</td></tr>
+        <tr><td>minrem8</td><td>lower remaining-token threshold</td><td>112.4</td><td>15.1%</td><td class="partial">22/24</td></tr>
+        <tr><td>bothrelease</td><td>Gemma release enabled</td><td>111.5</td><td>15.7%</td><td class="partial">23/24</td></tr>
+        <tr><td>qwenlayout</td><td>contiguous Qwen sessions</td><td>111.2</td><td>15.9%</td><td class="partial">22/24</td></tr>
+        <tr><td>m4a4</td><td>shared server policy</td><td>109.6</td><td>17.2%</td><td class="partial">22/24</td></tr>
+        <tr><td>m4a5</td><td>Gemma&rsquo;s full 24-layer FFN on the phone</td><td>94.9</td><td>28.2%</td><td class="partial">22/24</td></tr>
+        <tr class="rule-top dim"><td>m4a7, m4a8b</td><td>co-batching arms, aborted mid-trace</td><td>&mdash;</td><td>&mdash;</td><td>no result</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note"><strong>Read the last column first.</strong> Only a 24 of 24 arm is a correctness pass. Every
+  arm above 11 % differs from the baseline on at least one output, so none of them can carry an energy claim
+  on this trace yet.</p>
+
+  <div class="wrap" style="margin-top: 34px;">
+    <table>
+      <caption>Other measured pairs, each against its own baseline</caption>
+      <thead>
+        <tr><th>Pair</th><th>What it is</th><th>Host kJ</th><th>Saving</th><th>Outputs exact</th></tr>
+      </thead>
+      <tbody>
+        <tr class="best"><td>long decode</td><td>untruncated BurstGPT window, 19 requests</td><td>203.3 &rarr; 164.3</td><td>19.2%</td><td class="exact">19/19</td></tr>
+        <tr><td>realistic window</td><td>20 requests, 1,599 s of arrivals</td><td>340.0 &rarr; 281.2</td><td>17.3%</td><td class="partial">14/20</td></tr>
+        <tr class="dim"><td>historical v16</td><td>older deployment, 2026-09-12</td><td>145.0 &rarr; 107.6</td><td>25.8%</td><td class="exact">24/24</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note" style="margin-top: 26px;">
+    <p><strong>Where this leaves the target.</strong> The long-decode pair is the only current result that is both
+    strictly token-exact and a real saving: 19.2 % of host energy, all 3,267 output tokens identical, every
+    latency bound met. No current arm passes 25 %. The historical pair that does, at 25.8 %, ran on an older
+    deployment and is not a current measurement.</p>
+    <p><strong>What co-batching has proven so far.</strong> The rows do share a call: 442 multi-row calls with
+    cohorts of two and three, matched against forward and USB records, and the windows at two or more slots
+    measure 38 J per token instead of 128 to 138. What it has not produced is a complete arm. Coverage stalled
+    at 4 of 15 Qwen requests because 120 coherence decisions selected a zero fraction, and the run aborted
+    before its energy was accounted.</p>
+  </div>
+</div>

@@ -22,6 +22,7 @@ from .layer_placement import (
 
 LAYER_PLACEMENT_INVENTORY_SCHEMA = "research-scheduler-layer-placement-inventory-v1"
 SHAPE_PREFIX = "S41SERVERFFNSHAPE "
+FUSED_SHAPE_PREFIX = "S41SERVERFFNFUSEDSHAPE "
 
 
 def parse_layers(value: object) -> tuple[int, ...]:
@@ -95,7 +96,36 @@ def device_from_json(row: Mapping[str, object]) -> HelperDevice:
         busy_envelope_ms=None if row.get("busy_envelope_ms") is None else float(row["busy_envelope_ms"]),
         stored_layers=_masks(row.get("stored_layers")),
         qualified_layers=_masks(row.get("qualified_layers")),
+        route_anchor=_route_anchor(row.get("route_anchor", True)),
+        max_models=None if row.get("max_models") is None else _max_models(row["max_models"]),
+        kernels=None if row.get("kernels") is None else _kernels(row["kernels"]),
+        kernel_qualified_layers=(None if row.get("kernel_qualified_layers") is None
+                                 else _kernel_masks(row["kernel_qualified_layers"])),
     )
+
+
+def _kernel_masks(value: object) -> Mapping[str, Mapping[str, int]]:
+    if not isinstance(value, Mapping):
+        raise LayerPlacementError("device kernel_qualified_layers must map kernel -> model -> layers")
+    return MappingProxyType({str(kernel): _masks(models) for kernel, models in dict(value).items()})
+
+
+def _kernels(value: object) -> frozenset[str]:
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise LayerPlacementError("device kernels must be a list of kernel names")
+    return frozenset(value)
+
+
+def _max_models(value: object) -> int:
+    if type(value) is not int or value < 1:
+        raise LayerPlacementError("device max_models must be an integer >= 1")
+    return value
+
+
+def _route_anchor(value: object) -> bool:
+    if type(value) is not bool:
+        raise LayerPlacementError("device route_anchor must be true or false")
+    return value
 
 
 def device_to_json(device: HelperDevice) -> dict[str, object]:
@@ -110,6 +140,13 @@ def device_to_json(device: HelperDevice) -> dict[str, object]:
         **({"busy_envelope_ms": device.busy_envelope_ms} if device.busy_envelope_ms is not None else {}),
         **({"allowed_layers": specs(device.allowed_layers)} if device.allowed_layers is not None else {}),
         "stored_layers": specs(device.stored_layers), "qualified_layers": specs(device.qualified_layers),
+        # written only for co-helpers, so inventories without one stay byte-identical
+        **({"route_anchor": False} if not device.route_anchor else {}),
+        **({"max_models": device.max_models} if device.max_models is not None else {}),
+        **({"kernels": sorted(device.kernels)} if device.kernels is not None else {}),
+        **({"kernel_qualified_layers": {kernel: specs(models) for kernel, models
+                                        in sorted(device.kernel_qualified_layers.items())}}
+           if device.kernel_qualified_layers is not None else {}),
     }
 
 
@@ -188,6 +225,47 @@ def shape_observations(lines: Iterable[str], *, model_id: str, n_ff: int, helper
             raise LayerPlacementError("server helper label " + str(label) + " has no device mapping")
         helper = helpers[label]
         rows.append({"device_id": helper["device_id"], "model_id": model_id, "shard_format": helper["format"],
+                     "transport": helper["transport"], "rows": int(row["tokens"]), "calls": int(row["calls"]),
+                     "rpc_ms": float(row["rpc_mean_ms"]), "compute_ms": float(row["compute_mean_ms"]),
+                     "evidence": evidence})
+    return rows
+
+
+def parse_fused_shape_line(line: str) -> dict[str, object] | None:
+    """One ``S41SERVERFFNFUSEDSHAPE {...}`` line (WS15 fused call summary) -> its JSON object, else None."""
+    position = line.find(FUSED_SHAPE_PREFIX)
+    if position < 0:
+        return None
+    try:
+        row = json.loads(line[position + len(FUSED_SHAPE_PREFIX):].strip())
+    except json.JSONDecodeError as error:
+        raise LayerPlacementError("malformed S41SERVERFFNFUSEDSHAPE row: " + str(error)) from error
+    for name in ("kind", "tokens", "next_qkv", "calls", "rpc_mean_ms", "compute_mean_ms"):
+        if name not in row:
+            raise LayerPlacementError("S41SERVERFFNFUSEDSHAPE row lacks " + name)
+    if row["kind"] != "attn_proj:fused" or type(row["next_qkv"]) is not bool:
+        raise LayerPlacementError("S41SERVERFFNFUSEDSHAPE row has an unknown kind")
+    return row
+
+
+def fused_shape_observations(lines: Iterable[str], *, model_id: str, helpers: Mapping[str, Mapping[str, str]],
+                             default_helper: str | None = None,
+                             evidence: str = "") -> list[dict[str, object]]:
+    """Fused call summaries -> ``LayerPlacementProfile.observe_fused_call_summary`` keyword rows.
+
+    The stored format is the helper's FFN format, suffixed ``+next`` for calls that also returned the next
+    layer's Q/K/V, so the planner can price both unit shapes from measurements."""
+    rows = []
+    for line in lines:
+        row = parse_fused_shape_line(line)
+        if row is None or int(row["calls"]) <= 0:
+            continue
+        label = row.get("helper", default_helper)
+        if label not in helpers:
+            raise LayerPlacementError("server helper label " + str(label) + " has no device mapping")
+        helper = helpers[label]
+        rows.append({"device_id": helper["device_id"], "model_id": model_id,
+                     "shard_format": helper["format"] + ("+next" if row["next_qkv"] else ""),
                      "transport": helper["transport"], "rows": int(row["tokens"]), "calls": int(row["calls"]),
                      "rpc_ms": float(row["rpc_mean_ms"]), "compute_ms": float(row["compute_mean_ms"]),
                      "evidence": evidence})

@@ -887,7 +887,7 @@ static void htp_packet_callback(dspqueue_t queue, int error, void * context) {
 
     vtcm_acquire(ctx);
 
-    while (!ctx->vtcm_needs_release) {
+    for (;;) {
         struct htp_opbatch_req req;
         uint32_t r_size = sizeof(req);
 
@@ -897,6 +897,11 @@ static void htp_packet_callback(dspqueue_t queue, int error, void * context) {
 
         err = dspqueue_read_noblock(queue, &flags, n_dbufs, &n_dbufs, &dbuf, r_size, &r_size, (uint8_t *) &req);
         if (err == AEE_EWOULDBLOCK) {
+            // Yield VTCM only with an empty queue: a queued packet was signalled before this callback ran and is not
+            // signalled again, so releasing on vtcm_needs_release before reading it leaves the host waiting forever.
+            if (ctx->vtcm_needs_release) {
+                break;
+            }
             if (--poll_count) {
                 qurt_sleep(DSPQUEUE_POLL_TIMEOUT_USEC);
                 continue;

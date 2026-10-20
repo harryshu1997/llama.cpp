@@ -1,0 +1,12 @@
+   q32_tpu_probe:4021 
+                  Name              Rss              Pss         nr_procs            Inode               Exporter
+                system        192840 kB        192840 kB                1            32832                  system
+                system            24 kB            24 kB                1            32833                  system
+              metadata             4 kB             4 kB                1            32837                  system
+AHardwareBuffer pid [4021]            20 kB            20 kB                1            32838         system-uncached
+              metadata             4 kB             4 kB                1            32839                  system
+AHardwareBuffer pid [4021]            20 kB            20 kB                1            32840         system-uncached
+         PROCESS TOTAL        192912 kB        192912 kB                 
+----------------------
+dmabuf total: 498468 kB kernel_rss: 305556 kB userspace_rss: 192912 kB userspace_pss: 192912 kB
+ 

@@ -13,6 +13,8 @@ from ..._internal.runtime_plan import AutomatedCandidateSet, AutomatedRouteCandi
 from ..._internal.types import canonical_sha256
 from ..._internal.adaptive_decode_contracts import AdaptiveDecodeError
 from ..._internal.adaptive_decode_planning import adaptive_decode_policies, adaptive_probe_contracts
+from ..common import remote_resident_owner_pinned
+from .calibration import _select_remote_resident_owner_candidate
 from .common import _AutomatedSelectionContext
 from .continuous_join import continuous_join_reason, continuous_join_rejections
 
@@ -54,6 +56,20 @@ def _select_automated_candidate(
     observed_at_us = (
         request.arrival_us if observed_at_us is None else observed_at_us
     )
+    if remote_resident_owner_pinned(controller, candidate_set.model_id):
+        return _select_remote_resident_owner_candidate(controller, _AutomatedSelectionContext(
+            candidate_set=candidate_set,
+            request=request,
+            baseline=baseline,
+            excluded=excluded,
+            runtime_rejection=runtime_rejection,
+            candidate_by_id=candidate_by_id,
+            baseline_available=baseline_available,
+            selection_mode=selection_mode,
+            route_compiler=route_compiler,
+            observed_at_us=observed_at_us,
+            snapshot=snapshot,
+        ))
     if selection_mode == "desktop-baseline":
         if baseline_available:
             return (

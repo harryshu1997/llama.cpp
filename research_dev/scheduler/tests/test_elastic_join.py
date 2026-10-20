@@ -1554,15 +1554,16 @@ class HelperLossEndToEndTests(unittest.TestCase):
         """G1b recorded: the two-phone adaptive route's server is resident (no load), the request
         streams through the REAL adaptive controller (control apply, boundary); the Pixel's worker
         dies, the server releases the slot, so the boundary's stats call (real HTTP client) raises
-        StalePhysicalSlotError, the window discard refuses it, and the server exits after printing
-        ``S41SERVERFFNERROR helper=pixel``. Expect helper_lost AND server_exited semantics together:
+        StalePhysicalSlotError; the boundary is deferred to the terminal (2026-10-05: a stale read also
+        happens when the request simply finished), the aborted stream's error fails the attempt, and the
+        server exits after printing ``S41SERVERFFNERROR helper=pixel``. Expect helper_lost AND server_exited semantics together:
         the classifier waits for the exit, reaps the server (one SERVER_EXITED), the FALLBACK runs on
         the desktop through a load, REQUEST_RECOVERED, DEVICE_QUARANTINED for the Pixel, no abort."""
         import http.server
 
         from research_dev.scheduler.adapters import CanonicalPhysicalAdapter, interpret_runtime_ticket
         from research_dev.scheduler.adapters.contracts import (
-            RawEnergyMeasurement, RawExecutionObservation, RawTransitionObservation,
+            CompletionStreamError, RawEnergyMeasurement, RawExecutionObservation, RawTransitionObservation,
         )
         from research_dev.scheduler.adapters.heterogeneous_rig import _LiveExecutorResidency
         from research_dev.scheduler.adapters.http_backend import (
@@ -1655,6 +1656,14 @@ class HelperLossEndToEndTests(unittest.TestCase):
                             payload.on_first_token(time.monotonic_ns())
                         calls.append(("token", index + 1))
                         payload.on_decode_progress(0, index + 1, time.monotonic_ns(), False)
+                        if server.slot_released:
+                            # 2026-10-05: the boundary's stale stats read is deferred to the terminal (the
+                            # request may simply have finished); here the server ABORTED it, so its stream
+                            # ends with the error chunk, which is what fails the attempt
+                            raise CompletionStreamError(
+                                "completion stream error: Compute aborted.",
+                                server_error_message="Compute aborted.",
+                            )
                 raise AssertionError("the decode boundary did not fail")
 
             def apply_ffn_control(self, endpoint, control_value, *, timeout_s=5):

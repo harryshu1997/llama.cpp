@@ -11,6 +11,12 @@ so ``prepare_campaign_eval.server_identity()`` validates it unchanged. Differenc
 its host endpoint come from the scheduler's own session class of the transport under test, the budget remainder is
 drained through that transport by the session stop, and IDENTITY.json / RESULT.json also record the transport
 (for aoa-bridge: relay, host bridge and keep-awake option pins). Run under the rig lock; OP15 is never touched.
+
+Optional config keys ``device_id`` and ``phone_lock_path`` (defaults: the Pixel's) let the same adb-tcp experiment
+drive another phone's worker, e.g. the OnePlus 15 HTP worker for a quantized model (2026-10-07, Qwen3-32B Q4_0);
+``legs_columns`` sets the helper widths (default 0 / 8,704 / 17,408 / 0). ``ffn_numerics`` ({"layers": SPEC,
+"calls": N[, "seed", "threshold"]}) runs native/ffn_numerics.py on the pinned worker session before the server
+(FFN_NUMERICS.json; a quantized model's numerical receipt, 2026-10-08).
 """
 
 from __future__ import annotations
@@ -75,16 +81,26 @@ def worker_configuration(config: dict, forward_port: int) -> AdbTcpWorkerConfigu
     phone = config["phone"]
     pins = {path: "sha256:" + value.removeprefix("sha256:") for path, value in config["expected_phone_sha256"].items()}
     return AdbTcpWorkerConfiguration(
-        device_id="pixel10pro-phone", serial=config["serial"], adb_port=5037,
+        device_id=config.get("device_id", "pixel10pro-phone"), serial=config["serial"], adb_port=5037,
         adb_path=Path(config.get("adb_path", "/usr/bin/adb")), worker_path=config["phone_worker"],
         library_directories=(config["phone_library_dir"],), shard_path=config["phone_model"],
         artifact_sha256=phone["artifact_sha256"], layer_mask=sum(1 << layer for layer in phone["layers"]),
         n_embd=phone["n_embd"], columns=phone["columns"], column_quantum=phone["quantum"], max_tokens=4,
         swiglu=True, backend=config.get("phone_backend", "CPU"), phone_port=config["phone_port"],
-        forward_port=forward_port, max_requests=config["output_tokens"] * 2 * len(phone["layers"]),
+        forward_port=forward_port, max_requests=config["output_tokens"] * 2 * len(phone["layers"])
+        + int(config.get("fused_numerics", {}).get("calls", 0)) + int(config.get("ffn_numerics", {}).get("calls", 0)),
         worker_environment=config.get("phone_environment", {}), expected_sha256_by_path=pins,
         as_root=bool(config.get("phone_root", False)),
-        phone_lock_path="/data/local/tmp/.s42-pixel-ffn-kernels.lock" if config.get("phone_root") else None)
+        phone_lock_path=config.get("phone_lock_path", "/data/local/tmp/.s42-pixel-ffn-kernels.lock")
+        if config.get("phone_root") else None)
+
+
+def served_call_count(proof_lines: list[str], fused_lines: list[str]) -> int:
+    """Calls the phone served: one per proof line. Since 2026-10-05 a fused call prints its own
+    S41SERVERFFNCALL proof line (with ``fused_width=``) besides its FUSEDCALL pricing line, so the
+    pricing lines are added only for an older server that printed no fused proof lines."""
+    fused_proofs = sum(1 for line in proof_lines if " fused_width=" in line)
+    return len(proof_lines) + (0 if fused_proofs else len(fused_lines))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -138,6 +154,32 @@ def main(argv: list[str] | None = None) -> int:
         save(root / "LAUNCH.json", launch)
         save(root / "WORKER_COMMAND.json", launch["command"])
         port = session.transport_contract().control_port
+        fused = config.get("fused_numerics")
+        if fused:
+            # WS15: numerical rows of the fused kernel, on this same pinned worker session, before the server
+            from research_dev.scheduler.native import fused_numerics
+            numerics = fused_numerics.run(argparse.Namespace(
+                host="127.0.0.1", port=port, proxy=Path(config["model"]), proxy_sha256=phone["artifact_sha256"],
+                artifact_sha256=phone["artifact_sha256"], layers=fused["layers"], next_layers=fused.get("next", ""),
+                worker_layers=",".join(str(layer) for layer in phone["layers"]), rows="1,2,4", repeats=1,
+                seed=int(fused.get("seed", 20261001)), n_embd=phone["n_embd"], max_columns=phone["columns"],
+                max_tokens=4, f32_io=False, threshold=1e-3))
+            save(root / "NUMERICS.json", numerics)
+            if numerics["status"] != "PASS":
+                raise RuntimeError(f"fused numerical rows failed: worst rel-L2 {numerics['worst_rel_l2']}")
+        ffn = config.get("ffn_numerics")
+        if ffn:
+            # 2026-10-08: numerical rows of a plain FFN worker serving quantized weights (ffn_numerics.py: ggml-cpu
+            # reference from the parent GGUF), on this same pinned worker session, before the server
+            from research_dev.scheduler.native import ffn_numerics
+            numerics = ffn_numerics.run(argparse.Namespace(
+                host="127.0.0.1", port=port, parent=Path(config["model"]), artifact_sha256=phone["artifact_sha256"],
+                layers=ffn["layers"], worker_layers=",".join(str(layer) for layer in phone["layers"]), rows="1,2,4",
+                repeats=1, seed=int(ffn.get("seed", 20261008)), n_embd=phone["n_embd"], max_columns=phone["columns"],
+                max_tokens=4, f32_io=False, threshold=float(ffn.get("threshold", 1e-3))))
+            save(root / "FFN_NUMERICS.json", numerics)
+            if numerics["status"] != "PASS":
+                raise RuntimeError(f"FFN numerical rows failed: worst rel-L2 {numerics['worst_rel_l2']}")
         env = {key: value for key, value in os.environ.items() if not key.startswith("S41_SERVER_FFN_")}
         env.update(config["server_environment"])
         env["S41_SERVER_FFN_PORT"] = str(port)
@@ -158,7 +200,10 @@ def main(argv: list[str] | None = None) -> int:
         client = LlamaCppHttpClient()
         sampler.start()
         wait_ready(server, lambda: len(sampler.rows()) >= 4, 30)   # as qualify_pixel_server.py: coverage before the first request
-        for index, columns in enumerate((0, 8704, 17408, 0)):
+        legs = tuple(int(value) for value in config.get("legs_columns", (0, 8704, 17408, 0)))
+        if len(legs) != 4 or legs[0] or legs[3] or not all(legs[1:3]):
+            raise RuntimeError("legs_columns must be desktop, helper, helper, desktop")
+        for index, columns in enumerate(legs):
             rid = f"pixel-ffn-{index}-columns{columns}"
             first, progress, controls = [], [], []
 
@@ -204,12 +249,17 @@ def main(argv: list[str] | None = None) -> int:
             raise RuntimeError(f"server shutdown status {server_exit}")
         log = (root / "server.log").read_text(errors="replace").splitlines()
         proof_lines = [line for line in log if "S41SERVERFFNCALL " in line]
+        fused_lines = [line for line in log if "S41SERVERFFNFUSEDCALL " in line]
         shapes = [line for line in log if "S41SERVERFFNSHAPE " in line]
-        calls = len(proof_lines)
+        fused_shapes = [line for line in log if "S41SERVERFFNFUSEDSHAPE " in line]
+        calls = served_call_count(proof_lines, fused_lines)
         if not 0 < calls < worker.max_requests:
             raise RuntimeError(f"unexpected server call count {calls}")
         save(root / "SERVER_CALLS.json", proof_lines)
         save(root / "SERVER_FFN_SHAPES.json", shapes)
+        if fused_lines or fused_shapes:
+            save(root / "SERVER_FUSED_CALLS.json", fused_lines)
+            save(root / "SERVER_FFN_FUSED_SHAPES.json", fused_shapes)
         stop = session.stop(served_calls=calls).to_json()
         save(root / "STOP.json", stop)
         expected = records[0]["execution"]["tokens"]
@@ -217,7 +267,8 @@ def main(argv: list[str] | None = None) -> int:
         summary = {"status": "PASS" if all(matches) else "FAIL", "token_identity": matches,
                    "output_tokens_each": len(expected), "phone_calls": calls,
                    "call_columns": {str(c): sum(bool(re.search(rf"\bcolumns={c}\b", line)) for line in proof_lines)
-                                    for c in (8704, 17408)},
+                                    for c in sorted({value for value in legs if value})},
+                   **({"fused_calls": len(fused_lines)} if fused_lines else {}),
                    "server_exit": server_exit, "worker_exit": stop["exit_code"],
                    "drained_calls_outside_measurement": stop["drained_calls"], "transport": args.transport,
                    "boot_unchanged": stop["boot_unchanged"], "phone_energy_measured": False,

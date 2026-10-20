@@ -168,10 +168,10 @@ def runner_command(
         phone.worker_path,
         "--phone-busybox",
         phone.busybox_path,
-        "--qwen-phone-model",
-        hot.phone_artifact_path,
-        "--gemma-phone-model",
-        cold.phone_artifact_path,
+        *(["--qwen-phone-model", hot.phone_artifact_path]
+          if hot.phone_artifact_path is not None else []),
+        *(["--gemma-phone-model", cold.phone_artifact_path]
+          if cold.phone_artifact_path is not None else []),
         "--llama-phone-model",
         overlay.phone_artifact_path,
         "--phone-session-root",
@@ -325,6 +325,11 @@ def runner_command(
             "--fixed-phone-residency-json",
             canonical_json(configuration.campaign.fixed_phone_residency.to_json()),
         ))
+    if configuration.campaign.remote_resident_owner is not None:
+        command.extend((
+            "--remote-resident-owner-json",
+            canonical_json(configuration.campaign.remote_resident_owner.to_json()),
+        ))
     if configuration.campaign.include_startup_preparation:
         command.append("--include-startup-preparation")
     if configuration.campaign.startup_desktop_parents:
@@ -471,6 +476,15 @@ def preflight_command(
     if configuration.campaign.speculative_rows is not None:
         command.extend(("--speculative-rows-json", canonical_json(
             speculative_rows_json(configuration.campaign.speculative_rows))))
+    # opt-in (WS17): quantized artifacts declare their matrix precision; absent = the frozen F16 rule
+    for option, model in (("--qwen-matrix-precision", hot), ("--gemma-matrix-precision", cold)):
+        if model.matrix_precision is not None:
+            command.extend((option, canonical_json(model.matrix_precision.to_json())))
+    if configuration.campaign.remote_resident_owner is not None:
+        command.extend((
+            "--remote-resident-owner-json",
+            canonical_json(configuration.campaign.remote_resident_owner.to_json()),
+        ))
     return tuple(command)
 
 
@@ -565,6 +579,19 @@ def _materialize_catalog(
     source = configuration.evidence.prematerialized_catalog_path
     if source is not None:
         shutil.copyfile(source, output_path)
+        if configuration.campaign.remote_resident_owner is not None:
+            # opt-in Phase 2 arm: the prematerialized catalog gains the remote-resident parent
+            from research_dev.scheduler.campaigns.burstgpt.catalog import (
+                MaterializationError,
+                remote_resident_owner_catalog,
+            )
+            try:
+                catalog = remote_resident_owner_catalog(RuntimeCapabilityCatalog.from_json(
+                    json.loads(output_path.read_text(encoding="ascii"))
+                ), configuration)
+            except MaterializationError as error:
+                raise CampaignLaunchError(str(error)) from error
+            output_path.write_bytes(canonical_bytes(catalog.to_json()))
     else:
         subprocess.run(
             (

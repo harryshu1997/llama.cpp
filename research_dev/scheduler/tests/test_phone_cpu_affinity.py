@@ -74,3 +74,15 @@ class PhoneCpuAffinityTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ArtifactFreeSessionTests(unittest.TestCase):
+    """2026-10-06: a direct phone session without any artifact (all-GPU Q4 baseline)."""
+
+    def test_empty_worker_and_model_mappings_are_accepted_together(self):
+        empty = replace(configuration(), worker_paths_by_artifact={}, model_paths_by_artifact={})
+        self.assertEqual((dict(empty.worker_paths_by_artifact), dict(empty.model_paths_by_artifact)), ({}, {}))
+        for workers, models in (({SHA: "/phone/worker"}, {}), ({}, {SHA: "/phone/model"})):
+            with self.subTest(workers=workers, models=models):
+                with self.assertRaisesRegex(PhysicalAdapterError, "both empty or both set"):
+                    replace(configuration(), worker_paths_by_artifact=workers, model_paths_by_artifact=models)

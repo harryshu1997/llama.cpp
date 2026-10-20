@@ -1,0 +1,14 @@
+  Device 0: NVIDIA GeForce RTX 4060 Ti, compute capability 8.9, VMM: yes
+Device 0 has GPU overload: w_m = 39, n_m = 18
+Device 1 has CPU overload.
+Device 2 has CPU overload.
+  - Assignment Set : M4
+  - N Layer Window : 39
+  - N GPU Layers   : 18
+  - Assignment Set : M3
+  - N Layer Window : 12
+  - N GPU Layers   : 0
+  - Assignment Set : M3
+  - N Layer Window : 13
+  - N GPU Layers   : 0
+Using window size: 39, GPU layers: 18

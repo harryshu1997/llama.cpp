@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="1000" viewBox="0 100 2400 1000" role="img" aria-labelledby="title desc">
+  <title id="title">Hardware power, speed, capacity, and data-movement pyramid for an RTX 4060 Ti desktop and OnePlus 15 phone</title>
+  <desc id="desc">Paired pyramids show hardware compute speed, power, memory capacity, memory bandwidth, interconnect, and storage performance. A central bridge shows direct USB 3 FunctionFS DMA-BUF performance.</desc>
+  <defs>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="5" stdDeviation="6" flood-color="#15324a" flood-opacity="0.15"/>
+    </filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M 0 0 L 12 6 L 0 12 z" fill="#52697d"/>
+    </marker>
+    <style>
+      .title { font: 700 47px 'DejaVu Sans', Arial, sans-serif; fill: #17324d; }
+      .subtitle { font: 400 22px 'DejaVu Sans', Arial, sans-serif; fill: #52697d; }
+      .panel-title { font: 700 29px 'DejaVu Sans', Arial, sans-serif; fill: #17324d; letter-spacing: 1.5px; }
+      .tier-title { font: 700 25px 'DejaVu Sans', Arial, sans-serif; fill: #142b3d; }
+      .metric { font: 700 24px 'DejaVu Sans', Arial, sans-serif; fill: #0b5683; }
+      .metric-small { font: 700 20px 'DejaVu Sans', Arial, sans-serif; fill: #0b5683; }
+      .cap-metric { font: 700 22px 'DejaVu Sans', Arial, sans-serif; fill: #657786; }
+      .body { font: 400 19px 'DejaVu Sans', Arial, sans-serif; fill: #263e50; }
+      .small { font: 400 16px 'DejaVu Sans', Arial, sans-serif; fill: #52697d; }
+      .tiny { font: 400 14px 'DejaVu Sans', Arial, sans-serif; fill: #52697d; }
+      .warning { font: 700 20px 'DejaVu Sans', Arial, sans-serif; fill: #a43b14; }
+      .warning-small { font: 600 16px 'DejaVu Sans', Arial, sans-serif; fill: #a43b14; }
+      .bridge-title { font: 700 22px 'DejaVu Sans', Arial, sans-serif; fill: #5f3a00; }
+      .bridge-metric { font: 700 22px 'DejaVu Sans', Arial, sans-serif; fill: #8b4c00; }
+      .bridge-body { font: 400 16px 'DejaVu Sans', Arial, sans-serif; fill: #60461e; }
+      .card-title { font: 700 21px 'DejaVu Sans', Arial, sans-serif; fill: #17324d; }
+      .card-body { font: 400 18px 'DejaVu Sans', Arial, sans-serif; fill: #263e50; }
+      .card-code { font: 600 18px 'DejaVu Sans Mono', monospace; fill: #17324d; }
+      .outline { stroke: #52697d; stroke-width: 2.2; stroke-linejoin: round; }
+      .separator { stroke: #ffffff; stroke-width: 3; }
+    </style>
+  </defs>
+
+  <rect x="0" y="100" width="2400" height="1000" fill="#f7f9fc"/>
+
+  <text x="570" y="154" text-anchor="middle" class="panel-title">DESKTOP: RTX 4060 Ti + i9-12900K</text>
+  <text x="1830" y="154" text-anchor="middle" class="panel-title">PHONE: OP15 / SM8850</text>
+
+  <!-- Desktop pyramid -->
+  <g id="desktop-pyramid" filter="url(#shadow)">
+    <path class="outline" fill="#b9dca8" d="M 360 185 L 780 185 L 825 350 L 315 350 Z"/>
+    <path class="outline" fill="#c9e6bb" d="M 315 360 L 825 360 L 880 520 L 260 520 Z"/>
+    <path class="outline" fill="#fde0c2" d="M 260 530 L 880 530 L 935 690 L 205 690 Z"/>
+    <path class="outline" fill="#dcefd3" d="M 205 700 L 935 700 L 995 870 L 145 870 Z"/>
+    <path class="outline" fill="#eef7e9" d="M 145 880 L 995 880 L 1060 1050 L 80 1050 Z"/>
+  </g>
+
+  <g id="desktop-labels" text-anchor="middle">
+    <text x="570" y="223" class="tier-title">RTX 4060 Ti compute</text>
+    <text x="570" y="259" class="cap-metric">22.1 TFLOP/s FP32</text>
+    <text x="570" y="293" class="metric-small">7.4 W idle | 165 W limit</text>
+
+    <text x="570" y="398" class="tier-title">16 GiB GDDR6</text>
+    <text x="570" y="442" class="metric">247 GB/s measured</text>
+    <text x="570" y="482" class="cap-metric">288 GB/s rated</text>
+
+    <text x="570" y="566" class="tier-title">PCIe GPU &lt;-&gt; CPU</text>
+    <text x="570" y="602" class="warning">LIVE: Gen1 x8</text>
+    <text x="570" y="635" class="metric-small">H2D 1.68 | D2H 1.71 GB/s</text>
+    <text x="570" y="665" class="small">Gen4 x8 cap: 15.8 GB/s</text>
+
+    <text x="570" y="738" class="tier-title">i9-12900K | 16 cores / 24 threads</text>
+    <text x="570" y="775" class="metric">1.41 TFLOP/s FP32</text>
+    <text x="570" y="811" class="metric-small">5.2 GHz | 30 GiB | 50 GB/s</text>
+    <text x="570" y="844" class="cap-metric" style="font-size:19px">180 W PL1 | 241 W PL2</text>
+
+    <text x="570" y="925" class="tier-title">NVMe P300 1 TB</text>
+    <text x="570" y="967" class="metric">1.67 GB/s live O_DIRECT read</text>
+  </g>
+
+  <!-- Phone pyramid -->
+  <g id="phone-pyramid" filter="url(#shadow)">
+    <path class="outline" fill="#abc8f1" d="M 1650 185 L 1830 185 L 1830 355 L 1585 355 Z"/>
+    <path class="outline" fill="#c1d7f5" d="M 1830 185 L 2010 185 L 2075 355 L 1830 355 Z"/>
+    <path class="outline" fill="#cfdef6" d="M 1585 365 L 2075 365 L 2130 525 L 1530 525 Z"/>
+    <path class="outline" fill="#dde8f9" d="M 1530 535 L 2130 535 L 2195 720 L 1465 720 Z"/>
+    <path class="outline" fill="#edf3fc" d="M 1465 730 L 2195 730 L 2265 900 L 1395 900 Z"/>
+  </g>
+
+  <g id="phone-labels" text-anchor="middle">
+    <text x="1712" y="220" class="tier-title" style="font-size:16px">Hexagon HTP v81</text>
+    <text x="1712" y="260" class="metric-small" style="font-size:18px">11.7 TFLOP/s</text>
+    <text x="1712" y="298" class="small" style="font-size:14px">FP16 GEMM</text>
+
+    <text x="1948" y="220" class="tier-title" style="font-size:16px">Adreno 840 GPU</text>
+    <text x="1948" y="260" class="metric-small" style="font-size:17px">1.1-2.2 TFLOP/s</text>
+    <text x="1948" y="298" class="small" style="font-size:14px">dense GEMM</text>
+
+    <text x="1830" y="402" class="tier-title">Phone power</text>
+    <text x="1830" y="447" class="metric">3.99 W active estimate</text>
+    <text x="1830" y="485" class="metric-small">1.74 W marginal estimate</text>
+
+    <text x="1830" y="578" class="tier-title">16 GB LPDDR | 14.8 GiB visible</text>
+    <text x="1830" y="632" class="metric">66-77 GB/s measured</text>
+
+    <text x="1830" y="781" class="tier-title">UFS storage</text>
+    <text x="1830" y="826" class="metric">3.44 GB/s live O_DIRECT read</text>
+  </g>
+
+  <!-- Desktop-to-phone direct data path -->
+  <path d="M 943 746 C 1060 675, 1350 650, 1502 619" fill="none" stroke="#52697d" stroke-width="5" marker-end="url(#arrow)"/>
+  <g id="usb-bridge" transform="translate(1016 573)" filter="url(#shadow)">
+    <rect x="0" y="0" width="405" height="250" rx="22" fill="#fff0c6" stroke="#a77722" stroke-width="2.5"/>
+    <text x="202.5" y="38" text-anchor="middle" class="bridge-title">DIRECT USB 3.0</text>
+    <text x="202.5" y="68" text-anchor="middle" class="bridge-body">DMA-BUF</text>
+    <line x1="24" y1="84" x2="381" y2="84" stroke="#d4aa5b"/>
+    <text x="202.5" y="118" text-anchor="middle" class="bridge-metric">465.8 MB/s each way</text>
+    <text x="202.5" y="148" text-anchor="middle" class="bridge-body">1 MiB queued</text>
+    <text x="202.5" y="181" text-anchor="middle" class="bridge-metric">434.6 + 434.6 MB/s</text>
+    <text x="202.5" y="208" text-anchor="middle" class="bridge-body">full duplex</text>
+    <text x="202.5" y="235" text-anchor="middle" class="tiny">5 Gbit/s | 2.48 W input</text>
+  </g>
+</svg>

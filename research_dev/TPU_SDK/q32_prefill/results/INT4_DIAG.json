@@ -1,0 +1,35 @@
+{
+ "i4bw (BlockwiseQuantization, signed d)": {
+  "weff_rel_vs_d_times_q": 144.8362967439046,
+  "weff_rel_vs_q_only": 0.0
+ },
+ "i4bw + DRQ flag": {
+  "weff_rel_vs_d_times_q": 144.83408692843057,
+  "weff_rel_vs_q_only": 1.52587890625e-05,
+  "random_input_rel_l2": 146.2337936583013
+ },
+ "i4emu (emulated sub-channel pattern)": {
+  "weff_rel_vs_d_times_q": 0.0,
+  "weff_rel_vs_q_only": 1.0000716583412084,
+  "random_input_rel_l2": 0.00041606015839229467
+ },
+ "i4pc + DRQ (per-channel int4 requant)": {
+  "weff_rel_vs_d_times_q": 0.14005640930998414,
+  "weff_rel_vs_q_only": 1.0000699407500724,
+  "random_input_rel_l2": 0.14135423554335896
+ },
+ "i8pc (per-channel int8, no DRQ flag)": {
+  "weff_rel_vs_d_times_q": 0.007213836167900531,
+  "weff_rel_vs_q_only": 1.0000718783658,
+  "random_input_rel_l2": 0.007283045781678435
+ },
+ "i8pc + DRQ": {
+  "weff_rel_vs_d_times_q": 0.0072139672685147815,
+  "weff_rel_vs_q_only": 1.0000718773252766,
+  "random_input_rel_l2": 0.010152437010875703
+ },
+ "f32 -> half": {
+  "weff_rel_vs_d_times_q": 0.0,
+  "weff_rel_vs_q_only": 1.0000716583412084
+ }
+}

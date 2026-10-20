@@ -1,0 +1,2 @@
+deny magisk vendor_sysfs_usb_supply file { open read getattr }
+deny magisk vendor_sysfs_battery_supply file { open read getattr }

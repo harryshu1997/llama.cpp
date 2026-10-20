@@ -55,10 +55,16 @@ struct client_config {
     uint16_t usb_vendor_id = 0;
     uint16_t usb_product_id = 0;
     bool usb_split_h2d = false;
+    // ask the phone for flag_fast_hash payload hashes (the phone build must support it)
+    bool fast_hash = false;
     bool usb_full_duplex = false;
     std::string usb_batch_plan = "split-row";
     // request id of the first call; disjoint ranges keep call proofs unique across clients
     uint32_t first_request_id = 1;
+    // WS15 fused attention-projection calls (TCP and, since WS21, FunctionFS): layers of layer_mask whose full-width call also runs
+    // O(l) (marker fused_in-<l>), and the subset that also returns layer l+1's raw Q/K/V
+    uint64_t fused_layer_mask = 0;
+    uint64_t fused_next_mask = 0;
 };
 
 struct client_shape_summary {
@@ -150,6 +156,9 @@ struct client_summary {
     double prefill_compute_p50_ms = 0.0;
     double prefill_overlap_p50_ms = 0.0;
     std::vector<client_shape_summary> shapes;
+    // WS15 fused calls, by (rows, next Q/K/V) as columns = 1 (delta only) or 2 (delta + Q/K/V)
+    size_t fused_calls = 0;
+    std::vector<client_shape_summary> fused_shapes;
 };
 
 struct client_runtime_context_entry {
@@ -207,6 +216,9 @@ public:
     uint64_t remote_resident_layer_mask() const;
     bool remote_resident_layer(int layer) const;
     uint64_t weight_hash() const;
+    uint64_t fused_layer_mask() const;
+    uint64_t fused_next_mask() const;
+    uint64_t fused_weight_hash() const;
 
 private:
     struct runtime_summary_accumulator {
@@ -238,6 +250,14 @@ private:
     bool exchange(
             uint32_t request_id, int layer, uint32_t elements,
             uint32_t columns, uint32_t tokens, std::string & error);
+    bool fused_hello(uint64_t requested_layer_mask, std::string & error);
+    bool exchange_fused(
+            uint32_t request_id, int layer, uint32_t elements,
+            uint32_t columns, uint32_t tokens, bool next_qkv,
+            std::string & error);
+    bool eval_fused(ggml_tensor * tensor, bool ask, bool & handled);
+    // payload hash of this session (flag_fast_hash when configured; HELLO checks the phone echoed it)
+    uint32_t session_hash(const void * data, size_t size) const;
 #if defined(FFN_SPLIT_USB_TRANSPORT)
     struct usb_pending_part {
         usb_slot_buffers buffers;
@@ -325,6 +345,34 @@ private:
     uint32_t thread_elements_ = 0;
     uint32_t thread_columns_ = 0;
     uint32_t thread_tokens_ = 0;
+    bool thread_fused_ = false;
+    bool thread_fused_next_ = false;
+    // WS15 fused call state: the call of fused_layer_ is pending until its delta and (next) its
+    // Q/K/V placeholders are all published; fused_output_ holds its rows [tokens][row]
+    uint64_t fused_session_mask_ = 0;
+    uint64_t fused_session_next_mask_ = 0;
+    uint32_t fused_n_q_ = 0;
+    uint32_t fused_n_kv_ = 0;
+    uint64_t fused_weight_hash_ = 0;
+    bool fused_pending_ = false;
+    bool fused_received_ = false;
+    int fused_layer_ = -1;
+    uint32_t fused_tokens_ = 0;
+    bool fused_next_ = false;
+    int fused_remaining_ = 0;
+    uint32_t fused_request_id_ = 0;
+    double fused_launch_ms_ = 0.0;
+    std::vector<float> fused_output_;
+    std::vector<double> fused_rpc_samples_;
+    std::vector<double> fused_compute_samples_;
+    std::vector<uint32_t> fused_tokens_samples_;
+    std::vector<uint8_t> fused_next_samples_;
+    // 2026-10-05: fused calls are first-class in the request proof and the runtime statistics: the
+    // runtime context captured at issue (S41SERVERFFNCALL context=...), the input payload per call
+    std::vector<client_runtime_context_entry> fused_runtime_context_;
+    uint32_t fused_elements_ = 0;
+    uint32_t fused_columns_ = 0;
+    std::vector<uint64_t> fused_payload_samples_;
     bool failed_ = false;
     std::string error_;
     // sticky across resets: a reconnect must reach the same worker weights

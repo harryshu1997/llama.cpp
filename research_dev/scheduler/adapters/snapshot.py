@@ -1074,10 +1074,62 @@ def _operator_plan_geometry_sha256(
     return resident_geometry_sha256
 
 
+def _anchored_helper_residency(
+    manifest: ModelManifest,
+    composite: object,
+    catalog: RuntimeCapabilityCatalog | None = None,
+) -> dict[str, dict[str, int]] | None:
+    """WS23 (2026-10-05): a helper-anchored composite (``static_helper_anchor``) declares no exact operator
+    placements; its preloaded helper holds every operator of the route at full width (a placement record cannot
+    say that: an assisted placement needs a proper fractional split), so the residency contract is the helper's
+    own layers. None = not an anchored composite (the first hardware preflight of the Pixel-led route hit the
+    fallback below)."""
+    parameters = getattr(composite, "adapter_parameters", {})
+    if (
+        parameters.get("static_helper_anchor") != 1
+        or composite.helper_device_id is None
+        or composite.helper_device_id not in composite.participant_device_ids
+        or not composite.operator_ids
+    ):
+        return None
+    operator_by_id = {row.operator_id: row for row in manifest.operators}
+    device_tensors: dict[str, dict[str, int]] = {
+        device_id: {} for device_id in composite.participant_device_ids
+    }
+    # every operator the helper does not own stays where the baseline desktop placement puts it (the GPU layers on
+    # cuda0, the rest on the desktop CPU): without those rows the projection re-allocates the GPU layers and the
+    # first Qwen request failed with "projected allocation exceeds memory capacity: cuda0-vram" (03:33 UTC)
+    baseline = None
+    if catalog is not None and composite.baseline_executor_id is not None:
+        baseline = catalog.composite_executor_by_id.get(composite.baseline_executor_id)
+    if baseline is not None and baseline.operator_placements:
+        for device_id, tensors in _composite_placement_residency(manifest, baseline).items():
+            if device_id in device_tensors:
+                device_tensors[device_id].update(tensors)
+    helper = device_tensors[composite.helper_device_id]
+    for operator_id in composite.operator_ids:
+        operator = operator_by_id.get(operator_id)
+        if operator is None:
+            raise PhysicalAdapterError(
+                "runtime composite operator is absent from the model"
+            )
+        for tensor_id in operator.tensor_ids:
+            for device_id, tensors in device_tensors.items():
+                if device_id != composite.helper_device_id:
+                    tensors.pop(tensor_id, None)
+            helper[tensor_id] = manifest.tensor_by_id[tensor_id].nbytes
+    return device_tensors
+
+
 def _composite_placement_residency(
     manifest: ModelManifest,
     composite: object,
+    catalog: RuntimeCapabilityCatalog | None = None,
 ) -> dict[str, dict[str, int]]:
+    if composite.artifact_sha256 in {None, manifest.artifact_sha256}:
+        anchored = _anchored_helper_residency(manifest, composite, catalog)
+        if anchored is not None:
+            return anchored
     if (
         composite.artifact_sha256 not in {
             None, manifest.artifact_sha256
@@ -1239,7 +1291,7 @@ def model_residency_observations(
             operator_plan,
         )
     else:
-        device_tensors = _composite_placement_residency(manifest, composite)
+        device_tensors = _composite_placement_residency(manifest, composite, catalog)
     if selected_device_ids:
         if not set(selected_device_ids).issubset(device_tensors):
             raise PhysicalAdapterError(
@@ -1257,6 +1309,15 @@ def model_residency_observations(
     reclaimable = _effective_reclaimable_bytes(
         reclaimable, device_tensors, resident_bytes_by_device
     )
+    # WS23 (2026-10-05): a helper-anchored composite's preloaded helper holds its layers for the trace lifetime,
+    # independent of which anchored composite (offload / split, hot / cpu) runs on them: those rows are shared
+    # device residency (executor_id None, feasibility accepts them for every executor) instead of one endpoint's
+    # allocation, which made the second anchored composite's row an "endpoint allocation conflict".
+    shared_devices: set[str] = set()
+    if composite is not None and getattr(
+        composite, "adapter_parameters", {}
+    ).get("static_helper_anchor") == 1:
+        shared_devices = set(_preloaded_device_ids(composite))
     return tuple(
         ModelResidencyObservation(
             model_id=manifest.model_id,
@@ -1268,7 +1329,7 @@ def model_residency_observations(
                 device_id, sum(tensor_bytes.values())
             ),
             generation=generation,
-            executor_id=executor_id,
+            executor_id=None if device_id in shared_devices else executor_id,
             reclaimable_bytes=reclaimable.get(device_id),
             resident_geometry_sha256=resident_geometry_sha256,
             resident_adapter_parameters=resident_adapter_parameters,

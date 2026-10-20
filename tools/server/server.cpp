@@ -86,6 +86,8 @@ struct s41_ffn_transport_env {
     uint64_t usb_product_id = 0;
     uint64_t usb_split_h2d = 0;
     uint64_t usb_full_duplex = 0;
+    // <prefix>FAST_HASH=1: flag_fast_hash payload hashes (the phone build must support it)
+    bool fast_hash = false;
 };
 
 bool s41_parse_transport_env(const std::string & prefix, s41_ffn_transport_env & out, std::string & error) {
@@ -105,6 +107,13 @@ bool s41_parse_transport_env(const std::string & prefix, s41_ffn_transport_env &
         return false;
     }
     out.host = host == nullptr ? "" : host;
+    if (const char * fast_hash = env("FAST_HASH")) {
+        if (std::strcmp(fast_hash, "0") != 0 && std::strcmp(fast_hash, "1") != 0) {
+            error = "server FFN split FAST_HASH must be 0 or 1";
+            return false;
+        }
+        out.fast_hash = std::strcmp(fast_hash, "1") == 0;
+    }
     if (tcp && (!u64("PORT", out.port) || out.port == 0 || out.port > 65535)) {
         error = "invalid server FFN split environment";
         return false;
@@ -142,9 +151,15 @@ bool s41_parse_transport_env(const std::string & prefix, s41_ffn_transport_env &
     return true;
 }
 
-// layer of an FFN split graph marker (ffn_norm-<il>, ffn_phone_partial-<il>)
+// layer of an FFN split graph marker (ffn_norm-<il>, ffn_phone_partial-<il>) or of a WS15 fused call
+// (fused_in-<il>, fused_delta-<il>, and fused_q/k/v-<il+1>, which belong to the call of layer il)
 bool s41_ffn_marker_layer(const char * name, int & layer) {
-    for (const char * prefix : { "ffn_norm-", "ffn_phone_partial-" }) {
+    static const struct { const char * prefix; int offset; } markers[] = {
+        { "ffn_norm-", 0 }, { "ffn_phone_partial-", 0 },
+        { "fused_in-", 0 }, { "fused_delta-", 0 }, { "fused_q-", 1 }, { "fused_k-", 1 }, { "fused_v-", 1 },
+    };
+    for (const auto & marker : markers) {
+        const char * prefix = marker.prefix;
         const size_t size = std::strlen(prefix);
         if (name == nullptr || std::strncmp(name, prefix, size) != 0) {
             continue;
@@ -152,10 +167,10 @@ bool s41_ffn_marker_layer(const char * name, int & layer) {
         errno = 0;
         char * end = nullptr;
         const long parsed = std::strtol(name + size, &end, 10);
-        if (errno != 0 || end == name + size || *end != '\0' || parsed < 0 || parsed >= 64) {
+        if (errno != 0 || end == name + size || *end != '\0' || parsed - marker.offset < 0 || parsed >= 64) {
             return false;
         }
-        layer = static_cast<int>(parsed);
+        layer = static_cast<int>(parsed) - marker.offset;
         return true;
     }
     return false;
@@ -173,6 +188,8 @@ struct s41_ffn_helper {
     std::string label;
     bool functionfs_usb = false;
     uint64_t layer_mask = 0;
+    // the layers this helper owns as remote-resident (no host weights): its loss is fatal
+    uint64_t remote_layer_mask = 0;
     std::unique_ptr<ffn_split::client> client;
     bool deferred = false;
     // sub-policy accepted last, restored when a later helper rejects a new union policy
@@ -381,12 +398,46 @@ public:
             error = "invalid server FFN split maximum tokens";
             return false;
         }
+        // S41_SERVER_FFN_HELPER<k>_MAX_TOKENS caps one helper's rows: the owner of remote-resident
+        // layers takes whole ubatches while a decode co-helper leaves its layers' prefill on the host
+        std::vector<uint64_t> helper_max_tokens(helper_count, max_tokens);
+        for (uint64_t index = 0; multi_format && index < helper_count; ++index) {
+            const std::string name = prefixes[index] + "MAX_TOKENS";
+            if (std::getenv(name.c_str()) != nullptr &&
+                (!s41_parse_u64_env(name.c_str(), helper_max_tokens[index]) ||
+                 helper_max_tokens[index] == 0 || helper_max_tokens[index] > default_max_tokens ||
+                 (!runtime_control && helper_max_tokens[index] != default_max_tokens))) {
+                error = "invalid server FFN helper maximum tokens";
+                return false;
+            }
+        }
         uint64_t remote_resident_layer_mask = 0;
-        if (std::getenv("S41_SERVER_FFN_REMOTE_RESIDENT_LAYER_MASK") != nullptr &&
+        const bool global_remote_mask = std::getenv("S41_SERVER_FFN_REMOTE_RESIDENT_LAYER_MASK") != nullptr;
+        if (global_remote_mask &&
             !s41_parse_u64_env("S41_SERVER_FFN_REMOTE_RESIDENT_LAYER_MASK",
                     remote_resident_layer_mask)) {
             error = "invalid server FFN remote-resident layer mask";
             return false;
+        }
+        // the owners of remote-resident layers: the global mask split by helper layers, or (several-helper
+        // format) S41_SERVER_FFN_HELPER<k>_REMOTE_RESIDENT_LAYER_MASK, a subset of that helper's layers
+        std::vector<uint64_t> helper_remote_masks(helper_count, 0);
+        for (uint64_t index = 0; index < helper_count; ++index) {
+            const std::string name = prefixes[index] + "REMOTE_RESIDENT_LAYER_MASK";
+            if (multi_format && std::getenv(name.c_str()) != nullptr) {
+                if (global_remote_mask || !s41_parse_u64_env(name.c_str(), helper_remote_masks[index]) ||
+                    (helper_remote_masks[index] & ~helper_masks[index]) != 0) {
+                    error = "invalid server FFN helper remote-resident layer mask (a subset of the helper's layers, "
+                            "not next to the global mask)";
+                    return false;
+                }
+                remote_resident_layer_mask |= helper_remote_masks[index];
+            }
+        }
+        if (global_remote_mask) {
+            for (uint64_t index = 0; index < helper_count; ++index) {
+                helper_remote_masks[index] = remote_resident_layer_mask & helper_masks[index];
+            }
         }
         if ((remote_resident_layer_mask & ~layer_mask) != 0) {
             error = "server FFN remote-resident layers exceed the resident layer mask";
@@ -448,11 +499,47 @@ public:
             error = "invalid server FFN split tail fence";
             return false;
         }
-        if (helper_count > 1 &&
-            (remote_resident_layer_mask != 0 || has_tail_fence || row_diagnostic_steps != 0)) {
-            error = "server FFN helpers cannot be combined with remote-resident layers, "
-                    "a tail fence or the row diagnostic";
+        // WS15: per helper, the layers whose full-width call runs fused (O + FFN, optionally the next Q/K/V)
+        std::vector<uint64_t> fused_masks(helper_count, 0);
+        std::vector<uint64_t> fused_next_masks(helper_count, 0);
+        uint64_t fused_union = 0;
+        uint64_t fused_next_union = 0;
+        for (uint64_t index = 0; index < helper_count; ++index) {
+            const std::string fused_name = prefixes[index] + "FUSED_LAYER_MASK";
+            const std::string next_name = prefixes[index] + "FUSED_NEXT_MASK";
+            if ((std::getenv(fused_name.c_str()) != nullptr &&
+                 !s41_parse_u64_env(fused_name.c_str(), fused_masks[index])) ||
+                (std::getenv(next_name.c_str()) != nullptr &&
+                 !s41_parse_u64_env(next_name.c_str(), fused_next_masks[index])) ||
+                (fused_masks[index] & ~helper_masks[index]) != 0 ||
+                (fused_next_masks[index] & ~fused_masks[index]) != 0 ||
+                (fused_masks[index] & remote_resident_layer_mask) != 0 ||
+                // WS21: FunctionFS workers (the OP15 HTP worker) serve fused calls too
+                (fused_masks[index] != 0 && has_tail_fence &&
+                 (fused_masks[index] & (UINT64_C(1) << tail_fence_layer)) != 0)) {
+                error = "invalid server FFN fused layer masks (subset of the helper's layers, "
+                        "not remote-resident, not the tail fence layer, next within fused)";
+                return false;
+            }
+            fused_union |= fused_masks[index];
+            fused_next_union |= fused_next_masks[index];
+        }
+        if (fused_union != 0 &&
+            (!s41_set_env("LLAMA_FFN_FUSED_LAYER_MASK", std::to_string(fused_union)) ||
+             !s41_set_env("LLAMA_FFN_FUSED_NEXT_MASK", std::to_string(fused_next_union)))) {
+            error = "cannot configure the fused FFN graph";
             return false;
+        }
+        if (helper_count > 1 && (has_tail_fence || row_diagnostic_steps != 0)) {
+            error = "server FFN helpers cannot be combined with a tail fence or the row diagnostic";
+            return false;
+        }
+        // the owner of remote-resident layers computes their prefill too: it serves whole ubatches
+        for (uint64_t index = 0; index < helper_count; ++index) {
+            if (helper_remote_masks[index] != 0 && helper_max_tokens[index] != default_max_tokens) {
+                error = "server FFN helper " + labels[index] + " owns remote-resident layers but does not serve whole ubatches";
+                return false;
+            }
         }
 
         if (!s41_set_env("LLAMA_FFN_SPLIT_LAYER_MASK",
@@ -492,12 +579,16 @@ public:
             config.host = transport.host;
             config.port = static_cast<int>(transport.port);
             config.layer_mask = helper_masks[index];
-            config.remote_resident_layer_mask = remote_resident_layer_mask;
+            const uint64_t helper_remote_mask = helper_remote_masks[index];
+            config.remote_resident_layer_mask = helper_remote_mask;
+            config.fused_layer_mask = fused_masks[index];
+            config.fused_next_mask = fused_next_masks[index];
             config.max_columns = static_cast<uint32_t>(columns);
             config.n_embd = static_cast<uint32_t>(n_embd);
-            config.max_tokens = static_cast<uint16_t>(max_tokens);
+            config.max_tokens = static_cast<uint16_t>(helper_max_tokens[index]);
             config.f16_io = f16_io;
             config.swiglu = swiglu;
+            config.fast_hash = transport.fast_hash;
             config.runtime_control = runtime_control;
             config.row_diagnostic_steps = row_diagnostic_steps_;
             config.timeout_ms = static_cast<int>(timeout_ms);
@@ -533,11 +624,12 @@ public:
             helper.label = labels[index];
             helper.functionfs_usb = transport.functionfs_usb;
             helper.layer_mask = helper_masks[index];
+            helper.remote_layer_mask = helper_remote_mask;
             helper.client = std::make_unique<ffn_split::client>(std::move(config));
-            if (runtime_control && remote_resident_layer_mask == 0) {
+            if (runtime_control && helper_remote_mask == 0) {
                 helper.deferred = true;
             } else if (!helper.client->connect(error,
-                        runtime_control ? remote_resident_layer_mask : 0)) {
+                        runtime_control ? helper_remote_mask : 0)) {
                 // remote-resident layers are connected before the model loads so that the
                 // warm-up already validates phone ownership of the omitted weights
                 error = helper_count > 1 ? "helper " + helper.label + ": " + error : error;
@@ -591,13 +683,26 @@ public:
             for (const auto & helper : helpers_) {
                 const s41_ffn_transport_env & transport = transports[&helper - helpers_.data()];
                 std::fprintf(stderr,
-                        "S41SERVERFFNHELPER label=%s layer_mask=%llu transport=%s host=%s port=%llu connection=%s\n",
+                        "S41SERVERFFNHELPER label=%s layer_mask=%llu transport=%s host=%s port=%llu connection=%s "
+                        "max_tokens=%u remote_resident=%llu\n",
                         helper.label.c_str(), static_cast<unsigned long long>(helper.layer_mask),
                         transport.functionfs_usb ? "functionfs-usb" : "tcp",
                         transport.functionfs_usb ? "usb" : transport.host.c_str(),
                         static_cast<unsigned long long>(transport.port),
-                        helper.deferred ? "deferred" : "connected");
+                        helper.deferred ? "deferred" : "connected",
+                        static_cast<unsigned>(helper.client->max_tokens()),
+                        static_cast<unsigned long long>(helper.remote_layer_mask));
             }
+        }
+        for (const auto & helper : helpers_) {
+            if (transports[&helper - helpers_.data()].fast_hash) {
+                std::fprintf(stderr, "S41SERVERFFNFASTHASH label=%s\n", helper.label.c_str());
+            }
+        }
+        if (fused_union != 0) {
+            std::fprintf(stderr, "S41SERVERFFNFUSED layers=%016llx next=%016llx\n",
+                    static_cast<unsigned long long>(fused_union),
+                    static_cast<unsigned long long>(fused_next_union));
         }
         if (runtime_control && remote_resident_layer_mask == 0) {
             // a lost helper's session is closed and its layers stay on the host; a TCP helper reconnects
@@ -794,6 +899,15 @@ public:
                     shape.overlap_mean_ms,
                     shape.overlap_p50_ms);
         }
+        for (const auto & shape : summary.fused_shapes) {
+            std::fprintf(stderr,
+                    "S41SERVERFFNFUSEDSHAPE {%s\"kind\":\"attn_proj:fused\",\"tokens\":%u,\"next_qkv\":%s,"
+                    "\"calls\":%zu,\"rpc_mean_ms\":%.6f,\"rpc_p50_ms\":%.6f,"
+                    "\"compute_mean_ms\":%.6f,\"compute_p50_ms\":%.6f,\"fused_weight_hash\":\"%016llx\"}\n",
+                    owner.c_str(), shape.tokens, shape.columns == 2 ? "true" : "false", shape.calls,
+                    shape.rpc_mean_ms, shape.rpc_p50_ms, shape.compute_mean_ms, shape.compute_p50_ms,
+                    static_cast<unsigned long long>(helper.client->fused_weight_hash()));
+        }
     }
 
     bool failed() const {
@@ -894,7 +1008,7 @@ public:
             // a failed session (or, owned again, an idle TCP session whose worker closed it) is closed
             // here; its layers stay on the host until a policy owns the helper and it connects afresh
             const bool failed = helper.client->failed();
-            if (remote_resident_layer_mask_ == 0 && (failed || (owned(helper) != 0 &&
+            if (helper.remote_layer_mask == 0 && (failed || (owned(helper) != 0 &&
                     helper.applied_layer_mask == 0 && helper.client->peer_closed()))) {
                 const bool usb_session = helper.functionfs_usb && helper.client->ready();
                 helper.client->reset_session();

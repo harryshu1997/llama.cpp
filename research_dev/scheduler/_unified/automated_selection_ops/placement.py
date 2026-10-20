@@ -44,12 +44,17 @@ def generate_automated_candidates(
             request.arrival_us
             if observed_at_us is None else observed_at_us
         )
-        return controller._generate_automated_candidate_set(
+        candidate_set = controller._generate_automated_candidate_set(
             request,
             controller.runtime_model_manifest(model_id),
             snapshot,
             observed_at_us,
         )
+        sync = getattr(controller, "_sync_deferred_helpers", None)
+        if sync is not None:
+            # WS23 ``per_helper_outage``: a deferred helper leaves the device sets; no-op unless a route opted in
+            sync(observed_at_us)
+        return candidate_set
     except (
         SchedulerError,
         RouteGenerationError,

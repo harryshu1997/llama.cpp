@@ -193,6 +193,20 @@ def linux_system_memory() -> dict[str, int]:
     return result
 
 
+def linux_process_resident_bytes(pid: int) -> int:
+    """VmRSS of one live process, from /proc/<pid>/status."""
+    if type(pid) is not int or pid <= 0:
+        raise PhysicalAdapterError("Linux process id is invalid")
+    for line in Path(f"/proc/{pid}/status").read_text(encoding="ascii").splitlines():
+        key, separator, value = line.partition(":")
+        if separator and key == "VmRSS":
+            fields = value.strip().split()
+            if len(fields) != 2 or fields[1] != "kB":
+                raise PhysicalAdapterError("Linux process memory sample is invalid")
+            return int(fields[0]) * 1024
+    raise PhysicalAdapterError("Linux process memory sample is incomplete")
+
+
 def nvidia_gpu_snapshot(*, clocks: bool = False) -> dict[str, object]:
     """One ``nvidia-smi`` sample; ``clocks`` adds ``clocks_sm_mhz``, ``clocks_mem_mhz`` and
     ``pstate`` (device power control runs), every other row key is unchanged."""

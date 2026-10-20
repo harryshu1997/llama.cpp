@@ -1,0 +1,37 @@
+#version 450
+#ifndef WIDTH
+#define WIDTH 4
+#endif
+#ifndef UNROLL
+#define UNROLL 1
+#endif
+layout(local_size_x_id = 0) in;
+#if WIDTH == 4
+layout(set = 0, binding = 0, std430) readonly buffer Input { uvec4 data[]; } src;
+#else
+layout(set = 0, binding = 0, std430) readonly buffer Input { uint data[]; } src;
+#endif
+layout(set = 0, binding = 1, std430) writeonly buffer Output { uint data[]; } dst;
+layout(push_constant) uniform Params { uint count; uint stride; } p;
+void main() {
+    uint id = gl_GlobalInvocationID.x;
+#if WIDTH == 4
+    uvec4 accum[UNROLL];
+    for (uint j = 0; j < UNROLL; ++j) accum[j] = uvec4(0);
+#else
+    uint accum[UNROLL];
+    for (uint j = 0; j < UNROLL; ++j) accum[j] = 0;
+#endif
+    for (uint i = id; i < p.count; i += p.stride * UNROLL) {
+        for (uint j = 0; j < UNROLL; ++j) {
+            uint at = i + j * p.stride;
+            if (at < p.count) accum[j] ^= src.data[at];
+        }
+    }
+    for (uint j = 1; j < UNROLL; ++j) accum[0] ^= accum[j];
+#if WIDTH == 4
+    dst.data[id] = accum[0].x ^ accum[0].y ^ accum[0].z ^ accum[0].w;
+#else
+    dst.data[id] = accum[0];
+#endif
+}

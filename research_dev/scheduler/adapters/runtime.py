@@ -244,6 +244,9 @@ class CanonicalPhysicalAdapter:
     # Bounded fallback for the per-request helper watcher when no wake
     # generation change is observed (microseconds).
     _helper_watch_fallback_us: int = 1_000_000
+    # 2026-10-06: pause after a physical helper-preparation failure before the
+    # watcher may start the next attempt (the same layout is re-proposed at once).
+    _helper_physical_failure_backoff_s: float = 5.0
 
     def __init__(
         self,
@@ -1064,6 +1067,27 @@ class CanonicalPhysicalAdapter:
                                 "reason": _failure_detail(error),
                                 "request_id": request_id,
                             })
+                        # 2026-10-06: the rejection list above is in-memory only; make the
+                        # swallowed exception visible in the run's helper events as well
+                        # (same recorder as the DEFERRED/FOLLOWER/... statuses below).
+                        recorder = getattr(
+                            self._scheduler,
+                            "record_request_helper_preparation_status",
+                            None,
+                        )
+                        if callable(recorder):
+                            try:
+                                recorder(
+                                    request_id,
+                                    status="REJECTED",
+                                    reason=_failure_detail(error),
+                                    phone_layout_generation=(
+                                        helper.phone_layout_generation
+                                    ),
+                                    observed_at_us=observed_at_us,
+                                )
+                            except Exception:  # noqa: BLE001 - diagnostics never stop the watcher
+                                pass
                         if begin_rejections > 60:
                             raise
                         stop.wait(1.0)
@@ -1079,8 +1103,32 @@ class CanonicalPhysicalAdapter:
                         continue
                     if status in {
                         "DEFERRED", "FOLLOWER", "INCOMPATIBLE",
-                        "NOT_REQUIRED",
+                        "NOT_REQUIRED", "REJECTED",
                     }:
+                        # REJECTED (2026-10-06): the scheduler dropped a stale
+                        # proposal and requested a re-plan; the next pass reads
+                        # the new proposal's envelope. Ending the watcher here
+                        # (as before) left the request without a helper even
+                        # after a fresh proposal arrived.
+                        # 2026-10-05: make the swallowed decision visible in the run's helper events
+                        recorder = getattr(
+                            self._scheduler,
+                            "record_request_helper_preparation_status",
+                            None,
+                        )
+                        if callable(recorder):
+                            try:
+                                recorder(
+                                    request_id,
+                                    status=status,
+                                    reason=decision.get("reason"),
+                                    phone_layout_generation=(
+                                        helper.phone_layout_generation
+                                    ),
+                                    observed_at_us=observed_at_us,
+                                )
+                            except Exception:  # noqa: BLE001 - diagnostics never stop the watcher
+                                pass
                         stop.wait(0.05)
                         continue
                     if status != "OWNER":
@@ -1203,7 +1251,35 @@ class CanonicalPhysicalAdapter:
                             self._started_helper_preparations.discard(
                                 preparation_key
                             )
+                        # 2026-10-06: a physical failure was retried every
+                        # ~0.5 s (361 attempts in one conversation run, the
+                        # same geometry re-proposed each time). Give the rig
+                        # and the selector a few seconds before the next try.
+                        stop.wait(self._helper_physical_failure_backoff_s)
                     stop.wait(0.05)
+            except Exception as error:  # noqa: BLE001 - record, then re-raise to the thread hook
+                # 2026-10-06: a watcher that dies leaves the request without a helper and,
+                # until now, without any trace in the run artifacts (daemon thread, stderr
+                # only). Record it once as a helper event, then re-raise.
+                recorder = getattr(
+                    self._scheduler,
+                    "record_request_helper_preparation_status",
+                    None,
+                )
+                if callable(recorder):
+                    try:
+                        recorder(
+                            request_id,
+                            status="WATCHER_FAILED",
+                            reason=_failure_detail(error),
+                            phone_layout_generation=None,
+                            observed_at_us=now_us(
+                                self._scheduler.runtime_ticket(request_id)
+                            ),
+                        )
+                    except Exception:  # noqa: BLE001 - diagnostics never mask the failure
+                        pass
+                raise
             finally:
                 with self._helper_preparation_lock:
                     self._helper_preparation_watchers.discard(request_id)

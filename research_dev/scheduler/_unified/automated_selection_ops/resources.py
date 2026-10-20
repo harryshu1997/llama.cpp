@@ -17,6 +17,7 @@ from ..._internal.runtime_plan import (
 )
 from ..._internal.runtime_resources import RuntimeResidencyProjectionToken, RuntimeResourceError
 from ..._internal.runtime_dispatch_policy import plan_changes_residency
+from ..._internal.route_generation.remote_resident import remote_resident_share_keys
 from ..._internal.runtime_residency_projection import (
     RuntimeResidencyProjectionError,
     project_scheduler_residency_with_token,
@@ -189,6 +190,22 @@ def _runtime_memory_rejections(
     return MappingProxyType(dict(sorted(rejected.items())))
 
 
+def remote_resident_lane_share_keys(
+    controller,
+    candidate: AutomatedRouteCandidate,
+) -> Mapping[str, str]:
+    """Co-tenancy keys of a remote-resident parent's phone lanes (``remote_resident_share_keys``)."""
+    if controller._runtime_capabilities is None:
+        return MappingProxyType({})
+    return MappingProxyType(remote_resident_share_keys(
+        controller._runtime_capabilities,
+        executor_id=candidate.binding.executor_id,
+        endpoint=candidate.binding.endpoint,
+        parameters=candidate.plan.adapter_parameters,
+        resource_ids=candidate.plan.resource_ids,
+    ))
+
+
 def _preview_automated_resources(
     controller,
     candidate: AutomatedRouteCandidate,
@@ -205,6 +222,7 @@ def _preview_automated_resources(
     demands = runtime_phase_lease_demands(
         candidate.candidate_id, candidate.plan.resource_slots,
         candidate.plan.transitions, candidate.cost.service_us, candidate.cost.service_us,
+        remote_resident_lane_share_keys(controller, candidate),
     )
     return controller.timeline.preview_leases(
         demands,

@@ -58,10 +58,18 @@ class PhoneTransportContract:
     adb_serial: str | None = None
     adb_port: int = 0
     phone_worker_port: int = 0
+    # opt-in (``ffn_fast_hash``): flag_fast_hash payload hashes; the phone worker and router must support it
+    fast_hash: bool = False
 
     def __post_init__(self) -> None:
         if self.batch_plan not in {"coalesced-batch", "single", "split-row"}:
             raise PhysicalAdapterError("phone transport batch plan is invalid")
+        if type(self.fast_hash) is not bool or (
+            self.fast_hash and self.transport != "functionfs-usb"
+        ):
+            raise PhysicalAdapterError(
+                "phone transport fast hash requires the functionfs-usb transport"
+            )
         identity = self.qualification_identity_sha256
         if identity is not None and (
             type(identity) is not str
@@ -111,6 +119,7 @@ class PhoneTransportContract:
             and self.batch_plan == other.batch_plan
             and self.qualification_identity_sha256
                 == other.qualification_identity_sha256
+            and self.fast_hash == other.fast_hash
         )
 
     def server_environment(self) -> Mapping[str, str]:
@@ -121,6 +130,7 @@ class PhoneTransportContract:
                 "S41_SERVER_FFN_TRANSPORT": "tcp",
             })
         return MappingProxyType({
+            **({"S41_SERVER_FFN_FAST_HASH": "1"} if self.fast_hash else {}),
             "S41_SERVER_FFN_TRANSPORT": "functionfs-usb",
             "S41_SERVER_FFN_USB_ALLOCATOR": self.allocator,
             "S41_SERVER_FFN_USB_BATCH_PLAN": self.batch_plan,
@@ -147,6 +157,13 @@ def phone_transport_contract(
 ) -> PhoneTransportContract:
     """Validate transport facts carried by the selected physical binding."""
     transport = parameters.get("ffn_transport", "tcp")
+    fast_hash = parameters.get("ffn_fast_hash", 0)
+    if fast_hash not in (0, 1) or type(fast_hash) is not int:
+        raise PhysicalAdapterError("phone transport parameter is invalid: ffn_fast_hash")
+    if fast_hash and transport != "functionfs-usb":
+        raise PhysicalAdapterError(
+            "phone transport fast hash requires the functionfs-usb transport"
+        )
     if transport == "tcp":
         allocator = _text(parameters, "bridge_allocator")
         if allocator not in {
@@ -264,4 +281,5 @@ def phone_transport_contract(
             if "usb_transport_qualification_identity_sha256" in parameters
             else None
         ),
+        fast_hash=bool(fast_hash),
     )

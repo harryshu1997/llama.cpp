@@ -32,6 +32,16 @@ worse is dropped for that composition; a failed set is dropped with its superset
 composition, and the server falls back to the remaining sets (primary first, then sets without the
 primary) before the host becomes the verdict. One phone keeps every rule above unchanged.
 
+With device_set_subset_challenge (opt-in), a device-set verdict slower than the host at its batch
+composition (latency means, both measured there) is also challenged at its fraction by the sets that
+drop one of its helpers; a subset replaces it when its energy upper bound is below the host's lower
+bound minus the minimum saving and its latency upper bound is within the host's, and the slow set is
+then dropped for that composition. A superset no longer replaces an incumbent that is no slower than
+the host unless it is no slower either. Rig pA1q8f (2026-10-09, Qwen3-32B Q8_0, OnePlus 0-20 +
+Pixel 21-40): both phones ran 924 vs 819 ms per token at batch 1 and 1,251 vs 1,086 ms at batch 2,
+inside the campaign's 1.25x bound, so the widest set took both verdicts and the faster OnePlus-only
+set (a strict subset, never a superset challenger) was never probed.
+
 A desktop-parent joiner (continuous join) starts without a ready helper: its helper is attached at
 fraction 0 at a decode boundary, which makes the session helper-available, and it follows the group's
 phone policy at its next boundary. That attachment is eligible whenever a group of its model and
@@ -204,7 +214,8 @@ def _server_group(controller, session, at_us):
         return None
     group = controller._server_policies.get(key)
     if group is None:
-        order = device_set_order(session.candidates)
+        order = device_set_order(session.candidates,
+                                 widest_first=session.config.cold_start_probe_widest_set_first)
         group = _AdaptiveServerPolicy(session.request_id, session.baseline, at_us,
                                       layout_identity_sha256=session.helper_layout_identity_sha256,
                                       device_sets=order if len(order) > 1 else ())
@@ -442,10 +453,40 @@ def _fallback_proposal(controller, session, group):
     return None
 
 
+def _slower_than_host(controller, session, policy):
+    """device_set_subset_challenge: the policy's measured latency mean at this composition is above
+    the host's (both measured here)."""
+    host = controller._bounds(session, session.baseline, operational=True)
+    measured = controller._bounds(session, policy, operational=True)
+    return host is not None and measured is not None and measured[3] > host[3]
+
+
+def _subset_challenger(controller, session, group, verdict):
+    """device_set_subset_challenge: a set that drops one helper of a verdict slower than the host,
+    at the verdict's fraction, in exploration order. Windows carry no per-phone timing, so every
+    one-smaller set not dropped here is a candidate (a set without the primary included: the
+    primary may be the slow helper)."""
+    decided = set(policy_device_set(verdict))
+    current = _matching_policy(controller, session, verdict)
+    if len(decided) < 2 or current is None or not _slower_than_host(controller, session, current):
+        return None
+    return next((policy for policy in (
+        _device_set_policy(controller, session, devices, verdict.split_fraction_ppm)
+        for devices in group.device_sets
+        if len(devices) == len(decided) - 1 and set(devices) < decided
+        and _drop_reason(group, session.active_batch, devices) is None) if policy is not None), None)
+
+
 def _challenger(controller, session, group, verdict):
-    """The next eligible set that adds co-helpers to the verdict's set, at its fraction."""
+    """The next eligible set that adds co-helpers to the verdict's set, at its fraction. With
+    device_set_subset_challenge, a verdict slower than the host is first challenged by a set that
+    drops one of its helpers."""
     if verdict.baseline:
         return None
+    if session.config.device_set_subset_challenge:
+        subset = _subset_challenger(controller, session, group, verdict)
+        if subset is not None:
+            return subset
     decided = set(policy_device_set(verdict))
     return next((policy for policy in (
         _device_set_policy(controller, session, devices, verdict.split_fraction_ppm)
@@ -515,15 +556,19 @@ def _server_challenge_policy(controller, session, group, incumbent, challenger):
         host = controller._bounds(session, session.baseline, operational=True)
         if current is not None and candidate is not None:
             latency_reference = host or current
+            latency_ppm = config.maximum_latency_ppm
+            if config.device_set_subset_challenge and host is not None and current[3] <= host[3]:
+                # an incumbent no slower than the host is replaced only by a set no slower either
+                latency_ppm = min(latency_ppm, 1_000_000)
             saving = 1_000_000 - config.minimum_energy_saving_ppm
             if (candidate[2] * 1_000_000 <= current[1] * saving
                     and (host is None or candidate[2] * 1_000_000 <= host[1] * saving)
-                    and candidate[4] * 1_000_000 <= latency_reference[4] * config.maximum_latency_ppm):
+                    and candidate[4] * 1_000_000 <= latency_reference[4] * latency_ppm):
                 _set_verdict(group, batch, challenger)
                 return challenger
             counts = tuple(_evidence_count(controller, session, row) for row in (incumbent, challenger))
             latency_mean_passes = (candidate[3] * 1_000_000
-                                   <= latency_reference[3] * config.maximum_latency_ppm)
+                                   <= latency_reference[3] * latency_ppm)
             if latency_mean_passes and candidate[0] * 1_000_000 <= current[0] * saving:
                 # inconclusive: the side with the wider band next, the incumbent on ties
                 measure = incumbent if isqrt(counts[0]) <= isqrt(counts[1]) else challenger
@@ -535,6 +580,13 @@ def _server_challenge_policy(controller, session, group, incumbent, challenger):
                 _mirror_device_set_drops(controller, session, group)
                 group.proposal, group.probe_tokens = None, 0
                 return incumbent
+    return _challenge_budget(controller, session, group, incumbent, devices, measure)
+
+
+def _challenge_budget(controller, session, group, incumbent, devices, measure):
+    """The shared probe budget of a device-set challenge; the last exhausted attempt drops the
+    challenger for this composition and the incumbent keeps running."""
+    batch, config = session.active_batch, session.config
     if group.probe_tokens >= config.maximum_probe_tokens:
         group.proposal, group.probe_tokens = None, 0
         if _count_device_attempt(group, batch, devices) >= config.maximum_probe_attempts_per_context:
@@ -542,6 +594,42 @@ def _server_challenge_policy(controller, session, group, incumbent, challenger):
             _mirror_device_set_drops(controller, session, group)
         return incumbent
     return measure
+
+
+def _server_subset_challenge_policy(controller, session, group, incumbent, challenger):
+    """device_set_subset_challenge: a set that drops one helper against an incumbent verdict
+    slower than the host at this batch composition.
+
+    It replaces the incumbent when its energy upper bound is below the host's lower bound minus the
+    minimum saving and its latency upper bound is within the host's (no slower than the host); the
+    incumbent's set is then dropped for this composition (SERVER_DEVICE_SET_SLOWER_THAN_HOST). Means
+    that pass with overlapping bounds keep measuring it within the shared probe budget (the host
+    evidence that started the challenge is not re-measured, so no window escapes the budget); means
+    that fail drop it for this composition and the incumbent keeps running. Without host evidence
+    at this composition (a new measurement context) the challenge ends without a drop."""
+    batch, config = session.active_batch, session.config
+    devices = policy_device_set(challenger)
+    if controller._valid_records(session, challenger, operational=True):
+        host = controller._bounds(session, session.baseline, operational=True)
+        candidate = controller._bounds(session, challenger, operational=True)
+        if host is None:
+            group.proposal, group.probe_tokens = None, 0
+            return incumbent
+        if candidate is not None:
+            saving = 1_000_000 - config.minimum_energy_saving_ppm
+            if candidate[2] * 1_000_000 <= host[1] * saving and candidate[4] <= host[4]:
+                _set_verdict(group, batch, challenger)
+                _drop_device_set(group, batch, policy_device_set(incumbent),
+                                 "SERVER_DEVICE_SET_SLOWER_THAN_HOST")
+                _mirror_device_set_drops(controller, session, group)
+                return challenger
+            if candidate[3] > host[3] or candidate[0] * 1_000_000 > host[0] * saving:
+                _drop_device_set(group, batch, devices, "SERVER_DEVICE_SET_NOT_FASTER_THAN_HOST"
+                                 if candidate[3] > host[3] else "SERVER_DEVICE_SET_NOT_IMPROVED")
+                _mirror_device_set_drops(controller, session, group)
+                group.proposal, group.probe_tokens = None, 0
+                return incumbent
+    return _challenge_budget(controller, session, group, incumbent, devices, challenger)
 
 
 def _reject_verdict(controller, session, group, token_index, at_us, decided, reason):
@@ -584,7 +672,10 @@ def server_directive(controller, session, token_index, at_us):
         decided = _matching_policy(controller, session, verdict)
         challenger = (None if group.proposal is None or decided is None or decided.baseline
                       else _matching_policy(controller, session, group.proposal))
-        if challenger is not None:
+        if challenger is not None and (session.config.device_set_subset_challenge and set(
+                policy_device_set(challenger)) < set(policy_device_set(decided))):
+            verdict = _server_subset_challenge_policy(controller, session, group, decided, challenger)
+        elif challenger is not None:
             verdict = _server_challenge_policy(controller, session, group, decided, challenger)
         elif decided is not None and not decided.baseline:
             controller._update_elimination(session, decided)

@@ -93,3 +93,6 @@ class LeaseDemand:
     start_offset_us: int
     duration_us: int
     duration_upper_us: int
+    # Co-tenancy: reservations carrying the same key may overlap on one lane
+    # (requests of one server that multiplexes them onto the resource itself).
+    share_key: str | None = None

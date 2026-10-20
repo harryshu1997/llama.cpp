@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from contextlib import ExitStack, contextmanager
 from dataclasses import replace
+import time
 from types import MappingProxyType
 from typing import Callable, Mapping
 from ..._internal.model_manifest import ModelManifest
 from ..android_llama_server import ANDROID_LLAMA_SERVER_ADAPTER
 from ..contracts import PhysicalAdapterError
+from ..host_runtime import linux_process_resident_bytes, linux_system_memory
 from ..http_backend import LlamaCppCompletionPayload
 from ..phone_transport import phone_transport_contract
 from ..residency import (
@@ -21,6 +23,22 @@ from .common import (
     _HelperReconfiguration as _HelperReconfiguration,
     _TransitionExecutionState as _TransitionExecutionState,
 )
+
+
+def _replaces_every_live_phone_session(
+    previous_phone, changed_session_ids
+) -> bool:
+    """True when a session-scoped transition replaces every session the live
+    phone worker holds (nothing retained -> whole relaunch, not a partial
+    reconfiguration). False without a live residency or when it is ambiguous."""
+
+    if previous_phone is None:
+        return False
+    try:
+        live = set(previous_phone.physical_session_identities())
+    except PhysicalAdapterError:
+        return False
+    return bool(live) and live <= set(changed_session_ids)
 
 
 class RigTransitionMixin:
@@ -135,6 +153,25 @@ class RigTransitionMixin:
                 and not direct_phone_reused
                 and command.transition.changed_phone_session_ids
             )
+            if (
+                direct_phone_partial_requested
+                and not direct_phone_reconfigurable
+                and _replaces_every_live_phone_session(
+                    previous_phone,
+                    command.transition.changed_phone_session_ids,
+                )
+            ):
+                # 2026-10-06: the replacement changes EVERY live session (a
+                # one-session phone: the OnePlus holding only Qwen layer 0,
+                # replaced by Gemma). Nothing is retained, so there is no
+                # partial reconfiguration to apply (the in-place protocol
+                # needs >= 2 target shards); it is a whole relaunch: stop the
+                # worker and start it on the new shards. The session-scoped
+                # evictions still select the stopped executor
+                # (physical_transition_stop_set) and the rollback record is a
+                # fresh start. Before this the rig raised "exact partial phone
+                # residency transition is unavailable" on every attempt.
+                direct_phone_partial_requested = False
             if getattr(self, "_direct_phone_relaunch_required", None) is not None:
                 # S2a mask_out: the primary was lost since its session started; relaunch, never reuse
                 direct_phone_reused = direct_phone_reconfigurable = False
@@ -162,6 +199,12 @@ class RigTransitionMixin:
         )
         self._begin_transition_phone_activity(command, state)
         return state
+
+    def _phone_is_static_helper(self, device_id: object) -> bool:
+        """WS23: the ticket's phone is a static co-helper anchoring its own route. Its worker is the
+        trace-lifetime co-helper session, so a transition starts, measures and charges nothing for it
+        on the scheduled-phone paths (FunctionFS session, tensor bridge, OP15 telemetry, OP15 energy)."""
+        return type(device_id) is str and device_id in getattr(self, "_co_helper_sessions", {})
 
     def _whole_phone_device(self, command) -> str | None:
         parameters = command.adapter_parameters
@@ -198,6 +241,7 @@ class RigTransitionMixin:
             or phone is None
             or phone not in command.transition.prepares_device_ids
             or state.direct_phone_reused
+            or self._phone_is_static_helper(phone)
         ):
             return
         state.phone_activity.begin(
@@ -322,7 +366,7 @@ class RigTransitionMixin:
         state: _TransitionExecutionState,
         control_check: Callable[[], None],
     ) -> None:
-        if state.phone is None:
+        if state.phone is None or self._phone_is_static_helper(state.phone):
             return
         assert state.direct_transport is not None
         if state.direct_transport.transport == "functionfs-usb":
@@ -448,6 +492,11 @@ class RigTransitionMixin:
                 )
             )
             self._dormant_book_server(command.participant.endpoint, server, state.manifest, command.adapter_parameters)
+            launch = self._remote_resident_launch_record(
+                server, state.target_executor_id, command.participant.endpoint, generation
+            )
+            if launch is not None:
+                self.__dict__.setdefault("_remote_resident_launches", []).append(launch)
             if state.direct_phone_used:
                 previous_phone = self._phone_residency
                 if state.direct_phone_reused and previous_phone is None:
@@ -466,6 +515,30 @@ class RigTransitionMixin:
                     )
                 )
         return generation
+
+    def _remote_resident_launch_record(
+        self,
+        server,
+        executor_id: str,
+        endpoint: str,
+        generation: int,
+    ) -> dict[str, object] | None:
+        """A reduced desktop parent's own omission proof and host memory right after its launch
+        (the launcher already refused a proof that differs from the ticket); None otherwise."""
+        reader = getattr(server, "remote_resident_proof", None)
+        proof = None if reader is None else reader()
+        if proof is None:
+            return None
+        return {
+            "endpoint": endpoint,
+            "executor_id": executor_id,
+            "generation": generation,
+            "host_available_bytes": linux_system_memory()["available_bytes"],
+            "observed_epoch_us": max(0, (time.monotonic_ns() - self.epoch_ns) // 1000),
+            "pid": server.pid,
+            "proof": proof.to_json(),
+            "vm_rss_bytes": linux_process_resident_bytes(server.pid),
+        }
 
     def _warm_transition_server(
         self,

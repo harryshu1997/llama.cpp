@@ -504,14 +504,32 @@ class RuntimeDispatchQueue:
             result[resource_id] = result.get(resource_id, 0) + 1
         return result
 
+    @staticmethod
+    def _lane_share_keys(decision: Decision) -> Mapping[tuple[str, int], str | None]:
+        """The co-tenancy key of each lane, or None unless every lease on it carries one key."""
+        result: dict[tuple[str, int], str | None] = {}
+        for lease in decision.leases:
+            key = getattr(lease, "share_key", None)
+            for lane in lease.lanes:
+                current = result.get((lease.resource_id, lane), key)
+                result[(lease.resource_id, lane)] = key if current == key else None
+        return result
+
     @classmethod
     def _decisions_conflict(
         cls, first: Decision, second: Decision
     ) -> bool:
         first_lanes = cls._lane_tokens(first)
         second_lanes = cls._lane_tokens(second)
+        first_keys = cls._lane_share_keys(first)
+        second_keys = cls._lane_share_keys(second)
+        # co-tenants (one server's requests on the resources it multiplexes itself) share their lanes
         return any(
             first_lanes[lane] != second_lanes[lane]
+            and not (
+                first_keys.get(lane) is not None
+                and first_keys.get(lane) == second_keys.get(lane)
+            )
             for lane in set(first_lanes) & set(second_lanes)
         )
 

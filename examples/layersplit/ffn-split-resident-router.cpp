@@ -5,17 +5,23 @@
 
 #include <algorithm>
 #include <arpa/inet.h>
+#include <atomic>
 #include <cerrno>
 #include <chrono>
 #include <climits>
+#include <condition_variable>
 #include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <deque>
+#include <mutex>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <pthread.h>
 #include <string>
 #include <sys/socket.h>
+#include <thread>
 #include <unistd.h>
 #include <vector>
 
@@ -196,8 +202,8 @@ bool valid_hello_response(
         const ffn_split::hello_request & request,
         const ffn_split::resident_session_shard & shard,
         const ffn_split::hello_response & response) {
-    const uint16_t supported_flags =
-            ffn_split::flag_f16_io | ffn_split::flag_swiglu;
+    const uint16_t supported_flags = ffn_split::flag_f16_io |
+            ffn_split::flag_swiglu | ffn_split::flag_fast_hash;
     return response.magic == ffn_split::protocol_magic &&
             response.version == ffn_split::protocol_version &&
             response.message == static_cast<uint16_t>(
@@ -370,6 +376,7 @@ bool valid_execute_request(
 }
 
 bool valid_execute_response(
+        uint16_t flags,
         const ffn_split::execute_request & request,
         const ffn_split::execute_response & response,
         const uint8_t * payload, size_t payload_bytes) {
@@ -383,7 +390,338 @@ bool valid_execute_response(
             response.payload_bytes == request.payload_bytes &&
             response.columns == request.columns &&
             response.tokens == request.tokens &&
-            response.payload_hash == ffn_split::hash_bytes(payload, payload_bytes);
+            response.payload_hash == ffn_split::payload_hash(flags, payload, payload_bytes);
+}
+
+struct call_timing {
+    uint32_t request_id = 0;
+    int layer = 0;
+    uint32_t tokens = 0;
+    uint32_t payload_bytes = 0;
+    uint64_t input_check_us = 0;
+    uint64_t worker_send_us = 0;
+    uint64_t worker_receive_us = 0;
+    uint64_t worker_compute_us = 0;
+    uint64_t output_check_us = 0;
+    uint64_t usb_write_us = 0;
+    uint64_t receive_including_idle_us = 0;
+    // calls the router held after reading this one (1 in a serial session)
+    size_t in_flight = 1;
+};
+
+void print_timing(const call_timing & timing) {
+    fprintf(stderr,
+            "RESIDENTTIMING {\"schema\":\"s42-resident-router-timing-v1\","
+            "\"request_id\":%u,\"layer\":%d,\"tokens\":%u,"
+            "\"payload_bytes\":%u,\"input_check_us\":%llu,"
+            "\"worker_send_us\":%llu,\"worker_receive_us\":%llu,"
+            "\"worker_compute_us\":%llu,\"output_check_us\":%llu,"
+            "\"usb_write_us\":%llu,\"receive_including_idle_us\":%llu,"
+            "\"in_flight\":%zu}\n",
+            timing.request_id, timing.layer, timing.tokens,
+            timing.payload_bytes,
+            static_cast<unsigned long long>(timing.input_check_us),
+            static_cast<unsigned long long>(timing.worker_send_us),
+            static_cast<unsigned long long>(timing.worker_receive_us),
+            static_cast<unsigned long long>(timing.worker_compute_us),
+            static_cast<unsigned long long>(timing.output_check_us),
+            static_cast<unsigned long long>(timing.usb_write_us),
+            static_cast<unsigned long long>(timing.receive_including_idle_us),
+            timing.in_flight);
+}
+
+void record_call(
+        const config & cfg, std::vector<session_proof_totals> & proofs,
+        const target_connection & target,
+        const ffn_split::execute_request & request,
+        const ffn_split::execute_response & response,
+        uint64_t receive_block_us, uint64_t rpc_us, uint64_t d2h_us,
+        const call_timing & timing, long & requests) {
+    session_totals & row = proofs[target.proof_index].totals;
+    row.receive_block_us += receive_block_us;
+    row.rpc_us += rpc_us;
+    row.d2h_us += d2h_us;
+    ++row.calls;
+    row.rows += request.tokens;
+    row.h2d_bytes += request.payload_bytes;
+    row.d2h_bytes += request.payload_bytes;
+    row.compute_us += response.compute_us;
+    ++requests;
+    print_call(proofs[target.proof_index].shard, row.calls, cfg.call_log_period);
+    if (request.tokens > 1 || row.calls == 1 ||
+        row.calls % cfg.call_log_period == 0) {
+        print_timing(timing);
+    }
+}
+
+struct session_outcome {
+    bool reset = false;
+    bool complete = false;
+    bool terminate = false;
+    int status = 0;
+};
+
+void interrupt_blocking_call(int) {}
+
+// SIGUSR1 without SA_RESTART ends a blocking USB read or write with EINTR; a pipelined session
+// sends it to its other thread when the session aborts
+bool install_pipeline_interrupt() {
+    struct sigaction action = {};
+    action.sa_handler = interrupt_blocking_call;
+    sigemptyset(&action.sa_mask);
+    action.sa_flags = 0;
+    return sigaction(SIGUSR1, &action, nullptr) == 0;
+}
+
+ssize_t read_usb(int fd, void * destination, size_t capacity, const std::atomic<bool> & aborted) {
+    for (;;) {
+        const ssize_t count = read(fd, destination, capacity);
+        if (count < 0 && errno == EINTR && !aborted.load()) {
+            continue;
+        }
+        return count;
+    }
+}
+
+bool write_usb(int fd, const void * source, size_t size, const std::atomic<bool> & aborted) {
+    const uint8_t * cursor = static_cast<const uint8_t *>(source);
+    while (size > 0) {
+        const ssize_t count = write(fd, cursor, size);
+        if (count < 0 && errno == EINTR && !aborted.load()) {
+            continue;
+        }
+        if (count <= 0) {
+            return false;
+        }
+        cursor += count;
+        size -= static_cast<size_t>(count);
+    }
+    return true;
+}
+
+struct pipeline_call {
+    std::vector<uint8_t> wire;
+    ffn_split::execute_request request = {};
+    target_connection * target = nullptr;
+    size_t wire_bytes = 0;
+    uint64_t receive_block_us = 0;
+    uint64_t rpc_started = 0;
+    uint64_t worker_sent = 0;
+    call_timing timing;
+};
+
+// --queue-depth N > 1: the router holds up to N calls. This thread reads a call from USB, checks
+// it and forwards it to its worker; the answer thread receives the worker's response, checks it
+// and writes it to USB. Answers keep the USB order (a worker answers in order and the answer
+// thread follows the forwarding order), as the host's queued split-row parts require, and part
+// k+1 crosses USB while the worker computes part k.
+session_outcome run_pipelined_session(
+        const config & cfg, int host_to_device, int device_to_host,
+        target_selection & selected, std::vector<session_proof_totals> & proofs,
+        size_t max_payload, long & requests) {
+    const uint16_t flags = selected.response.flags;
+    std::vector<pipeline_call> calls(static_cast<size_t>(cfg.queue_depth));
+    std::deque<size_t> free_calls;
+    for (size_t index = 0; index < calls.size(); ++index) {
+        calls[index].wire.resize(ffn_split::dmabuf_payload_offset + max_payload);
+        free_calls.push_back(index);
+    }
+    std::deque<size_t> forwarded;
+    std::mutex mutex;
+    std::condition_variable changed;
+    std::atomic<bool> aborted{false};
+    bool input_done = false;
+    bool reader_done = false;
+    bool answer_done = false;
+    session_outcome outcome;
+
+    // The first failure decides the outcome (a USB failure resets the session, anything else is
+    // fatal) and unblocks the other thread: shut worker sockets end its socket calls, the
+    // condition its waits, and SIGUSR1, repeated until it is done, its USB read or write.
+    const auto fail = [&](bool usb_reset) {
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            if (aborted.load()) {
+                return;
+            }
+            aborted.store(true);
+            if (usb_reset) {
+                outcome.reset = true;
+            } else {
+                outcome.status = 1;
+            }
+        }
+        for (target_connection & target : selected.targets) {
+            shutdown(target.fd, SHUT_RDWR);
+        }
+        changed.notify_all();
+    };
+
+    const pthread_t reader_thread = pthread_self();
+    std::thread answer([&]() {
+        for (;;) {
+            size_t index = 0;
+            {
+                std::unique_lock<std::mutex> lock(mutex);
+                changed.wait(lock, [&]() {
+                    return aborted.load() || input_done || !forwarded.empty();
+                });
+                if (aborted.load() || forwarded.empty()) {
+                    break;
+                }
+                index = forwarded.front();
+                forwarded.pop_front();
+            }
+            pipeline_call & call = calls[index];
+            uint8_t * payload = call.wire.data() + ffn_split::dmabuf_payload_offset;
+            ffn_split::execute_response response = {};
+            if (!receive_exact(call.target->fd, &response, sizeof(response)) ||
+                !receive_exact(call.target->fd, payload, call.request.payload_bytes)) {
+                fail(false);
+                break;
+            }
+            const uint64_t worker_received = now_us();
+            if (!valid_execute_response(
+                        flags, call.request, response, payload,
+                        call.request.payload_bytes)) {
+                fail(false);
+                break;
+            }
+            const uint64_t output_checked = now_us();
+            memset(call.wire.data(), 0, ffn_split::dmabuf_payload_offset);
+            memcpy(call.wire.data(), &response, sizeof(response));
+            if (!write_usb(device_to_host, call.wire.data(), call.wire_bytes, aborted)) {
+                fail(true);
+                break;
+            }
+            const uint64_t d2h_finished = now_us();
+            call.timing.worker_receive_us = worker_received - call.worker_sent;
+            call.timing.worker_compute_us = response.compute_us;
+            call.timing.output_check_us = output_checked - worker_received;
+            call.timing.usb_write_us = d2h_finished - output_checked;
+            record_call(
+                    cfg, proofs, *call.target, call.request, response,
+                    call.receive_block_us, output_checked - call.rpc_started,
+                    d2h_finished - output_checked, call.timing, requests);
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                free_calls.push_back(index);
+            }
+            changed.notify_all();
+        }
+        std::unique_lock<std::mutex> lock(mutex);
+        answer_done = true;
+        changed.notify_all();
+        while (aborted.load() && !reader_done) {
+            pthread_kill(reader_thread, SIGUSR1);
+            changed.wait_for(lock, std::chrono::milliseconds(20));
+        }
+    });
+
+    while (!aborted.load()) {
+        size_t index = 0;
+        size_t held = 0;
+        {
+            std::unique_lock<std::mutex> lock(mutex);
+            changed.wait(lock, [&]() { return aborted.load() || !free_calls.empty(); });
+            if (aborted.load()) {
+                break;
+            }
+            index = free_calls.front();
+            free_calls.pop_front();
+            held = calls.size() - free_calls.size();
+        }
+        pipeline_call & call = calls[index];
+        const uint64_t receive_started = now_us();
+        const ssize_t received = read_usb(
+                host_to_device, call.wire.data(), call.wire.size(), aborted);
+        const uint64_t receive_block_us = now_us() - receive_started;
+        if (aborted.load()) {
+            break;
+        }
+        if (received <= 0) {
+            fail(true);
+            break;
+        }
+        ffn_split::execute_request request = {};
+        if (static_cast<size_t>(received) < sizeof(request)) {
+            fail(false);
+            break;
+        }
+        memcpy(&request, call.wire.data(), sizeof(request));
+        const bool shutdown_request = request.magic == ffn_split::protocol_magic &&
+                request.version == ffn_split::protocol_version &&
+                request.message == static_cast<uint16_t>(
+                        ffn_split::message_type::execute_request) &&
+                request.request_id == 0;
+        if (shutdown_request) {
+            if (static_cast<size_t>(received) != sizeof(request)) {
+                fail(false);
+                break;
+            }
+            outcome.terminate = request.layer == -1;
+            outcome.complete = true;
+            break;
+        }
+        const size_t wire_bytes =
+                ffn_split::dmabuf_payload_offset + request.payload_bytes;
+        target_connection * target = nullptr;
+        if (!valid_execute_request(selected.response, request) ||
+            request.payload_bytes > max_payload ||
+            static_cast<size_t>(received) != wire_bytes ||
+            (target = target_for_layer(selected, request.layer)) == nullptr) {
+            fail(false);
+            break;
+        }
+        const uint8_t * input = call.wire.data() + ffn_split::dmabuf_payload_offset;
+        const uint64_t input_check_started = now_us();
+        if (request.payload_hash != ffn_split::payload_hash(
+                    flags, input, request.payload_bytes)) {
+            fail(false);
+            break;
+        }
+        const uint64_t rpc_started = now_us();
+        if (!send_exact(target->fd, &request, sizeof(request)) ||
+            !send_exact(target->fd, input, request.payload_bytes)) {
+            fail(false);
+            break;
+        }
+        call.worker_sent = now_us();
+        call.request = request;
+        call.target = target;
+        call.wire_bytes = wire_bytes;
+        call.receive_block_us = receive_block_us;
+        call.rpc_started = rpc_started;
+        call.timing = {};
+        call.timing.request_id = request.request_id;
+        call.timing.layer = request.layer;
+        call.timing.tokens = request.tokens;
+        call.timing.payload_bytes = request.payload_bytes;
+        call.timing.input_check_us = rpc_started - input_check_started;
+        call.timing.worker_send_us = call.worker_sent - rpc_started;
+        call.timing.receive_including_idle_us = receive_block_us;
+        call.timing.in_flight = held;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            forwarded.push_back(index);
+        }
+        changed.notify_all();
+    }
+
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        input_done = true;
+        reader_done = true;
+        changed.notify_all();
+        while (!answer_done) {
+            if (aborted.load()) {
+                pthread_kill(answer.native_handle(), SIGUSR1);
+            }
+            changed.wait_for(lock, std::chrono::milliseconds(20));
+        }
+    }
+    answer.join();
+    return outcome;
 }
 
 void print_terminal(
@@ -439,6 +777,7 @@ void print_terminal(
 
 } // namespace
 
+#if !defined(FFN_SPLIT_ROUTER_NO_MAIN)
 int main(int argc, char ** argv) {
     config cfg;
     if (!parse_config(argc, argv, cfg)) {
@@ -455,6 +794,11 @@ int main(int argc, char ** argv) {
         return 2;
     }
     signal(SIGPIPE, SIG_IGN);
+    if (cfg.queue_depth > 1 && !install_pipeline_interrupt()) {
+        fprintf(stderr, "[resident-router] interrupt handler setup failed: %s\n",
+                strerror(errno));
+        return 1;
+    }
 
     const int ep0 = ffn_split::functionfs_open_endpoint(cfg.ffs_root, "ep0");
     if (ep0 < 0 ||
@@ -570,17 +914,30 @@ int main(int argc, char ** argv) {
                 ffn_split::flag_f16_io ? sizeof(uint16_t) : sizeof(float);
         const size_t max_payload = static_cast<size_t>(selected.response.n_embd) *
                 selected.response.max_tokens * element_size;
-        std::vector<uint8_t> wire(ffn_split::dmabuf_payload_offset + max_payload);
         fprintf(stderr,
                 "RESIDENTARM {\"status\":\"WARM\","
-                "\"target_count\":%zu,\"layer_mask\":\"%016llx\"}\n",
+                "\"target_count\":%zu,\"layer_mask\":\"%016llx\","
+                "\"pipeline_depth\":%d,\"fast_hash\":%d}\n",
                 selected.targets.size(),
-                static_cast<unsigned long long>(selected.response.layer_mask));
+                static_cast<unsigned long long>(selected.response.layer_mask),
+                cfg.queue_depth,
+                (selected.response.flags & ffn_split::flag_fast_hash) != 0 ? 1 : 0);
         fflush(stderr);
 
         bool reset = false;
         bool complete_session = false;
-        while (!reset && !complete_session && run_status == 0) {
+        if (cfg.queue_depth > 1) {
+            const session_outcome outcome = run_pipelined_session(
+                    cfg, host_to_device, device_to_host, selected, proofs,
+                    max_payload, requests);
+            reset = outcome.reset;
+            complete_session = outcome.complete;
+            terminate_requested = outcome.terminate;
+            run_status = outcome.status;
+        }
+        std::vector<uint8_t> wire(
+                cfg.queue_depth > 1 ? 0 : ffn_split::dmabuf_payload_offset + max_payload);
+        while (cfg.queue_depth == 1 && !reset && !complete_session && run_status == 0) {
             const uint64_t receive_started = now_us();
             const ssize_t received = receive_packet(
                     host_to_device, wire.data(), wire.size());
@@ -622,13 +979,11 @@ int main(int argc, char ** argv) {
                 run_status = 1;
                 break;
             }
-            session_totals & row = proofs[target->proof_index].totals;
-            row.receive_block_us += receive_block_us;
             const uint8_t * input =
                     wire.data() + ffn_split::dmabuf_payload_offset;
             const uint64_t input_check_started = now_us();
-            if (request.payload_hash != ffn_split::hash_bytes(
-                        input, request.payload_bytes)) {
+            if (request.payload_hash != ffn_split::payload_hash(
+                        selected.response.flags, input, request.payload_bytes)) {
                 run_status = 1;
                 break;
             }
@@ -650,14 +1005,13 @@ int main(int argc, char ** argv) {
             }
             const uint64_t worker_received = now_us();
             if (!valid_execute_response(
-                        request, response,
+                        selected.response.flags, request, response,
                         wire.data() + ffn_split::dmabuf_payload_offset,
                         request.payload_bytes)) {
                 run_status = 1;
                 break;
             }
             const uint64_t output_checked = now_us();
-            row.rpc_us += output_checked - rpc_started;
             memset(wire.data(), 0, ffn_split::dmabuf_payload_offset);
             memcpy(wire.data(), &response, sizeof(response));
             const uint64_t d2h_started = now_us();
@@ -667,35 +1021,22 @@ int main(int argc, char ** argv) {
                 break;
             }
             const uint64_t d2h_finished = now_us();
-            row.d2h_us += d2h_finished - d2h_started;
-            ++row.calls;
-            row.rows += request.tokens;
-            row.h2d_bytes += request.payload_bytes;
-            row.d2h_bytes += request.payload_bytes;
-            row.compute_us += response.compute_us;
-            ++requests;
-            print_call(
-                    proofs[target->proof_index].shard, row.calls,
-                    cfg.call_log_period);
-            if (request.tokens > 1 || row.calls == 1 ||
-                row.calls % cfg.call_log_period == 0) {
-                fprintf(stderr,
-                        "RESIDENTTIMING {\"schema\":\"s42-resident-router-timing-v1\","
-                        "\"request_id\":%u,\"layer\":%d,\"tokens\":%u,"
-                        "\"payload_bytes\":%u,\"input_check_us\":%llu,"
-                        "\"worker_send_us\":%llu,\"worker_receive_us\":%llu,"
-                        "\"worker_compute_us\":%llu,\"output_check_us\":%llu,"
-                        "\"usb_write_us\":%llu,\"receive_including_idle_us\":%llu}\n",
-                        request.request_id, request.layer, request.tokens,
-                        request.payload_bytes,
-                        static_cast<unsigned long long>(rpc_started - input_check_started),
-                        static_cast<unsigned long long>(worker_sent - rpc_started),
-                        static_cast<unsigned long long>(worker_received - worker_sent),
-                        static_cast<unsigned long long>(response.compute_us),
-                        static_cast<unsigned long long>(output_checked - worker_received),
-                        static_cast<unsigned long long>(d2h_finished - d2h_started),
-                        static_cast<unsigned long long>(receive_block_us));
-            }
+            call_timing timing;
+            timing.request_id = request.request_id;
+            timing.layer = request.layer;
+            timing.tokens = request.tokens;
+            timing.payload_bytes = request.payload_bytes;
+            timing.input_check_us = rpc_started - input_check_started;
+            timing.worker_send_us = worker_sent - rpc_started;
+            timing.worker_receive_us = worker_received - worker_sent;
+            timing.worker_compute_us = response.compute_us;
+            timing.output_check_us = output_checked - worker_received;
+            timing.usb_write_us = d2h_finished - d2h_started;
+            timing.receive_including_idle_us = receive_block_us;
+            record_call(
+                    cfg, proofs, *target, request, response, receive_block_us,
+                    output_checked - rpc_started, d2h_finished - d2h_started,
+                    timing, requests);
         }
         close_selection(selected);
         if (reset) {
@@ -720,3 +1061,4 @@ int main(int argc, char ** argv) {
             reset_recoveries, run_status);
     return run_status;
 }
+#endif

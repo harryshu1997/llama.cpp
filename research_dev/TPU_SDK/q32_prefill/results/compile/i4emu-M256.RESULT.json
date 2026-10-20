@@ -1,0 +1,21 @@
+{
+  "at": "2026-10-08T15:32:19.331153+00:00",
+  "input": "/mnt/data_h16t/zs89458/claude-scratch/q32-tpu/models/i4emu-M256/src/ffn.tflite",
+  "input_sha256": "d89baf3bd73e98a828b07ad2ee39046b293ac406aead3902ab981e4b55760c25",
+  "sdk_plugin_sha256": "d74bea45081aa90a39505a675c15f566d46dbcc35e55a98f755c02017464cd1f",
+  "target": "Tensor_G5",
+  "compiler_flags": {
+    "google_tensor_truncation_type": "half",
+    "google_tensor_sharding_intensity": "minimal"
+  },
+  "compiler_script_sha256": "0318a1ede03d5bfc42fd6b75fba92689cd53487db3f000d5c9e14be623cbbc7c",
+  "status": "PASS",
+  "elapsed_s": 332.24505470204167,
+  "partition_report": "Google_Tensor_G5\n==========================\nPartition Stats:\nSubgraph 0 fully compiled:\t18 / 18 ops offloaded to 1 partitions.\n\n",
+  "outputs": {
+    "ffn_Google_Tensor_G5.tflite": {
+      "bytes": 253312448,
+      "sha256": "ea67c582ac2b651c6f14443808fd47b71ecb4dfbcea285575108fd5b7f2e2325"
+    }
+  }
+}

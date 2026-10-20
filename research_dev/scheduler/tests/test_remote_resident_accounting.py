@@ -13,6 +13,7 @@ from research_dev.scheduler._internal.runtime_resources import (  # noqa: E402
     RuntimeRemoteResidentOmissionProof,
     RuntimeResourceError,
     remote_resident_accounting,
+    remote_resident_run_ledger,
 )
 
 GiB = 1024**3
@@ -134,6 +135,50 @@ class AccountingTests(unittest.TestCase):
             )
         with self.assertRaises(RuntimeResourceError):
             _account(_proof(), fallback_mode="hope")
+
+
+class RunLedgerTests(unittest.TestCase):
+    """RESULT ledger of a remote-resident trace arm (Qwen3-32B Q8_0, three owners of layers 0-20)."""
+
+    LAYER = 3 * 5120 * 25600 * 34 // 32  # gate/up/down of one 32B layer in Q8_0
+    SESSIONS = {"HTP0": 7 * LAYER, "HTP1": 7 * LAYER, "HTP2": 7 * LAYER}
+    OMITTED = 21 * LAYER
+
+    def ledger(self, *launches):
+        return remote_resident_run_ledger(
+            artifact_sha256=ARTIFACT, desktop_pool_id="host-ram", layer_mask=(1 << 21) - 1,
+            desktop_weights_full_bytes=34_820_000_000, omitted_bytes_planned=self.OMITTED,
+            phone_weights_bytes_by_session=self.SESSIONS, phone_workspace_bytes=96 << 20,
+            launches=launches,
+        )
+
+    def launch(self, **proof):
+        values = {"layer_mask": (1 << 21) - 1, "omitted_bytes": self.OMITTED,
+                  "unmapped_bytes": self.OMITTED - 4096, "warmup": "validated", **proof}
+        return {"executor_id": "physical:hot:desktop:remote-owner", "generation": 2, "pid": 11,
+                "host_available_bytes": 12 * GiB, "vm_rss_bytes": 26 * GiB, "observed_epoch_us": 9,
+                "proof": RuntimeRemoteResidentOmissionProof(**values).to_json()}
+
+    def test_every_launch_proves_the_planned_omission(self) -> None:
+        value = self.ledger(self.launch(), self.launch())
+        self.assertEqual(self.OMITTED, 8_773_632_000)
+        self.assertTrue(value["verified"])
+        self.assertEqual(value["desktop_ram_saving_bytes"], self.OMITTED)
+        self.assertEqual(value["schema"], "research-scheduler-remote-resident-run-ledger-v1")
+        account = value["launches"][0]["accounting"]
+        self.assertEqual(account["phone_weights_bytes_by_session"], self.SESSIONS)
+        self.assertEqual(account["recovery_required_bytes_by_pool"], {"host-ram": 26 * GiB + self.OMITTED})
+        self.assertEqual(value["launches"][0]["generation"], 2)
+
+    def test_no_saving_without_a_matching_proof_for_every_launch(self) -> None:
+        for launches in ((), (self.launch(), self.launch(omitted_bytes=self.OMITTED - 1)),
+                         (self.launch(layer_mask=(1 << 14) - 1),), (self.launch(warmup="skipped"),)):
+            with self.subTest(launches=len(launches)):
+                value = self.ledger(*launches)
+                self.assertFalse(value["verified"])
+                self.assertEqual(value["desktop_ram_saving_bytes"], 0)
+        with self.assertRaises(RuntimeResourceError):
+            self.ledger({**self.launch(), "proof": None})
 
 
 if __name__ == "__main__":

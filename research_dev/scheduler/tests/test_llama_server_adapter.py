@@ -28,6 +28,7 @@ from research_dev.scheduler._internal.runtime_plan import (
     RuntimeExecutionContract,
     RuntimeTransitionPlan,
 )
+from research_dev.scheduler.adapters.ticket import static_control_timeout_s  # noqa: E402
 from research_dev.scheduler.adapters import (
     CanonicalHttpExecutionBackend,
     LlamaCppCompletionPayload,
@@ -1642,6 +1643,77 @@ class LlamaServerAdapterTests(unittest.TestCase):
         scheduler.record_adaptive_decode_window.assert_not_called()
         scheduler.acknowledge_adaptive_decode_control.assert_not_called()
 
+    def test_stale_mid_request_window_of_a_lone_request_is_deferred_as_unmeasured_remainder(self):
+        """2026-10-05 rig (p7f21ffn request 007, p7k1pixf request 009): the client fell seconds behind the
+        stream and read a mid-request window after the server had released the slot. Alone (no cohort or a
+        cohort down to this request), the boundary waits for the terminal and is sealed as an unmeasured
+        remainder; a live two-member cohort keeps the immediate discard."""
+        command = adaptive_execution_command(self.command)
+        policy = AdaptiveDecodePolicy(
+            route_id=ARTIFACT_ROUTE, executor_id=command.executor_id,
+            operator_plan_sha256=PLAN_SHA256, desktop_parent_route_id="synthetic:parent",
+            desktop_placement_sha256="sha256:" + "4" * 64,
+            layer_indices=(0,), layer_mask=1, columns=16, split_fraction_ppm=500_000,
+            resource_ids=("compute:accelerator-b", "compute:helper-c"),
+        )
+        boundary = AdaptiveDecodeWindowBoundary(
+            request_id=command.request_id, slot_id=2, window_index=2,
+            token_start=5, token_end=6, started_at_us=500, finished_at_us=600,
+            policy=policy, applied_ack=None,
+        )
+
+        def controller_for(cohort_rows):
+            scheduler = Mock(runtime_ticket=None)
+            client = FakeClient()
+            client.read_ffn_stats = Mock(side_effect=StalePhysicalSlotError("released"))
+            backend = CanonicalHttpExecutionBackend(
+                client, FakeMeter(), epoch_ns=time.monotonic_ns() - 1_000_000,
+            )
+            backend.bind_scheduler(scheduler)
+            payload = LlamaCppCompletionPayload(
+                request_id=command.request_id, expected_model_alias="synthetic-model",
+                input_tokens=1, output_tokens=20, prompt_tokens=(1,), seed=1,
+                stream_path=self.root / f"remainder-{len(cohort_rows)}.raw", on_first_token=lambda _: None,
+            )
+            controller = _AdaptivePayloadController(backend, command, payload, None, None)
+            if cohort_rows:
+                controller.cohort = Mock(
+                    member_slots=Mock(return_value=cohort_rows),
+                    surviving_member_slots=Mock(return_value=cohort_rows), membership_changed=False,
+                    token_positions=Mock(return_value={row[0]: 6 for row in cohort_rows}),
+                )
+                controller.cohort_contract = {"cohort_id": "synthetic-cohort"}
+            controller.started = True
+            controller.last_stats["calls"] = 2
+            controller.last_window_end_token = 5
+            return controller, scheduler
+
+        for rows in ((), ((command.request_id, 2),)):
+            with self.subTest(cohort_rows=rows):
+                controller, scheduler = controller_for(rows)
+                self.assertLess(boundary.token_end, controller._tail_seal_at())
+                self.assertIsNone(controller._process_boundary(boundary))
+                self.assertTrue(controller.pending_stale_remainder)
+                scheduler.discard_stale_adaptive_decode_window.assert_not_called()
+                controller.progress(2, 12, 1_000, False)      # later tokens of the finished stream: no boundary
+                scheduler.adaptive_decode_boundary.assert_not_called()
+                controller.progress(2, 20, 2_000, True)
+                self.assertTrue(controller.closed)
+                self.assertIsNone(controller.pending_stale_boundary)
+                call = scheduler.discard_stale_adaptive_decode_window.call_args
+                self.assertEqual(call.args[3], "released_slot_unmeasured_remainder")
+                self.assertEqual(call.kwargs["terminal_token_index"], 20)
+                self.assertEqual(call.args[2].failure_reason, "released_slot_unmeasured_remainder")
+                self.assertEqual(call.args[2].completed_phone_calls, 0)
+                self.assertIn("physical:terminal-release-confirmed", call.args[2].evidence_ids)
+                self.assertEqual(controller.last_window_end_token, 20)
+                scheduler.record_adaptive_decode_window.assert_not_called()
+
+        controller, scheduler = controller_for(((command.request_id, 2), ("other", 3)))
+        controller._process_boundary(boundary)
+        self.assertIsNone(controller.pending_stale_boundary)
+        self.assertEqual(scheduler.discard_stale_adaptive_decode_window.call_args.args[3], "stale_slot_stats_discarded")
+
     def test_stale_short_tail_stats_are_discarded_without_control_retry(
         self,
     ) -> None:
@@ -2195,9 +2267,11 @@ class LlamaServerAdapterTests(unittest.TestCase):
         class StaticControlClient(FakeClient):
             def __init__(self):
                 self.controls = []
+                self.timeouts = []
 
             def apply_ffn_control(self, _endpoint, control, *, timeout_s=5):
                 self.controls.append(control)
+                self.timeouts.append(timeout_s)
                 return ({
                     "applied_token_index": 1,
                     "plan_generation": control.plan_generation,
@@ -2257,6 +2331,19 @@ class LlamaServerAdapterTests(unittest.TestCase):
         self.assertEqual(client.controls[0].policy.layer_mask, 1)
         self.assertEqual(acknowledgements[0]["request_id"], command.request_id)
         self.assertEqual(acknowledgements[0]["applied_token_index"], 1)
+        self.assertEqual(client.timeouts, [static_control_timeout_s(command)])
+
+    def test_static_control_waits_as_long_as_one_phone_call(self) -> None:
+        # pC1q8pa 2026-10-10: a co-tenant's prefill ubatch on the owner held the decode
+        # boundary past the 5 s default and the static control failed the run
+        for value, expected in ((120_000, 120.0), (2_000, 5.0), (None, 5.0), ("x", 5.0)):
+            parameters = dict(self.command.adapter_parameters)
+            parameters.pop("ffn_timeout_ms", None)
+            if value is not None:
+                parameters["ffn_timeout_ms"] = value
+            with self.subTest(value=value):
+                self.assertEqual(static_control_timeout_s(
+                    replace(self.command, adapter_parameters=parameters)), expected)
 
     def test_static_decode_proof_starts_coverage_at_acknowledged_token(
         self,
@@ -2731,6 +2818,199 @@ class LlamaServerAdapterTests(unittest.TestCase):
             adaptive_observation=stale_grouped,
         ).to_json()
         self.assertEqual(stale_proof["phone_call_count"], 4)
+
+    def test_adaptive_proof_folds_a_released_remainder_window_into_the_tail(self) -> None:
+        """2026-10-05 rig (p7f21ffn request 001 at 09:53): the client read a mid-request window's statistics
+        after the slot was released, so the controller kept that window as an unmeasured record with the
+        remainder reason and sealed the rest as an unmeasured tail. The proof counts those tokens like a
+        released tail (token counts, one token accounted ahead) and rejects a malformed remainder."""
+        placement = "sha256:" + "4" * 64
+        command = adaptive_execution_command(replace(
+            self.command,
+            operator_plan={**dict(self.command.operator_plan), "assisted_operator_kind": "ffn",
+                           "desktop_placement_sha256": placement},
+        ))
+        contract = phone_ffn_execution_contract(command, self.manifest)
+        baseline = AdaptiveDecodePolicy(
+            route_id="synthetic-desktop-parent", executor_id="synthetic-desktop",
+            operator_plan_sha256=PLAN_SHA256, desktop_parent_route_id="synthetic-desktop-parent",
+            desktop_placement_sha256=placement, layer_indices=(), layer_mask=0, columns=0,
+            split_fraction_ppm=0, resource_ids=("cpu", "gpu"), baseline=True,
+        )
+        phone = AdaptiveDecodePolicy(
+            route_id=command.route_id, executor_id=command.executor_id, operator_plan_sha256=PLAN_SHA256,
+            desktop_parent_route_id=baseline.route_id, desktop_placement_sha256=placement,
+            layer_indices=(0,), layer_mask=1, columns=contract.columns, split_fraction_ppm=500_000,
+            resource_ids=("cpu", "gpu", "phone", "usb"),
+        )
+        first = AdaptiveDecodeWindowReceipt(
+            request_id=command.request_id, slot_id=0, window_index=0, token_start=1, token_end=2,
+            context_length=9, active_batch=1, started_at_us=100, finished_at_us=200, policy=baseline,
+            applied_ack=None, fleet_energy_uj_by_domain={"fleet": 100}, latency_per_token_us=100,
+            phone_compute_us=0, usb_transfer_us=0, rpc_us=0, exposed_tail_us=0, output_valid=True,
+            evidence_ids=("synthetic:baseline",), energy_boundary_id="synthetic-fleet",
+            energy_attribution_kind="isolated", failure_reason=None, previous_record_sha256="0" * 64,
+        )
+        acknowledgement = AdaptiveDecodePolicyAck(
+            request_id=command.request_id, slot_id=0, plan_generation=1, applied_token_index=2,
+            applied_at_us=200, policy_hash=phone.policy_hash,
+        )
+        second = replace(
+            first, window_index=1, token_start=2, token_end=4, context_length=10, started_at_us=200,
+            finished_at_us=400, policy=phone, applied_ack=acknowledgement, phone_compute_us=20,
+            usb_transfer_us=10, rpc_us=5, exposed_tail_us=2, evidence_ids=("synthetic:phone",),
+            previous_record_sha256=first.record_sha256.removeprefix("sha256:"),
+        )
+        third = replace(
+            second, window_index=2, token_start=4, token_end=5, context_length=12, started_at_us=400,
+            finished_at_us=500, applied_ack=None, evidence_ids=("synthetic:control-transition",),
+            previous_record_sha256=second.record_sha256.removeprefix("sha256:"),
+        )
+        remainder = replace(
+            third, window_index=3, token_start=5, token_end=7, context_length=13, started_at_us=500,
+            finished_at_us=700, measurement_eligible=False, completed_phone_calls=0,
+            completed_phone_input_rows=0, failure_reason="released_slot_unmeasured_remainder",
+            evidence_ids=("physical:terminal-release-confirmed",),
+            previous_record_sha256=third.record_sha256.removeprefix("sha256:"),
+        )
+        grouped = AdaptiveDecodeGroupedObservation(
+            request_id=command.request_id, ticket_id=command.ticket_id,
+            model_artifact_sha256=command.artifact_sha256, planning_profile_sha256=PLAN_SHA256,
+            desktop_placement_sha256=placement, windows=(first, second, third, remainder),
+            final_policy=phone, terminal_status="COMPLETED",
+            state_history=("BASELINE", "PREPARING", "PROBING", "EXPLOITING", "COMPLETED"),
+            unmeasured_tail_tokens=2, unmeasured_tail_reason="released_slot_unmeasured_remainder",
+        )
+        request_hex = command.request_id.encode("ascii").hex()
+
+        def proof_for(label, call_count, observation, output_tokens=9):
+            server = ManagedLlamaServer(("synthetic-server",), {}, self.root, label,
+                                        llama_server_launch_contract(command, self.manifest))
+            server.process = SimpleNamespace(poll=lambda: None)
+            marker = server.begin_execution(command, self.manifest)
+            server.stderr_lines.extend(
+                f"S41SERVERFFNCALL context={request_hex}:0:1:1 request={21 + index} layer=0 tokens=1 "
+                f"columns={contract.columns} payload_bytes=64" for index in range(call_count))
+            return server.finish_execution(marker, command, self.manifest, output_tokens=output_tokens,
+                                           adaptive_observation=observation).to_json()
+
+        # phone rows: second 2 + third 1 + (remainder 2 + tail 2 - one token accounted ahead at the ack) = 6
+        proof = proof_for("remainder-ok", 6, grouped)
+        self.assertEqual(proof["phone_call_count"], 6)
+        self.assertEqual(proof["adaptive_window_count"], 4)
+        self.assertEqual(proof["adaptive_grouped_observation_sha256"], grouped.grouped_observation_sha256)
+        for calls in (5, 7):
+            with self.subTest(calls=calls), self.assertRaises(PhysicalAdapterError):
+                proof_for(f"remainder-{calls}", calls, grouped)
+        with self.assertRaisesRegex(PhysicalAdapterError, "coverage differs"):
+            proof_for("remainder-coverage", 6, grouped, output_tokens=10)
+        for label, bad in (
+            ("tail-reason", replace(grouped, unmeasured_tail_reason="server_release_guard")),
+            ("counters", replace(grouped, windows=(first, second, third, replace(
+                remainder, completed_phone_calls=2, completed_phone_input_rows=2)))),
+            ("evidence", replace(grouped, windows=(first, second, third, replace(
+                remainder, evidence_ids=("synthetic:missing",))))),
+            ("not-last", replace(grouped, windows=(first, second, replace(
+                remainder, window_index=2, token_start=4, token_end=6, started_at_us=400, finished_at_us=600,
+                previous_record_sha256=second.record_sha256.removeprefix("sha256:")), replace(
+                third, window_index=3, token_start=6, token_end=7, started_at_us=600, finished_at_us=700,
+                previous_record_sha256=remainder.record_sha256.removeprefix("sha256:"))))),
+        ):
+            with self.subTest(label=label), self.assertRaisesRegex(PhysicalAdapterError, "remainder window is invalid"):
+                proof_for("remainder-" + label, 6, bad)
+
+    def test_fused_call_lines_parse_and_prove_with_their_wider_payload(self) -> None:
+        """2026-10-05 (p7f21fused): a WS15 fused call is a proof line like any other, plus ``fused_width`` =
+        the width of its [attention | residual] input rows; the proof expects payload_bytes = fused_width x
+        tokens x 2 and rejects a width that is not wider than the FFN input."""
+        plain = parse_llama_server_ffn_call(
+            "S41SERVERFFNCALL request=7 layer=3 tokens=1 columns=17408 payload_bytes=10240")
+        self.assertEqual((plain.fused_width, plain.payload_bytes), (0, 10240))
+        fused = parse_llama_server_ffn_call(
+            "1.41.376.918 I S41SERVERFFNCALL context=676162:2:1:1 request=16777217 layer=1 tokens=1 "
+            "columns=17408 payload_bytes=20480 fused_width=10240")
+        self.assertEqual((fused.fused_width, fused.payload_bytes, fused.layer, fused.contexts[0].scheduler_request_id),
+                         (10240, 20480, 1, "gab"))
+        with self.assertRaises(PhysicalAdapterError):
+            parse_llama_server_ffn_call(
+                "S41SERVERFFNCALL request=7 layer=3 tokens=1 columns=17408 payload_bytes=10240 fused_width=0")
+        self.assertIsNone(parse_llama_server_ffn_call(
+            "S41SERVERFFNFUSEDCALL request=16777217 layer=1 tokens=1 next_qkv=1 rpc_ms=19.820 compute_ms=17.913"))
+
+        placement = "sha256:" + "4" * 64
+        command = adaptive_execution_command(replace(
+            self.command,
+            operator_plan={**dict(self.command.operator_plan), "assisted_operator_kind": "ffn",
+                           "desktop_placement_sha256": placement},
+        ))
+        contract = phone_ffn_execution_contract(command, self.manifest)
+        baseline = AdaptiveDecodePolicy(
+            route_id="synthetic-desktop-parent", executor_id="synthetic-desktop",
+            operator_plan_sha256=PLAN_SHA256, desktop_parent_route_id="synthetic-desktop-parent",
+            desktop_placement_sha256=placement, layer_indices=(), layer_mask=0, columns=0,
+            split_fraction_ppm=0, resource_ids=("cpu", "gpu"), baseline=True,
+        )
+        phone = AdaptiveDecodePolicy(
+            route_id=command.route_id, executor_id=command.executor_id, operator_plan_sha256=PLAN_SHA256,
+            desktop_parent_route_id=baseline.route_id, desktop_placement_sha256=placement,
+            layer_indices=(0,), layer_mask=1, columns=contract.columns, split_fraction_ppm=500_000,
+            resource_ids=("cpu", "gpu", "phone", "usb"),
+        )
+        first = AdaptiveDecodeWindowReceipt(
+            request_id=command.request_id, slot_id=0, window_index=0, token_start=1, token_end=2,
+            context_length=9, active_batch=1, started_at_us=100, finished_at_us=200, policy=baseline,
+            applied_ack=None, fleet_energy_uj_by_domain={"fleet": 100}, latency_per_token_us=100,
+            phone_compute_us=0, usb_transfer_us=0, rpc_us=0, exposed_tail_us=0, output_valid=True,
+            evidence_ids=("synthetic:baseline",), energy_boundary_id="synthetic-fleet",
+            energy_attribution_kind="isolated", failure_reason=None, previous_record_sha256="0" * 64,
+        )
+        acknowledgement = AdaptiveDecodePolicyAck(
+            request_id=command.request_id, slot_id=0, plan_generation=1, applied_token_index=2,
+            applied_at_us=200, policy_hash=phone.policy_hash,
+        )
+        second = replace(
+            first, window_index=1, token_start=2, token_end=5, context_length=10, started_at_us=200,
+            finished_at_us=500, policy=phone, applied_ack=acknowledgement, phone_compute_us=20,
+            usb_transfer_us=10, rpc_us=5, exposed_tail_us=2, evidence_ids=("synthetic:phone",),
+            previous_record_sha256=first.record_sha256.removeprefix("sha256:"),
+        )
+        grouped = AdaptiveDecodeGroupedObservation(
+            request_id=command.request_id, ticket_id=command.ticket_id,
+            model_artifact_sha256=command.artifact_sha256, planning_profile_sha256=PLAN_SHA256,
+            desktop_placement_sha256=placement, windows=(first, second), final_policy=phone,
+            terminal_status="COMPLETED",
+            state_history=("BASELINE", "PREPARING", "PROBING", "EXPLOITING", "COMPLETED"),
+        )
+        request_hex = command.request_id.encode("ascii").hex()
+        embedding = self.manifest.embedding_length
+
+        def proof_for(label, lines, output_tokens=5):
+            server = ManagedLlamaServer(("synthetic-server",), {}, self.root, label,
+                                        llama_server_launch_contract(command, self.manifest))
+            server.process = SimpleNamespace(poll=lambda: None)
+            marker = server.begin_execution(command, self.manifest)
+            server.stderr_lines.extend(lines)
+            return server.finish_execution(marker, command, self.manifest, output_tokens=output_tokens,
+                                           adaptive_observation=grouped).to_json()
+
+        def line(index, payload, width):
+            suffix = "" if width is None else f" fused_width={width}"
+            return (f"S41SERVERFFNCALL context={request_hex}:0:1:1 request={41 + index} layer=0 tokens=1 "
+                    f"columns={contract.columns} payload_bytes={payload}{suffix}")
+
+        # three phone tokens, each a fused call carrying [attention | residual] rows twice the FFN width
+        proof = proof_for("fused-ok", [line(i, 2 * embedding * 2, 2 * embedding) for i in range(3)])
+        self.assertEqual(proof["phone_call_count"], 3)
+        mixed = proof_for("fused-mixed", [line(0, embedding * 2, None), line(1, 2 * embedding * 2, 2 * embedding),
+                                          line(2, embedding * 2, None)])
+        self.assertEqual(mixed["phone_call_count"], 3)
+        for label, lines in (
+            ("payload", [line(i, embedding * 2, 2 * embedding) for i in range(3)]),           # width says fused, bytes plain
+            ("narrow", [line(i, embedding * 2, embedding) for i in range(3)]),                # not wider than the FFN input
+            ("plain-wide", [line(i, 2 * embedding * 2, None) for i in range(3)]),             # plain line with a fused payload
+        ):
+            with self.subTest(label=label), self.assertRaises(PhysicalAdapterError):
+                proof_for("fused-" + label, lines)
 
     def test_adaptive_proof_ignores_unattributed_calls_after_stale_tail(
         self,
@@ -3244,6 +3524,110 @@ class LlamaServerAdapterTests(unittest.TestCase):
         self.assertEqual(len(meter.intervals), 2)
         self.assertEqual(meter.prepare_count, 2)
         self.assertGreater(meter.intervals[1][0], meter.intervals[0][0])
+
+
+class LiveMembershipProbeTimeoutTests(unittest.TestCase):
+    """AdaptiveDecodeConfig.live_membership_probe_timeout_ms / _auto reach the adapter's live
+    decode-membership probe (rig pA1q8f: 584 one-second /slots timeouts at 1.09-1.56 s steps)."""
+
+    def _controller(self, scheduler, slots):
+        controller = object.__new__(_AdaptivePayloadController)
+        controller.scheduler = scheduler
+        controller.backend = SimpleNamespace(
+            _client=SimpleNamespace(_slots_probe=slots), _record_adaptive_timing=Mock(),
+            _relative_us=lambda _ns: 1000)
+        controller.command = SimpleNamespace(endpoint="http://127.0.0.1:18571", request_id="request-a")
+        controller.cohort = None
+        controller.live_members = ((2, 41),)
+        controller.live_active_batch = controller.window_active_batch = 1
+        controller.live_context_available = True
+        controller.latest_window_step_us = None
+        return controller
+
+    @staticmethod
+    def _scheduler(**config):
+        from research_dev.scheduler._internal.adaptive_decode_contracts import AdaptiveDecodeConfig
+        from research_dev.scheduler._unified.adaptive_decode_control import AdaptiveDecodeControlMixin
+
+        class Scheduler(AdaptiveDecodeControlMixin):
+            pass
+
+        scheduler = Scheduler.__new__(Scheduler)
+        scheduler._adaptive_decode_config = AdaptiveDecodeConfig(**config)
+        return scheduler
+
+    def _probe_timeout(self, scheduler, latest_step_us=None):
+        slots = Mock(return_value=[{"id": 2, "id_task": 41, "is_processing": True}])
+        controller = self._controller(scheduler, slots)
+        controller.latest_window_step_us = latest_step_us
+        self.assertFalse(controller._refresh_active_members())
+        ((host, port, timeout_s), _kwargs), = slots.call_args_list
+        self.assertEqual((host, port), ("127.0.0.1", 18571))
+        return timeout_s
+
+    def test_default_keeps_the_one_second_probe(self):
+        for scheduler in (self._scheduler(), SimpleNamespace(), None):
+            with self.subTest(scheduler=type(scheduler).__name__):
+                timeout_s = self._probe_timeout(scheduler, latest_step_us=1_500_000)
+                self.assertEqual(timeout_s, 1)
+                self.assertIs(type(timeout_s), int)
+
+    def test_configured_timeout_reaches_the_probe(self):
+        self.assertEqual(self._probe_timeout(self._scheduler(live_membership_probe_timeout_ms=5_000)), 5)
+        self.assertEqual(self._probe_timeout(self._scheduler(live_membership_probe_timeout_ms=2_500)), 2.5)
+
+    def test_auto_timeout_follows_the_latest_window_step(self):
+        scheduler = self._scheduler(live_membership_probe_timeout_auto=True)
+        self.assertEqual(self._probe_timeout(scheduler), 1)
+        self.assertEqual(self._probe_timeout(scheduler, 200_000), 1)
+        self.assertEqual(self._probe_timeout(scheduler, 1_500_000), 4.5)
+        self.assertEqual(self._probe_timeout(scheduler, 5_000_000), 10)
+        floor = self._scheduler(live_membership_probe_timeout_auto=True, live_membership_probe_timeout_ms=12_000)
+        self.assertEqual(self._probe_timeout(floor, 5_000_000), 12)
+
+    def test_closed_window_records_its_per_token_latency(self):
+        controller = self._controller(None, Mock())
+        controller._read_boundary_stats = Mock(side_effect=RuntimeError("stop after the step"))
+        boundary = SimpleNamespace(started_at_us=1_000, finished_at_us=4_351_000, token_count=3)
+        with self.assertRaisesRegex(RuntimeError, "stop after the step"):
+            controller._process_boundary(boundary)
+        self.assertEqual(controller.latest_window_step_us, 1_450_000)
+
+    def test_configured_timeout_keeps_the_context_unavailable_path(self):
+        slots = Mock(side_effect=[TimeoutError("timed out"),
+                                  [{"id": 2, "id_task": 41, "is_processing": True}]])
+        controller = self._controller(self._scheduler(live_membership_probe_timeout_ms=5_000), slots)
+        self.assertFalse(controller._refresh_active_members())
+        self.assertFalse(controller.live_context_available)
+        self.assertFalse(controller._refresh_active_members())
+        self.assertTrue(controller.live_context_available)
+        self.assertEqual([row.args[2] for row in slots.call_args_list], [5, 5])
+        events = [row.args[0] for row in controller.backend._record_adaptive_timing.call_args_list]
+        self.assertEqual([row["kind"] for row in events],
+                         ["DECODE_CONTEXT_UNAVAILABLE", "DECODE_CONTEXT_RECOVERED"])
+        self.assertEqual(events[0]["reason"], "TimeoutError:timed out")
+
+    def test_configuration_is_validated_and_serialized_only_when_set(self):
+        from research_dev.scheduler._internal.adaptive_decode_contracts import (
+            AdaptiveDecodeConfig, AdaptiveDecodeError,
+        )
+        default = AdaptiveDecodeConfig()
+        self.assertEqual(default.live_membership_probe_timeout_s(), 1)
+        self.assertFalse({"live_membership_probe_timeout_ms", "live_membership_probe_timeout_auto"}
+                         & set(default.to_json()))
+        configured = AdaptiveDecodeConfig(live_membership_probe_timeout_ms=5_000,
+                                          live_membership_probe_timeout_auto=True)
+        self.assertEqual((configured.to_json()["live_membership_probe_timeout_ms"],
+                          configured.to_json()["live_membership_probe_timeout_auto"]), (5_000, True))
+        for valid in (500, 30_000):
+            self.assertEqual(AdaptiveDecodeConfig(live_membership_probe_timeout_ms=valid)
+                             .live_membership_probe_timeout_ms, valid)
+        for invalid in (0, 499, 30_001, 5.0, True, "5000"):
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(
+                    AdaptiveDecodeError, "probe timeout must be 500..30000 ms"):
+                AdaptiveDecodeConfig(live_membership_probe_timeout_ms=invalid)
+        with self.assertRaisesRegex(AdaptiveDecodeError, "probe timeout mode is invalid"):
+            AdaptiveDecodeConfig(live_membership_probe_timeout_auto=1)
 
 
 if __name__ == "__main__":

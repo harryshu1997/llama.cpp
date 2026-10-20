@@ -15,6 +15,61 @@ from ..phone_session_contracts.events import (
 from ..phone_session_contracts.receipts import DirectPhoneFfnCloseReceipt
 
 
+def _acknowledge_restoration(controller, remote_root: str | None) -> None:
+    """Tell the phone's restore watchdog that adb works again (restore_android_usb.sh restarts adbd
+    without it). Best effort: the receipt does not depend on it."""
+    if not remote_root:
+        return
+    try:
+        controller._adb(
+            "su -c " + shlex.quote("touch " + shlex.quote(remote_root + "/host-ack"))
+        )
+    except Exception:  # noqa: BLE001 - the acknowledgement is advisory
+        return
+
+
+# 2026-10-06: seconds between close attempts while another host process (a live llama-server's FFN
+# client) still claims the phone's FunctionFS interface
+_USB_BUSY_RETRY_S = 1.0
+
+
+def _close_until_restored(controller, timeout_s: float, *, sleep=None, clock=None):
+    """Send the direct-phone USB close, retrying while the interface is busy, until the phone is back on adb.
+
+    A whole relaunch of a phone (a one-session replacement) can start while a live llama-server's FFN
+    client still claims the phone's FunctionFS interface (the desktop transition stops that server in
+    parallel). The close tool then fails with ``LIBUSB_ERROR_BUSY``; before this the close was attempted
+    once and the rest of the window only waited for a restoration that could not happen (pAlpf1pix2,
+    pAlpc1pix2: one ~90 s SESSION_FAILED per run). Now the close is retried every second while it is
+    busy, with a non-blocking adb check in between (the server's own exit may already have ended the
+    worker). A close that succeeds or fails for another reason gets the rest of the window to restore.
+    Returns the restoration receipt; raises with the last close error and the restoration error.
+    """
+    import time as _time  # noqa: PLC0415 - injectable for tests
+    sleep = sleep or _time.sleep
+    clock = clock or _time.monotonic
+    deadline = clock() + timeout_s
+    while True:
+        close_error = None
+        try:
+            controller._close_current_usb()
+        except PhysicalAdapterError as error:
+            close_error = error
+        busy = close_error is not None and "LIBUSB_ERROR_BUSY" in str(close_error)
+        retry_left = busy and deadline - clock() > _USB_BUSY_RETRY_S
+        try:
+            return verify_android_usb_restored(
+                serial=controller.configuration.serial,
+                adb_port=controller.configuration.adb_port,
+                minimum_speed_mbps=controller.configuration.minimum_usb_speed_mbps,
+                timeout_s=0 if retry_left else max(0, int(deadline - clock())),
+            )
+        except PhysicalAdapterError as restoration_error:
+            if not retry_left:
+                details = (str(close_error) + "; " if close_error is not None else "") + str(restoration_error)
+                raise PhysicalAdapterError(details) from restoration_error
+        sleep(_USB_BUSY_RETRY_S)
+
 def finish(
     controller, *, require_execution: bool = True
 ) -> DirectPhoneFfnCloseReceipt:
@@ -30,26 +85,13 @@ def finish(
             timeout_s=0,
         )
     except PhysicalAdapterError as restoration_error:
-        close_error = None
         try:
-            controller._close_current_usb()
-        except PhysicalAdapterError as error:
-            close_error = error
-        try:
-            restoration = verify_android_usb_restored(
-                serial=controller.configuration.serial,
-                adb_port=controller.configuration.adb_port,
-                minimum_speed_mbps=(
-                    controller.configuration.minimum_usb_speed_mbps
-                ),
-                timeout_s=90,
-            )
+            restoration = _close_until_restored(controller, 90)
         except PhysicalAdapterError as final_restoration_error:
-            details = str(restoration_error)
-            if close_error is not None:
-                details += "; " + str(close_error)
-            details += "; " + str(final_restoration_error)
-            raise PhysicalAdapterError(details) from final_restoration_error
+            raise PhysicalAdapterError(
+                str(restoration_error) + "; " + str(final_restoration_error)
+            ) from final_restoration_error
+    _acknowledge_restoration(controller, remote_root)
     try:
         worker_log = controller._adb(
             "su -c "
@@ -139,7 +181,7 @@ def abort(controller) -> AndroidUsbRestorationReceipt:
         )
     try:
         try:
-            return verify_android_usb_restored(
+            receipt = verify_android_usb_restored(
                 serial=controller.configuration.serial,
                 adb_port=controller.configuration.adb_port,
                 minimum_speed_mbps=(
@@ -147,29 +189,16 @@ def abort(controller) -> AndroidUsbRestorationReceipt:
                 ),
                 timeout_s=15,
             )
+            _acknowledge_restoration(controller, controller._remote_root)
+            return receipt
         except PhysicalAdapterError as initial_error:
             try:
-                controller._close_current_usb()
-            except PhysicalAdapterError as close_error:
-                close_note = str(close_error)
-            else:
-                close_note = ""
-            try:
-                return verify_android_usb_restored(
-                    serial=controller.configuration.serial,
-                    adb_port=controller.configuration.adb_port,
-                    minimum_speed_mbps=(
-                        controller.configuration.minimum_usb_speed_mbps
-                    ),
-                    timeout_s=180,
-                )
+                receipt = _close_until_restored(controller, 180)
+                _acknowledge_restoration(controller, controller._remote_root)
+                return receipt
             except PhysicalAdapterError as restoration_error:
-                details = str(initial_error)
-                if close_note:
-                    details += "; " + close_note
-                details += "; " + str(restoration_error)
                 raise PhysicalAdapterError(
-                    details
+                    str(initial_error) + "; " + str(restoration_error)
                 ) from restoration_error
     finally:
         controller._launch = None

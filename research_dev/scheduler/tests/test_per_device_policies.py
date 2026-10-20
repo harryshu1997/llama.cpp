@@ -16,6 +16,7 @@ import unittest
 from research_dev.scheduler import UnifiedScheduler
 from research_dev.scheduler._internal.adaptive_decode import AdaptiveDecodeController
 from research_dev.scheduler._internal.adaptive_decode_contracts import (
+    device_set_order,
     AdaptiveDecodeConfig, AdaptiveDecodePolicyAck, AdaptiveDecodeRawWindowObservation,
 )
 from research_dev.scheduler._internal.adaptive_decode_ops.coherence import server_verdict
@@ -215,6 +216,31 @@ class DeviceSetColdStartTests(_DeviceSetCase):
         self.assertEqual([devices(row) for row in AdaptiveDecodeController._sample_candidates(
             rows, self.config)], [P])
 
+    def test_widest_set_first_probes_the_full_layout_when_the_primary_owns_a_sliver(self):
+        """Rig 2026-10-02: the OP15 owned 1 of 24 Qwen layers and the Pixel 23. The primary-alone cold
+        start probe was inconclusive, the attempt budget drained on it and the Pixel served 0 calls.
+        Opt-in ``cold_start_probe_widest_set_first``: the widest device set is probed first and the
+        narrower widths come from it; the default order is unchanged."""
+        anchor, sliver = 0b1, (1 << 24) - 2
+        rows = []
+        for columns in (1000, 750, 500, 250):
+            rows.extend((device_policy(((PRIMARY, anchor),), columns),
+                         device_policy(((PRIMARY, anchor), (CO_HELPER, sliver)), columns),
+                         device_policy(((CO_HELPER, sliver),), columns)))
+        config = replace(self.config, maximum_probe_candidates=4)
+        self.assertEqual([(devices(row), row.split_fraction_ppm) for row in
+                          AdaptiveDecodeController._sample_candidates(rows, config)],
+                         [(P, 1_000_000), (PC, 1_000_000), (P, 750_000), (P, 500_000)])
+        widest = replace(config, cold_start_probe_widest_set_first=True)
+        sampled = AdaptiveDecodeController._sample_candidates(rows, widest)
+        self.assertEqual([(devices(row), row.split_fraction_ppm) for row in sampled],
+                         [(PC, 1_000_000), (P, 1_000_000), (PC, 750_000), (PC, 500_000)])
+        self.assertEqual(len(sampled[0].layer_indices), 24)
+        self.assertEqual([devices(row) for row in AdaptiveDecodeController._sample_candidates(
+            rows, replace(widest, maximum_probe_candidates=1))], [PC])
+        # sets without the primary stay failure fallbacks, never cold-start probes
+        self.assertNotIn(C, [devices(row) for row in sampled])
+
     def test_first_server_proposal_is_the_primary_alone(self):
         server = self.server()
         server.start("request-a", 1)
@@ -223,6 +249,23 @@ class DeviceSetColdStartTests(_DeviceSetCase):
         self.assertEqual(server.group().proposal, self.primary)
         self.assertEqual(server.controller.snapshot("request-a")["device_sets"],
                          ("op15", "op15+pixel", "pixel"))
+
+
+    def test_widest_set_first_server_proposes_the_full_layout_first(self):
+        """Server policy coherence drives the probes through the server group's device-set order, not
+        the per-session sampler; under the opt-in the group explores the widest set first (rig
+        2026-10-02: the one-layer primary-alone set drained every batch-1 probe budget)."""
+        self.config = replace(self.config, cold_start_probe_widest_set_first=True)
+        server = self.server()
+        server.start("request-a", 1)
+        server.tick()
+        self.assertEqual(server.controls, [("request-a", PC)])
+        self.assertEqual(server.group().proposal, self.both)
+        self.assertEqual(server.group().device_sets, (PC, P, C))
+        self.assertEqual(server.controller.snapshot("request-a")["device_sets"],
+                         ("op15+pixel", "op15", "pixel"))
+        self.assertEqual(device_set_order(self.candidates), (P, PC, C))
+        self.assertEqual(device_set_order(self.candidates, widest_first=True), (PC, P, C))
 
 
 class DeviceSetServerVerdictTests(_DeviceSetCase):
@@ -505,6 +548,127 @@ class SinglePhoneDigestGuardTests(_DeviceSetCase):
         digest = canonical_sha256({"sampled": [row.to_json() for row in sampled], "trace": trace,
                                    "controls": server.controls})
         self.assertEqual(digest, self.GOLDEN)
+
+
+class DeviceSetSubsetChallengeTests(unittest.TestCase):
+    """Rig pA1q8f (2026-10-09, Qwen3-32B Q8_0): OnePlus owns FFN layers 0-20, Pixel 21-40. Per token
+    (latency us, energy uJ) per batch composition: host and both phones measured; OnePlus alone and
+    Pixel alone derived per layer (OnePlus call 8.1-9.6 ms, Pixel ~28-30 ms, desktop CPU Q8 FFN layer
+    15.2 ms). The run's effective bounds were the campaign's 1.25x latency and 1 % saving; the
+    template's 1.0x / 5 % are overridden per session (adaptive_decode_control._adaptive_start_config)."""
+
+    OP, PX = "op15-phone", "pixel10pro-phone"
+    MEASURED = {
+        1: {(): (819_000, 100_000_000), (OP, PX): (924_000, 39_000_000),
+            (OP,): (670_000, 69_000_000), (PX,): (1_073_000, 70_000_000)},
+        2: {(): (1_086_000, 118_500_000), (OP, PX): (1_251_000, 54_000_000),
+            (OP,): (947_000, 85_500_000), (PX,): (1_389_000, 87_000_000)},
+        3: {(): (1_553_000, 198_000_000), (OP, PX): (1_457_000, 66_000_000),
+            (OP,): (1_425_000, 130_000_000), (PX,): (1_585_000, 134_000_000)},
+        4: {(): (1_559_000, 199_000_000), (OP, PX): (1_328_000, 62_000_000),
+            (OP,): (1_442_000, 129_000_000), (PX,): (1_445_000, 132_000_000)},
+    }
+
+    def setUp(self):
+        op_mask, px_mask = (1 << 21) - 1, ((1 << 41) - 1) ^ ((1 << 21) - 1)
+        self.baseline = policy("desktop-control", 0, (), baseline=True)
+        rows = []
+        for columns in (1000, 750, 500, 250):
+            rows.extend((device_policy(((self.OP, op_mask),), columns),
+                         device_policy(((self.OP, op_mask), (self.PX, px_mask)), columns),
+                         device_policy(((self.PX, px_mask),), columns)))
+        self.candidates = tuple(rows)
+        # the pA1q8f overrides on the effective session bounds, with two-token windows
+        self.config = AdaptiveDecodeConfig(
+            minimum_remaining_tokens=4, minimum_window_tokens=2, maximum_window_tokens=2,
+            maximum_probe_tokens=80, maximum_probe_candidates=4, measurement_resolution_us=1,
+            transition_cost_us=1, transition_energy_uj=1, warmup_windows_per_policy=0,
+            maximum_probe_attempts_per_context=4, minimum_energy_saving_ppm=10_000,
+            maximum_latency_ppm=1_250_000, server_policy_coherence=True,
+            batch_growth_verdict_inheritance=True, cold_start_probe_widest_set_first=True,
+            late_helper_adoption=True, late_helper_adoption_minimum_tokens=24)
+
+    def _grow(self, measured=None):
+        """One request alone, then a co-tenant joins at each of batch 2, 3 and 4."""
+        measured = measured or self.MEASURED
+        energies = {(owners, batch): values[1] for batch, row in measured.items()
+                    for owners, values in row.items()}
+        latencies = {(owners, batch): values[0] for batch, row in measured.items()
+                     for owners, values in row.items()}
+        server = _Server(self, energies, latencies)
+        names = ("request-a", "request-b", "request-c", "request-d")
+        server.start(names[0], 1, output_tokens=2_000)
+        running = {}
+        for _ in range(12):
+            server.tick()
+        running[1] = server.running()
+        for batch in (2, 3, 4):
+            server.start(names[batch - 1], batch, active_batch=batch, output_tokens=2_000)
+            server.tick(next_active_batch={name: batch for name in names[:batch - 1]})
+            for _ in range(16):
+                server.tick()
+            running[batch] = server.running()
+        group = server.group()
+        verdicts = {batch: devices(row) for batch, row in group.verdicts}
+        executed = {(devices(row.policy), row.active_batch, row.window_role)
+                    for session in server.controller._sessions.values() for row in session.records}
+        return server, group, verdicts, running, executed
+
+    def test_default_keeps_the_widest_set_at_every_composition(self):
+        """Without the flag the run is reproduced: both phones take every verdict (within 1.25x of the
+        host) and OnePlus alone is never executed."""
+        _server, group, verdicts, running, executed = self._grow()
+        both = (self.OP, self.PX)
+        self.assertEqual(verdicts, {1: both, 2: both, 3: both, 4: both})
+        self.assertEqual(running, {1: both, 2: both, 3: both, 4: both})
+        self.assertEqual(group.device_drops, ())
+        self.assertFalse({row for row in executed if row[0] in ((self.OP,), (self.PX,))})
+
+    def test_subset_challenge_probes_and_exploits_oneplus_alone_while_both_phones_are_slower(self):
+        self.config = replace(self.config, device_set_subset_challenge=True)
+        _server, group, verdicts, running, executed = self._grow()
+        both, oneplus = (self.OP, self.PX), (self.OP,)
+        self.assertEqual((verdicts[1], verdicts[2]), (oneplus, oneplus))
+        self.assertEqual((running[1], running[2]), (oneplus, oneplus))
+        self.assertTrue({(oneplus, 1, "exploitation"), (oneplus, 2, "exploitation")} <= executed)
+        # batch 1: both phones qualified first, then lost to the faster subset; batch 2: the
+        # inherited OnePlus verdict is kept against both phones, which are slower than the host
+        self.assertEqual(group.device_drops[:2], (
+            (1, both, "SERVER_DEVICE_SET_SLOWER_THAN_HOST"),
+            (2, both, "SERVER_DEVICE_SET_LATENCY_BOUND_EXCEEDED")))
+        self.assertNotIn((self.PX,), {row[0] for row in executed})
+
+    def test_subset_challenge_keeps_both_phones_where_they_beat_the_host(self):
+        """Batch 3-4: both phones are faster than the host and save more energy than OnePlus alone."""
+        self.config = replace(self.config, device_set_subset_challenge=True)
+        _server, group, verdicts, running, executed = self._grow()
+        both = (self.OP, self.PX)
+        self.assertEqual((verdicts[3], verdicts[4]), (both, both))
+        self.assertEqual((running[3], running[4]), (both, both))
+        self.assertTrue({(both, 3, "exploitation"), (both, 4, "exploitation")} <= executed)
+        self.assertFalse([row for row in group.device_drops if row[0] in (3, 4)])
+
+    def test_subset_not_faster_than_the_host_leaves_the_widest_set(self):
+        """Neither subset beats the host at batch 1: each is dropped there after its measurement and
+        both phones (within the campaign bound, saving energy) keep the verdict."""
+        self.config = replace(self.config, device_set_subset_challenge=True)
+        measured = {batch: dict(row) for batch, row in self.MEASURED.items()}
+        measured[1][(self.OP,)] = (900_000, 69_000_000)
+        _server, group, verdicts, running, _executed = self._grow(measured)
+        both = (self.OP, self.PX)
+        self.assertEqual((verdicts[1], running[1]), (both, both))
+        self.assertEqual([row for row in group.device_drops if row[0] == 1], [
+            (1, (self.OP,), "SERVER_DEVICE_SET_NOT_FASTER_THAN_HOST"),
+            (1, (self.PX,), "SERVER_DEVICE_SET_NOT_FASTER_THAN_HOST")])
+
+    def test_flag_is_opt_in_and_requires_server_policy_coherence(self):
+        self.assertNotIn("device_set_subset_challenge", self.config.to_json())
+        enabled = replace(self.config, device_set_subset_challenge=True)
+        self.assertIs(enabled.to_json()["device_set_subset_challenge"], True)
+        with self.assertRaisesRegex(ValueError, "requires server policy coherence"):
+            AdaptiveDecodeConfig(device_set_subset_challenge=True)
+        with self.assertRaisesRegex(ValueError, "subset challenge is invalid"):
+            AdaptiveDecodeConfig(server_policy_coherence=True, device_set_subset_challenge=1)
 
 
 if __name__ == "__main__":

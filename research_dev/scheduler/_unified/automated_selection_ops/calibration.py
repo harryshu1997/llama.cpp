@@ -260,6 +260,89 @@ def _rank_calibration_alternatives(
     return selected, reason
 
 
+# Reasons a pinned remote-resident parent is admitted with, as any calibration sample. The parent stands
+# in for the model's desktop control (the full-weight parent is never used), so an uncalibrated marginal
+# cost of joining protected work does not refuse it either: there is no route to send the request to
+# instead (pB1q8oc 2026-10-10: the third arrival failed the run with MARGINAL_SYSTEM_COST_UNKNOWN).
+_REMOTE_RESIDENT_PIN_ADMISSIBLE_REASONS = frozenset({
+    "COLD_RESIDENCY_BREAK_EVEN",
+    "ENERGY_UNKNOWN",
+    "MARGINAL_SYSTEM_COST_UNKNOWN",
+    "ROUTE_NOT_QUALIFIED",
+    "SLO_UPPER_BOUND",
+})
+
+
+def _select_remote_resident_owner_candidate(
+    controller,
+    context: _AutomatedSelectionContext,
+) -> tuple[AutomatedRouteCandidate, tuple[tuple[str, str], ...], str]:
+    """Campaign ``remote_resident_owner``: the pinned model runs on its remote-resident parent.
+
+    Every selection of the model takes this path, dispatching (always calibration, see
+    ``submit_automated_request``) or prospective (placement epochs, desktop fallbacks), so no
+    epoch or fallback names the full-weight desktop control: the arm claims the desktop never
+    loads the owner layers, and a parent that cannot be admitted fails with its reasons. Busy
+    owners or servers are waited for through the resource calendar, as for any route.
+    """
+    candidate_set = context.candidate_set
+    reasons: dict[str, str] = {}
+    admissible = []
+    for row in candidate_set.candidates:
+        if row.plan.execution_contract.remote_resident_ffn is None:
+            continue
+        blocked = (
+            "FAILED_ROUTE_EXCLUDED" if row.candidate_id in context.excluded
+            else controller._candidate_quarantine_reason(row)
+            or context.runtime_rejection.get(row.candidate_id)
+        )
+        remaining = sorted(
+            set(row.rejection_reasons) - _REMOTE_RESIDENT_PIN_ADMISSIBLE_REASONS
+        )
+        if blocked is None and remaining:
+            blocked = ",".join(remaining)
+        if blocked is None and not controller._calibration_physically_qualified(row):
+            blocked = "CALIBRATION_PHYSICAL_EVIDENCE_INCOMPLETE"
+        if blocked is None:
+            admissible.append(row)
+        else:
+            reasons[row.candidate_id] = blocked
+    if not admissible:
+        raise UnifiedScheduleError(
+            "remote-resident owner route of " + candidate_set.model_id
+            + " is not admissible (no full-weight fallback): "
+            + ("; ".join(
+                route_id + "=" + reason for route_id, reason in sorted(reasons.items())
+            ) or "no remote-resident route was generated")
+        )
+    selected = min(
+        admissible,
+        key=lambda row: (
+            not controller._runtime_decode_cohorts.can_join(
+                row.plan,
+                row.binding,
+                quality_requirement=context.request.quality_requirement,
+            ),
+            row.cost.finish_upper_us,
+            row.cost.finish_us,
+            row.candidate_id,
+        ),
+    )
+    if not selected.admitted:
+        selected = replace(
+            selected,
+            binding=replace(selected.binding, ready=True, eligibility_reasons=()),
+            admitted=True,
+            rejection_reasons=(),
+        )
+    rejection = {
+        row.candidate_id: reasons.get(row.candidate_id, "REMOTE_RESIDENT_OWNER_PINNED")
+        for row in candidate_set.candidates
+        if row.candidate_id != selected.candidate_id
+    }
+    return selected, tuple(sorted(rejection.items())), "REMOTE_RESIDENT_OWNER_PINNED"
+
+
 def _select_calibration_candidate(
     controller,
     context: _AutomatedSelectionContext,

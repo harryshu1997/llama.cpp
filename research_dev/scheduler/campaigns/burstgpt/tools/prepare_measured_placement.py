@@ -14,6 +14,11 @@ writes a new arm in which every planned owner gets exactly its planned layers --
   with the evidence's artifact, shard sha256 and PASS status consistent (the full pinned-hash verification
   still runs at preflight on the rig: ``helper_phone_evidence.load_helper_evidence``);
 * a co-helper may serve one model per campaign (static helper evidence is per artifact);
+* a co-helper only adds layers to the primary phone's assisted route, so a model whose plan gives a
+  co-helper layers must give the primary (the rig topology's ``phone_device_id``) at least one layer too;
+  a plan that leaves a model wholly on the desktop CPU is refused as well (the base arm's primary layout
+  would otherwise run unchanged). Plans from an inventory that marks co-helpers ``route_anchor: false``
+  never contain either case (WS12);
 * layers no phone owns stay on the desktop CPU (nothing to configure).
 
     python3 -m research_dev.scheduler.campaigns.burstgpt.tools.prepare_measured_placement \\
@@ -78,15 +83,30 @@ def _split(text: str, parts: int) -> list[str]:
 
 def materialize(inputs: Path, plan: dict, out: Path, *, primary_indexes: dict[str, tuple[Path, str]],
                 helper_indexes: dict[tuple[str, str], tuple[Path, str]], helper_evidence: dict[tuple[str, str], Path],
-                plan_key: str | None = None, shadow: tuple[Path, Path] | None = None, tag: str = "measured") -> dict:
+                plan_key: str | None = None, shadow: tuple[Path, Path] | None = None, tag: str = "measured",
+                helper_anchored: bool = False) -> dict:
+    """``helper_anchored`` (WS23, off = today's behaviour): the runtime was built with campaign
+    ``elastic_phones.helper_independence``, so a co-helper may anchor a model's route and the plan may leave
+    the primary phone no layer of that model. The arm then drops the primary's shard index for such a model
+    (its stored slice must not overlap the helper's layers) and turns ``helper_independence`` on."""
     campaign, rig, models, evidence = [_read(inputs / (name + ".json")) for name in ("campaign", "rig", "models", "evidence")]
     masks = plan_masks(plan, plan_key)
     by_model = {row["model_id"]: row for row in models["models"]}
+    primary = rig.get("topology", {}).get("phone_device_id", PRIMARY)
+    for model_id, owners in sorted(masks.items()):
+        co_helpers = sorted(owner for owner in owners if owner not in (primary, DESKTOP_CPU))
+        _require(helper_anchored or not co_helpers or primary in owners,
+                 f"{model_id}: the plan gives co-helper(s) {', '.join(co_helpers)} layers but the primary phone "
+                 f"{primary} none; the runtime's assisted route belongs to the primary phone and a co-helper only "
+                 "adds layers to it (plan from an inventory with route_anchor false co-helpers)")
+        _require(co_helpers or primary in owners,
+                 f"{model_id}: the plan leaves every layer on the desktop CPU; this arm would keep the base primary "
+                 "layout (a desktop-only model is a different arm)")
     checks = []
     helper_models: dict[str, str] = {}
     for model_id, owners in sorted(masks.items()):
         for owner in owners:
-            if owner not in (PRIMARY, DESKTOP_CPU):
+            if owner not in (primary, DESKTOP_CPU):
                 _require(helper_models.setdefault(owner, model_id) == model_id,
                          f"helper {owner} would serve two models ({helper_models[owner]}, {model_id}); static helper "
                          "evidence is per artifact (one Pixel worker per campaign)")
@@ -97,10 +117,15 @@ def materialize(inputs: Path, plan: dict, out: Path, *, primary_indexes: dict[st
         manifest_path = row.get("checked_manifest_path")
         if manifest_path and Path(manifest_path).exists():
             artifact = _read(Path(manifest_path)).get("artifact_sha256")
+        if helper_anchored and primary not in owners and any(owner != DESKTOP_CPU for owner in owners):
+            # the primary phone owns nothing of this model: its stored slice must not reach the helper's layers
+            for name in ("phone_ffn_shard_index_path", "phone_ffn_shard_directory"):
+                row.pop(name, None)
+            checks.append({"model": model_id, "owner": primary, "status": "PRIMARY_OWNS_NONE_INDEX_DROPPED"})
         for owner, mask in sorted(owners.items()):
             if owner == DESKTOP_CPU:
                 continue
-            if owner == PRIMARY:
+            if owner == primary:
                 _require(model_id in primary_indexes, f"{model_id}: no primary shard index given for {owner}")
                 index_path, phone_dir = primary_indexes[model_id]
                 index = _read(index_path)
@@ -164,6 +189,17 @@ def materialize(inputs: Path, plan: dict, out: Path, *, primary_indexes: dict[st
     if not evidence.get("helper_phone_evidence_paths"):
         evidence.pop("helper_phone_evidence_paths", None)
     campaign["campaign_id"] = campaign["campaign_id"] + "-" + tag
+    if helper_models:
+        # a measured plan is the layout to evaluate: the adaptive cold start must probe the full
+        # device set first, not the primary phone alone (which may own a single anchor layer)
+        overrides = dict(campaign.get("adaptive_decode_overrides") or {})
+        overrides["cold_start_probe_widest_set_first"] = True
+        campaign["adaptive_decode_overrides"] = overrides
+    if helper_anchored:
+        from research_dev.scheduler.campaigns.burstgpt.tools.template_variants import G11_ELASTIC_PHONES
+        elastic = dict(campaign.get("elastic_phones") or G11_ELASTIC_PHONES)
+        elastic["helper_independence"] = True
+        campaign["elastic_phones"] = elastic
     if shadow is not None:
         policy = dict(campaign.get("dispatch_policy") or {})
         policy["measured_placement"] = {"mode": "shadow", "profile_path": str(shadow[0]),
@@ -194,6 +230,9 @@ def main(argv=None) -> int:
     parser.add_argument("--shadow-profile", type=Path)
     parser.add_argument("--shadow-inventory", type=Path)
     parser.add_argument("--tag", default="measured")
+    parser.add_argument("--helper-anchored", action="store_true",
+                        help="WS23: allow plans where the primary phone owns none of a model's layers "
+                             "(campaign elastic_phones.helper_independence is turned on)")
     args = parser.parse_args(argv)
     try:
         primary = {}
@@ -215,7 +254,8 @@ def main(argv=None) -> int:
             _require(bool(args.shadow_profile and args.shadow_inventory), "shadow needs both profile and inventory")
             shadow = (args.shadow_profile.resolve(), args.shadow_inventory.resolve())
         receipt = materialize(args.inputs, _read(args.plan), args.out, primary_indexes=primary, helper_indexes=helpers,
-                              helper_evidence=evidence, plan_key=args.plan_key, shadow=shadow, tag=args.tag)
+                              helper_evidence=evidence, plan_key=args.plan_key, shadow=shadow, tag=args.tag,
+                              helper_anchored=args.helper_anchored)
     except (MaterializationRefused, OSError, KeyError, ValueError) as error:
         print("prepare_measured_placement: REFUSED: " + str(error), file=sys.stderr)
         return 1

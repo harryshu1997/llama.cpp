@@ -850,6 +850,12 @@ class HeterogeneousPhysicalRig(
         return tuple(row.to_json() for row in events)
 
     @property
+    def remote_resident_launches(self) -> tuple[dict[str, object], ...]:
+        """Reduced desktop parents launched with phone-owned FFN weights omitted (proof, memory)."""
+        with self._lock:
+            return tuple(dict(row) for row in self.__dict__.get("_remote_resident_launches", ()))
+
+    @property
     def execution_proofs(self) -> Mapping[str, dict[str, object]]:
         with self._lock:
             return {
@@ -1793,7 +1799,7 @@ class HeterogeneousPhysicalRig(
 
     def _validate_phone_transition_observation(self, command, state, control_check):
         phone_device_id = state.phone or self._whole_phone_device(command)
-        if phone_device_id is None or state.direct_phone_reused:
+        if phone_device_id is None or state.direct_phone_reused or self._phone_is_static_helper(phone_device_id):
             return
         deadline = time.monotonic() + 15
         while True:
@@ -2018,11 +2024,13 @@ class HeterogeneousPhysicalRig(
             and hasattr(self, "_phone_execution_activity_ids")
         ):
             activity_id = "execution:" + command.ticket_id
-            self._phone_activity.begin(
-                activity_id,
-                "phone_execution",
-                time.monotonic_ns(),
-            )
+            if not self._phone_is_static_helper(execution_contract.phone_device_id):
+                # WS23: a route anchored by a static co-helper leaves the scheduled phone's activity alone
+                self._phone_activity.begin(
+                    activity_id,
+                    "phone_execution",
+                    time.monotonic_ns(),
+                )
             lifecycle = getattr(self, "_co_helper_lifecycles", {}).get(command.artifact_sha256)
             if lifecycle is not None:
                 for device in lifecycle.declaration.device_ids:
@@ -2119,11 +2127,12 @@ class HeterogeneousPhysicalRig(
                 command.execution_contract.operator_kind == "whole_model"
                 or self._whole_phone_device(command) is not None
             )
-            self._phone_activity.finish(
-                activity_id,
-                time.monotonic_ns(),
-                record=(proof is None or whole_phone or phone_calls > 0),
-            )
+            if not self._phone_is_static_helper(command.execution_contract.phone_device_id):
+                self._phone_activity.finish(
+                    activity_id,
+                    time.monotonic_ns(),
+                    record=(proof is None or whole_phone or phone_calls > 0),
+                )
             lifecycle = getattr(self, "_co_helper_lifecycles", {}).get(command.artifact_sha256)
             if lifecycle is not None:
                 for device in lifecycle.declaration.device_ids:

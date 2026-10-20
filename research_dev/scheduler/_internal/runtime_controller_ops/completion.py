@@ -62,6 +62,12 @@ def _route_violation(
         return _ROUTE_RETAINED_ACTIONS[kind]
     if selected.baseline:
         return "baseline_requires_recalibration"
+    if kind == "prediction" and ticket.decision.reason == "REMOTE_RESIDENT_OWNER_PINNED":
+        # campaign remote_resident_owner: the pinned parent is the model's only route (it stands in for
+        # the desktop control), so a missed latency upper bound asks for recalibration as the baseline's
+        # does; a physical failure still disables it (pB1q8oc 2026-10-10: two owner requests ended 57 s
+        # and 48 s past their ASSUMED-cost upper bounds, and the next arrival had no admissible route)
+        return "pinned_route_requires_recalibration"
     controller._quarantined_routes.add(ticket.decision.route_id)
     return "disabled_for_remaining_run"
 

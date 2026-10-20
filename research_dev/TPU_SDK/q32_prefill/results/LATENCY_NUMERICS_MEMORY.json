@@ -1,0 +1,2000 @@
+[
+ {
+  "tag": "f16-M1",
+  "M": 1,
+  "ref": "M1",
+  "invokes_per_512": 1,
+  "pass": true,
+  "dispatch": true,
+  "n_timed": 30,
+  "repeat_exact": true,
+  "first_invoke_ms": 204.676172,
+  "load_ms": {
+   "env": 5.508151,
+   "model_file": 0.269219,
+   "compiled_model": 400.402214,
+   "buffers": 38.549166
+  },
+  "mem": {
+   "start": {
+    "VmRSS": 9088,
+    "RssAnon": 1396,
+    "RssFile": 7396,
+    "MemAvailable": 11208032,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_model_file": {
+    "VmRSS": 9448,
+    "RssAnon": 1452,
+    "RssFile": 7692,
+    "MemAvailable": 11208032,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_compiled_model": {
+    "VmRSS": 818436,
+    "RssAnon": 8212,
+    "RssFile": 809856,
+    "MemAvailable": 10429708,
+    "dmabuf_bytes": 786767872,
+    "dmabuf_big": "[750MiB system]"
+   },
+   "after_first_invoke": {
+    "VmRSS": 818760,
+    "RssAnon": 8372,
+    "RssFile": 809988,
+    "MemAvailable": 10428552,
+    "dmabuf_bytes": 786808832,
+    "dmabuf_big": "[750MiB system]"
+   },
+   "after_loop": {
+    "VmRSS": 818908,
+    "RssAnon": 8424,
+    "RssFile": 809988,
+    "MemAvailable": 10428552,
+    "dmabuf_bytes": 786808832,
+    "dmabuf_big": "[750MiB system]"
+   }
+  },
+  "hw_ms": 40.6675,
+  "invoke_p50_ms": 47.954349,
+  "invoke_min_ms": 44.01711,
+  "invoke_max_ms": 49.438333,
+  "worker_p50_ms": 49.1903645,
+  "tflops_invoke": 0.01639959704176153,
+  "tflops_hw": 0.01933809553082929,
+  "ms_per_512_tokens_invoke": 24552.626688,
+  "rel_l2": 0.0004607257515489059,
+  "rel_l2_cases": [
+   0.0004607257515489059,
+   0.0004342402692697348
+  ],
+  "max_row_rel_l2": 0.0004607257515489057,
+  "finite": true
+ },
+ {
+  "tag": "f16-M32",
+  "M": 32,
+  "ref": "M32",
+  "invokes_per_512": 1,
+  "pass": true,
+  "dispatch": true,
+  "n_timed": 30,
+  "repeat_exact": true,
+  "first_invoke_ms": 193.524428,
+  "load_ms": {
+   "env": 4.193802,
+   "model_file": 0.290339,
+   "compiled_model": 380.358281,
+   "buffers": 36.725495
+  },
+  "mem": {
+   "start": {
+    "VmRSS": 8772,
+    "RssAnon": 1380,
+    "RssFile": 7092,
+    "MemAvailable": 11206380,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_model_file": {
+    "VmRSS": 9264,
+    "RssAnon": 1440,
+    "RssFile": 7516,
+    "MemAvailable": 11206380,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_compiled_model": {
+    "VmRSS": 818712,
+    "RssAnon": 8224,
+    "RssFile": 810116,
+    "MemAvailable": 10424544,
+    "dmabuf_bytes": 788037632,
+    "dmabuf_big": "[750MiB system]"
+   },
+   "after_first_invoke": {
+    "VmRSS": 822072,
+    "RssAnon": 11464,
+    "RssFile": 810204,
+    "MemAvailable": 10420336,
+    "dmabuf_bytes": 789348352,
+    "dmabuf_big": "[750MiB system]"
+   },
+   "after_loop": {
+    "VmRSS": 823460,
+    "RssAnon": 12756,
+    "RssFile": 810204,
+    "MemAvailable": 10418776,
+    "dmabuf_bytes": 789348352,
+    "dmabuf_big": "[750MiB system]"
+   }
+  },
+  "hw_ms": 41.015875,
+  "invoke_p50_ms": 47.119752500000004,
+  "invoke_min_ms": 43.539974,
+  "invoke_max_ms": 49.976146,
+  "worker_p50_ms": 70.688659,
+  "tflops_invoke": 0.5340822619982988,
+  "tflops_hw": 0.613563016758755,
+  "ms_per_512_tokens_invoke": 753.9160400000001,
+  "rel_l2": 0.00043681257677132056,
+  "rel_l2_cases": [
+   0.00043681257677132056,
+   0.0004351919869486315
+  ],
+  "max_row_rel_l2": 0.00046975193794954146,
+  "finite": true
+ },
+ {
+  "tag": "f16-M64",
+  "M": 64,
+  "ref": "M64",
+  "invokes_per_512": 1,
+  "pass": true,
+  "dispatch": true,
+  "n_timed": 20,
+  "repeat_exact": true,
+  "first_invoke_ms": 180.69625,
+  "load_ms": {
+   "env": 3.786406,
+   "model_file": 0.275078,
+   "compiled_model": 381.355859,
+   "buffers": 21.032292
+  },
+  "mem": {
+   "start": {
+    "VmRSS": 9020,
+    "RssAnon": 1380,
+    "RssFile": 7340,
+    "MemAvailable": 11158272,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_model_file": {
+    "VmRSS": 9376,
+    "RssAnon": 1432,
+    "RssFile": 7636,
+    "MemAvailable": 11158272,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_compiled_model": {
+    "VmRSS": 818540,
+    "RssAnon": 8228,
+    "RssFile": 809936,
+    "MemAvailable": 10370240,
+    "dmabuf_bytes": 799191040,
+    "dmabuf_big": "[750MiB system][1MiB system-uncached][9MiB system][1MiB system-uncached]"
+   },
+   "after_first_invoke": {
+    "VmRSS": 825132,
+    "RssAnon": 14656,
+    "RssFile": 810068,
+    "MemAvailable": 10364344,
+    "dmabuf_bytes": 801812480,
+    "dmabuf_big": "[750MiB system][1MiB system-uncached][9MiB system][1MiB system-uncached][1MiB system-uncached][1MiB system-uncached]"
+   },
+   "after_loop": {
+    "VmRSS": 827788,
+    "RssAnon": 17224,
+    "RssFile": 810068,
+    "MemAvailable": 10361216,
+    "dmabuf_bytes": 801812480,
+    "dmabuf_big": "[750MiB system][1MiB system-uncached][9MiB system][1MiB system-uncached][1MiB system-uncached][1MiB system-uncached]"
+   }
+  },
+  "hw_ms": 42.69,
+  "invoke_p50_ms": 49.781146,
+  "invoke_min_ms": 48.383516,
+  "invoke_max_ms": 50.644688,
+  "worker_p50_ms": 93.4439715,
+  "tflops_invoke": 1.0110584436927186,
+  "tflops_hw": 1.179003232607168,
+  "ms_per_512_tokens_invoke": 398.249168,
+  "rel_l2": 0.0004384655966905858,
+  "rel_l2_cases": [
+   0.0004384655966905858,
+   0.0004378156362922086
+  ],
+  "max_row_rel_l2": 0.0004754903321067356,
+  "finite": true
+ },
+ {
+  "tag": "f16-M128",
+  "M": 128,
+  "ref": "M128",
+  "invokes_per_512": 1,
+  "pass": true,
+  "dispatch": true,
+  "n_timed": 20,
+  "repeat_exact": true,
+  "first_invoke_ms": 202.653698,
+  "load_ms": {
+   "env": 5.754244,
+   "model_file": 0.313516,
+   "compiled_model": 404.604792,
+   "buffers": 37.851562
+  },
+  "mem": {
+   "start": {
+    "VmRSS": 9112,
+    "RssAnon": 1384,
+    "RssFile": 7428,
+    "MemAvailable": 11206888,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_model_file": {
+    "VmRSS": 9540,
+    "RssAnon": 1444,
+    "RssFile": 7788,
+    "MemAvailable": 11206888,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_compiled_model": {
+    "VmRSS": 818692,
+    "RssAnon": 8236,
+    "RssFile": 810080,
+    "MemAvailable": 10404568,
+    "dmabuf_bytes": 811663360,
+    "dmabuf_big": "[750MiB system][2MiB system-uncached][18MiB system][2MiB system-uncached]"
+   },
+   "after_first_invoke": {
+    "VmRSS": 831700,
+    "RssAnon": 21080,
+    "RssFile": 810212,
+    "MemAvailable": 10390932,
+    "dmabuf_bytes": 816906240,
+    "dmabuf_big": "[750MiB system][2MiB system-uncached][18MiB system][2MiB system-uncached][2MiB system-uncached][2MiB system-uncached]"
+   },
+   "after_loop": {
+    "VmRSS": 836916,
+    "RssAnon": 26208,
+    "RssFile": 810212,
+    "MemAvailable": 10385540,
+    "dmabuf_bytes": 816906240,
+    "dmabuf_big": "[750MiB system][2MiB system-uncached][18MiB system][2MiB system-uncached][2MiB system-uncached][2MiB system-uncached]"
+   }
+  },
+  "hw_ms": 58.545,
+  "invoke_p50_ms": 65.6957165,
+  "invoke_min_ms": 61.742266,
+  "invoke_max_ms": 67.96638,
+  "worker_p50_ms": 146.28151050000002,
+  "tflops_invoke": 1.532265745210344,
+  "tflops_hw": 1.7194174737381502,
+  "ms_per_512_tokens_invoke": 262.782866,
+  "rel_l2": 0.0004400147073043191,
+  "rel_l2_cases": [
+   0.00043849761853632837,
+   0.0004400147073043191
+  ],
+  "max_row_rel_l2": 0.0004892532793442243,
+  "finite": true
+ },
+ {
+  "tag": "f16-M512",
+  "M": 512,
+  "ref": "M512",
+  "invokes_per_512": 1,
+  "pass": true,
+  "dispatch": true,
+  "n_timed": 12,
+  "repeat_exact": true,
+  "first_invoke_ms": 301.240807,
+  "load_ms": {
+   "env": 4.966432,
+   "model_file": 0.282839,
+   "compiled_model": 434.52836,
+   "buffers": 42.034427
+  },
+  "mem": {
+   "start": {
+    "VmRSS": 9028,
+    "RssAnon": 1392,
+    "RssFile": 7336,
+    "MemAvailable": 11399220,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_model_file": {
+    "VmRSS": 9516,
+    "RssAnon": 1448,
+    "RssFile": 7760,
+    "MemAvailable": 11399724,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_compiled_model": {
+    "VmRSS": 818908,
+    "RssAnon": 8212,
+    "RssFile": 810320,
+    "MemAvailable": 10537440,
+    "dmabuf_bytes": 886644736,
+    "dmabuf_big": "[750MiB system][10MiB system-uncached][75MiB system][10MiB system-uncached]"
+   },
+   "after_first_invoke": {
+    "VmRSS": 870340,
+    "RssAnon": 59448,
+    "RssFile": 810484,
+    "MemAvailable": 10492236,
+    "dmabuf_bytes": 907616256,
+    "dmabuf_big": "[750MiB system][10MiB system-uncached][75MiB system][10MiB system-uncached][10MiB system-uncached][10MiB system-uncached]"
+   },
+   "after_loop": {
+    "VmRSS": 890920,
+    "RssAnon": 79940,
+    "RssFile": 810484,
+    "MemAvailable": 10470628,
+    "dmabuf_bytes": 907616256,
+    "dmabuf_big": "[750MiB system][10MiB system-uncached][75MiB system][10MiB system-uncached][10MiB system-uncached][10MiB system-uncached]"
+   }
+  },
+  "hw_ms": 237.91316666666665,
+  "invoke_p50_ms": 241.1363935,
+  "invoke_min_ms": 239.880677,
+  "invoke_max_ms": 242.407396,
+  "worker_p50_ms": 389.5344665,
+  "tflops_invoke": 1.6698150708636188,
+  "tflops_hw": 1.6924375798172864,
+  "ms_per_512_tokens_invoke": 241.1363935,
+  "rel_l2": 0.0004391903537812835,
+  "rel_l2_cases": [
+   0.0004391903537812835,
+   0.0004389750588161857
+  ],
+  "max_row_rel_l2": 0.00048354816785648613,
+  "finite": true
+ },
+ {
+  "tag": "bf16-M1",
+  "M": 1,
+  "ref": "M1",
+  "invokes_per_512": 1,
+  "pass": true,
+  "dispatch": true,
+  "n_timed": 30,
+  "repeat_exact": true,
+  "first_invoke_ms": 211.163151,
+  "load_ms": {
+   "env": 3.770599,
+   "model_file": 0.29474,
+   "compiled_model": 378.018568,
+   "buffers": 28.688333
+  },
+  "mem": {
+   "start": {
+    "VmRSS": 9044,
+    "RssAnon": 1384,
+    "RssFile": 7360,
+    "MemAvailable": 11152836,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_model_file": {
+    "VmRSS": 9532,
+    "RssAnon": 1440,
+    "RssFile": 7784,
+    "MemAvailable": 11152836,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_compiled_model": {
+    "VmRSS": 818672,
+    "RssAnon": 8212,
+    "RssFile": 810088,
+    "MemAvailable": 10379752,
+    "dmabuf_bytes": 786767872,
+    "dmabuf_big": "[750MiB system]"
+   },
+   "after_first_invoke": {
+    "VmRSS": 818988,
+    "RssAnon": 8364,
+    "RssFile": 810220,
+    "MemAvailable": 10378984,
+    "dmabuf_bytes": 786808832,
+    "dmabuf_big": "[750MiB system]"
+   },
+   "after_loop": {
+    "VmRSS": 819132,
+    "RssAnon": 8412,
+    "RssFile": 810220,
+    "MemAvailable": 10379188,
+    "dmabuf_bytes": 786808832,
+    "dmabuf_big": "[750MiB system]"
+   }
+  },
+  "hw_ms": 40.889625,
+  "invoke_p50_ms": 47.889154000000005,
+  "invoke_min_ms": 44.007448,
+  "invoke_max_ms": 49.996693,
+  "worker_p50_ms": 48.9979165,
+  "tflops_invoke": 0.016421923009957536,
+  "tflops_hw": 0.019233045057273086,
+  "ms_per_512_tokens_invoke": 24519.246848000003,
+  "rel_l2": 0.004168597780434411,
+  "rel_l2_cases": [
+   0.004168597780434411,
+   0.003795331305115934
+  ],
+  "max_row_rel_l2": 0.0041685977804344085,
+  "finite": true
+ },
+ {
+  "tag": "bf16-M32",
+  "M": 32,
+  "ref": "M32",
+  "invokes_per_512": 1,
+  "pass": true,
+  "dispatch": true,
+  "n_timed": 30,
+  "repeat_exact": true,
+  "first_invoke_ms": 189.167474,
+  "load_ms": {
+   "env": 6.166432,
+   "model_file": 0.273724,
+   "compiled_model": 368.794974,
+   "buffers": 35.323385
+  },
+  "mem": {
+   "start": {
+    "VmRSS": 8964,
+    "RssAnon": 1376,
+    "RssFile": 7288,
+    "MemAvailable": 11150828,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_model_file": {
+    "VmRSS": 9460,
+    "RssAnon": 1440,
+    "RssFile": 7712,
+    "MemAvailable": 11150828,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_compiled_model": {
+    "VmRSS": 818856,
+    "RssAnon": 8208,
+    "RssFile": 810276,
+    "MemAvailable": 10370336,
+    "dmabuf_bytes": 788037632,
+    "dmabuf_big": "[750MiB system]"
+   },
+   "after_first_invoke": {
+    "VmRSS": 822272,
+    "RssAnon": 11440,
+    "RssFile": 810428,
+    "MemAvailable": 10367672,
+    "dmabuf_bytes": 789348352,
+    "dmabuf_big": "[750MiB system]"
+   },
+   "after_loop": {
+    "VmRSS": 823660,
+    "RssAnon": 12732,
+    "RssFile": 810428,
+    "MemAvailable": 10360360,
+    "dmabuf_bytes": 789348352,
+    "dmabuf_big": "[750MiB system]"
+   }
+  },
+  "hw_ms": 41.31875,
+  "invoke_p50_ms": 44.199648499999995,
+  "invoke_min_ms": 43.029506,
+  "invoke_max_ms": 48.400078,
+  "worker_p50_ms": 63.808385,
+  "tflops_invoke": 0.56936706182177,
+  "tflops_hw": 0.6090654726970202,
+  "ms_per_512_tokens_invoke": 707.1943759999999,
+  "rel_l2": 0.0039728678121125766,
+  "rel_l2_cases": [
+   0.0039728678121125766,
+   0.003966593137854044
+  ],
+  "max_row_rel_l2": 0.004201855869756539,
+  "finite": true
+ },
+ {
+  "tag": "bf16-M128",
+  "M": 128,
+  "ref": "M128",
+  "invokes_per_512": 1,
+  "pass": true,
+  "dispatch": true,
+  "n_timed": 20,
+  "repeat_exact": true,
+  "first_invoke_ms": 220.419584,
+  "load_ms": {
+   "env": 6.13052,
+   "model_file": 0.238672,
+   "compiled_model": 328.480053,
+   "buffers": 28.555
+  },
+  "mem": {
+   "start": {
+    "VmRSS": 8888,
+    "RssAnon": 1380,
+    "RssFile": 7236,
+    "MemAvailable": 11142844,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_model_file": {
+    "VmRSS": 9332,
+    "RssAnon": 1452,
+    "RssFile": 7600,
+    "MemAvailable": 11142600,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_compiled_model": {
+    "VmRSS": 818408,
+    "RssAnon": 8220,
+    "RssFile": 809828,
+    "MemAvailable": 10342668,
+    "dmabuf_bytes": 811663360,
+    "dmabuf_big": "[750MiB system][2MiB system-uncached][18MiB system][2MiB system-uncached]"
+   },
+   "after_first_invoke": {
+    "VmRSS": 831340,
+    "RssAnon": 21052,
+    "RssFile": 809896,
+    "MemAvailable": 10329112,
+    "dmabuf_bytes": 816906240,
+    "dmabuf_big": "[750MiB system][2MiB system-uncached][18MiB system][2MiB system-uncached][2MiB system-uncached][2MiB system-uncached]"
+   },
+   "after_loop": {
+    "VmRSS": 836556,
+    "RssAnon": 26180,
+    "RssFile": 809896,
+    "MemAvailable": 10323460,
+    "dmabuf_bytes": 816906240,
+    "dmabuf_big": "[750MiB system][2MiB system-uncached][18MiB system][2MiB system-uncached][2MiB system-uncached][2MiB system-uncached]"
+   }
+  },
+  "hw_ms": 58.3355,
+  "invoke_p50_ms": 65.95351600000001,
+  "invoke_min_ms": 64.908177,
+  "invoke_max_ms": 66.370417,
+  "worker_p50_ms": 146.746732,
+  "tflops_invoke": 1.526276415650077,
+  "tflops_hw": 1.7255924094247928,
+  "ms_per_512_tokens_invoke": 263.81406400000003,
+  "rel_l2": 0.003998568508297279,
+  "rel_l2_cases": [
+   0.0039833428231494826,
+   0.003998568508297279
+  ],
+  "max_row_rel_l2": 0.004306790014088602,
+  "finite": true
+ },
+ {
+  "tag": "bf16-M512",
+  "M": 512,
+  "ref": "M512",
+  "invokes_per_512": 1,
+  "pass": true,
+  "dispatch": true,
+  "n_timed": 12,
+  "repeat_exact": true,
+  "first_invoke_ms": 332.225391,
+  "load_ms": {
+   "env": 3.348776,
+   "model_file": 0.230182,
+   "compiled_model": 340.174167,
+   "buffers": 43.478698
+  },
+  "mem": {
+   "start": {
+    "VmRSS": 8856,
+    "RssAnon": 1384,
+    "RssFile": 7172,
+    "MemAvailable": 11153768,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_model_file": {
+    "VmRSS": 9348,
+    "RssAnon": 1444,
+    "RssFile": 7596,
+    "MemAvailable": 11153768,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_compiled_model": {
+    "VmRSS": 818916,
+    "RssAnon": 8224,
+    "RssFile": 810316,
+    "MemAvailable": 10279392,
+    "dmabuf_bytes": 886644736,
+    "dmabuf_big": "[750MiB system][10MiB system-uncached][75MiB system][10MiB system-uncached]"
+   },
+   "after_first_invoke": {
+    "VmRSS": 870248,
+    "RssAnon": 59456,
+    "RssFile": 810384,
+    "MemAvailable": 10228424,
+    "dmabuf_bytes": 907616256,
+    "dmabuf_big": "[750MiB system][10MiB system-uncached][75MiB system][10MiB system-uncached][10MiB system-uncached][10MiB system-uncached]"
+   },
+   "after_loop": {
+    "VmRSS": 890824,
+    "RssAnon": 79944,
+    "RssFile": 810384,
+    "MemAvailable": 10211404,
+    "dmabuf_bytes": 907616256,
+    "dmabuf_big": "[750MiB system][10MiB system-uncached][75MiB system][10MiB system-uncached][10MiB system-uncached][10MiB system-uncached]"
+   }
+  },
+  "hw_ms": 236.87833333333333,
+  "invoke_p50_ms": 241.3499735,
+  "invoke_min_ms": 240.111902,
+  "invoke_max_ms": 245.600521,
+  "worker_p50_ms": 388.87487,
+  "tflops_invoke": 1.6683373864136761,
+  "tflops_hw": 1.6998312101148971,
+  "ms_per_512_tokens_invoke": 241.3499735,
+  "rel_l2": 0.003991157380407347,
+  "rel_l2_cases": [
+   0.003991157380407347,
+   0.00399070051486695
+  ],
+  "max_row_rel_l2": 0.004483909427999387,
+  "finite": true
+ },
+ {
+  "tag": "i4emu-M1",
+  "M": 1,
+  "ref": "M1",
+  "invokes_per_512": 1,
+  "pass": true,
+  "dispatch": true,
+  "n_timed": 30,
+  "repeat_exact": true,
+  "first_invoke_ms": 211.324062,
+  "load_ms": {
+   "env": 4.260834,
+   "model_file": 0.279062,
+   "compiled_model": 322.489532,
+   "buffers": 41.334114
+  },
+  "mem": {
+   "start": {
+    "VmRSS": 9100,
+    "RssAnon": 1384,
+    "RssFile": 7416,
+    "MemAvailable": 11131216,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_model_file": {
+    "VmRSS": 9588,
+    "RssAnon": 1440,
+    "RssFile": 7840,
+    "MemAvailable": 11131468,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_compiled_model": {
+    "VmRSS": 268184,
+    "RssAnon": 8212,
+    "RssFile": 259596,
+    "MemAvailable": 10637064,
+    "dmabuf_bytes": 624365568,
+    "dmabuf_big": "[212MiB system][382MiB system]"
+   },
+   "after_first_invoke": {
+    "VmRSS": 268504,
+    "RssAnon": 8368,
+    "RssFile": 259728,
+    "MemAvailable": 10638064,
+    "dmabuf_bytes": 624406528,
+    "dmabuf_big": "[212MiB system][382MiB system]"
+   },
+   "after_loop": {
+    "VmRSS": 268652,
+    "RssAnon": 8424,
+    "RssFile": 259728,
+    "MemAvailable": 10637288,
+    "dmabuf_bytes": 624406528,
+    "dmabuf_big": "[212MiB system][382MiB system]"
+   }
+  },
+  "hw_ms": 92.724375,
+  "invoke_p50_ms": 99.524948,
+  "invoke_min_ms": 95.521224,
+  "invoke_max_ms": 101.381511,
+  "worker_p50_ms": 100.6990365,
+  "tflops_invoke": 0.007901857934153355,
+  "tflops_hw": 0.008481394455341436,
+  "ms_per_512_tokens_invoke": 50956.773376,
+  "rel_l2": 0.0007254189733499956,
+  "rel_l2_cases": [
+   0.0007254189733499956,
+   0.0006987054153419752
+  ],
+  "max_row_rel_l2": 0.0007254189733499952,
+  "finite": true
+ },
+ {
+  "tag": "i4emu-M32",
+  "M": 32,
+  "ref": "M32",
+  "invokes_per_512": 1,
+  "pass": true,
+  "dispatch": true,
+  "n_timed": 30,
+  "repeat_exact": true,
+  "first_invoke_ms": 989.841719,
+  "load_ms": {
+   "env": 5.832656,
+   "model_file": 0.263542,
+   "compiled_model": 313.188229,
+   "buffers": 26.112708
+  },
+  "mem": {
+   "start": {
+    "VmRSS": 9080,
+    "RssAnon": 1392,
+    "RssFile": 7388,
+    "MemAvailable": 11129732,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_model_file": {
+    "VmRSS": 9568,
+    "RssAnon": 1448,
+    "RssFile": 7812,
+    "MemAvailable": 11129252,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_compiled_model": {
+    "VmRSS": 272040,
+    "RssAnon": 8240,
+    "RssFile": 263424,
+    "MemAvailable": 10379792,
+    "dmabuf_bytes": 1016471552,
+    "dmabuf_big": "[216MiB system][751MiB system]"
+   },
+   "after_first_invoke": {
+    "VmRSS": 275388,
+    "RssAnon": 11468,
+    "RssFile": 263512,
+    "MemAvailable": 10376224,
+    "dmabuf_bytes": 1017782272,
+    "dmabuf_big": "[216MiB system][751MiB system]"
+   },
+   "after_loop": {
+    "VmRSS": 276772,
+    "RssAnon": 12760,
+    "RssFile": 263512,
+    "MemAvailable": 10374972,
+    "dmabuf_bytes": 1017782272,
+    "dmabuf_big": "[216MiB system][751MiB system]"
+   }
+  },
+  "hw_ms": 859.557,
+  "invoke_p50_ms": 866.172514,
+  "invoke_min_ms": 861.905782,
+  "invoke_max_ms": 868.174089,
+  "worker_p50_ms": 890.00612,
+  "tflops_invoke": 0.029054055160194107,
+  "tflops_hw": 0.02927766744962812,
+  "ms_per_512_tokens_invoke": 13858.760224,
+  "rel_l2": 0.0007060354397535175,
+  "rel_l2_cases": [
+   0.0007060354397535175,
+   0.0006980939834998511
+  ],
+  "max_row_rel_l2": 0.000768443694200145,
+  "finite": true
+ },
+ {
+  "tag": "i4emu-M64",
+  "M": 64,
+  "ref": "M64",
+  "invokes_per_512": 1,
+  "pass": true,
+  "dispatch": true,
+  "n_timed": 20,
+  "repeat_exact": true,
+  "first_invoke_ms": 2060.650574,
+  "load_ms": {
+   "env": 4.961615,
+   "model_file": 0.285807,
+   "compiled_model": 186.661901,
+   "buffers": 22.352709
+  },
+  "mem": {
+   "start": {
+    "VmRSS": 9092,
+    "RssAnon": 1384,
+    "RssFile": 7408,
+    "MemAvailable": 11116780,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_model_file": {
+    "VmRSS": 9528,
+    "RssAnon": 1448,
+    "RssFile": 7772,
+    "MemAvailable": 11117560,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_compiled_model": {
+    "VmRSS": 277488,
+    "RssAnon": 8220,
+    "RssFile": 268892,
+    "MemAvailable": 9851032,
+    "dmabuf_bytes": 1549131776,
+    "dmabuf_big": "[221MiB system][1MiB system-uncached][1253MiB system][1MiB system-uncached]"
+   },
+   "after_first_invoke": {
+    "VmRSS": 284104,
+    "RssAnon": 14652,
+    "RssFile": 269044,
+    "MemAvailable": 9855236,
+    "dmabuf_bytes": 1551753216,
+    "dmabuf_big": "[221MiB system][1MiB system-uncached][1253MiB system][1MiB system-uncached][1MiB system-uncached][1MiB system-uncached]"
+   },
+   "after_loop": {
+    "VmRSS": 286764,
+    "RssAnon": 17224,
+    "RssFile": 269044,
+    "MemAvailable": 9925452,
+    "dmabuf_bytes": 1551753216,
+    "dmabuf_big": "[221MiB system][1MiB system-uncached][1253MiB system][1MiB system-uncached][1MiB system-uncached][1MiB system-uncached]"
+   }
+  },
+  "hw_ms": 1842.5571666666667,
+  "invoke_p50_ms": 1850.288882,
+  "invoke_min_ms": 1845.222189,
+  "invoke_max_ms": 1851.47073,
+  "worker_p50_ms": 1893.0450019999998,
+  "tflops_invoke": 0.027202048550167963,
+  "tflops_hw": 0.027316193446010672,
+  "ms_per_512_tokens_invoke": 14802.311056,
+  "rel_l2": 0.0007053792603876662,
+  "rel_l2_cases": [
+   0.0007053738759464465,
+   0.0007053792603876662
+  ],
+  "max_row_rel_l2": 0.0007602359151852484,
+  "finite": true
+ },
+ {
+  "tag": "i4emu-M128",
+  "M": 128,
+  "ref": "M128",
+  "invokes_per_512": 1,
+  "pass": false,
+  "dispatch": true,
+  "n_timed": 0,
+  "repeat_exact": true,
+  "first_invoke_ms": null,
+  "load_ms": {
+   "env": 2.944687,
+   "model_file": 0.197266,
+   "compiled_model": 226.048151,
+   "buffers": 41.551276
+  },
+  "mem": {
+   "start": {
+    "VmRSS": 9016,
+    "RssAnon": 1388,
+    "RssFile": 7328,
+    "MemAvailable": 11204532,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_model_file": {
+    "VmRSS": 9380,
+    "RssAnon": 1448,
+    "RssFile": 7624,
+    "MemAvailable": 11204532,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_compiled_model": {
+    "VmRSS": 286844,
+    "RssAnon": 8200,
+    "RssFile": 278272,
+    "MemAvailable": 10936044,
+    "dmabuf_bytes": 247607296,
+    "dmabuf_big": "[231MiB system][2MiB system-uncached][2MiB system-uncached]"
+   }
+  },
+  "hw_ms": null
+ },
+ {
+  "tag": "i4emu-M256",
+  "M": 256,
+  "ref": "M256h",
+  "invokes_per_512": 2,
+  "pass": false,
+  "dispatch": true,
+  "n_timed": 0,
+  "repeat_exact": true,
+  "first_invoke_ms": null,
+  "load_ms": {
+   "env": 5.00513,
+   "model_file": 0.346771,
+   "compiled_model": 308.210234,
+   "buffers": 39.373255
+  },
+  "mem": {
+   "start": {
+    "VmRSS": 8840,
+    "RssAnon": 1388,
+    "RssFile": 7152,
+    "MemAvailable": 11206220,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_model_file": {
+    "VmRSS": 9204,
+    "RssAnon": 1448,
+    "RssFile": 7448,
+    "MemAvailable": 11206220,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_compiled_model": {
+    "VmRSS": 297596,
+    "RssAnon": 8216,
+    "RssFile": 289008,
+    "MemAvailable": 10907612,
+    "dmabuf_bytes": 263905280,
+    "dmabuf_big": "[241MiB system][5MiB system-uncached][5MiB system-uncached]"
+   }
+  },
+  "hw_ms": null
+ },
+ {
+  "tag": "i8drq-M1",
+  "M": 1,
+  "ref": "M1",
+  "invokes_per_512": 1,
+  "pass": true,
+  "dispatch": true,
+  "n_timed": 30,
+  "repeat_exact": true,
+  "first_invoke_ms": 141.515547,
+  "load_ms": {
+   "env": 4.988359,
+   "model_file": 0.315,
+   "compiled_model": 359.68138,
+   "buffers": 38.143412
+  },
+  "mem": {
+   "start": {
+    "VmRSS": 9200,
+    "RssAnon": 1384,
+    "RssFile": 7516,
+    "MemAvailable": 11146848,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_model_file": {
+    "VmRSS": 9560,
+    "RssAnon": 1440,
+    "RssFile": 7812,
+    "MemAvailable": 11148860,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_compiled_model": {
+    "VmRSS": 452780,
+    "RssAnon": 8220,
+    "RssFile": 444188,
+    "MemAvailable": 10738792,
+    "dmabuf_bytes": 412000256,
+    "dmabuf_big": "[392MiB system]"
+   },
+   "after_first_invoke": {
+    "VmRSS": 453064,
+    "RssAnon": 8368,
+    "RssFile": 444292,
+    "MemAvailable": 10738240,
+    "dmabuf_bytes": 412041216,
+    "dmabuf_big": "[392MiB system]"
+   },
+   "after_loop": {
+    "VmRSS": 453212,
+    "RssAnon": 8420,
+    "RssFile": 444292,
+    "MemAvailable": 10737492,
+    "dmabuf_bytes": 412041216,
+    "dmabuf_big": "[392MiB system]"
+   }
+  },
+  "hw_ms": 42.690625,
+  "invoke_p50_ms": 49.450520999999995,
+  "invoke_min_ms": 44.777605,
+  "invoke_max_ms": 50.986224,
+  "worker_p50_ms": 50.565026,
+  "tflops_invoke": 0.0159034118164296,
+  "tflops_hw": 0.018421655808505966,
+  "ms_per_512_tokens_invoke": 25318.666751999997,
+  "rel_l2": 0.05061886473164556,
+  "rel_l2_cases": [
+   0.04240148338259707,
+   0.05061886473164556
+  ],
+  "max_row_rel_l2": 0.05061886473164553,
+  "finite": true
+ },
+ {
+  "tag": "i8drq-M32",
+  "M": 32,
+  "ref": "M32",
+  "invokes_per_512": 1,
+  "pass": true,
+  "dispatch": true,
+  "n_timed": 30,
+  "repeat_exact": true,
+  "first_invoke_ms": 139.847786,
+  "load_ms": {
+   "env": 4.896641,
+   "model_file": 0.374036,
+   "compiled_model": 297.672136,
+   "buffers": 30.962187
+  },
+  "mem": {
+   "start": {
+    "VmRSS": 9004,
+    "RssAnon": 1388,
+    "RssFile": 7316,
+    "MemAvailable": 11135432,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_model_file": {
+    "VmRSS": 9356,
+    "RssAnon": 1436,
+    "RssFile": 7612,
+    "MemAvailable": 11135432,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_compiled_model": {
+    "VmRSS": 568068,
+    "RssAnon": 8224,
+    "RssFile": 559468,
+    "MemAvailable": 10604444,
+    "dmabuf_bytes": 534843392,
+    "dmabuf_big": "[505MiB system][3MiB system]"
+   },
+   "after_first_invoke": {
+    "VmRSS": 571496,
+    "RssAnon": 11460,
+    "RssFile": 559628,
+    "MemAvailable": 10602292,
+    "dmabuf_bytes": 536154112,
+    "dmabuf_big": "[505MiB system][3MiB system]"
+   },
+   "after_loop": {
+    "VmRSS": 572876,
+    "RssAnon": 12748,
+    "RssFile": 559628,
+    "MemAvailable": 10600360,
+    "dmabuf_bytes": 536154112,
+    "dmabuf_big": "[505MiB system][3MiB system]"
+   }
+  },
+  "hw_ms": 41.937375,
+  "invoke_p50_ms": 45.1810415,
+  "invoke_min_ms": 43.690338,
+  "invoke_max_ms": 49.953125,
+  "worker_p50_ms": 67.0153125,
+  "tflops_invoke": 0.556999643312782,
+  "tflops_hw": 0.6000810494219058,
+  "ms_per_512_tokens_invoke": 722.896664,
+  "rel_l2": 0.04376666358751407,
+  "rel_l2_cases": [
+   0.04362811096118191,
+   0.04376666358751407
+  ],
+  "max_row_rel_l2": 0.05980478273484116,
+  "finite": true
+ },
+ {
+  "tag": "i8drq-M128",
+  "M": 128,
+  "ref": "M128",
+  "invokes_per_512": 1,
+  "pass": true,
+  "dispatch": true,
+  "n_timed": 20,
+  "repeat_exact": true,
+  "first_invoke_ms": 137.943411,
+  "load_ms": {
+   "env": 3.231484,
+   "model_file": 0.455209,
+   "compiled_model": 326.734115,
+   "buffers": 39.657761
+  },
+  "mem": {
+   "start": {
+    "VmRSS": 8940,
+    "RssAnon": 1384,
+    "RssFile": 7256,
+    "MemAvailable": 11138084,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_model_file": {
+    "VmRSS": 9440,
+    "RssAnon": 1452,
+    "RssFile": 7680,
+    "MemAvailable": 11138084,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_compiled_model": {
+    "VmRSS": 435196,
+    "RssAnon": 8232,
+    "RssFile": 426588,
+    "MemAvailable": 10715872,
+    "dmabuf_bytes": 425431040,
+    "dmabuf_big": "[375MiB system][2MiB system-uncached][25MiB system][2MiB system-uncached]"
+   },
+   "after_first_invoke": {
+    "VmRSS": 448144,
+    "RssAnon": 21068,
+    "RssFile": 426668,
+    "MemAvailable": 10703104,
+    "dmabuf_bytes": 430673920,
+    "dmabuf_big": "[375MiB system][2MiB system-uncached][25MiB system][2MiB system-uncached][2MiB system-uncached][2MiB system-uncached]"
+   },
+   "after_loop": {
+    "VmRSS": 453360,
+    "RssAnon": 26196,
+    "RssFile": 426668,
+    "MemAvailable": 10699116,
+    "dmabuf_bytes": 430673920,
+    "dmabuf_big": "[375MiB system][2MiB system-uncached][25MiB system][2MiB system-uncached][2MiB system-uncached][2MiB system-uncached]"
+   }
+  },
+  "hw_ms": 56.205333333333336,
+  "invoke_p50_ms": 63.6352475,
+  "invoke_min_ms": 59.763776,
+  "invoke_max_ms": 64.754297,
+  "worker_p50_ms": 144.539323,
+  "tflops_invoke": 1.5818795393229201,
+  "tflops_hw": 1.7909918868909236,
+  "ms_per_512_tokens_invoke": 254.54099,
+  "rel_l2": 0.04398479162081178,
+  "rel_l2_cases": [
+   0.04398479162081178,
+   0.04364609886287175
+  ],
+  "max_row_rel_l2": 0.07925374090097903,
+  "finite": true
+ },
+ {
+  "tag": "i8drq-M512",
+  "M": 512,
+  "ref": "M512",
+  "invokes_per_512": 1,
+  "pass": true,
+  "dispatch": true,
+  "n_timed": 12,
+  "repeat_exact": true,
+  "first_invoke_ms": 256.39737,
+  "load_ms": {
+   "env": 5.481927,
+   "model_file": 0.208854,
+   "compiled_model": 311.654844,
+   "buffers": 41.080286
+  },
+  "mem": {
+   "start": {
+    "VmRSS": 8976,
+    "RssAnon": 1384,
+    "RssFile": 7292,
+    "MemAvailable": 10994896,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_model_file": {
+    "VmRSS": 9472,
+    "RssAnon": 1448,
+    "RssFile": 7716,
+    "MemAvailable": 10994376,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_compiled_model": {
+    "VmRSS": 436036,
+    "RssAnon": 8248,
+    "RssFile": 427412,
+    "MemAvailable": 10471864,
+    "dmabuf_bytes": 523350016,
+    "dmabuf_big": "[376MiB system][10MiB system-uncached][102MiB system][10MiB system-uncached]"
+   },
+   "after_first_invoke": {
+    "VmRSS": 487396,
+    "RssAnon": 59480,
+    "RssFile": 427508,
+    "MemAvailable": 10415636,
+    "dmabuf_bytes": 544321536,
+    "dmabuf_big": "[376MiB system][10MiB system-uncached][102MiB system][10MiB system-uncached][10MiB system-uncached][10MiB system-uncached]"
+   },
+   "after_loop": {
+    "VmRSS": 507972,
+    "RssAnon": 79968,
+    "RssFile": 427508,
+    "MemAvailable": 10448348,
+    "dmabuf_bytes": 544321536,
+    "dmabuf_big": "[376MiB system][10MiB system-uncached][102MiB system][10MiB system-uncached][10MiB system-uncached][10MiB system-uncached]"
+   }
+  },
+  "hw_ms": 207.40883333333335,
+  "invoke_p50_ms": 211.71545600000002,
+  "invoke_min_ms": 209.29224,
+  "invoke_max_ms": 216.70349,
+  "worker_p50_ms": 357.69321649999995,
+  "tflops_invoke": 1.901860126829852,
+  "tflops_hw": 1.9413502189315306,
+  "ms_per_512_tokens_invoke": 211.71545600000002,
+  "rel_l2": 0.044063525582272674,
+  "rel_l2_cases": [
+   0.044063525582272674,
+   0.043953598254269095
+  ],
+  "max_row_rel_l2": 0.07150540582275315,
+  "finite": true
+ },
+ {
+  "tag": "i4pcdrq-M1",
+  "M": 1,
+  "ref": "M1",
+  "invokes_per_512": 1,
+  "pass": true,
+  "dispatch": true,
+  "n_timed": 30,
+  "repeat_exact": true,
+  "first_invoke_ms": 31.701615,
+  "load_ms": {
+   "env": 4.033281,
+   "model_file": 0.289375,
+   "compiled_model": 328.145703,
+   "buffers": 78.270859
+  },
+  "mem": {
+   "start": {
+    "VmRSS": 8840,
+    "RssAnon": 1384,
+    "RssFile": 7156,
+    "MemAvailable": 11146740,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_model_file": {
+    "VmRSS": 9196,
+    "RssAnon": 1436,
+    "RssFile": 7452,
+    "MemAvailable": 11146740,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_compiled_model": {
+    "VmRSS": 243228,
+    "RssAnon": 8220,
+    "RssFile": 234636,
+    "MemAvailable": 10947548,
+    "dmabuf_bytes": 197541888,
+    "dmabuf_big": "[188MiB system]"
+   },
+   "after_first_invoke": {
+    "VmRSS": 243480,
+    "RssAnon": 8372,
+    "RssFile": 234704,
+    "MemAvailable": 10947292,
+    "dmabuf_bytes": 197582848,
+    "dmabuf_big": "[188MiB system]"
+   },
+   "after_loop": {
+    "VmRSS": 243624,
+    "RssAnon": 8420,
+    "RssFile": 234704,
+    "MemAvailable": 10949552,
+    "dmabuf_bytes": 197582848,
+    "dmabuf_big": "[188MiB system]"
+   }
+  },
+  "hw_ms": 20.88025,
+  "invoke_p50_ms": 27.745039,
+  "invoke_min_ms": 21.467292,
+  "invoke_max_ms": 28.727162,
+  "worker_p50_ms": 28.866979,
+  "tflops_invoke": 0.028344959255598812,
+  "tflops_hw": 0.03766391685923301,
+  "ms_per_512_tokens_invoke": 14205.459968,
+  "rel_l2": 0.3175637151437755,
+  "rel_l2_cases": [
+   0.3175637151437755,
+   0.31670251945157324
+  ],
+  "max_row_rel_l2": 0.31756371514377557,
+  "finite": true
+ },
+ {
+  "tag": "i4pcdrq-M128",
+  "M": 128,
+  "ref": "M128",
+  "invokes_per_512": 1,
+  "pass": true,
+  "dispatch": true,
+  "n_timed": 20,
+  "repeat_exact": true,
+  "first_invoke_ms": 116.651901,
+  "load_ms": {
+   "env": 4.664948,
+   "model_file": 0.277761,
+   "compiled_model": 335.147136,
+   "buffers": 75.317812
+  },
+  "mem": {
+   "start": {
+    "VmRSS": 8996,
+    "RssAnon": 1380,
+    "RssFile": 7320,
+    "MemAvailable": 11123924,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_model_file": {
+    "VmRSS": 9544,
+    "RssAnon": 1432,
+    "RssFile": 7808,
+    "MemAvailable": 11125688,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_compiled_model": {
+    "VmRSS": 249928,
+    "RssAnon": 8220,
+    "RssFile": 241336,
+    "MemAvailable": 10872972,
+    "dmabuf_bytes": 249638912,
+    "dmabuf_big": "[194MiB system][38MiB system][2MiB system-uncached][2MiB system-uncached]"
+   },
+   "after_first_invoke": {
+    "VmRSS": 262872,
+    "RssAnon": 21044,
+    "RssFile": 241424,
+    "MemAvailable": 10861784,
+    "dmabuf_bytes": 254881792,
+    "dmabuf_big": "[194MiB system][38MiB system][2MiB system-uncached][2MiB system-uncached][2MiB system-uncached][2MiB system-uncached]"
+   },
+   "after_loop": {
+    "VmRSS": 268156,
+    "RssAnon": 26176,
+    "RssFile": 241488,
+    "MemAvailable": 10864184,
+    "dmabuf_bytes": 254881792,
+    "dmabuf_big": "[194MiB system][38MiB system][2MiB system-uncached][2MiB system-uncached][2MiB system-uncached][2MiB system-uncached]"
+   }
+  },
+  "hw_ms": 94.13066666666667,
+  "invoke_p50_ms": 101.52066400000001,
+  "invoke_min_ms": 100.657552,
+  "invoke_max_ms": 103.158021,
+  "worker_p50_ms": 183.6205075,
+  "tflops_invoke": 0.9915547439681835,
+  "tflops_hw": 1.0693995863905492,
+  "ms_per_512_tokens_invoke": 406.08265600000004,
+  "rel_l2": 0.3041112964982892,
+  "rel_l2_cases": [
+   0.30404353254028804,
+   0.3041112964982892
+  ],
+  "max_row_rel_l2": 0.3297269908531375,
+  "finite": true
+ },
+ {
+  "tag": "i4pcdrq-M512",
+  "M": 512,
+  "ref": "M512",
+  "invokes_per_512": 1,
+  "pass": true,
+  "dispatch": true,
+  "n_timed": 12,
+  "repeat_exact": true,
+  "first_invoke_ms": 435.13776,
+  "load_ms": {
+   "env": 5.948437,
+   "model_file": 0.263386,
+   "compiled_model": 305.274792,
+   "buffers": 40.967266
+  },
+  "mem": {
+   "start": {
+    "VmRSS": 8876,
+    "RssAnon": 1388,
+    "RssFile": 7188,
+    "MemAvailable": 11056004,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_model_file": {
+    "VmRSS": 9364,
+    "RssAnon": 1444,
+    "RssFile": 7612,
+    "MemAvailable": 11055484,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_compiled_model": {
+    "VmRSS": 260016,
+    "RssAnon": 8228,
+    "RssFile": 251412,
+    "MemAvailable": 10675372,
+    "dmabuf_bytes": 369545216,
+    "dmabuf_big": "[204MiB system][10MiB system-uncached][127MiB system][10MiB system-uncached]"
+   },
+   "after_first_invoke": {
+    "VmRSS": 311436,
+    "RssAnon": 59464,
+    "RssFile": 251564,
+    "MemAvailable": 10628912,
+    "dmabuf_bytes": 390516736,
+    "dmabuf_big": "[204MiB system][10MiB system-uncached][127MiB system][10MiB system-uncached][10MiB system-uncached][10MiB system-uncached]"
+   },
+   "after_loop": {
+    "VmRSS": 332020,
+    "RssAnon": 79960,
+    "RssFile": 251564,
+    "MemAvailable": 10591280,
+    "dmabuf_bytes": 390516736,
+    "dmabuf_big": "[204MiB system][10MiB system-uncached][127MiB system][10MiB system-uncached][10MiB system-uncached][10MiB system-uncached]"
+   }
+  },
+  "hw_ms": 405.9771666666667,
+  "invoke_p50_ms": 410.3020055,
+  "invoke_min_ms": 407.97849,
+  "invoke_max_ms": 415.494897,
+  "worker_p50_ms": 557.4479040000001,
+  "tflops_invoke": 0.9813580694282031,
+  "tflops_hw": 0.9918123901056832,
+  "ms_per_512_tokens_invoke": 410.3020055,
+  "rel_l2": 0.30390717782636045,
+  "rel_l2_cases": [
+   0.30381997908626557,
+   0.30390717782636045
+  ],
+  "max_row_rel_l2": 0.34519017797105056,
+  "finite": true
+ },
+ {
+  "tag": "f16-M512-shmod",
+  "M": 512,
+  "ref": "M512",
+  "invokes_per_512": 1,
+  "pass": true,
+  "dispatch": true,
+  "n_timed": 12,
+  "repeat_exact": true,
+  "first_invoke_ms": 389.311537,
+  "load_ms": {
+   "env": 4.719792,
+   "model_file": 0.497474,
+   "compiled_model": 461.050495,
+   "buffers": 45.103411
+  },
+  "mem": {
+   "start": {
+    "VmRSS": 8828,
+    "RssAnon": 1384,
+    "RssFile": 7144,
+    "MemAvailable": 11177936,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_model_file": {
+    "VmRSS": 9252,
+    "RssAnon": 1440,
+    "RssFile": 7504,
+    "MemAvailable": 11177676,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_compiled_model": {
+    "VmRSS": 819192,
+    "RssAnon": 8224,
+    "RssFile": 810592,
+    "MemAvailable": 10300188,
+    "dmabuf_bytes": 886747136,
+    "dmabuf_big": "[750MiB system][10MiB system-uncached][75MiB system][10MiB system-uncached]"
+   },
+   "after_first_invoke": {
+    "VmRSS": 870552,
+    "RssAnon": 59460,
+    "RssFile": 810684,
+    "MemAvailable": 10248100,
+    "dmabuf_bytes": 907718656,
+    "dmabuf_big": "[750MiB system][10MiB system-uncached][75MiB system][10MiB system-uncached][10MiB system-uncached][10MiB system-uncached]"
+   },
+   "after_loop": {
+    "VmRSS": 891192,
+    "RssAnon": 79948,
+    "RssFile": 810748,
+    "MemAvailable": 10227712,
+    "dmabuf_bytes": 907718656,
+    "dmabuf_big": "[750MiB system][10MiB system-uncached][75MiB system][10MiB system-uncached][10MiB system-uncached][10MiB system-uncached]"
+   }
+  },
+  "hw_ms": 329.7501666666667,
+  "invoke_p50_ms": 332.60475299999996,
+  "invoke_min_ms": 331.435105,
+  "invoke_max_ms": 336.817709,
+  "worker_p50_ms": 483.2700135,
+  "tflops_invoke": 1.2106056223435868,
+  "tflops_hw": 1.2210856117838707,
+  "ms_per_512_tokens_invoke": 332.60475299999996,
+  "rel_l2": 0.0004391903537812835,
+  "rel_l2_cases": [
+   0.0004391903537812835,
+   0.0004389750588161857
+  ],
+  "max_row_rel_l2": 0.00048354816785648613,
+  "finite": true
+ },
+ {
+  "tag": "f16-M512-shmax",
+  "M": 512,
+  "ref": "M512",
+  "invokes_per_512": 1,
+  "pass": true,
+  "dispatch": true,
+  "n_timed": 12,
+  "repeat_exact": true,
+  "first_invoke_ms": 716.144063,
+  "load_ms": {
+   "env": 5.516822,
+   "model_file": 0.32198,
+   "compiled_model": 374.4631,
+   "buffers": 23.82875
+  },
+  "mem": {
+   "start": {
+    "VmRSS": 8824,
+    "RssAnon": 1380,
+    "RssFile": 7148,
+    "MemAvailable": 11160480,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_model_file": {
+    "VmRSS": 9316,
+    "RssAnon": 1440,
+    "RssFile": 7572,
+    "MemAvailable": 11160220,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_compiled_model": {
+    "VmRSS": 819476,
+    "RssAnon": 8220,
+    "RssFile": 810884,
+    "MemAvailable": 10282108,
+    "dmabuf_bytes": 887296000,
+    "dmabuf_big": "[751MiB system][10MiB system-uncached][75MiB system][10MiB system-uncached]"
+   },
+   "after_first_invoke": {
+    "VmRSS": 870888,
+    "RssAnon": 59456,
+    "RssFile": 811028,
+    "MemAvailable": 10229940,
+    "dmabuf_bytes": 908267520,
+    "dmabuf_big": "[751MiB system][10MiB system-uncached][75MiB system][10MiB system-uncached][10MiB system-uncached][10MiB system-uncached]"
+   },
+   "after_loop": {
+    "VmRSS": 891468,
+    "RssAnon": 79948,
+    "RssFile": 811028,
+    "MemAvailable": 10211216,
+    "dmabuf_bytes": 908267520,
+    "dmabuf_big": "[751MiB system][10MiB system-uncached][75MiB system][10MiB system-uncached][10MiB system-uncached][10MiB system-uncached]"
+   }
+  },
+  "hw_ms": 654.148,
+  "invoke_p50_ms": 661.406915,
+  "invoke_min_ms": 649.811276,
+  "invoke_max_ms": 662.897891,
+  "worker_p50_ms": 808.52892,
+  "tflops_invoke": 0.608782845882402,
+  "tflops_hw": 0.6155383552345952,
+  "ms_per_512_tokens_invoke": 661.406915,
+  "rel_l2": 0.0004391903537812835,
+  "rel_l2_cases": [
+   0.0004391903537812835,
+   0.0004389750588161857
+  ],
+  "max_row_rel_l2": 0.00048354816785648613,
+  "finite": true
+ },
+ {
+  "tag": "f16-M512-p5",
+  "M": 512,
+  "ref": "M512",
+  "invokes_per_512": 1,
+  "pass": true,
+  "dispatch": true,
+  "n_timed": 12,
+  "repeat_exact": true,
+  "first_invoke_ms": 268.586589,
+  "load_ms": {
+   "env": 5.037812,
+   "model_file": 0.356589,
+   "compiled_model": 404.859714,
+   "buffers": 59.940156
+  },
+  "mem": {
+   "start": {
+    "VmRSS": 8952,
+    "RssAnon": 1384,
+    "RssFile": 7268,
+    "MemAvailable": 11100128,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_model_file": {
+    "VmRSS": 9504,
+    "RssAnon": 1440,
+    "RssFile": 7756,
+    "MemAvailable": 11099868,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_compiled_model": {
+    "VmRSS": 819072,
+    "RssAnon": 8220,
+    "RssFile": 810476,
+    "MemAvailable": 10229720,
+    "dmabuf_bytes": 886644736,
+    "dmabuf_big": "[750MiB system][10MiB system-uncached][75MiB system][10MiB system-uncached]"
+   },
+   "after_first_invoke": {
+    "VmRSS": 870408,
+    "RssAnon": 59456,
+    "RssFile": 810544,
+    "MemAvailable": 10179956,
+    "dmabuf_bytes": 907616256,
+    "dmabuf_big": "[750MiB system][10MiB system-uncached][75MiB system][10MiB system-uncached][10MiB system-uncached][10MiB system-uncached]"
+   },
+   "after_loop": {
+    "VmRSS": 891048,
+    "RssAnon": 79944,
+    "RssFile": 810608,
+    "MemAvailable": 10158956,
+    "dmabuf_bytes": 907616256,
+    "dmabuf_big": "[750MiB system][10MiB system-uncached][75MiB system][10MiB system-uncached][10MiB system-uncached][10MiB system-uncached]"
+   }
+  },
+  "hw_ms": 236.70383333333334,
+  "invoke_p50_ms": 243.361576,
+  "invoke_min_ms": 241.25724,
+  "invoke_max_ms": 245.457214,
+  "worker_p50_ms": 391.64026049999995,
+  "tflops_invoke": 1.6545470760758056,
+  "tflops_hw": 1.701084339572025,
+  "ms_per_512_tokens_invoke": 243.361576,
+  "rel_l2": 0.0004391903537812835,
+  "rel_l2_cases": [
+   0.0004391903537812835,
+   0.0004389750588161857
+  ],
+  "max_row_rel_l2": 0.00048354816785648613,
+  "finite": true
+ },
+ {
+  "tag": "f16-M512-p3",
+  "M": 512,
+  "ref": "M512",
+  "invokes_per_512": 1,
+  "pass": true,
+  "dispatch": true,
+  "n_timed": 12,
+  "repeat_exact": true,
+  "first_invoke_ms": 341.266615,
+  "load_ms": {
+   "env": 3.998828,
+   "model_file": 0.276511,
+   "compiled_model": 389.702292,
+   "buffers": 44.542214
+  },
+  "mem": {
+   "start": {
+    "VmRSS": 8776,
+    "RssAnon": 1384,
+    "RssFile": 7092,
+    "MemAvailable": 11102380,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_model_file": {
+    "VmRSS": 9256,
+    "RssAnon": 1432,
+    "RssFile": 7516,
+    "MemAvailable": 11102380,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_compiled_model": {
+    "VmRSS": 818568,
+    "RssAnon": 8228,
+    "RssFile": 809964,
+    "MemAvailable": 10224856,
+    "dmabuf_bytes": 886644736,
+    "dmabuf_big": "[750MiB system][10MiB system-uncached][75MiB system][10MiB system-uncached]"
+   },
+   "after_first_invoke": {
+    "VmRSS": 869896,
+    "RssAnon": 59456,
+    "RssFile": 810032,
+    "MemAvailable": 10175588,
+    "dmabuf_bytes": 907616256,
+    "dmabuf_big": "[750MiB system][10MiB system-uncached][75MiB system][10MiB system-uncached][10MiB system-uncached][10MiB system-uncached]"
+   },
+   "after_loop": {
+    "VmRSS": 890540,
+    "RssAnon": 79948,
+    "RssFile": 810096,
+    "MemAvailable": 10154944,
+    "dmabuf_bytes": 907616256,
+    "dmabuf_big": "[750MiB system][10MiB system-uncached][75MiB system][10MiB system-uncached][10MiB system-uncached][10MiB system-uncached]"
+   }
+  },
+  "hw_ms": 238.1695,
+  "invoke_p50_ms": 245.264622,
+  "invoke_min_ms": 242.736693,
+  "invoke_max_ms": 247.28612,
+  "worker_p50_ms": 393.642409,
+  "tflops_invoke": 1.6417091903291294,
+  "tflops_hw": 1.6906160696478767,
+  "ms_per_512_tokens_invoke": 245.264622,
+  "rel_l2": 0.0004391903537812835,
+  "rel_l2_cases": [
+   0.0004391903537812835,
+   0.0004389750588161857
+  ],
+  "max_row_rel_l2": 0.00048354816785648613,
+  "finite": true
+ },
+ {
+  "tag": "f16-M512-e",
+  "M": 512,
+  "ref": "M512",
+  "invokes_per_512": 1,
+  "pass": true,
+  "dispatch": true,
+  "n_timed": 30,
+  "repeat_exact": true,
+  "first_invoke_ms": 331.268828,
+  "load_ms": {
+   "env": 5.776459,
+   "model_file": 0.193177,
+   "compiled_model": 414.395001,
+   "buffers": 43.11914
+  },
+  "mem": {
+   "start": {
+    "VmRSS": 8968,
+    "RssAnon": 1392,
+    "RssFile": 7276,
+    "MemAvailable": 11069264,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_model_file": {
+    "VmRSS": 9328,
+    "RssAnon": 1448,
+    "RssFile": 7572,
+    "MemAvailable": 11067760,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_compiled_model": {
+    "VmRSS": 818768,
+    "RssAnon": 8224,
+    "RssFile": 810168,
+    "MemAvailable": 10192480,
+    "dmabuf_bytes": 886644736,
+    "dmabuf_big": "[750MiB system][10MiB system-uncached][75MiB system][10MiB system-uncached]"
+   },
+   "after_first_invoke": {
+    "VmRSS": 870108,
+    "RssAnon": 59464,
+    "RssFile": 810236,
+    "MemAvailable": 10138436,
+    "dmabuf_bytes": 907616256,
+    "dmabuf_big": "[750MiB system][10MiB system-uncached][75MiB system][10MiB system-uncached][10MiB system-uncached][10MiB system-uncached]"
+   },
+   "after_loop": {
+    "VmRSS": 890688,
+    "RssAnon": 79956,
+    "RssFile": 810236,
+    "MemAvailable": 10097544,
+    "dmabuf_bytes": 907616256,
+    "dmabuf_big": "[750MiB system][10MiB system-uncached][75MiB system][10MiB system-uncached][10MiB system-uncached][10MiB system-uncached]"
+   }
+  },
+  "hw_ms": 239.81216666666666,
+  "invoke_p50_ms": 243.4383205,
+  "invoke_min_ms": 238.310339,
+  "invoke_max_ms": 247.696302,
+  "worker_p50_ms": 390.366628,
+  "tflops_invoke": 1.6540254762396784,
+  "tflops_hw": 1.6790356786179184,
+  "ms_per_512_tokens_invoke": 243.4383205,
+  "rel_l2": 0.0004391903537812835,
+  "rel_l2_cases": [
+   0.0004391903537812835,
+   0.0004389750588161857
+  ],
+  "max_row_rel_l2": 0.00048354816785648613,
+  "finite": true
+ },
+ {
+  "tag": "f16gu-M512",
+  "M": 512,
+  "ref": "M512x",
+  "invokes_per_512": 1,
+  "pass": true,
+  "dispatch": true,
+  "n_timed": 12,
+  "repeat_exact": true,
+  "first_invoke_ms": 175.058516,
+  "load_ms": {
+   "env": 2.933646,
+   "model_file": 0.191979,
+   "compiled_model": 354.08836,
+   "buffers": 46.455859
+  },
+  "mem": {
+   "start": {
+    "VmRSS": 8900,
+    "RssAnon": 1396,
+    "RssFile": 7232,
+    "MemAvailable": 11131160,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_model_file": {
+    "VmRSS": 9388,
+    "RssAnon": 1452,
+    "RssFile": 7656,
+    "MemAvailable": 11131160,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_compiled_model": {
+    "VmRSS": 563244,
+    "RssAnon": 8228,
+    "RssFile": 554656,
+    "MemAvailable": 10492816,
+    "dmabuf_bytes": 645480448,
+    "dmabuf_big": "[500MiB system][10MiB system-uncached][55MiB system][50MiB system-uncached]"
+   },
+   "after_first_invoke": {
+    "VmRSS": 737456,
+    "RssAnon": 182340,
+    "RssFile": 554724,
+    "MemAvailable": 10318660,
+    "dmabuf_bytes": 708395008,
+    "dmabuf_big": "[500MiB system][10MiB system-uncached][55MiB system][50MiB system-uncached][10MiB system-uncached][50MiB system-uncached]"
+   },
+   "after_loop": {
+    "VmRSS": 839952,
+    "RssAnon": 284748,
+    "RssFile": 554724,
+    "MemAvailable": 10219864,
+    "dmabuf_bytes": 708395008,
+    "dmabuf_big": "[500MiB system][10MiB system-uncached][55MiB system][50MiB system-uncached][10MiB system-uncached][50MiB system-uncached]"
+   }
+  },
+  "hw_ms": 133.974,
+  "invoke_p50_ms": 141.160755,
+  "invoke_min_ms": 135.969557,
+  "invoke_max_ms": 141.561406,
+  "worker_p50_ms": 315.869297,
+  "tflops_invoke": 2.8524442505284138,
+  "tflops_hw": 3.0054576559630974,
+  "ms_per_512_tokens_invoke": 141.160755
+ },
+ {
+  "tag": "f16dn-M512",
+  "M": 512,
+  "ref": "M512x",
+  "invokes_per_512": 1,
+  "pass": true,
+  "dispatch": true,
+  "n_timed": 12,
+  "repeat_exact": true,
+  "first_invoke_ms": 155.643281,
+  "load_ms": {
+   "env": 3.817161,
+   "model_file": 0.263828,
+   "compiled_model": 312.495782,
+   "buffers": 43.180468
+  },
+  "mem": {
+   "start": {
+    "VmRSS": 8916,
+    "RssAnon": 1380,
+    "RssFile": 7236,
+    "MemAvailable": 11133248,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_model_file": {
+    "VmRSS": 9408,
+    "RssAnon": 1440,
+    "RssFile": 7660,
+    "MemAvailable": 11133248,
+    "dmabuf_bytes": 0,
+    "dmabuf_big": ""
+   },
+   "after_compiled_model": {
+    "VmRSS": 307008,
+    "RssAnon": 8220,
+    "RssFile": 298412,
+    "MemAvailable": 10780820,
+    "dmabuf_bytes": 351735808,
+    "dmabuf_big": "[250MiB system][50MiB system-uncached][25MiB system][10MiB system-uncached]"
+   },
+   "after_first_invoke": {
+    "VmRSS": 440260,
+    "RssAnon": 141372,
+    "RssFile": 298480,
+    "MemAvailable": 10648220,
+    "dmabuf_bytes": 414650368,
+    "dmabuf_big": "[250MiB system][50MiB system-uncached][25MiB system][10MiB system-uncached][50MiB system-uncached][10MiB system-uncached]"
+   },
+   "after_loop": {
+    "VmRSS": 460836,
+    "RssAnon": 161860,
+    "RssFile": 298480,
+    "MemAvailable": 10627236,
+    "dmabuf_bytes": 414650368,
+    "dmabuf_big": "[250MiB system][50MiB system-uncached][25MiB system][10MiB system-uncached][50MiB system-uncached][10MiB system-uncached]"
+   }
+  },
+  "hw_ms": 126.72466666666668,
+  "invoke_p50_ms": 133.659284,
+  "invoke_min_ms": 129.619583,
+  "invoke_max_ms": 135.030677,
+  "worker_p50_ms": 272.6533465,
+  "tflops_invoke": 3.012534348156466,
+  "tflops_hw": 3.17738601798124,
+  "ms_per_512_tokens_invoke": 133.659284
+ }
+]

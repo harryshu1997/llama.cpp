@@ -31,7 +31,11 @@ from ..runtime_residency_cohorts import (
 from ..runtime_search import RoughPlacementVisit, request_shape_bucket
 from ..runtime_system_cost import RuntimeSystemCostError
 from ..types import canonical_sha256
-from .remote_resident import RouteRemoteResidentMixin
+from .remote_resident import (
+    RouteRemoteResidentMixin,
+    remote_resident_co_helper_parameters,
+    remote_resident_share_keys,
+)
 from .common import (
     RouteGenerationError,
     _DORMANT_PHONE_FFN_RUNTIME_PARAMETER,
@@ -286,6 +290,8 @@ class RouteCostingMixin:
             coordinator,
             phone_power_profiles,
         )
+        if remote_resident is not None:
+            remote_resident_co_helper_parameters(adapter_parameters)
         runtime_partition_error = resident_envelope_error
         selected_geometry = self._selected_ffn_geometry(
             manifest, pattern, adapter_parameters, resident_envelope
@@ -540,6 +546,16 @@ class RouteCostingMixin:
             residency_holds=residency_holds,
             resource_slots=inputs.resource_slots,
             service=service,
+            share_keys=(
+                None if inputs.coordinator is None
+                else remote_resident_share_keys(
+                    self.catalog,
+                    executor_id=inputs.coordinator.executor_id,
+                    endpoint=inputs.coordinator.endpoint,
+                    parameters=inputs.adapter_parameters,
+                    resource_ids=inputs.resource_slots,
+                )
+            ),
         )
         reasons = schedule.reasons
         energy = self._candidate_energy_estimate(

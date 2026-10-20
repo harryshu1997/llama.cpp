@@ -12,7 +12,11 @@ from .._internal.model_manifest import ModelManifest
 from .._internal.runtime_capabilities import RuntimeExecutorCapability
 from .._internal.types import canonical_sha256
 from .contracts import PhysicalAdapterError, dormant_phone_ffn_parameters
-from .phone_helpers import phone_helper_bindings_from_parameters, phone_helper_launch_environment
+from .phone_helpers import (
+    phone_helper_bindings_from_parameters,
+    phone_helper_launch_environment,
+    remote_resident_layer_mask,
+)
 from .phone_transport import phone_transport_contract
 from .speculative_rows import LlamaServerSpeculativeContract, speculative_launch_contract
 from .ticket import PhysicalExecutionCommand, PhysicalTransitionCommand
@@ -141,6 +145,9 @@ class LlamaServerLaunchContract:
     cpu_affinity: str | None = None
     cuda_graph_mode: str = "default"
     desktop_launch_mode: str = "canonical"
+    # WS24 (opt-in): keep idle slots' KV so a multi-turn conversation reuses its prefix between turns;
+    # False launches byte-identically to today (``--no-cache-idle-slots``)
+    cache_idle_slots: bool = False
     kv_cpu_layers: tuple[int, ...] = ()
     kv_device_cells: tuple[tuple[int, int], ...] = ()
     ffn_host_share_drop_cache: int = 1
@@ -208,6 +215,8 @@ class LlamaServerLaunchContract:
             )
         if self.cuda_graph_mode not in ("default", "disabled"):
             raise PhysicalAdapterError("llama-server CUDA graph mode is invalid")
+        if type(self.cache_idle_slots) is not bool:
+            raise PhysicalAdapterError("llama-server cache_idle_slots must be a boolean")
         if self.scheduler_trace_path is not None and (
             type(self.scheduler_trace_path) is not str
             or not self.scheduler_trace_path.startswith("/")
@@ -244,7 +253,7 @@ class LlamaServerLaunchContract:
         if self.ffn_row_diagnostic_steps:
             if (environment.get("S41_SERVER_FFN_DORMANT_HOST_SHARE") != "1"
                     or environment.get("S41_SERVER_FFN_RUNTIME_CONTROL") != "1"
-                    or environment.get("S41_SERVER_FFN_REMOTE_RESIDENT_LAYER_MASK", "0") != "0"):
+                    or remote_resident_layer_mask(environment) != 0):
                 raise PhysicalAdapterError("FFN row diagnostic requires dormant assisted-copy runtime control")
             environment[diagnostic_key] = str(self.ffn_row_diagnostic_steps)
         for field_name, suffix in (("ffn_host_share_drop_cache", "DROP_CACHE"), ("ffn_host_share_populate", "POPULATE")):
@@ -431,6 +440,8 @@ class LlamaServerFfnCall:
     columns: int
     payload_bytes: int
     contexts: tuple[LlamaServerFfnCallContext, ...] = ()
+    # WS15 fused call (2026-10-05): the width of its [attention | residual] input rows; 0 = a plain FFN call
+    fused_width: int = 0
 
     def rows_for(self, scheduler_request_id: str) -> int:
         return sum(
@@ -554,7 +565,8 @@ class LlamaServerExecutionProof:
 
 _FFN_CALL_PATTERN = re.compile(
     r"^S41SERVERFFNCALL request=([0-9]+) layer=([0-9]+) "
-    r"tokens=([0-9]+) columns=([0-9]+) payload_bytes=([0-9]+)$"
+    r"tokens=([0-9]+) columns=([0-9]+) payload_bytes=([0-9]+)"
+    r"(?: fused_width=([0-9]+))?$"
 )
 
 
@@ -563,7 +575,8 @@ _SCOPED_FFN_CALL_PATTERN = re.compile(
     r"([0-9a-f]+:[0-9]+:[0-9]+:[0-9]+"
     r"(?:,[0-9a-f]+:[0-9]+:[0-9]+:[0-9]+)*) "
     r"request=([0-9]+) layer=([0-9]+) tokens=([0-9]+) "
-    r"columns=([0-9]+) payload_bytes=([0-9]+)$"
+    r"columns=([0-9]+) payload_bytes=([0-9]+)"
+    r"(?: fused_width=([0-9]+))?$"
 )
 
 
@@ -590,11 +603,14 @@ def parse_llama_server_ffn_call(line: str) -> LlamaServerFfnCall | None:
     if scoped is None and match is None:
         return None
     raw_values = match.groups() if scoped is None else scoped.groups()[1:]
-    values = tuple(int(value) for value in raw_values)
+    fused_width = 0 if raw_values[-1] is None else int(raw_values[-1])
+    values = tuple(int(value) for value in raw_values[:-1])
     if (
         values[0] <= 0
         or values[1] < 0
         or any(value <= 0 for value in values[2:])
+        or fused_width < 0
+        or (raw_values[-1] is not None and fused_width <= 0)
     ):
         raise PhysicalAdapterError("llama-server FFN call is invalid")
     contexts = ()
@@ -633,7 +649,22 @@ def parse_llama_server_ffn_call(line: str) -> LlamaServerFfnCall | None:
             raise PhysicalAdapterError(
                 "llama-server FFN call context is invalid"
             )
-    return LlamaServerFfnCall(*values, contexts=contexts)
+    return LlamaServerFfnCall(*values, contexts=contexts, fused_width=fused_width)
+
+
+def _boolean(parameters: Mapping[str, object], name: str, default: bool = False) -> bool:
+    """An optional boolean launch parameter: JSON true/false or the integers 0/1 (absent = default).
+
+    The integer spelling exists because the runtime catalog's adapter parameters are int|str only
+    (``RuntimeModelEndpointCapability._validated_adapter_parameters``), so a model's runtime_parameters
+    must carry ``cache_idle_slots: 1`` to reach the launch contract (found on the rig 2026-10-05).
+    """
+    value = parameters.get(name, default)
+    if type(value) is bool:
+        return value
+    if type(value) is int and value in (0, 1):
+        return bool(value)
+    raise PhysicalAdapterError(f"llama-server launch parameter {name} must be true/false or 0/1")
 
 
 def _integer(parameters: Mapping[str, int | str], name: str) -> int:
@@ -1095,6 +1126,16 @@ def llama_server_launch_contract(
         phone_device_id, ffn_environment = _remote_resident_launch_environment(
             command, manifest, parameters, remote_resident
         )
+        remote_helpers = phone_helper_bindings_from_parameters(parameters)
+        if remote_helpers is not None:
+            # static co-helpers: one client per phone; only the owner (first) serves the omitted layers
+            if remote_resident.layer_mask & ~remote_helpers[0].layer_mask:
+                raise PhysicalAdapterError(
+                    "remote-resident layers are offered to another phone helper"
+                )
+            ffn_environment = dict(phone_helper_launch_environment(
+                remote_helpers, ffn_environment, parameters
+            ))
     elif phone_device_id is not None:
         if dormant_phone_parameters is not None:
             runtime_control = (
@@ -1243,6 +1284,7 @@ def llama_server_launch_contract(
         kv_device_cells=_kv_device_cells(parameters, manifest),
         cuda_graph_mode=parameters.get("cuda_graph_mode", "default"),
         scheduler_trace_path=parameters.get("scheduler_trace_path"),
+        cache_idle_slots=_boolean(parameters, "cache_idle_slots"),
         logits_trace_path=parameters.get("logits_trace_path"),
         desktop_launch_mode=parameters.get("desktop_launch_mode", "canonical"),
         threads=_integer(parameters, "threads")
@@ -1298,6 +1340,7 @@ def llama_server_capability_contract(
         kv_device_cells=_kv_device_cells(parameters, manifest),
         cuda_graph_mode=parameters.get("cuda_graph_mode", "default"),
         scheduler_trace_path=parameters.get("scheduler_trace_path"),
+        cache_idle_slots=_boolean(parameters, "cache_idle_slots"),
         logits_trace_path=parameters.get("logits_trace_path"),
         desktop_launch_mode=parameters.get("desktop_launch_mode", "canonical"),
         threads=_integer(parameters, "threads")

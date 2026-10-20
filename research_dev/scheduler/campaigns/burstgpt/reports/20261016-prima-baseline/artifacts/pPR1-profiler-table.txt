@@ -1,0 +1,60 @@
+| Property                        | Rank 0       | Rank 1       | Rank 2       
+-------------------------------------------------------------------------------------------
+| Device Name                     | zhihao-Z69   | localhost    | localhost    
+| Device OS                       | Linux        | Linux        | Linux        
+| CPU Name                        | CPU          | CPU          | CPU          
+| CPU Description                 | 12th Gen I   | CPU          | CPU          
+| Number of CPU cores             | 24           | 8            | 8            
+| CPU flops (F32xF32, GFLOPS)     | 280.2        | 45.4         | 9.1          
+| CPU flops (F16xF32, GFLOPS)     | 204.6        | 216.8        | 46.1         
+| CPU flops (Q2K x F32, GFLOPS)   | 0.0          | 0.0          | 0.0          
+| CPU flops (Q4K x F32, GFLOPS)   | 0.0          | 0.0          | 0.0          
+| CPU flops (Q5K x F32, GFLOPS)   | 0.0          | 0.0          | 0.0          
+| CPU flops (Q6K x F32, GFLOPS)   | 0.0          | 0.0          | 0.0          
+| CPU flops (IQ2XXS x F32, GFLOPS)| 0.0          | 0.0          | 0.0          
+| CPU flops (Q50 x F32, GFLOPS)   | 0.0          | 0.0          | 0.0          
+| CPU flops (Q80 x F32, GFLOPS)   | 200.8        | 283.2        | 59.5         
+| CPU flops (IQ1S x F32, GFLOPS)  | 0.0          | 0.0          | 0.0          
+| CPU flops (IQ4NL x F32, GFLOPS) | 0.0          | 0.0          | 0.0          
+| CPU flops (IQ1M x F32, GFLOPS)  | 0.0          | 0.0          | 0.0          
+| Physical Mem Total (GiB)        | 30.61        | 14.76        | 15.21        
+| Physical Mem Available (GiB)    | 22.89        | 7.78         | 8.84         
+| Used Mem Swappable (GiB)        | 0.00         | 0.00         | 0.00         
+| Swap Mem Total (GiB)            | 8.00         | 9.50         | 7.61         
+| Swap Mem Available (GiB)        | 7.67         | 8.70         | 6.16         
+| CPU RAM Read BW (GB/s)          | 144.17       | 129.16       | 23.50        
+| CPU KVCache Copy Time (ms/l)    | 0.22         | 0.10         | 0.49         
+| Disk Read Seq Speed (GB/s)      | 2.72         | 3.62         | 1.43         
+| Disk Write Seq Speed (GB/s)     | 2.15         | 1.97         | 0.17         
+| Disk Read Rnd Speed (GB/s)      | 0.08         | 0.34         | 0.12         
+| Disk Write Rnd Speed (GB/s)     | 0.77         | 0.16         | 0.01         
+| GPU Metal                       | 0            | 0            | 0            
+| GPU CUDA                        | 1            | 0            | 0            
+| GPU Vulkan                      | 0            | 0            | 0            
+| GPU Kompute                     | 0            | 0            | 0            
+| GPU BLAS                        | 1            | 0            | 0            
+| BLAS                            | 1            | 0            | 0            
+| SYCL                            | 0            | 0            | 0            
+| GPU Name                        | CUDA0        |              |              
+| GPU Description                 | NVIDIA GeF   |              |              
+| GPU Mem Free (GiB)              | 12.79        | 0.00         | 0.00         
+| GPU Mem Total (GiB)             | 15.57        | 0.00         | 0.00         
+| Metal VRAM Read BW (GB/s)       | 0.00         | 0.00         | 0.00         
+| Metal KVCache Copy Time(ms/l)   | 0.00         | 0.00         | 0.00         
+| Metal flops (F32xF32, GFLOPS)   | 0.0          | 0.0          | 0.0          
+| Metal flops (F16xF32, GFLOPS)   | 0.0          | 0.0          | 0.0          
+| Metal flops (Q2KxF32, GFLOPS)   | 0.0          | 0.0          | 0.0          
+| Metal flops (Q4KxF32, GFLOPS)   | 0.0          | 0.0          | 0.0          
+| Metal flops (Q5KxF32, GFLOPS)   | 0.0          | 0.0          | 0.0          
+| Metal flops (Q6KxF32, GFLOPS)   | 0.0          | 0.0          | 0.0          
+| Metal flops (IQ2XXSxF32, GFLOPS)| 0.0          | 0.0          | 0.0          
+| Metal flops (Q50xF32, GFLOPS)   | 0.0          | 0.0          | 0.0          
+| Metal flops (Q80xF32, GFLOPS)   | 0.0          | 0.0          | 0.0          
+| Metal flops (IQ1SxF32, GFLOPS)  | 0.0          | 0.0          | 0.0          
+| Metal flops (IQ4NLxF32, GFLOPS) | 0.0          | 0.0          | 0.0          
+| Metal flops (IQ1MxF32, GFLOPS)  | 0.0          | 0.0          | 0.0          
+| CUDA VRAM Read BW (GB/s)        | 213.72       | 0.00         | 0.00         
+| CUDA KVCache Copy Time (ms/l)   | 0.01         | 0.00         | 0.00         
+| CUDA flops (F32xF32, GFLOPS)    | 21315.0      | 0.0          | 0.0          
+| CUDA flops (F16xF32, GFLOPS)    | 56143.4      | 0.0          | 0.0          
+| CUDA flops (Q2KxF32, GFLOPS)    | 0.0          | 0.0          | 0.0          

@@ -59,7 +59,11 @@ def _integer_mapping(name: str, values: Mapping[str, int]) -> Mapping[str, int]:
 
 # Serialized only when set, so RESULTs written before them are unchanged.
 _OPT_IN_CONFIG_FIELDS = frozenset({"late_helper_adoption", "late_helper_adoption_minimum_tokens",
-                                   "batch_growth_verdict_inheritance"})
+                                   "batch_growth_verdict_inheritance", "device_set_subset_challenge",
+                                   "live_membership_probe_timeout_ms", "live_membership_probe_timeout_auto"})
+# Bounds of the live decode-membership probe timeout (adapters.http_backend).
+LIVE_MEMBERSHIP_PROBE_TIMEOUT_MS_RANGE = (500, 30_000)
+LIVE_MEMBERSHIP_PROBE_AUTO_CAP_MS = 10_000
 
 
 @dataclass(frozen=True)
@@ -91,6 +95,30 @@ class AdaptiveDecodeConfig:
     # exhausted probe there keeps that policy instead of returning to the host
     # (``adaptive_decode_ops.coherence``, batch-growth inheritance).
     batch_growth_verdict_inheritance: bool = False
+    # Opt-in cold start with several helper phones: probe the device set that covers the most
+    # layers first (ties keep the primary-first order) and take the narrower widths from that set.
+    # Default (False) probes the primary phone alone first; when the primary owns only a sliver of
+    # the layers that probe is inconclusive and the attempt budget drains before the full layout is
+    # ever measured (rig 2026-10-02: OP15 1 layer + Pixel 23 layers, Pixel served 0 calls).
+    cold_start_probe_widest_set_first: bool = False
+    # Opt-in (requires ``server_policy_coherence``), several helper phones: a device-set verdict
+    # whose measured latency is above the host's at its batch composition is challenged, at its
+    # fraction, by the sets that drop one of its helpers; such a subset replaces it once measured
+    # no slower than the host and still saving the minimum energy against the host. A set that
+    # adds co-helpers no longer replaces an incumbent that is no slower than the host unless it is
+    # no slower than the host as well. Default (False): only supersets challenge a verdict, so a
+    # widest set within ``maximum_latency_ppm`` keeps every composition (rig pA1q8f 2026-10-09:
+    # OnePlus + Pixel at 1.13x/1.15x the host at batch 1/2 under the campaign's 1.25x bound; the
+    # faster OnePlus-only set was never probed).
+    device_set_subset_challenge: bool = False
+    # Timeout of the adapter's live decode-membership probe (llama-server GET /slots, answered
+    # between decode steps). A timeout keeps the context unavailable (EXECUTION_CONTEXT_UNAVAILABLE,
+    # host policy). Default 1000 ms is the historical fixed 1 s; rig pA1q8f (2026-10-09, Qwen3-32B
+    # Q8_0, 1.09-1.56 s steps at batch 2-4) timed out 584 times and held 2,275 tokens on the host.
+    # Opt-in ``live_membership_probe_timeout_auto``: max(the configured timeout, 3x the request's
+    # latest measured per-token window latency capped at 10 s).
+    live_membership_probe_timeout_ms: int = 1_000
+    live_membership_probe_timeout_auto: bool = False
     coarse_probe_fractions_ppm: tuple[int, ...] = (
         1_000_000,
         750_000,
@@ -106,9 +134,23 @@ class AdaptiveDecodeConfig:
             raise AdaptiveDecodeError("adaptive late helper adoption is invalid")
         if type(self.batch_growth_verdict_inheritance) is not bool:
             raise AdaptiveDecodeError("adaptive batch growth verdict inheritance is invalid")
+        if type(self.cold_start_probe_widest_set_first) is not bool:
+            raise AdaptiveDecodeError("adaptive cold start probe order is invalid")
+        if type(self.device_set_subset_challenge) is not bool:
+            raise AdaptiveDecodeError("adaptive device set subset challenge is invalid")
+        if self.device_set_subset_challenge and not self.server_policy_coherence:
+            raise AdaptiveDecodeError(
+                "adaptive device set subset challenge requires server policy coherence")
         if self.batch_growth_verdict_inheritance and not self.server_policy_coherence:
             raise AdaptiveDecodeError(
                 "adaptive batch growth verdict inheritance requires server policy coherence")
+        if type(self.live_membership_probe_timeout_auto) is not bool:
+            raise AdaptiveDecodeError("adaptive live membership probe timeout mode is invalid")
+        low, high = LIVE_MEMBERSHIP_PROBE_TIMEOUT_MS_RANGE
+        if (type(self.live_membership_probe_timeout_ms) is not int
+                or not low <= self.live_membership_probe_timeout_ms <= high):
+            raise AdaptiveDecodeError(
+                f"adaptive live membership probe timeout must be {low}..{high} ms")
         _integer(
             "adaptive config late_helper_adoption_minimum_tokens",
             self.late_helper_adoption_minimum_tokens,
@@ -189,6 +231,16 @@ class AdaptiveDecodeConfig:
             )
         object.__setattr__(self, "coarse_probe_fractions_ppm", coarse)
         object.__setattr__(self, "refinement_steps_ppm", refinement)
+
+    def live_membership_probe_timeout_s(self, latest_step_us: int | None = None) -> int | float:
+        """Seconds the live decode-membership probe waits; whole seconds stay an int (the
+        default is exactly the historical ``1``). ``latest_step_us``: the request's latest measured
+        per-token window latency, used only by ``live_membership_probe_timeout_auto``."""
+        timeout_ms = self.live_membership_probe_timeout_ms
+        if self.live_membership_probe_timeout_auto and type(latest_step_us) is int and latest_step_us > 0:
+            timeout_ms = max(timeout_ms, min(LIVE_MEMBERSHIP_PROBE_AUTO_CAP_MS,
+                                             (3 * latest_step_us + 999) // 1000))
+        return timeout_ms // 1000 if timeout_ms % 1000 == 0 else timeout_ms / 1000
 
     def to_json(self) -> dict[str, object]:
         """Field values for RESULT provenance; opt-in fields appear only when set."""
@@ -1232,19 +1284,38 @@ def policy_device_set(policy: AdaptiveDecodePolicy) -> tuple[str, ...]:
 
 def device_set_order(
     policies: Sequence[AdaptiveDecodePolicy],
+    *,
+    widest_first: bool = False,
 ) -> tuple[tuple[str, ...], ...]:
     """Device sets of several helper phones in cold-start exploration order.
 
     The primary phone (first binding row) alone first, then the sets that add co-helpers (fewer
     first, helper order), then the sets without the primary; the latter serve as fallbacks when a
-    set containing the primary failed. One device set (or none) gives a single entry."""
+    set containing the primary failed. One device set (or none) gives a single entry.
+
+    ``widest_first`` (``AdaptiveDecodeConfig.cold_start_probe_widest_set_first``): among the sets
+    that contain the primary, the one whose policies cover the most layers comes first (ties keep
+    the order above); the sets without the primary stay last. A primary that owns a sliver (one
+    anchor layer next to a 23-layer co-helper) is otherwise probed first, inconclusively, until the
+    attempt budget is spent and the full layout is never measured (rig 2026-10-02)."""
     sets = {policy_device_set(row) for row in policies if not row.baseline}
     helpers = max(sets, key=len, default=())
     position = {device: index for index, device in enumerate(helpers)}
     primary = helpers[0] if helpers else None
-    return tuple(sorted(sets, key=lambda row: (
+    order = sorted(sets, key=lambda row: (
         primary not in row, len(row), tuple(position.get(device, len(position)) for device in row),
-    )))
+    ))
+    if not widest_first or primary is None:
+        return tuple(order)
+    coverage = {}
+    for row in policies:
+        if not row.baseline:
+            devices = policy_device_set(row)
+            coverage[devices] = max(coverage.get(devices, 0), len(row.layer_indices))
+    rank = {devices: index for index, devices in enumerate(order)}
+    with_primary = sorted((row for row in order if primary in row),
+                          key=lambda row: (-coverage.get(row, 0), rank[row]))
+    return tuple(with_primary + [row for row in order if primary not in row])
 
 
 def validate_policy_set(

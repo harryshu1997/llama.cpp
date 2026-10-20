@@ -1,0 +1,22 @@
+{
+  "at": "2026-10-08T16:00:54.579110+00:00",
+  "input": "/mnt/data_h16t/zs89458/claude-scratch/q32-tpu/models/i8drq-M1/src/ffn.tflite",
+  "input_sha256": "5f847f4ed81f10178eeff9ed23f7a2bd98474c7220aa6acd95587a7c1aff1b78",
+  "sdk_plugin_sha256": "d74bea45081aa90a39505a675c15f566d46dbcc35e55a98f755c02017464cd1f",
+  "target": "Tensor_G5",
+  "compiler_flags": {
+    "google_tensor_truncation_type": "half",
+    "google_tensor_sharding_intensity": "minimal",
+    "google_tensor_enable_dynamic_range_quantization": "true"
+  },
+  "compiler_script_sha256": "0318a1ede03d5bfc42fd6b75fba92689cd53487db3f000d5c9e14be623cbbc7c",
+  "status": "PASS",
+  "elapsed_s": 78.0238261721097,
+  "partition_report": "Google_Tensor_G5\n==========================\nPartition Stats:\nSubgraph 0 fully compiled:\t6 / 6 ops offloaded to 1 partitions.\n\n",
+  "outputs": {
+    "ffn_Google_Tensor_G5.tflite": {
+      "bytes": 411925152,
+      "sha256": "4c2a8a133dc30cc35538f347533953a91ab7e046d205b943888a88d420f7f4af"
+    }
+  }
+}

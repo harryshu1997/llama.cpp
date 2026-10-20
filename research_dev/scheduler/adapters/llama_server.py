@@ -29,6 +29,7 @@ from .contracts import (
     PhysicalAdapterError,
     dormant_phone_ffn_parameters,
 )
+from .phone_helpers import remote_resident_layer_mask
 from .phone_transport import phone_transport_contract
 from .ticket import (
     PhysicalExecutionCommand,
@@ -600,6 +601,16 @@ class ManagedLlamaServer(ManagedServerProofMixin):
             output_tokens=output_tokens,
             static_applied_token=static_applied_token,
         )
+        remote = command.execution_contract.remote_resident_ffn
+        driven_layer_mask = (
+            None
+            if remote is None or static_policy is None
+            else remote.layer_mask | (
+                static_policy.layer_mask
+                if static_applied_token is not None and static_applied_token < output_tokens
+                else 0
+            )
+        )
         session_proofs = self._execution_session_proofs(
             command,
             phone_source,
@@ -609,6 +620,7 @@ class ManagedLlamaServer(ManagedServerProofMixin):
             call_plan_by_request,
             manifest,
             expected_scope_ids,
+            driven_layer_mask=driven_layer_mask,
         )
         return self._execution_proof(
             marker=marker,
@@ -813,7 +825,8 @@ class LlamaServerProcessLauncher:
             "--flash-attn", "on",
             "--cont-batching",
             "--kv-unified",
-            "--no-cache-idle-slots",
+            # WS24: an opt-in contract keeps idle slots' KV (multi-turn prefix reuse)
+            *(() if contract.cache_idle_slots else ("--no-cache-idle-slots",)),
             "--cache-type-k", "f16",
             "--cache-type-v", "f16",
             "--split-mode", "none",
@@ -983,19 +996,18 @@ class LlamaServerProcessLauncher:
                 raise PhysicalAdapterError(
                     "llama-server split readiness differs from the ticket"
                 )
-            expected_remote_mask = contract.ffn_environment.get(
-                "S41_SERVER_FFN_REMOTE_RESIDENT_LAYER_MASK"
-            )
+            # single-client key or the owning helper's HELPER<k>_ key of a several-phone server
+            expected_remote_mask = remote_resident_layer_mask(contract.ffn_environment)
             proof_reader = getattr(process, "remote_resident_proof", None)
             proof = None if proof_reader is None else proof_reader()
-            if expected_remote_mask is None:
+            if expected_remote_mask == 0:
                 if proof is not None:
                     raise PhysicalAdapterError(
                         "llama-server omitted weights without a remote-resident ticket"
                     )
             elif (
                 proof is None
-                or str(proof.layer_mask) != expected_remote_mask
+                or proof.layer_mask != expected_remote_mask
                 or proof.warmup != "validated"
             ):
                 raise PhysicalAdapterError(

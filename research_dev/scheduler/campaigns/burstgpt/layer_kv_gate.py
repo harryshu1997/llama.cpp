@@ -151,6 +151,9 @@ def phone_owner(config, manifest, output, plan):
         "S41_SERVER_FFN_RUNTIME_CONTROL": "1", "S41_SERVER_FFN_TIMEOUT_MS": "120000",
         "S41_SERVER_FFN_REMOTE_RESIDENT_LAYER_MASK": str(mask),
         "S41_SERVER_FFN_SHARDS": ";".join(f"{name}@session://op15-phone/{name}:{value}" for name, value in masks.items())})
+    if config.get("ffn_fast_hash", False):
+        # flag_fast_hash payload hashes: the phone bundle (worker + resident router) must support it
+        env["S41_SERVER_FFN_FAST_HASH"] = "1"
     return owner, command, usb, env, mask
 
 

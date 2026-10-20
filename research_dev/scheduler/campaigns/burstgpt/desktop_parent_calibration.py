@@ -336,6 +336,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         ffn_environment={},
         cuda_graph_mode=parameters.get("cuda_graph_mode", "default"),
         desktop_launch_mode=parameters.get("desktop_launch_mode", "canonical"),
+        cache_idle_slots=bool(parameters.get("cache_idle_slots", False)),
         threads=int(parameters.get("threads", 0)),
         threads_batch=int(parameters.get("threads_batch", 0)),
         cpu_affinity=(

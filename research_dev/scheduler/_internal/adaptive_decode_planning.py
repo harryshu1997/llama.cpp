@@ -74,6 +74,14 @@ def _policy(
     manifest: ModelManifest,
     output_tokens: int,
 ) -> AdaptiveDecodePolicy:
+    if (
+        candidate.plan.execution_contract.remote_resident_ffn is not None
+        or parent.plan.execution_contract.remote_resident_ffn is not None
+    ):
+        # remote-resident layers have no host copy: no split policy may move or name them
+        raise AdaptiveDecodeError(
+            "adaptive policies never cover a remote-resident FFN group"
+        )
     parent_by_operator = {
         row.operator_id: row for row in parent.plan.operators
     }
@@ -164,6 +172,7 @@ def _envelope_subpolicies(
     quantum = parameters.get("ffn_column_quantum")
     if (
         coordinator is None
+        or envelope.plan.execution_contract.remote_resident_ffn is not None
         or coordinator.split_axis != "column"
         or parameters.get("ffn_assistance_phase") != "decode"
         or parameters.get("ffn_runtime_control_protocol")

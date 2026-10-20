@@ -10,6 +10,11 @@ energy per decoded token is minimal, under
 * a latency bound (the decode step may be at most ``latency_ppm`` of the desktop-only step);
 * per-device availability (absent, quarantined, thermally excluded) and an optional busy cap per token
   (a thermal envelope);
+* route anchoring: a helper that cannot carry a model's assisted route on its own (``route_anchor``
+  False, e.g. a static co-helper that only adds layers to the primary phone's route) may own layers of a
+  model only if some anchor device owns at least one layer of that model too;
+* an optional limit on how many models a device serves at once (``max_models``; e.g. a static co-helper
+  whose worker and evidence are per model artifact serves one model per campaign);
 * optionally, a column split of every helper layer (one fraction per model server: the server supports
   exactly "host prefix + one helper suffix" per layer with a single shared width).
 
@@ -323,6 +328,9 @@ class LayerPlacementProfile:
     device_priors: dict[str, DeviceCostPriors] = field(default_factory=dict)
     calls: dict[CallKey, CallStats] = field(default_factory=dict)
     energy_per_call: dict[tuple[str, str, int], Estimate] = field(default_factory=dict)  # (device, model, rows)
+    # WS15: measured fused attention-projection calls (server S41SERVERFFNFUSEDSHAPE rows), kept apart from
+    # ``calls`` so their larger payloads never bias the FFN transport overhead; shard_format = the FFN format
+    fused_calls: dict[CallKey, CallStats] = field(default_factory=dict)
     keep: float = 1.0
     revision: int = 0
 
@@ -341,6 +349,28 @@ class LayerPlacementProfile:
         else:
             self.calls[key] = old.merged(float(calls), float(rpc_ms), float(compute_ms), evidence, keep=self.keep)
         self.revision += 1
+
+    def observe_fused_call_summary(self, device_id: str, model_id: str, shard_format: str, transport: str,
+                                   rows: int, calls: int, rpc_ms: float, compute_ms: float,
+                                   evidence: str = "") -> None:
+        """Fold one measured fused call bucket (O + FFN + next Q/K/V of one layer) into the store."""
+        _require(calls > 0 and rows >= 1, "fused call summary needs calls > 0 and rows >= 1")
+        _number(rpc_ms, "rpc_ms")
+        _number(compute_ms, "compute_ms")
+        key = CallKey(device_id, model_id, shard_format, rows, transport)
+        old = self.fused_calls.get(key)
+        if old is None:
+            self.fused_calls[key] = CallStats(float(calls), float(rpc_ms), float(compute_ms),
+                                              evidence=(evidence,) if evidence else ())
+        else:
+            self.fused_calls[key] = old.merged(float(calls), float(rpc_ms), float(compute_ms), evidence,
+                                               keep=self.keep)
+        self.revision += 1
+
+    def fused_call(self, device_id: str, model_id: str, shard_format: str, transport: str,
+                   rows: int) -> CallStats | None:
+        """The measured fused call of exactly this device, model, format, transport and rows, if any."""
+        return self.fused_calls.get(CallKey(device_id, model_id, shard_format, rows, transport))
 
     def observe_call_energy(self, device_id: str, model_id: str, rows: int, joules_above_idle: float,
                             calls: int, evidence: str = "") -> None:
@@ -501,6 +531,13 @@ class LayerPlacementProfile:
                  "provenance": value.provenance, "evidence": list(value.evidence)}
                 for (device, model, rows), value in sorted(self.energy_per_call.items())
             ],
+            **({"fused_calls": [
+                {"device_id": key.device_id, "model_id": key.model_id, "format": key.shard_format,
+                 "rows": key.rows, "transport": key.transport, "calls": stats.calls, "rpc_ms": stats.rpc_ms,
+                 "compute_ms": stats.compute_ms, "provenance": stats.provenance, "evidence": list(stats.evidence)}
+                for key, stats in sorted(self.fused_calls.items(), key=lambda item: (
+                    item[0].device_id, item[0].model_id, item[0].shard_format, item[0].rows, item[0].transport))
+            ]} if self.fused_calls else {}),
         }
 
     @classmethod
@@ -532,6 +569,13 @@ class LayerPlacementProfile:
             profile.energy_per_call[(str(row["device_id"]), str(row["model_id"]), int(row["rows"]))] = Estimate(
                 _number(row["energy_j"], "energy_j"), str(row.get("provenance", "measured")),
                 tuple(str(item) for item in row.get("evidence", ())))
+        for row in value.get("fused_calls", ()):
+            key = CallKey(str(row["device_id"]), str(row["model_id"]), str(row["format"]), int(row["rows"]),
+                          str(row["transport"]))
+            profile.fused_calls[key] = CallStats(
+                _number(row["calls"], "calls", minimum=1e-9), _number(row["rpc_ms"], "rpc_ms"),
+                _number(row["compute_ms"], "compute_ms"), provenance=str(row.get("provenance", "measured")),
+                evidence=tuple(str(item) for item in row.get("evidence", ())))
         return profile
 
     def copy(self) -> "LayerPlacementProfile":
@@ -605,6 +649,12 @@ class HelperDevice:
     ``co-resident``: shards of every model stay resident together (capacity is shared, e.g. the Pixel).
     ``allowed_layers`` (model -> mask) restricts which layers may be placed there at all (e.g. only
     stored and qualified shards for an executable plan); absent = any CPU layer.
+    ``route_anchor``: the runtime can run a model's assisted route with this device as its route owner
+    (the primary phone with sessions). False = a co-helper: it only adds layers to a route that an anchor
+    device of the same model also serves, so the plan must give some anchor >= 1 layer of every model the
+    co-helper serves (a capability of the runtime, not of the device: a runtime with helper-only routes
+    marks co-helpers as anchors and the rule disappears).
+    ``max_models``: at most this many models may own layers on the device in one plan (None = no limit).
     """
 
     device_id: str
@@ -621,9 +671,24 @@ class HelperDevice:
     busy_envelope_ms: float | None = None   # busy per step the device has sustained in measured operation
     stored_layers: Mapping[str, int] = MappingProxyType({})
     qualified_layers: Mapping[str, int] = MappingProxyType({})
+    route_anchor: bool = True
+    max_models: int | None = None
+    # WS14: operator-group kernels with a qualified execution path on this device (``None`` = the FFN
+    # only, today's runtime); see layer_placement_opgroups.OP_KERNELS
+    kernels: frozenset[str] | None = None
+    # WS15: per non-FFN kernel, the layers its evidence qualified (kernel -> model -> mask). The executable
+    # plan never runs a non-FFN kernel on a layer outside it; ``None`` = no per-kernel qualification yet
+    kernel_qualified_layers: Mapping[str, Mapping[str, int]] | None = None
+    # set by restrict_to_executable: kernel -> model -> layers that kernel may run on (None = unrestricted)
+    kernel_allowed_layers: Mapping[str, Mapping[str, int]] | None = None
 
     def __post_init__(self) -> None:
         _require(bool(self.device_id) and self.device_id != DESKTOP_CPU, "helper device id is invalid")
+        _require(self.kernels is None or (isinstance(self.kernels, frozenset) and "ffn" in self.kernels),
+                 "device kernels must be a frozenset that includes ffn")
+        _require(type(self.route_anchor) is bool, "route_anchor must be a bool")
+        _require(self.max_models is None or (type(self.max_models) is int and self.max_models >= 1),
+                 "max_models must be an integer >= 1")
         _require(self.residency in RESIDENCIES, "unknown residency " + str(self.residency))
         _require(type(self.capacity_bytes) is int and self.capacity_bytes >= 0, "capacity must be bytes")
         _require(type(self.sessions) is int and self.sessions >= 1, "sessions must be >= 1")
@@ -633,6 +698,12 @@ class HelperDevice:
 
     def serves(self, model_id: str) -> bool:
         return self.available and model_id in self.formats
+
+    def kernel_may_run(self, kernel: str, model_id: str, layer: int) -> bool:
+        """WS15: whether a non-FFN kernel may run this layer (always, in an unrestricted/ideal problem)."""
+        if kernel == "ffn" or self.kernel_allowed_layers is None:
+            return True
+        return bool(self.kernel_allowed_layers.get(kernel, {}).get(model_id, 0) >> layer & 1)
 
     def may_hold(self, model_id: str, layer: int) -> bool:
         if not self.serves(model_id):
@@ -693,6 +764,16 @@ class PlacementProblem:
                 return device
         raise LayerPlacementError("unknown helper device " + device_id)
 
+    @property
+    def anchoring(self) -> bool:
+        """Some device is a co-helper (``route_anchor`` False): plans must keep every model anchored."""
+        return any(not device.route_anchor for device in self.devices)
+
+    def anchored(self, owners: Iterable[str]) -> bool:
+        """One model's helper owners can run: none, or at least one route anchor among them."""
+        helpers = {owner for owner in owners if owner != DESKTOP_CPU}
+        return not helpers or any(self.device(owner).route_anchor for owner in helpers)
+
 
 # --------------------------------------------------------------------------------------------------
 # per-layer option costs
@@ -716,6 +797,33 @@ class OptionCost:
     provenance: str
     priors: tuple[str, ...]
     expected_j: float = 0.0
+    # WS14 operator groups: ``variant`` names what else the option runs besides the layer's FFN (``""`` =
+    # FFN only); ``parts`` are further device usages as (device, bytes, busy ms per step, kind) with kind
+    # ``"w"`` (resident weights) or ``"kv"`` (KV cache: shares the device capacity, not its HTP sessions).
+    variant: str = ""
+    parts: tuple[tuple[str, int, float, str], ...] = ()
+    # WS20 parallel column split: (device, columns) of every device computing this layer's FFN at once
+    # (``()`` for every other option; only the owner and ``parts`` carry the resource usage)
+    shares: tuple[tuple[str, int], ...] = ()
+
+    @property
+    def identity(self) -> tuple:
+        """What makes two options of different layers "the same choice" (owner for FFN-only options)."""
+        return (self.owner, self.variant, tuple((device, kind) for device, _, _, kind in self.parts))
+
+
+KV_SUFFIX = "+kv"
+
+
+def _usages(option: "OptionCost") -> list[tuple[str, int, float, str]]:
+    """Every helper-device usage of an option: (device, bytes, busy ms per step, kind), primary owner first."""
+    rows = [] if option.owner == DESKTOP_CPU else [(option.owner, option.bytes, option.busy_ms, "w")]
+    rows.extend(option.parts)
+    return rows
+
+
+def _usage_scope(device: "HelperDevice", model_id: str, kind: str) -> tuple[str, str]:
+    return (device.device_id, _scope(device, model_id) + (KV_SUFFIX if kind == "kv" else ""))
 
 
 def _option_costs(problem: PlacementProblem, model: ModelLayers, layer: int, fraction: float) -> tuple[OptionCost, ...]:
@@ -792,7 +900,8 @@ class _Item:
 class _Constraints:
     """Resource dimensions every solver checks."""
 
-    capacity: Mapping[tuple[str, str], int]          # (device, scope) -> bytes; scope = model or "*"
+    capacity: Mapping[tuple[str, str], int]          # (device, scope) -> bytes; scope = model or "*";
+    #                                                  (device, MODELS_SCOPE) -> max models served
     session_slots: Mapping[tuple[str, str], tuple[int, int]]  # (device, scope) -> (sessions, limit)
     busy_cap: Mapping[str, float]                    # device -> ms per step (one model's step)
     latency_budget: Mapping[tuple[str, int], float]  # (model, rows) -> max FFN-chain ms
@@ -800,6 +909,11 @@ class _Constraints:
 
 def _scope(device: HelperDevice, model_id: str) -> str:
     return model_id if device.residency == "per-model" else "*"
+
+
+# pseudo capacity scope counting the models a ``max_models`` device serves: one unit per model, so the
+# same byte-sum rules (usage, merge, dominance) enforce it across models
+MODELS_SCOPE = "#models"
 
 
 def _constraints(problem: PlacementProblem, items: Sequence[_Item]) -> _Constraints:
@@ -812,6 +926,8 @@ def _constraints(problem: PlacementProblem, items: Sequence[_Item]) -> _Constrai
                 capacity[key] = device.capacity_bytes
                 if device.session_limit_bytes:
                     slots[key] = (device.sessions, device.session_limit_bytes)
+        if device.max_models is not None:
+            capacity[(device.device_id, MODELS_SCOPE)] = device.max_models
     busy = {device.device_id: device.max_busy_ms_per_token for device in problem.devices
             if device.max_busy_ms_per_token is not None}
     latency = {}
@@ -841,14 +957,35 @@ def _sessions_fit(sizes: Sequence[int], sessions: int, limit: int) -> bool:
 
 def _usage_ok(sizes_by_scope: Mapping[tuple[str, str], Sequence[int]], limits: _Constraints) -> bool:
     for scope, sizes in sizes_by_scope.items():
-        if sum(sizes) > limits.capacity.get(scope, 0):
+        if scope[1].endswith(KV_SUFFIX):
+            # KV memory shares its base scope's capacity (checked here when the base has no weights)
+            base = (scope[0], scope[1][:-len(KV_SUFFIX)])
+            if base not in sizes_by_scope and sum(sizes) > limits.capacity.get(base, 0):
+                return False
+            continue
+        kv = sizes_by_scope.get((scope[0], scope[1] + KV_SUFFIX), ())
+        if sum(sizes) + sum(kv) > limits.capacity.get(scope, 0):
             return False
         if scope in limits.session_slots and not _sessions_fit(sizes, *limits.session_slots[scope]):
             return False
     return True
 
 
-def _feasible(problem: PlacementProblem, items: Sequence[_Item], choice: Sequence[int], limits: _Constraints) -> bool:
+def _anchors_ok(problem: PlacementProblem, items: Sequence[_Item], choice: Sequence[int]) -> bool:
+    if not problem.anchoring:
+        return True
+    owners: dict[str, set[str]] = {}
+    for item, index in zip(items, choice):
+        option = item.options[index]
+        owners.setdefault(item.model_id, set()).add(option.owner)
+        owners[item.model_id].update(device for device, _, _, _ in option.parts)
+    return all(problem.anchored(value) for value in owners.values())
+
+
+def _feasible(problem: PlacementProblem, items: Sequence[_Item], choice: Sequence[int], limits: _Constraints,
+              *, anchors: bool = True) -> bool:
+    if anchors and not _anchors_ok(problem, items, choice):
+        return False
     used: dict[tuple[str, str], list[int]] = {}
     busy: dict[tuple[str, str], float] = {}
     chain: dict[tuple[str, int], float] = {}
@@ -856,11 +993,13 @@ def _feasible(problem: PlacementProblem, items: Sequence[_Item], choice: Sequenc
         option = item.options[index]
         for rows, ms in option.ms_by_rows.items():
             chain[(item.model_id, rows)] = chain.get((item.model_id, rows), 0.0) + ms
-        if option.owner == DESKTOP_CPU:
-            continue
-        device = problem.device(option.owner)
-        used.setdefault((option.owner, _scope(device, item.model_id)), []).append(option.bytes)
-        busy[(option.owner, item.model_id)] = busy.get((option.owner, item.model_id), 0.0) + option.busy_ms
+        for device_id, size, busy_ms, kind in _usages(option):
+            device = problem.device(device_id)
+            used.setdefault(_usage_scope(device, item.model_id, kind), []).append(size)
+            busy[(device_id, item.model_id)] = busy.get((device_id, item.model_id), 0.0) + busy_ms
+    for device_id, model_id in busy:
+        if (device_id, MODELS_SCOPE) in limits.capacity:
+            used.setdefault((device_id, MODELS_SCOPE), []).append(1)
     if not _usage_ok(used, limits):
         return False
     if any(value > limits.busy_cap[device] + 1e-9 for (device, _), value in busy.items() if device in limits.busy_cap):
@@ -875,7 +1014,8 @@ def _classes(items: Sequence[_Item]) -> list[list[int]]:
         signature = (item.model_id, tuple(
             (option.owner, round(option.energy_j, 12),
              tuple(sorted((k, round(v, 9)) for k, v in option.ms_by_rows.items())),
-             round(option.busy_ms, 9), option.bytes) for option in item.options))
+             round(option.busy_ms, 9), option.bytes, option.variant,
+             tuple((d, b, round(t, 9), k) for d, b, t, k in option.parts)) for option in item.options))
         groups.setdefault(signature, []).append(index)
     return list(groups.values())
 
@@ -896,12 +1036,11 @@ def _advance(problem, key, item: _Item, split) -> tuple:
             continue
         for rows, ms in option.ms_by_rows.items():
             chain[rows] = round(chain.get(rows, 0.0) + n * ms, 9)
-        if option.owner == DESKTOP_CPU:
-            continue
-        device = problem.device(option.owner)
-        scope = (option.owner, _scope(device, item.model_id))
-        sizes[scope] = tuple(sorted(sizes.get(scope, ()) + (option.bytes,) * n))
-        busy[option.owner] = round(busy.get(option.owner, 0.0) + n * option.busy_ms, 9)
+        for device_id, size, busy_ms, kind in _usages(option):
+            device = problem.device(device_id)
+            scope = _usage_scope(device, item.model_id, kind)
+            sizes[scope] = tuple(sorted(sizes.get(scope, ()) + (size,) * n))
+            busy[device_id] = round(busy.get(device_id, 0.0) + n * busy_ms, 9)
     return (tuple(sorted(sizes.items())), tuple(sorted(busy.items())), tuple(sorted(chain.items())))
 
 
@@ -911,9 +1050,13 @@ def _state_ok(key, limits: _Constraints) -> bool:
     return all(busy <= limits.busy_cap[device] + 1e-9 for device, busy in key[1] if device in limits.busy_cap)
 
 
-def _shared_usage(key) -> tuple:
-    """The part of a model's usage other models compete for: co-resident ("*") scopes."""
-    return tuple((scope, sizes) for scope, sizes in key[0] if scope[1] == "*")
+def _shared_usage(key, limits: _Constraints) -> tuple:
+    """The part of a model's usage other models compete for: co-resident ("*") scopes, plus one model unit
+    on every ``max_models`` device the model uses."""
+    shared = [(scope, sizes) for scope, sizes in key[0] if scope[1] in ("*", "*" + KV_SUFFIX)]
+    shared.extend(((device, MODELS_SCOPE), (1,)) for device in sorted({scope[0] for scope, sizes in key[0] if sizes})
+                  if (device, MODELS_SCOPE) in limits.capacity)
+    return tuple(sorted(shared))
 
 
 def _dominates(a: tuple, b: tuple, limits: _Constraints) -> bool:
@@ -950,6 +1093,7 @@ def _solve_exact(problem: PlacementProblem, items: Sequence[_Item], limits: _Con
     Within a model every constraint is a sum over its layers bounded above (capacity per scope, session
     packing on the size multiset, busy per device, chain per row count) and the objective is additive, so
     partial assignments with the same usage vector are interchangeable and only the cheapest is kept.
+    The usage vector names every owner, so route anchoring is an exact filter on a model's final states.
     Models interact only through co-resident ("*") capacity scopes: each model contributes a Pareto front
     of (shared usage -> min energy) and the fronts are combined with the same state rule. Returns None
     when any state set exceeds ``max_states``.
@@ -986,7 +1130,9 @@ def _solve_exact(problem: PlacementProblem, items: Sequence[_Item], limits: _Con
         for key, (energy, picks) in states.items():
             if any(chain > limits.latency_budget.get((model_id, rows), math.inf) + 1e-9 for rows, chain in key[2]):
                 continue
-            usage = _shared_usage(key)
+            if problem.anchoring and not problem.anchored(scope[0] for scope, sizes in key[0] if sizes):
+                continue
+            usage = _shared_usage(key, limits)
             old = front.get(usage)
             if old is None or energy < old[0] - 1e-12:
                 front[usage] = (energy, picks)
@@ -1033,8 +1179,54 @@ def _energy(items: Sequence[_Item], choice: Sequence[int]) -> float:
     return sum(item.options[index].energy_j for item, index in zip(items, choice))
 
 
+def _uses_co_helper(problem: PlacementProblem, option: OptionCost) -> bool:
+    return any(not problem.device(device).route_anchor for device, _, _, _ in _usages(option))
+
+
+def _repair_anchors(problem: PlacementProblem, items: Sequence[_Item], choice: list[int],
+                    limits: _Constraints) -> list[int]:
+    """Make every model anchored: per unanchored model, the cheapest feasible of (a) one more layer on an
+    anchor device (any layer, from any owner) or (b) its co-helper layers back on the desktop CPU; when
+    neither is feasible the model falls back to all-CPU (always within every limit)."""
+    if not problem.anchoring:
+        return choice
+    for model_id in sorted({item.model_id for item in items}):
+        members = [index for index, item in enumerate(items) if item.model_id == model_id]
+        if problem.anchored(items[index].options[choice[index]].owner for index in members):
+            continue
+        best = None
+        for index in members:
+            for option_index, option in enumerate(items[index].options):
+                if option.owner == DESKTOP_CPU or not problem.device(option.owner).route_anchor:
+                    continue
+                if _uses_co_helper(problem, option):
+                    continue
+                candidate = list(choice)
+                candidate[index] = option_index
+                # other models may still be unanchored here: check this model's anchor, everything else's limits
+                if _feasible(problem, items, candidate, limits, anchors=False):
+                    value = _energy(items, candidate)
+                    if best is None or value < best[0] - 1e-12:
+                        best = (value, candidate)
+        dropped = list(choice)
+        for index in members:
+            if _uses_co_helper(problem, items[index].options[choice[index]]):
+                dropped[index] = 0
+        if _feasible(problem, items, dropped, limits, anchors=False):
+            value = _energy(items, dropped)
+            if best is None or value < best[0] - 1e-12:
+                best = (value, dropped)
+        if best is None:
+            best = (0.0, [0 if index in members else value for index, value in enumerate(choice)])
+        choice = best[1]
+    return choice
+
+
 def _solve_greedy(problem: PlacementProblem, items: Sequence[_Item], limits: _Constraints) -> list[int]:
-    """Largest energy saving per stored byte first, then single moves and pairwise swaps until stable."""
+    """Largest energy saving per stored byte first, then single moves and pairwise swaps until stable.
+
+    The first pass ignores route anchoring (a co-helper may come before any anchor layer); the repair
+    then anchors every model and the improvement moves keep it (they only accept feasible states)."""
     choice = [0] * len(items)
     candidates = []
     for item_index, item in enumerate(items):
@@ -1048,8 +1240,9 @@ def _solve_greedy(problem: PlacementProblem, items: Sequence[_Item], limits: _Co
         if choice[item_index] != 0:
             continue
         choice[item_index] = option_index
-        if not _feasible(problem, items, choice, limits):
+        if not _feasible(problem, items, choice, limits, anchors=False):
             choice[item_index] = 0
+    choice = _repair_anchors(problem, items, choice, limits)
     for _ in range(50):
         improved = False
         for item_index, item in enumerate(items):
@@ -1064,11 +1257,11 @@ def _solve_greedy(problem: PlacementProblem, items: Sequence[_Item], limits: _Co
                         choice[item_index] = old
         for first, second in itertools.combinations(range(len(items)), 2):
             a, b = items[first], items[second]
-            owner_a, owner_b = a.options[choice[first]].owner, b.options[choice[second]].owner
+            owner_a, owner_b = a.options[choice[first]].identity, b.options[choice[second]].identity
             if owner_a == owner_b:
                 continue
-            index_a = next((i for i, o in enumerate(a.options) if o.owner == owner_b), None)
-            index_b = next((i for i, o in enumerate(b.options) if o.owner == owner_a), None)
+            index_a = next((i for i, o in enumerate(a.options) if o.identity == owner_b), None)
+            index_b = next((i for i, o in enumerate(b.options) if o.identity == owner_a), None)
             if index_a is None or index_b is None:
                 continue
             delta = (a.options[index_a].energy_j + b.options[index_b].energy_j
@@ -1098,10 +1291,14 @@ def _saving_upper_bound(problem: PlacementProblem, items: Sequence[_Item], limit
     for item in items:
         for option in item.options[1:]:
             saving = item.cpu.energy_j - option.energy_j
-            if saving <= 0:
+            usage = _usages(option)
+            if saving <= 0 or not usage:
                 continue
-            device = problem.device(option.owner)
-            per_scope.setdefault((option.owner, _scope(device, item.model_id)), []).append((saving, option.bytes))
+            # relaxation: only the first device's capacity binds, charged with every byte the option needs
+            # there (weights and KV share it); other devices' capacity is dropped (keeps an upper bound)
+            device = problem.device(usage[0][0])
+            size = sum(size for device_id, size, _, _ in usage if device_id == device.device_id)
+            per_scope.setdefault((device.device_id, _scope(device, item.model_id)), []).append((saving, size))
     knapsack = 0.0
     for scope, rows in per_scope.items():
         room = limits.capacity.get(scope, 0)
@@ -1145,14 +1342,14 @@ def _choose_layers(problem: PlacementProblem, items: Sequence[_Item], choice: Se
             if not need:
                 continue
             owner = item.options[option_index].owner
-            device = problem.device(owner)
+            device = None if owner == DESKTOP_CPU else problem.device(owner)
             kept = [items[m].layer for m in remaining if current.get(items[m].layer) == owner]
             anchor = (min(kept) + max(kept)) / 2 if kept else None
 
             def score(member: int) -> tuple:
                 layer = items[member].layer
-                stored = bool(device.stored_layers.get(item.model_id, 0) >> layer & 1)
-                qualified = bool(device.qualified_layers.get(item.model_id, 0) >> layer & 1)
+                stored = device is not None and bool(device.stored_layers.get(item.model_id, 0) >> layer & 1)
+                qualified = device is not None and bool(device.qualified_layers.get(item.model_id, 0) >> layer & 1)
                 distance = abs(layer - anchor) if anchor is not None else 0
                 return (current.get(layer) != owner, not stored, not qualified, distance, layer)
 
@@ -1203,22 +1400,27 @@ def _ordered_fill(problem: PlacementProblem, items: Sequence[_Item], choice: Seq
     for model_id in sorted({item.model_id for item in items}):
         members = sorted((index for index, item in enumerate(items) if item.model_id == model_id),
                          key=lambda index: items[index].layer)
-        quota: dict[tuple[str, int], int] = {}
+        quota: dict[tuple[tuple, int], int] = {}
         for index in members:
-            key = (items[index].options[choice[index]].owner, class_of[index])
+            key = (items[index].options[choice[index]].identity, class_of[index])
             quota[key] = quota.get(key, 0) + 1
         current = problem.current.get(model_id, {})
         owners = sorted({owner for owner, _ in quota}, key=lambda owner: (
-            min((layer for layer, value in current.items() if value == owner), default=_MAX_LAYERS),
-            owner == DESKTOP_CPU, owner))
+            min((layer for layer, value in current.items() if value == owner[0]), default=_MAX_LAYERS),
+            owner[0] == DESKTOP_CPU, owner))
         for index in members:
             item = items[index]
             for owner in owners:
                 key = (owner, class_of[index])
-                if quota.get(key, 0) > 0:
+                option_index = next((i for i, option in enumerate(item.options) if option.identity == owner), None)
+                if quota.get(key, 0) > 0 and option_index is not None:
                     quota[key] -= 1
-                    result[index] = next(i for i, option in enumerate(item.options) if option.owner == owner)
+                    result[index] = option_index
                     break
+            else:
+                # no owner that still needs a layer may hold this one (allowed layers differ per owner): keep the
+                # solver's assignment (WS12; this raised StopIteration before)
+                return list(choice)
     return result
 
 
@@ -1247,11 +1449,11 @@ def _prefer_current(problem: PlacementProblem, items: Sequence[_Item], choice: l
             a, b = items[first], items[second]
             if a.model_id != b.model_id:
                 continue
-            owner_a, owner_b = a.options[choice[first]].owner, b.options[choice[second]].owner
+            owner_a, owner_b = a.options[choice[first]].identity, b.options[choice[second]].identity
             if owner_a == owner_b:
                 continue
-            index_a = next((i for i, o in enumerate(a.options) if o.owner == owner_b), None)
-            index_b = next((i for i, o in enumerate(b.options) if o.owner == owner_a), None)
+            index_a = next((i for i, o in enumerate(a.options) if o.identity == owner_b), None)
+            index_b = next((i for i, o in enumerate(b.options) if o.identity == owner_a), None)
             if index_a is None or index_b is None:
                 continue
             delta = (a.options[index_a].energy_j + b.options[index_b].energy_j
@@ -1374,6 +1576,55 @@ def evaluate_owners(problem: PlacementProblem, owners: Mapping[str, Mapping[int,
     return result
 
 
+@dataclass(frozen=True)
+class OutagePrice:
+    """One model's plan if one helper's layers fall back to the desktop CPU (the helper is down)."""
+
+    model_id: str
+    device_id: str
+    layers: tuple[int, ...]
+    energy_j_per_token: float                  # plain expected energy with the helper's layers on the CPU
+    delta_j_per_token: float                   # minus the plan's energy (>= 0 when the helper was worth using)
+    chain_ms_by_rows: Mapping[int, float]      # the FFN chain with them on the CPU
+    saving_kept: float | None                  # share of the plan's saving vs CPU-only that survives (None: no saving)
+
+    def to_json(self) -> dict[str, object]:
+        return {
+            "model_id": self.model_id, "device_id": self.device_id, "layers": layer_spec(self.layers),
+            "energy_j_per_token": round(self.energy_j_per_token, 6),
+            "delta_j_per_token": round(self.delta_j_per_token, 6),
+            "ffn_chain_ms_by_rows": {str(k): round(v, 4) for k, v in sorted(self.chain_ms_by_rows.items())},
+            "saving_kept": None if self.saving_kept is None else round(self.saving_kept, 4),
+        }
+
+
+def price_single_outages(problem: PlacementProblem, plan: PlacementPlan) -> tuple[OutagePrice, ...]:
+    """Robustness of a plan to each single-helper outage (WS23).
+
+    For every helper that owns layers of a model, the plan's cost with exactly that helper's layers back on
+    the desktop CPU (the server masks one helper out; the others keep their layers). Pure pricing: the plan
+    is not re-optimized, because the runtime does not re-plan a live server's layers when a helper drops."""
+    rows = []
+    for model in problem.models:
+        placement = plan.models[model.model_id]
+        items = {item.layer: item for item in _items_for(_unrestricted(problem), model, placement.column_fraction)}
+        for device_id, mask in sorted(placement.helper_masks.items()):
+            owners = {layer: (DESKTOP_CPU if owner == device_id else owner) for layer, owner in placement.owners.items()}
+            energy = evaluate_owners(problem, {model.model_id: owners},
+                                     {model.model_id: placement.column_fraction})[model.model_id]
+            chain: dict[int, float] = {}
+            for layer, owner in owners.items():
+                option = next(option for option in items[layer].options if option.owner == owner)
+                for rows_, ms in option.ms_by_rows.items():
+                    chain[rows_] = chain.get(rows_, 0.0) + ms
+            saving = placement.cpu_only_energy_j_per_token - placement.energy_j_per_token
+            kept = (None if saving <= 1e-12
+                    else (placement.cpu_only_energy_j_per_token - energy) / saving)
+            rows.append(OutagePrice(model.model_id, device_id, mask_layers(mask), energy,
+                                    energy - placement.energy_j_per_token, chain, kept))
+    return tuple(rows)
+
+
 def _unrestricted(problem: PlacementProblem) -> PlacementProblem:
     """Same problem without allowed-layer restrictions or availability (to price any given placement)."""
     return replace(problem, devices=tuple(replace(device, allowed_layers=None, available=True)
@@ -1469,16 +1720,14 @@ def _solve_fixed_fractions(problem: PlacementProblem, fractions: Mapping[str, fl
                 chain[rows] = chain.get(rows, 0.0) + ms
             for rows, ms in item.cpu.ms_by_rows.items():
                 cpu_chain[rows] = cpu_chain.get(rows, 0.0) + ms
-            if option.owner != DESKTOP_CPU:
-                priors.update(option.priors)
-                device = problem.device(option.owner)
-                scope = _scope(device, model.model_id)
-                usage.setdefault(option.owner, {})
-                usage[option.owner][scope] = usage[option.owner].get(scope, 0) + option.bytes
-                busy.setdefault(option.owner, {})
-                busy[option.owner][model.model_id] = busy[option.owner].get(model.model_id, 0.0) + option.busy_ms
-            elif option.priors:
-                priors.update(option.priors)
+            priors.update(option.priors)
+            for device_id, size, busy_ms, kind in _usages(option):
+                device = problem.device(device_id)
+                scope = _usage_scope(device, model.model_id, kind)[1]
+                usage.setdefault(device_id, {})
+                usage[device_id][scope] = usage[device_id].get(scope, 0) + size
+                busy.setdefault(device_id, {})
+                busy[device_id][model.model_id] = busy[device_id].get(model.model_id, 0.0) + busy_ms
         models[model.model_id] = ModelPlacement(
             model.model_id, MappingProxyType(owners), fractions[model.model_id], energy / tokens, cpu_energy / tokens,
             current_prices.get(model.model_id), MappingProxyType(chain), MappingProxyType(cpu_chain), tokens,
@@ -1505,11 +1754,19 @@ def with_envelope_caps(problem: PlacementProblem, growth_ppm: int) -> PlacementP
 
 
 def restrict_to_executable(problem: PlacementProblem) -> PlacementProblem:
-    """Each device may only own layers whose shards it stores AND whose evidence qualified them."""
+    """Each device may only own layers whose shards it stores AND whose evidence qualified them; a non-FFN
+    kernel (WS15) additionally only on layers its own evidence qualified (``kernel_qualified_layers``)."""
+    def kernel_allowed(device: HelperDevice) -> Mapping[str, Mapping[str, int]]:
+        qualified = device.kernel_qualified_layers or {}
+        return MappingProxyType({
+            kernel: MappingProxyType({
+                model: device.stored_layers.get(model, 0) & qualified.get(kernel, {}).get(model, 0)
+                for model in device.formats})
+            for kernel in sorted((device.kernels or frozenset({"ffn"})) - {"ffn"})})
     return replace(problem, devices=tuple(
         replace(device, allowed_layers=MappingProxyType({
             model: device.stored_layers.get(model, 0) & device.qualified_layers.get(model, 0)
-            for model in device.formats}))
+            for model in device.formats}), kernel_allowed_layers=kernel_allowed(device))
         for device in problem.devices))
 
 
@@ -1548,11 +1805,19 @@ def provisioning_needs(problem: PlacementProblem, plan: PlacementPlan) -> tuple[
     return tuple(needs)
 
 
-def placement_report(problem: PlacementProblem, *, method: str = "auto") -> dict[str, object]:
-    """Ideal plan, executable plan (stored + qualified shards only) and what separates them."""
+def placement_report(problem: PlacementProblem, *, method: str = "auto",
+                     outages: bool = False) -> dict[str, object]:
+    """Ideal plan, executable plan (stored + qualified shards only) and what separates them.
+
+    ``outages`` (WS23, off = the report is byte-identical): adds ``single_outage_prices``, the cost of each
+    plan with one helper's layers back on the desktop CPU."""
     ideal = solve_placement(problem, method=method)
     executable = solve_placement(restrict_to_executable(problem), method=method)
     return {
+        **({} if not outages else {"single_outage_prices": {
+            "ideal": [row.to_json() for row in price_single_outages(problem, ideal)],
+            "executable": [row.to_json() for row in price_single_outages(restrict_to_executable(problem), executable)],
+        }}),
         "schema": LAYER_PLACEMENT_SCHEMA + "-report",
         "ideal": ideal.to_json(),
         "executable": executable.to_json(),

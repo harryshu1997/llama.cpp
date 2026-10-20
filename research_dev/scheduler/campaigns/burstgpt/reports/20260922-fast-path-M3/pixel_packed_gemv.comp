@@ -1,0 +1,152 @@
+#version 450
+
+#extension GL_EXT_shader_explicit_arithmetic_types_int32 : require
+#if PIXEL_Q_SHUFFLE
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_shuffle : require
+#endif
+
+#include "mul_mat_vec_base.glsl"
+
+layout(local_size_x_id = 0, local_size_y = 1, local_size_z = 1) in;
+shared float pixel_partials[BLOCK_SIZE];
+
+vec4 pixel_bytes(uint value) {
+    return vec4(uvec4(value) >> uvec4(0, 8, 16, 24) & uvec4(255));
+}
+
+vec4 pixel_decode4(uint block, uint k) {
+#if defined(DATA_A_Q4_K)
+    const uint group = k / 32;
+    const uint word = data_a_packed32[block].qs[((group / 2) * 32 + k % 32) / 4];
+    const vec4 q = pixel_bytes((word >> ((group % 2) * 4)) & 0x0f0f0f0f);
+    uint scale, minimum;
+    if (group < 4) {
+        scale = uint(data_a[block].scales[group]) & 63;
+        minimum = uint(data_a[block].scales[group + 4]) & 63;
+    } else {
+        const uint extra = uint(data_a[block].scales[group + 4]);
+        scale = (extra & 15) | ((uint(data_a[block].scales[group - 4]) >> 6) << 4);
+        minimum = (extra >> 4) | ((uint(data_a[block].scales[group]) >> 6) << 4);
+    }
+    const vec2 dm = vec2(data_a[block].dm);
+    return q * (dm.x * float(scale)) - vec4(dm.y * float(minimum));
+#elif defined(DATA_A_Q6_K)
+    const uint half_index = k / 128;
+    const uint quarter = (k % 128) / 32;
+    const uint lo = (half_index * 64 + (quarter % 2) * 32 + k % 32) / 2;
+    const uint hi = (half_index * 32 + k % 32) / 2;
+    const uint lower = uint(data_a_packed16[block].ql[lo]) | (uint(data_a_packed16[block].ql[lo + 1]) << 16);
+    const uint upper = uint(data_a_packed16[block].qh[hi]) | (uint(data_a_packed16[block].qh[hi + 1]) << 16);
+    const uint q = ((lower >> ((quarter / 2) * 4)) & 0x0f0f0f0f) |
+                   (((upper >> (quarter * 2)) & 0x03030303) << 4);
+    const float scale = float(data_a[block].d) * float(data_a[block].scales[k / 16]);
+    return (pixel_bytes(q) - vec4(32)) * scale;
+#endif
+}
+
+float pixel_dot16(uint block, uint lane, uint input_base) {
+#if defined(DATA_A_Q4_K)
+    const uint half_index = lane / 8;
+    const uint offset = 4 * (lane % 8);
+    const uint scale0 = uint(data_a_packed16[block].scales[half_index]);
+    const uint scale4 = uint(data_a_packed16[block].scales[half_index + 2]);
+    const uint scale8 = uint(data_a_packed16[block].scales[half_index + 4]);
+    const uint packed_scale = (scale4 << 16) | scale0;
+    const vec4 lower_scale = pixel_bytes(packed_scale & 0x3f3f3f3f);
+    const vec4 upper_scale = pixel_bytes((((scale8 << 12) | scale8) & 0x0f0f0f0f) |
+                                           ((packed_scale & 0xc0c0c0c0) >> 2));
+    const vec4 scales = vec4(lower_scale.xy, upper_scale.xy);
+    const vec4 minima = vec4(lower_scale.zw, upper_scale.zw);
+    const uint q0 = data_a_packed32[block].qs[(32 * half_index + offset) / 4];
+    const uint q1 = data_a_packed32[block].qs[(32 * half_index + offset) / 4 + 16];
+    const uint input_index = (input_base + 64 * half_index + offset) / 4;
+    const vec4 x0 = data_b_v4[input_index];
+    const vec4 x1 = data_b_v4[input_index + 8];
+    const vec4 x2 = data_b_v4[input_index + 32];
+    const vec4 x3 = data_b_v4[input_index + 40];
+    const vec4 dots = vec4(dot(pixel_bytes(q0 & 0x0f0f0f0f), x0),
+                           dot(pixel_bytes((q0 >> 4) & 0x0f0f0f0f), x1),
+                           dot(pixel_bytes(q1 & 0x0f0f0f0f), x2),
+                           dot(pixel_bytes((q1 >> 4) & 0x0f0f0f0f), x3));
+    const vec4 sums = vec4(dot(x0, vec4(1)), dot(x1, vec4(1)), dot(x2, vec4(1)), dot(x3, vec4(1)));
+    const vec2 dm = vec2(data_a[block].dm);
+    return dm.x * dot(scales, dots) - dm.y * dot(minima, sums);
+#elif defined(DATA_A_Q6_K)
+    const uint half_index = lane / 8;
+    const uint offset = 4 * (lane % 8);
+    const uint lo = (64 * half_index + offset) / 2;
+    const uint hi = (32 * half_index + offset) / 2;
+    const uint ql0 = uint(data_a_packed16[block].ql[lo]) | (uint(data_a_packed16[block].ql[lo + 1]) << 16);
+    const uint ql1 = uint(data_a_packed16[block].ql[lo + 16]) | (uint(data_a_packed16[block].ql[lo + 17]) << 16);
+    const uint qh = uint(data_a_packed16[block].qh[hi]) | (uint(data_a_packed16[block].qh[hi + 1]) << 16);
+    const vec4 q0 = pixel_bytes((ql0 & 0x0f0f0f0f) | ((qh & 0x03030303) << 4)) - vec4(32);
+    const vec4 q1 = pixel_bytes((ql1 & 0x0f0f0f0f) | ((qh & 0x0c0c0c0c) << 2)) - vec4(32);
+    const vec4 q2 = pixel_bytes(((ql0 >> 4) & 0x0f0f0f0f) | (qh & 0x30303030)) - vec4(32);
+    const vec4 q3 = pixel_bytes(((ql1 >> 4) & 0x0f0f0f0f) | ((qh & 0xc0c0c0c0) >> 2)) - vec4(32);
+    const uint input_index = (input_base + 128 * half_index + offset) / 4;
+    const vec4 dots = vec4(dot(q0, data_b_v4[input_index]), dot(q1, data_b_v4[input_index + 8]),
+                           dot(q2, data_b_v4[input_index + 16]), dot(q3, data_b_v4[input_index + 24]));
+    const uint si = 8 * half_index + offset / 16;
+    const vec4 scales = vec4(data_a[block].scales[si], data_a[block].scales[si + 2],
+                             data_a[block].scales[si + 4], data_a[block].scales[si + 6]);
+    return float(data_a[block].d) * dot(scales, dots);
+#endif
+}
+
+void main() {
+    uint a_offset, b_offset, d_offset;
+    get_offsets(a_offset, b_offset, d_offset);
+    const uint lanes = BLOCK_SIZE / NUM_ROWS;
+    const uint tid = gl_LocalInvocationID.x;
+    const uint local_row = tid / lanes;
+    const uint lane = tid % lanes;
+    const uint first_row = NUM_ROWS * (gl_WorkGroupID.x + gl_NumWorkGroups.x * gl_WorkGroupID.z);
+    const uint row = first_row + local_row;
+    const uint blocks = p.ncols / 256;
+
+    for (uint batch = 0; batch < NUM_COLS; ++batch) {
+        float sum = 0;
+        if (row < p.stride_d) {
+#if PIXEL_Q_SUPER
+            for (uint unit = lane; unit < blocks * 16; unit += lanes) {
+                const uint block = a_offset + row * blocks + unit / 16;
+                sum += pixel_dot16(block, unit % 16, batch * p.batch_stride_b + b_offset + (unit / 16) * 256);
+            }
+#else
+            for (uint unit = lane; unit < p.ncols / (PIXEL_Q_PAIR != 0 ? 8 : 4); unit += lanes) {
+                const uint col = PIXEL_Q_PAIR != 0 ? (unit / 8) * 64 + (unit % 8) * 4 : unit * 4;
+                const uint block = a_offset + row * blocks + col / 256;
+                const uint input_index = (batch * p.batch_stride_b + b_offset + col) / 4;
+                sum += dot(pixel_decode4(block, col % 256), data_b_v4[input_index]);
+#if PIXEL_Q_PAIR
+                sum += dot(pixel_decode4(block, col % 256 + 32), data_b_v4[input_index + 8]);
+#endif
+            }
+#endif
+        }
+#if PIXEL_Q_SHUFFLE
+        for (uint offset = lanes / 2; offset > 0; offset >>= 1) {
+            sum += subgroupShuffle(sum, gl_SubgroupInvocationID ^ offset);
+        }
+#else
+        pixel_partials[tid] = sum;
+        barrier();
+#endif
+        if (lane == 0 && row < p.stride_d) {
+#if PIXEL_Q_SHUFFLE
+            float total = sum;
+#else
+            float total = 0;
+            for (uint index = 0; index < lanes; ++index) total += pixel_partials[local_row * lanes + index];
+#endif
+            const uint output_index = batch * p.batch_stride_d + d_offset + row;
+            if ((p.fusion_flags & MAT_VEC_FUSION_FLAGS_BIAS0) != 0) total += data_fuse0[output_index];
+            if ((p.fusion_flags & MAT_VEC_FUSION_FLAGS_BIAS1) != 0) total += data_fuse1[output_index];
+            data_d[output_index] = total;
+        }
+#if !PIXEL_Q_SHUFFLE
+        barrier();
+#endif
+    }
+}

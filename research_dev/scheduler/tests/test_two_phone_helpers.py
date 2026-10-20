@@ -383,7 +383,7 @@ class OwnershipAndEnvironmentTests(unittest.TestCase):
                 helper_transport_contracts(helpers, FUNCTIONFS_PARAMETERS)
         contracts = helper_transport_contracts((OP15, PIXEL), FUNCTIONFS_PARAMETERS)
         for extra in ({"S41_SERVER_FFN_ROW_DIAGNOSTIC_STEPS": "5"}, {"S41_SERVER_FFN_HOST": "x"},
-                      {"S41_SERVER_FFN_REMOTE_RESIDENT_LAYER_MASK": "1"},
+                      {"S41_SERVER_FFN_REMOTE_RESIDENT_LAYER_MASK": str(1 | 1 << 18)},  # spans both phones
                       {"S41_SERVER_FFN_LAYER_MASK": str(OP15_MASK)}):
             with self.subTest(extra=extra), self.assertRaises(PhysicalAdapterError):
                 helper_server_environment((OP15, PIXEL), {**self.SHARED, **extra}, contracts)
@@ -896,3 +896,50 @@ class PreflightRowsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OptionalPhoneArtifactTests(CampaignConfigurationTests):
+    """2026-10-06 (WS17 all-GPU Q4 baseline): a model without a phone copy declares
+    ``phone_artifact_path: null``; the launcher omits its phone-model flag so the
+    runner's phone preflight skips it. Phone shards and the overlay still need it."""
+
+    def _rewrite_models(self, campaign: Path, mutate) -> None:
+        path = self.root / "models.json"
+        value = json.loads(path.read_text(encoding="ascii"))
+        mutate(value["models"])
+        path.write_text(json.dumps(value), encoding="ascii")
+
+    def test_null_phone_artifact_parses_and_drops_the_launcher_flag(self) -> None:
+        campaign = self._write(legacy_rig_json(), None)
+
+        def mutate(models):
+            models[0]["phone_artifact_path"] = None
+        self._rewrite_models(campaign, mutate)
+        configuration = load_scheduler_configuration(campaign, environ={})
+        hot, cold = configuration.models.models[0], configuration.models.models[1]
+        self.assertIsNone(hot.phone_artifact_path)
+        self.assertEqual(cold.phone_artifact_path, "/data/local/tmp/qwen.gguf")
+        self.assertIsNone(hot.to_json()["phone_artifact_path"])
+        # the legacy fixture rig lists only the preflight binaries; the runner command needs them all
+        with patch.object(launch, "_binary", lambda _configuration, name: Path("/bin/" + name)), \
+                patch.object(launch, "_library", lambda _configuration, name: Path("/lib/" + name)):
+            command = launch.runner_command(configuration, catalog_path=self.root / "c.json",
+                                            source_manifest_path=self.root / "s.json",
+                                            output_path=self.root / "out", execute=False)
+        self.assertNotIn("--qwen-phone-model", command)
+        self.assertEqual(command[command.index("--gemma-phone-model") + 1], "/data/local/tmp/qwen.gguf")
+
+    def test_null_phone_artifact_is_rejected_with_shards_or_for_the_overlay(self) -> None:
+        def with_shards(models):
+            models[0]["phone_artifact_path"] = None
+            models[0]["phone_ffn_shard_index_path"] = "FFN_SHARDS.json"
+            models[0]["phone_ffn_shard_directory"] = "/data/local/tmp/shards"
+
+        def overlay(models):
+            models[2]["phone_artifact_path"] = None
+        for name, mutate in (("shards", with_shards), ("overlay", overlay)):
+            with self.subTest(name):
+                campaign = self._write(legacy_rig_json(), None)
+                self._rewrite_models(campaign, mutate)
+                with self.assertRaisesRegex(SchedulerConfigurationError, "phone model artifact is required"):
+                    load_scheduler_configuration(campaign, environ={})

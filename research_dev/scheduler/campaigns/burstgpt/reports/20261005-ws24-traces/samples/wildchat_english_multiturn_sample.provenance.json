@@ -1,0 +1,39 @@
+{
+ "api": "https://datasets-server.huggingface.co/rows (config default, split train)",
+ "dataset": "allenai/WildChat-1M",
+ "fetched_at_utc": "2026-10-05T00:1x UTC (parent session, rows API offsets 0..900)",
+ "fields_kept": {
+  "message": [
+   "role",
+   "content",
+   "timestamp"
+  ],
+  "row": [
+   "conversation_hash",
+   "model",
+   "timestamp",
+   "turn",
+   "language",
+   "toxic",
+   "redacted"
+  ]
+ },
+ "filter": {
+  "language": "English",
+  "min_turns": 4,
+  "model": null,
+  "redacted": false,
+  "toxic": false
+ },
+ "note": "fetched by the parent session before tools/fetch_wildchat_sample.py existed; the tool's --from-fetched path reproduces the filter; moderation scores, hashed_ip, header, country/state were dropped from the stored copy (the builder does not read them)",
+ "offsets": {
+  "end": 1000,
+  "page": 100,
+  "start": 0
+ },
+ "rows_kept": 117,
+ "rows_seen": 1000,
+ "sample_path": "research_dev/scheduler/campaigns/burstgpt/reports/20261005-ws24-traces/samples/wildchat_english_multiturn_sample.json",
+ "sample_sha256": "02a5041f66798a183fac8e3872aca3f254099084c844a5916b1f31157993dc23",
+ "schema": "ws24-wildchat-sample-provenance-v1"
+}

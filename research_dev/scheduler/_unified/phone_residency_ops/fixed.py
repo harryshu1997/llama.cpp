@@ -9,6 +9,11 @@ from typing import Mapping
 from ...config import FixedPhoneResidencyConfiguration
 from ..._internal.policy import Request
 from ..._internal.lifecycle import UnifiedScheduleError
+from ..._internal.route_generation.common import RouteGenerationError
+from ..._internal.route_generation.remote_resident import (
+    REMOTE_RESIDENT_FFN_PARAMETER,
+    parse_remote_resident_declaration,
+)
 from ..automated_requests_ops.event_replanning import (
     event_replanning_enabled,
     note_device_admissible,
@@ -29,6 +34,60 @@ def configure_fixed_phone_residency(
     ):
         raise UnifiedScheduleError("fixed residency configuration is already frozen")
     controller._fixed_phone_residency = configuration
+
+
+def configure_remote_resident_owner(controller, model_id: str) -> None:
+    """Pin the remote-resident owner arm of ``model_id`` (campaign ``remote_resident_owner``).
+
+    Its requests are admitted only as calibration samples of the catalog's remote-resident
+    parent: the full-weight desktop control is never selected, committed or used for recovery.
+    The fixed residency assignment loads the owners and must be exactly the declared sessions.
+    """
+    if (
+        controller._runtime_capabilities is None
+        or controller._runtime_controller.current_tickets()
+        or controller._remote_resident_owner is not None
+    ):
+        raise UnifiedScheduleError("remote-resident owner pin must precede every request")
+    manifest = controller.runtime_model_manifest(model_id)
+    parents = [
+        row for row in controller._runtime_capabilities.composite_executors
+        if row.artifact_sha256 == manifest.artifact_sha256
+        and REMOTE_RESIDENT_FFN_PARAMETER in row.adapter_parameters
+    ]
+    if len(parents) != 1:
+        raise UnifiedScheduleError(
+            "remote-resident owner arm needs exactly one remote-resident parent of " + model_id
+        )
+    try:
+        group = parse_remote_resident_declaration(
+            parents[0].adapter_parameters[REMOTE_RESIDENT_FFN_PARAMETER]
+        )
+    except RouteGenerationError as exc:
+        raise UnifiedScheduleError(str(exc)) from exc
+    fixed = controller._fixed_phone_residency
+    expected = tuple(sorted(
+        (row.session_id, manifest.artifact_sha256, row.layer_mask, manifest.feed_forward_length)
+        for row in group.sessions
+    ))
+    if fixed is None or fixed.assignments != expected:
+        raise UnifiedScheduleError(
+            "remote-resident owner sessions differ from the fixed residency assignment"
+        )
+    controller._remote_resident_owner = MappingProxyType({
+        "executor_id": parents[0].executor_id,
+        "group": group,
+        "model_id": model_id,
+    })
+
+
+def remote_resident_owner_configuration(controller) -> Mapping[str, object] | None:
+    owner = controller._remote_resident_owner
+    return None if owner is None else {
+        "executor_id": owner["executor_id"],
+        "model_id": owner["model_id"],
+        "remote_resident_ffn": owner["group"].to_json(),
+    }
 
 
 def fixed_phone_residency_configuration(controller) -> Mapping[str, object] | None:

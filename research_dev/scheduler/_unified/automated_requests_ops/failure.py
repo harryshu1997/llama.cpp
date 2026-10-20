@@ -21,6 +21,7 @@ from ..._internal.runtime_execution import (
     ELASTIC_FAILURE_PHASES,
     RuntimeExecutionFailure,
 )
+from ..common import remote_resident_owner_pinned
 
 
 def _fail_runtime_ticket(
@@ -219,6 +220,11 @@ def _prepare_automated_failure_fallback(
     exited_executor_id: str | None = None,
     masked_executor_id: str | None = None,
 ) -> tuple:
+    if remote_resident_owner_pinned(controller, manifest.model_id):
+        # owner loss in flight is not qualified and the full-weight parent is forbidden
+        raise UnifiedScheduleError(
+            "remote-resident owner arm has no recovery route for " + manifest.model_id
+        )
     snapshot = controller._automated_snapshot_for_request(
         current.request, snapshot, project_before_us=failed_at_us
     )

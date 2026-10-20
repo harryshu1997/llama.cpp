@@ -120,7 +120,7 @@ class RemoteResidentGroupTests(unittest.TestCase):
             )
         with self.assertRaisesRegex(RuntimePlanError, "dtype"):
             RuntimeRemoteResidentFfn(
-                parent_artifact_sha256=ARTIFACT, layer_mask=MASK_0_7, dtype="q4_0",
+                parent_artifact_sha256=ARTIFACT, layer_mask=MASK_0_7, dtype="q4_k",
                 omitted_bytes=1, tensor_ids=remote_resident_tensor_ids(MASK_0_7),
                 shard_index_sha256=_sha("index"), sessions=(session("HTP0", MASK_0_7),),
             )

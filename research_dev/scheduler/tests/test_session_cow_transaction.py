@@ -2009,6 +2009,8 @@ class TransactionalPreparationTests(unittest.TestCase):
         adapter._started_helper_preparations = set()
         adapter._helper_preparations = []
         adapter._fault_injector = injector
+        # 2026-10-06: no pause after the injected physical failure (production: 5 s)
+        adapter._helper_physical_failure_backoff_s = 0.0
         adapter._snapshot = lambda _ticket, at_us: SimpleNamespace(
             captured_at_us=at_us
         )

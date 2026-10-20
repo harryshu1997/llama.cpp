@@ -41,12 +41,20 @@ _RECOVERABLE_ERRORS = (ValueError,)
 
 
 _DORMANT_PHONE_FFN_RUNTIME_KEYS = frozenset({
+    "static_helper_anchor",
+    "adb_port",
+    "adb_serial",
+    "ffn_link_transport",
+    "ffn_worker_host",
+    "ffn_worker_port",
+    "phone_worker_port",
     "bridge_allocator",
     "bridge_queue_depth",
     "ffn_activation",
     "ffn_assistance_phase",
     "ffn_bridge_host",
     "ffn_bridge_port",
+    "ffn_fast_hash",
     "ffn_host_share_release",
     "ffn_host_share_drop_cache",
     "ffn_host_share_populate",
@@ -127,6 +135,12 @@ class _LateRequestHelperContext:
     ticket_policy: AdaptiveDecodePolicy | None
     component: RuntimeResidencyComponentIdentity
     evidence_state: str
+
+
+def remote_resident_owner_pinned(controller: object, model_id: str) -> bool:
+    """Campaign ``remote_resident_owner``: whether ``model_id`` runs only on its remote-resident parent."""
+    owner = getattr(controller, "_remote_resident_owner", None)
+    return owner is not None and owner["model_id"] == model_id
 
 
 def _event_replanning_active(controller: object) -> bool:

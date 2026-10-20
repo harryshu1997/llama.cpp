@@ -1,0 +1,13 @@
+   q32_tpu_probe:693  
+                  Name              Rss              Pss         nr_procs            Inode               Exporter
+                system        768288 kB        768288 kB                1            32564                  system
+                system         19200 kB         19200 kB                1            32565                  system
+                system            24 kB            24 kB                1            32566                  system
+              metadata             4 kB             4 kB                1            32570                  system
+AHardwareBuffer pid [693]          2560 kB          2560 kB                1            32571         system-uncached
+              metadata             4 kB             4 kB                1            32572                  system
+AHardwareBuffer pid [693]          2560 kB          2560 kB                1            32573         system-uncached
+         PROCESS TOTAL        792640 kB        792640 kB                 
+----------------------
+dmabuf total: 1098084 kB kernel_rss: 305444 kB userspace_rss: 792640 kB userspace_pss: 792640 kB
+ 

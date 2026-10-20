@@ -1,0 +1,22 @@
+{
+  "at": "2026-10-08T15:14:09.710461+00:00",
+  "input": "/mnt/data_h16t/zs89458/claude-scratch/q32-tpu/smoke/i4bw-c512-m32/ffn.tflite",
+  "input_sha256": "9b62f978b14757e44fa2d8f1e98ac0311cdecc55d109d535d2378bb24c1fd29a",
+  "sdk_plugin_sha256": "d74bea45081aa90a39505a675c15f566d46dbcc35e55a98f755c02017464cd1f",
+  "target": "Tensor_G5",
+  "compiler_flags": {
+    "google_tensor_truncation_type": "half",
+    "google_tensor_sharding_intensity": "minimal",
+    "google_tensor_enable_4bit_compilation": "true"
+  },
+  "compiler_script_sha256": "0318a1ede03d5bfc42fd6b75fba92689cd53487db3f000d5c9e14be623cbbc7c",
+  "status": "PASS",
+  "elapsed_s": 2.1065889610908926,
+  "partition_report": "Google_Tensor_G5\n==========================\nPartition Stats:\nSubgraph 0 fully compiled:\t6 / 6 ops offloaded to 1 partitions.\n\n",
+  "outputs": {
+    "ffn_Google_Tensor_G5.tflite": {
+      "bytes": 4684240,
+      "sha256": "077275bd277e1d14366fe5cfc3d8f8f82ee186c98e390d061ff1708ceb7d1ef0"
+    }
+  }
+}

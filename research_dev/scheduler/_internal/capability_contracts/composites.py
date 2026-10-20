@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Mapping
 
+from ..plan_contracts.co_helpers import co_helper_declaration
+from ..plan_contracts.common import RuntimePlanError
 from ..runtime_system_cost import ROUTE_MATURITY_STATES
 from .common import (
     COMPOSITE_ROUTE_FAMILIES,
@@ -119,6 +121,14 @@ def _validate_composite_route_contract(
             if type(phone) is not str or not phone:
                 raise RuntimeCapabilityError("remote-resident coordinator lacks its phone device")
             used_devices.add(phone)
+            try:
+                co_helpers = co_helper_declaration(parameters)
+            except RuntimePlanError as error:
+                raise RuntimeCapabilityError(
+                    "composite co-helper declaration is invalid"
+                ) from error
+            if co_helpers is not None:
+                used_devices.update(co_helpers.device_ids)
         if used_devices != set(participants):
             raise RuntimeCapabilityError(
                 "composite operator placements differ from participants"

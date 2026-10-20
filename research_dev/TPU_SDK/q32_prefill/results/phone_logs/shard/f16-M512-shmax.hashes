@@ -1,0 +1,4 @@
+608834d9f4cacc71b4f100691191f0446838709e809dd4b8faf35082e84de795  /data/local/tmp/s43-q32-tpu/f16-M512-shmax.tflite
+3ce3e190861527bcc3cbbe5a31f011e8a6234fffd40168237ad73eeec54aa61c  /data/local/tmp/s43-q32-tpu/q32_tpu_probe
+97355a36cb8ac7628cf407773291e98da79f3ef184cc43cb0e57dedf5f0c0637  /data/local/tmp/s43-q32-tpu/libLiteRt.so
+35b59265eb8595a1d28c2f69693b1cad39d1fa4a38c2c18d5d54550d079264ac  /data/local/tmp/s43-q32-tpu/libLiteRtDispatch_GoogleTensor.so

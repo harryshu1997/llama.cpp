@@ -981,6 +981,34 @@ def _search_disjoint_packing_states(
     return states
 
 
+def phone_shard_resident_bytes(manifest: ModelManifest, layer_mask: int) -> int:
+    """Resident bytes the shard packer charges a session for the FFN layers of ``layer_mask``."""
+    return sum(
+        tensor.nbytes
+        for operator in manifest.operators
+        if operator.kind == "ffn" and layer_mask >> _layer_index(operator) & 1
+        for tensor in _resident_tensors(manifest, operator)
+    )
+
+
+def phone_shard_resident_geometry_sha256(
+    manifest: ModelManifest,
+    session: RuntimePhoneSessionCapability,
+    layer_mask: int,
+    resident_bytes: int,
+    maximum_columns: int,
+) -> str:
+    """Geometry identity of one packed session shard (the READY layout carries the same hash)."""
+    return canonical_sha256({
+        "artifact_sha256": manifest.artifact_sha256,
+        "columns": maximum_columns,
+        "layer_mask": layer_mask,
+        "resident_bytes": resident_bytes,
+        "session_id": session.session_id,
+        "worker_identity_sha256": session.worker_identity_sha256,
+    })
+
+
 def _disjoint_shard(
     manifest: ModelManifest,
     session: RuntimePhoneSessionCapability,
@@ -995,14 +1023,9 @@ def _disjoint_shard(
     ))
     sorted_ids = tuple(row.operator_id for row in assigned)
     layer_mask = sum(1 << _layer_index(row) for row in assigned)
-    geometry = canonical_sha256({
-        "artifact_sha256": manifest.artifact_sha256,
-        "columns": maximum_columns,
-        "layer_mask": layer_mask,
-        "resident_bytes": resident_bytes,
-        "session_id": session.session_id,
-        "worker_identity_sha256": session.worker_identity_sha256,
-    })
+    geometry = phone_shard_resident_geometry_sha256(
+        manifest, session, layer_mask, resident_bytes, maximum_columns
+    )
     return PhoneFfnShardPlacement(
         artifact_sha256=manifest.artifact_sha256,
         session_id=session.session_id,

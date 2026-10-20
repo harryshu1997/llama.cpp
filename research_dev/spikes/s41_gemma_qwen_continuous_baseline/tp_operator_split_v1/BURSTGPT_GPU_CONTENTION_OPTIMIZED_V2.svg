@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1050" viewBox="0 0 1600 1050" role="img" aria-labelledby="title description">
+<title id="title">Optimized busy-GPU comparison for CPU plus OP15 inference</title>
+<desc id="description">Three-run medians compare the idle control, the original busy-GPU baseline, and two optimized CPU-affinity policies for concurrent Qwen and Gemma inference.</desc>
+<style>
+text { font-family: Inter, DejaVu Sans, Arial, sans-serif; }
+.title { font-size: 30px; font-weight: 700; fill: #172033; }
+.subtitle { font-size: 15px; fill: #64748b; }
+.section { font-size: 18px; font-weight: 700; fill: #172033; }
+.label { font-size: 14px; fill: #172033; }
+.small { font-size: 13px; fill: #172033; }
+.tick { font-size: 12px; fill: #64748b; }
+.value { font-size: 14px; font-weight: 650; fill: #172033; }
+.card-value { font-size: 24px; font-weight: 700; fill: #172033; }
+.card-label { font-size: 13px; fill: #64748b; }
+.callout { font-size: 15px; font-weight: 650; fill: #172033; }
+.note { font-size: 12px; fill: #64748b; }
+</style>
+<rect x="0.00" y="0.00" width="1600.00" height="1050.00" rx="0.00" fill="#ffffff" opacity="1.000"/>
+<text x="800.0" y="42.0" class="title" text-anchor="middle">Busy-GPU interference recovered with two CPU policies</text>
+<text x="800.0" y="69.0" class="subtitle" text-anchor="middle">RTX 4060 Ti + i9-12900K + OP15 | default clocks | three-run medians</text>
+<rect x="60.00" y="94.00" width="470.00" height="105.00" rx="12.00" fill="#fff4f2" opacity="1.000" stroke="#dbe2ea"/>
+<text x="82.0" y="121.0" class="card-label" text-anchor="start">Original busy penalty</text>
+<text x="82.0" y="158.0" class="card-value" text-anchor="start">187.1s -&gt; 241.0s</text>
+<text x="82.0" y="183.0" class="small" text-anchor="start">+28.8% cold makespan</text>
+<rect x="565.00" y="94.00" width="470.00" height="105.00" rx="12.00" fill="#effaf5" opacity="1.000" stroke="#dbe2ea"/>
+<text x="587.0" y="121.0" class="card-label" text-anchor="start">Keep Qwen speed</text>
+<text x="587.0" y="158.0" class="card-value" text-anchor="start">215.9s | 50.23 hot tok/s</text>
+<text x="587.0" y="183.0" class="small" text-anchor="start">Gemma +11.6%; Qwen preserved</text>
+<rect x="1070.00" y="94.00" width="470.00" height="105.00" rx="12.00" fill="#f6f2ff" opacity="1.000" stroke="#dbe2ea"/>
+<text x="1092.0" y="121.0" class="card-label" text-anchor="start">Minimum cold latency</text>
+<text x="1092.0" y="158.0" class="card-value" text-anchor="start">193.5s | 48.27 hot tok/s</text>
+<text x="1092.0" y="183.0" class="small" text-anchor="start">Gemma +24.6%; Qwen -3.9%</text>
+<rect x="55.00" y="225.00" width="900.00" height="355.00" rx="10.00" fill="#ffffff" opacity="1.000" stroke="#dbe2ea"/>
+<text x="80.0" y="260.0" class="section" text-anchor="start">Cold trace makespan</text>
+<text x="925.0" y="260.0" class="tick" text-anchor="end">seconds; lower is better</text>
+<line x1="330.00" y1="300.00" x2="330.00" y2="540.00" stroke="#dbe2ea" stroke-width="1.00"/>
+<text x="330.0" y="290.0" class="tick" text-anchor="middle">0</text>
+<line x1="441.54" y1="300.00" x2="441.54" y2="540.00" stroke="#dbe2ea" stroke-width="1.00"/>
+<text x="441.5" y="290.0" class="tick" text-anchor="middle">50</text>
+<line x1="553.08" y1="300.00" x2="553.08" y2="540.00" stroke="#dbe2ea" stroke-width="1.00"/>
+<text x="553.1" y="290.0" class="tick" text-anchor="middle">100</text>
+<line x1="664.62" y1="300.00" x2="664.62" y2="540.00" stroke="#dbe2ea" stroke-width="1.00"/>
+<text x="664.6" y="290.0" class="tick" text-anchor="middle">150</text>
+<line x1="776.15" y1="300.00" x2="776.15" y2="540.00" stroke="#dbe2ea" stroke-width="1.00"/>
+<text x="776.2" y="290.0" class="tick" text-anchor="middle">200</text>
+<line x1="887.69" y1="300.00" x2="887.69" y2="540.00" stroke="#dbe2ea" stroke-width="1.00"/>
+<text x="887.7" y="290.0" class="tick" text-anchor="middle">250</text>
+<text x="312.0" y="333.0" class="label" text-anchor="end">GPU idle control</text>
+<rect x="330.00" y="312.00" width="417.34" height="30.00" rx="4.00" fill="#4c78a8" opacity="1.000"/>
+<line x1="742.71" y1="327.00" x2="748.33" y2="327.00" stroke="#172033" stroke-width="2.00"/>
+<line x1="742.71" y1="321.00" x2="742.71" y2="333.00" stroke="#172033" stroke-width="2.00"/>
+<line x1="748.33" y1="321.00" x2="748.33" y2="333.00" stroke="#172033" stroke-width="2.00"/>
+<text x="757.3" y="332.0" class="value" text-anchor="start">187.1</text>
+<text x="312.0" y="388.0" class="label" text-anchor="end">Busy baseline</text>
+<rect x="330.00" y="367.00" width="537.56" height="30.00" rx="4.00" fill="#e45756" opacity="1.000"/>
+<line x1="867.07" y1="382.00" x2="868.17" y2="382.00" stroke="#172033" stroke-width="2.00"/>
+<line x1="867.07" y1="376.00" x2="867.07" y2="388.00" stroke="#172033" stroke-width="2.00"/>
+<line x1="868.17" y1="376.00" x2="868.17" y2="388.00" stroke="#172033" stroke-width="2.00"/>
+<text x="877.6" y="387.0" class="value" text-anchor="end">241.0</text>
+<text x="312.0" y="443.0" class="label" text-anchor="end">Optimized: keep Qwen speed</text>
+<rect x="330.00" y="422.00" width="481.63" height="30.00" rx="4.00" fill="#2a9d6f" opacity="1.000"/>
+<line x1="810.04" y1="437.00" x2="811.98" y2="437.00" stroke="#172033" stroke-width="2.00"/>
+<line x1="810.04" y1="431.00" x2="810.04" y2="443.00" stroke="#172033" stroke-width="2.00"/>
+<line x1="811.98" y1="431.00" x2="811.98" y2="443.00" stroke="#172033" stroke-width="2.00"/>
+<text x="821.6" y="442.0" class="value" text-anchor="start">215.9</text>
+<text x="312.0" y="498.0" class="label" text-anchor="end">Optimized: minimum cold latency</text>
+<rect x="330.00" y="477.00" width="431.58" height="30.00" rx="4.00" fill="#7b61a8" opacity="1.000"/>
+<line x1="761.06" y1="492.00" x2="762.16" y2="492.00" stroke="#172033" stroke-width="2.00"/>
+<line x1="761.06" y1="486.00" x2="761.06" y2="498.00" stroke="#172033" stroke-width="2.00"/>
+<line x1="762.16" y1="486.00" x2="762.16" y2="498.00" stroke="#172033" stroke-width="2.00"/>
+<text x="771.6" y="497.0" class="value" text-anchor="start">193.5</text>
+<rect x="55.00" y="600.00" width="900.00" height="355.00" rx="10.00" fill="#ffffff" opacity="1.000" stroke="#dbe2ea"/>
+<text x="80.0" y="635.0" class="section" text-anchor="start">Cold phase latency</text>
+<text x="925.0" y="635.0" class="tick" text-anchor="end">p50 seconds; prefill and decode shown separately</text>
+<line x1="330.00" y1="680.00" x2="330.00" y2="885.00" stroke="#dbe2ea" stroke-width="1.00"/>
+<text x="330.0" y="670.0" class="tick" text-anchor="middle">0</text>
+<line x1="475.00" y1="680.00" x2="475.00" y2="885.00" stroke="#dbe2ea" stroke-width="1.00"/>
+<text x="475.0" y="670.0" class="tick" text-anchor="middle">5</text>
+<line x1="620.00" y1="680.00" x2="620.00" y2="885.00" stroke="#dbe2ea" stroke-width="1.00"/>
+<text x="620.0" y="670.0" class="tick" text-anchor="middle">10</text>
+<line x1="765.00" y1="680.00" x2="765.00" y2="885.00" stroke="#dbe2ea" stroke-width="1.00"/>
+<text x="765.0" y="670.0" class="tick" text-anchor="middle">15</text>
+<line x1="910.00" y1="680.00" x2="910.00" y2="885.00" stroke="#dbe2ea" stroke-width="1.00"/>
+<text x="910.0" y="670.0" class="tick" text-anchor="middle">20</text>
+<text x="312.0" y="710.0" class="label" text-anchor="end">GPU idle control</text>
+<rect x="330.00" y="690.00" width="246.51" height="28.00" rx="4.00" fill="#4c78a8" opacity="1.000"/>
+<rect x="576.51" y="690.00" width="148.51" height="28.00" rx="4.00" fill="#4c78a8" opacity="0.420"/>
+<text x="453.3" y="709.0" class="small" text-anchor="middle">prefill 8.50</text>
+<text x="650.8" y="709.0" class="small" text-anchor="middle">decode 5.12</text>
+<text x="312.0" y="760.0" class="label" text-anchor="end">Busy baseline</text>
+<rect x="330.00" y="740.00" width="375.01" height="28.00" rx="4.00" fill="#e45756" opacity="1.000"/>
+<rect x="705.01" y="740.00" width="154.88" height="28.00" rx="4.00" fill="#e45756" opacity="0.420"/>
+<text x="517.5" y="759.0" class="small" text-anchor="middle">prefill 12.93</text>
+<text x="782.4" y="759.0" class="small" text-anchor="middle">decode 5.34</text>
+<text x="312.0" y="810.0" class="label" text-anchor="end">Optimized: keep Qwen speed</text>
+<rect x="330.00" y="790.00" width="313.97" height="28.00" rx="4.00" fill="#2a9d6f" opacity="1.000"/>
+<rect x="643.97" y="790.00" width="154.97" height="28.00" rx="4.00" fill="#2a9d6f" opacity="0.420"/>
+<text x="487.0" y="809.0" class="small" text-anchor="middle">prefill 10.83</text>
+<text x="721.5" y="809.0" class="small" text-anchor="middle">decode 5.34</text>
+<text x="312.0" y="860.0" class="label" text-anchor="end">Optimized: minimum cold latency</text>
+<rect x="330.00" y="840.00" width="265.81" height="28.00" rx="4.00" fill="#7b61a8" opacity="1.000"/>
+<rect x="595.81" y="840.00" width="150.71" height="28.00" rx="4.00" fill="#7b61a8" opacity="0.420"/>
+<text x="462.9" y="859.0" class="small" text-anchor="middle">prefill 9.17</text>
+<text x="671.2" y="859.0" class="small" text-anchor="middle">decode 5.20</text>
+<rect x="330.00" y="910.00" width="18.00" height="12.00" rx="2.00" fill="#64748b" opacity="1.000"/>
+<text x="356.0" y="921.0" class="tick" text-anchor="start">prefill</text>
+<rect x="430.00" y="910.00" width="18.00" height="12.00" rx="2.00" fill="#64748b" opacity="0.420"/>
+<text x="456.0" y="921.0" class="tick" text-anchor="start">decode</text>
+<rect x="980.00" y="225.00" width="565.00" height="730.00" rx="10.00" fill="#ffffff" opacity="1.000" stroke="#dbe2ea"/>
+<text x="1005.0" y="260.0" class="section" text-anchor="start">Concurrent throughput tradeoff</text>
+<text x="1520.0" y="260.0" class="tick" text-anchor="end">top-right is better</text>
+<line x1="1131.67" y1="315.00" x2="1131.67" y2="690.00" stroke="#dbe2ea" stroke-width="1.00"/>
+<text x="1131.7" y="712.0" class="tick" text-anchor="middle">48</text>
+<line x1="1265.00" y1="315.00" x2="1265.00" y2="690.00" stroke="#dbe2ea" stroke-width="1.00"/>
+<text x="1265.0" y="712.0" class="tick" text-anchor="middle">49</text>
+<line x1="1398.33" y1="315.00" x2="1398.33" y2="690.00" stroke="#dbe2ea" stroke-width="1.00"/>
+<text x="1398.3" y="712.0" class="tick" text-anchor="middle">50</text>
+<line x1="1065.00" y1="690.00" x2="1505.00" y2="690.00" stroke="#dbe2ea" stroke-width="1.00"/>
+<text x="1053.0" y="694.0" class="tick" text-anchor="end">2.0</text>
+<line x1="1065.00" y1="582.86" x2="1505.00" y2="582.86" stroke="#dbe2ea" stroke-width="1.00"/>
+<text x="1053.0" y="586.9" class="tick" text-anchor="end">2.2</text>
+<line x1="1065.00" y1="475.71" x2="1505.00" y2="475.71" stroke="#dbe2ea" stroke-width="1.00"/>
+<text x="1053.0" y="479.7" class="tick" text-anchor="end">2.4</text>
+<line x1="1065.00" y1="368.57" x2="1505.00" y2="368.57" stroke="#dbe2ea" stroke-width="1.00"/>
+<text x="1053.0" y="372.6" class="tick" text-anchor="end">2.6</text>
+<text x="1285.0" y="738.0" class="label" text-anchor="middle">Qwen hot throughput (token/s)</text>
+<text x="1008.0" y="502.5" class="label" text-anchor="start">Gemma cold</text>
+<text x="1008.0" y="522.5" class="label" text-anchor="start">throughput</text>
+<text x="1008.0" y="542.5" class="label" text-anchor="start">(token/s)</text>
+<line x1="1430.04" y1="638.75" x2="1429.05" y2="508.40" stroke="#64748b" stroke-width="2.00" stroke-dasharray="6,5"/>
+<line x1="1429.05" y1="508.40" x2="1167.53" y2="363.08" stroke="#64748b" stroke-width="2.00" stroke-dasharray="6,5"/>
+<circle cx="1430.04" cy="638.75" r="11.00" fill="#e45756" stroke="#ffffff" stroke-width="3"/>
+<text x="1418.0" y="669.8" class="value" text-anchor="end">Busy baseline</text>
+<text x="1418.0" y="687.8" class="tick" text-anchor="end">50.24 hot | 2.096 cold</text>
+<circle cx="1429.05" cy="508.40" r="11.00" fill="#2a9d6f" stroke="#ffffff" stroke-width="3"/>
+<text x="1417.1" y="491.4" class="value" text-anchor="end">Optimized: keep Qwen speed</text>
+<text x="1417.1" y="509.4" class="tick" text-anchor="end">50.23 hot | 2.339 cold</text>
+<circle cx="1167.53" cy="363.08" r="11.00" fill="#7b61a8" stroke="#ffffff" stroke-width="3"/>
+<text x="1181.5" y="346.1" class="value" text-anchor="start">Optimized: minimum cold latency</text>
+<text x="1181.5" y="364.1" class="tick" text-anchor="start">48.27 hot | 2.610 cold</text>
+<rect x="1010.00" y="775.00" width="505.00" height="145.00" rx="9.00" fill="#f8fafc" opacity="1.000" stroke="#dbe2ea"/>
+<text x="1032.0" y="807.0" class="callout" text-anchor="start">Choose policy by service objective</text>
+<text x="1032.0" y="838.0" class="small" text-anchor="start">Keep Qwen speed: share P-cores; Gemma +11.6%.</text>
+<text x="1032.0" y="866.0" class="small" text-anchor="start">Minimize cold latency: isolate P-core primaries; Gemma +24.6%.</text>
+<text x="1032.0" y="894.0" class="tick" text-anchor="start">Both use the same dynamic 8192 / 11136 prefill and 9664 decode split.</text>
+<text x="55.0" y="990.0" class="note" text-anchor="start">Workload: 17 BurstGPT-timed Gemma4-12B Q4_0 requests (505 output tokens) on CPU + OP15; Qwen3-14B Q4_K_M saturates the GPU.</text>
+<text x="55.0" y="1014.0" class="note" text-anchor="start">Bars and points are three-run medians; makespan whiskers show min-max. All optimized runs returned the same token sequences.</text>
+<text x="55.0" y="1038.0" class="note" text-anchor="start">The idle control has no active Qwen requests and is omitted from the throughput scatter.</text>
+</svg>

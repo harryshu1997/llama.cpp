@@ -23,6 +23,7 @@ class LeasePlan:
     start_us: int
     predicted_end_us: int
     reserved_until_us: int
+    share_key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -45,6 +46,7 @@ class LeaseRecord:
     start_us: int
     predicted_end_us: int
     reserved_until_us: int
+    share_key: str | None = None
 
 
 @dataclass
@@ -54,6 +56,8 @@ class _CalendarReservation:
     lease_id: str
     start_us: int
     end_us: int
+    # co-tenant reservations (same key) may overlap each other on one lane
+    share_key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -95,6 +99,8 @@ class ResourceTimeline:
         }
         self._tokens: dict[str, list[_CalendarReservation]] = {}
         self._next_token = 1
+        # resources whose lanes hold co-tenant reservations, which may overlap
+        self._shared_resources: set[str] = set()
 
     def register_resources(
         self, resources: Mapping[str, ResourceProfile]
@@ -163,6 +169,11 @@ class ResourceTimeline:
             token: list(rows) for token, rows in checkpoint.tokens
         }
         self._next_token = checkpoint.next_token
+        self._shared_resources = {
+            resource_id
+            for resource_id, lanes in self._calendar.items()
+            if any(row.share_key is not None for lane in lanes for row in lane)
+        }
 
     def require_compatible(
         self, resources: Mapping[str, ResourceProfile]
@@ -195,8 +206,18 @@ class ResourceTimeline:
         lane: Sequence[_CalendarReservation],
         start_us: int,
         end_us: int,
+        share_key: str | None = None,
+        exhaustive: bool = False,
     ) -> _CalendarReservation | None:
-        """Find a conflict in a non-overlapping, start-ordered lane."""
+        """Find a conflict in a start-ordered lane.
+
+        Reservations of one lane never overlap, except co-tenant ones that
+        carry the same ``share_key`` (requests of one server multiplexed onto
+        the resource by the server itself); a demand with that key does not
+        conflict with them. On a resource holding co-tenant reservations
+        (``exhaustive``) an earlier reservation may outlast a later one, so the
+        search scans every reservation that starts before the window ends.
+        """
         # Released reservations remain as zero-length audit rows. Search by
         # start time, then skip those rows without hiding a live reservation
         # at the same timestamp.
@@ -213,10 +234,23 @@ class ResourceTimeline:
             if reservation.start_us >= reservation.end_us:
                 continue
             if reservation.end_us <= start_us:
+                if exhaustive:
+                    continue
                 return None
             if reservation.start_us < end_us:
+                if share_key is not None and reservation.share_key == share_key:
+                    continue
                 return reservation
         return None
+
+    @staticmethod
+    def _co_tenants(
+        reservation: _CalendarReservation, other: _CalendarReservation
+    ) -> bool:
+        return (
+            reservation.share_key is not None
+            and other.share_key == reservation.share_key
+        )
 
     def _lane_is_free(
         self,
@@ -225,9 +259,14 @@ class ResourceTimeline:
         start_us: int,
         end_us: int,
         tentative: Mapping[int, Sequence[tuple[int, int]]],
+        share_key: str | None = None,
     ) -> bool:
         if self._first_overlap(
-            self._calendar[resource_id][lane], start_us, end_us
+            self._calendar[resource_id][lane],
+            start_us,
+            end_us,
+            share_key,
+            resource_id in self._shared_resources,
         ) is not None:
             return False
         return not any(
@@ -283,8 +322,13 @@ class ResourceTimeline:
             for demand in ordered
         )
         calendar = self._calendar[resource_id]
+        keys = {demand.share_key for demand in ordered}
+        common_key = next(iter(keys)) if len(keys) == 1 else None
+        exhaustive = resource_id in self._shared_resources
         if not any(calendar) or all(
-            self._first_overlap(lane, first_start_us, last_end_us) is None
+            self._first_overlap(
+                lane, first_start_us, last_end_us, common_key, exhaustive
+            ) is None
             for lane in calendar
         ):
             available_at_us = [first_start_us] * capacity
@@ -307,6 +351,7 @@ class ResourceTimeline:
                     start_us=start_us,
                     predicted_end_us=start_us + demand.duration_us,
                     reserved_until_us=reserved_until_us,
+                    share_key=demand.share_key,
                 ))
             else:
                 return tuple(sorted(
@@ -324,6 +369,7 @@ class ResourceTimeline:
                     start_us,
                     reserved_until_us,
                     {},
+                    demand.share_key,
                 )
             ), demand.slots))
             if len(lanes) != demand.slots:
@@ -335,6 +381,7 @@ class ResourceTimeline:
                 start_us=start_us,
                 predicted_end_us=start_us + demand.duration_us,
                 reserved_until_us=reserved_until_us,
+                share_key=demand.share_key,
             ),)
         tentative: dict[int, list[tuple[int, int]]] = {
             lane: [] for lane in range(capacity)
@@ -350,7 +397,8 @@ class ResourceTimeline:
             start_us = route_start_us + demand.start_offset_us
             reserved_until_us = start_us + demand.duration_upper_us
             available = tuple(lane for lane in range(capacity) if self._lane_is_free(
-                resource_id, lane, start_us, reserved_until_us, tentative))
+                resource_id, lane, start_us, reserved_until_us, tentative,
+                demand.share_key))
             for lanes in itertools.combinations(available, demand.slots):
                 attempts += 1
                 if attempts > 100_000:
@@ -362,6 +410,7 @@ class ResourceTimeline:
                         start_us,
                         reserved_until_us,
                         tentative,
+                        demand.share_key,
                     )
                     for lane in lanes
                 ):
@@ -376,6 +425,7 @@ class ResourceTimeline:
                         start_us=start_us,
                         predicted_end_us=start_us + demand.duration_us,
                         reserved_until_us=reserved_until_us,
+                        share_key=demand.share_key,
                     )
                 )
                 if assign(index + 1):
@@ -401,7 +451,11 @@ class ResourceTimeline:
             end_us = start_us + demand.duration_upper_us
             for lane in self._calendar[resource_id]:
                 reservation = self._first_overlap(
-                    lane, start_us, end_us
+                    lane,
+                    start_us,
+                    end_us,
+                    demand.share_key,
+                    resource_id in self._shared_resources,
                 )
                 if reservation is not None:
                     candidate = (
@@ -575,6 +629,8 @@ class ResourceTimeline:
                     self._calendar[plan.resource_id][lane],
                     plan.start_us,
                     plan.reserved_until_us,
+                    plan.share_key,
+                    plan.resource_id in self._shared_resources,
                 ) is not None:
                     raise SchedulerError("resource lease changed before commit")
 
@@ -589,7 +645,10 @@ class ResourceTimeline:
                     lease_id=plan.lease_id,
                     start_us=plan.start_us,
                     end_us=plan.reserved_until_us,
+                    share_key=plan.share_key,
                 )
+                if plan.share_key is not None:
+                    self._shared_resources.add(plan.resource_id)
                 self._calendar[plan.resource_id][lane].append(reservation)
                 self._calendar[plan.resource_id][lane].sort(
                     key=lambda row: (row.start_us, row.end_us, row.token)
@@ -606,6 +665,7 @@ class ResourceTimeline:
                     start_us=plan.start_us,
                     predicted_end_us=plan.predicted_end_us,
                     reserved_until_us=plan.reserved_until_us,
+                    share_key=plan.share_key,
                 )
             )
         return tuple(records)
@@ -650,6 +710,7 @@ class ResourceTimeline:
                         continue
                     if any(
                         other.token != token
+                        and not self._co_tenants(reservation, other)
                         and self._overlaps(
                             reservation.start_us,
                             reserved_until_us,
@@ -716,7 +777,9 @@ class ResourceTimeline:
                     if reservation.token not in selected_tokens:
                         continue
                     for other in lane:
-                        if other is reservation:
+                        if other is reservation or self._co_tenants(
+                            reservation, other
+                        ):
                             continue
                         other_end_us = other.end_us
                         if other.token in selected_tokens:
@@ -792,7 +855,8 @@ class ResourceTimeline:
                     start, end = window(row)
                     for other in lane:
                         left, right = window(other)
-                        if (row is not other and start < end and left < right
+                        if (row is not other and not self._co_tenants(row, other)
+                                and start < end and left < right
                                 and start < right and left < end):
                             raise SchedulerError("phase lease change overlaps committed work")
         previous = {token: self._tokens[token][0].end_us for token in windows}
@@ -1008,6 +1072,9 @@ class ResourceTimeline:
                                 "owner_id": reservation.owner_id,
                                 "start_us": reservation.start_us,
                                 "token": reservation.token,
+                                **({} if reservation.share_key is None else {
+                                    "share_key": reservation.share_key,
+                                }),
                             }
                             for reservation in lane
                         ]

@@ -292,7 +292,7 @@ class EnvironmentTest(unittest.TestCase):
         environment, overrides, removed = baseline.router_environment(base, ["/cuda/lib"], Path("/srv/bin"), None)
         self.assertEqual(removed, ["CUDA_VISIBLE_DEVICES", "GGML_CUDA_DISABLE_GRAPHS", "LLAMA_ARG_N_GPU_LAYERS",
                                    "LLAMA_SERVER_WARM_TIER_CONFIG", "S41_SERVER_FFN_SPLIT"])
-        self.assertEqual(environment["LD_LIBRARY_PATH"], "/cuda/lib:/srv/bin:/old")
+        self.assertEqual(environment["LD_LIBRARY_PATH"], "/srv/bin:/cuda/lib:/old")   # server dir first (2026-10-06)
         self.assertEqual(environment["PATH"], "/bin")
         self.assertNotIn("CUDA_VISIBLE_DEVICES", environment)
         self.assertEqual(set(overrides), {"LD_LIBRARY_PATH"})

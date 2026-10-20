@@ -1,0 +1,15 @@
+{
+  "at": "2026-10-08T15:29:36.911220+00:00",
+  "input": "/mnt/data_h16t/zs89458/claude-scratch/q32-tpu/diag3/emu-down-M512/ffn.tflite",
+  "input_sha256": "0d006db93b09826deb2284109c43740bc540ff452432d4623f55bfba5f251924",
+  "sdk_plugin_sha256": "d74bea45081aa90a39505a675c15f566d46dbcc35e55a98f755c02017464cd1f",
+  "target": "Tensor_G5",
+  "compiler_flags": {
+    "google_tensor_truncation_type": "half",
+    "google_tensor_sharding_intensity": "minimal"
+  },
+  "compiler_script_sha256": "0318a1ede03d5bfc42fd6b75fba92689cd53487db3f000d5c9e14be623cbbc7c",
+  "status": "FAIL",
+  "elapsed_s": 63.58304649498314,
+  "error": "ValueError('apply_plugin failed to apply plugin. See /mnt/data_h16t/zs89458/claude-scratch/q32-tpu/tmpdir/tmpkjtuqv38.error for details.')"
+}

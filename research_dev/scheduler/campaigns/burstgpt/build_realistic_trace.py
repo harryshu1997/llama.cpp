@@ -23,6 +23,10 @@ Token counts above the caps are clipped and the source values kept, exactly like
 The pipeline needs at least one overlay row (it takes the small model's id and a warm-up shape from
 it), so --small-model-share must leave one. Nothing here is a measurement.
 
+--single-model executes every large-model row on the hot model (GPT-4 rows get a Qwen prompt of the same token count);
+the window, arrivals, token counts and the overlay rows are unchanged, so the hot rows are byte-identical to the
+two-model build of the same window. The manifest keeps both roles (cold count 0).
+
 --execution-artifact MODEL_ID=PATH[=KIND] (one per hot, cold and overlay execution model) pins each artifact's
 bytes and sha256 into the manifest's model_inventory; the runner refuses to replay against other artifacts.
 """
@@ -152,8 +156,15 @@ class Codec:
         self.process.stdin.close()
         error = self.process.stderr.read()
         status = self.process.wait(timeout=30)
+        if self.request_id == 0 and status == 4 and error.strip() == "token-codec: no requests received":
+            return  # a tokenizer no row used (the cold one under --single-model)
         if status != 0 or error:
             raise RuntimeError(f"token codec failed with status {status}: {error.strip()}")
+
+
+def execution_role(source_model: str, *, single_model: bool) -> str:
+    """Trace role a large-model row executes on: ChatGPT -> hot, GPT-4 -> cold; --single-model puts every row on hot."""
+    return "hot" if single_model or source_model == HOT_SOURCE_MODEL else "cold"
 
 
 def prompt_body(index: int, target_tokens: int) -> str:
@@ -363,6 +374,8 @@ def main() -> int:
     ap.add_argument("--max-output-tokens", type=int, default=None,
                     help="skip windows whose output tokens (after --output-cap) exceed this; bounds a "
                          "development trace's run time")
+    ap.add_argument("--single-model", action="store_true",
+                    help="execute every large-model row on the hot model (Qwen prompts); the overlay rows stay")
     ap.add_argument("--window-rank", type=int, default=1,
                     help="take the k-th qualifying window in scan order (default 1 = the first); later ranks "
                          "are independent, non-overlapping windows under the same rules")
@@ -461,7 +474,7 @@ def main() -> int:
                     "trace_stream_id": OVERLAY_STREAM_ID,
                 })
                 continue
-            if r["model"] == HOT_SOURCE_MODEL:
+            if execution_role(r["model"], single_model=args.single_model) == "hot":
                 role_model_id = TRACE_HOT_MODEL_ID
                 prompt = build_prompt(hot_codec, index, input_tokens, "<|im_start|>user\n",
                                       "\n<|im_end|>\n<|im_start|>assistant\n", None)
@@ -532,7 +545,9 @@ def main() -> int:
         "model_inventory": inventory,
         "derivation": {
             "burstgpt_csv": str(args.burstgpt_csv), "burstgpt_csv_sha256": digest_file(args.burstgpt_csv),
-            "log_type": "Conversation log", "model_map": {HOT_SOURCE_MODEL: "hot", COLD_SOURCE_MODEL: "cold"},
+            "log_type": "Conversation log",
+            "model_map": {model: execution_role(model, single_model=args.single_model)
+                          for model in (HOT_SOURCE_MODEL, COLD_SOURCE_MODEL)},
             "window": window_info, "arrival_scale": args.arrival_scale,
             "prompt_cap": args.prompt_cap, "output_cap": args.output_cap, "clipped": clipped,
             "tokenizers": {QWEN_TOKENIZER_MODEL: qwen_sha, GEMMA_TOKENIZER_MODEL: gemma_sha, OVERLAY_MODEL_ID: llama_sha},
@@ -572,6 +587,11 @@ def main() -> int:
                          f"above; the earlier ones start "
                          + ", ".join(f"{start - rows[0]['t']:.0f}" for start in rank["earlier_qualifying_starts_source_s"])
                          + " s after the first conversation row.\n")
+    requests_md = (f"{len(window)}: {hot_count} ChatGPT -> hot (Qwen), {cold_count} GPT-4 -> cold (Gemma), "
+                   f"{len(overlay_rows)} shortest ChatGPT -> small model (Llama 1B overlay)")
+    if args.single_model:
+        requests_md = (f"{len(window)}: {hot_count} ChatGPT and GPT-4 -> hot (Qwen, --single-model), "
+                       f"{len(overlay_rows)} shortest ChatGPT -> small model (Llama 1B overlay)")
     md = f"""# {args.trace_name}: a BurstGPT conversation-log window replayed at its own pace
 
 Source: BurstGPT conversation logs (`{args.burstgpt_csv.name}`, sha256 `{manifest['derivation']['burstgpt_csv_sha256'][:16]}...`),
@@ -582,7 +602,7 @@ requests). Arrival scale {args.arrival_scale}; caps prompt {args.prompt_cap} / o
 {long_tail_md}
 | | Value |
 | --- | ---: |
-| Requests | {len(window)}: {hot_count} ChatGPT -> hot (Qwen), {cold_count} GPT-4 -> cold (Gemma), {len(overlay_rows)} shortest ChatGPT -> small model (Llama 1B overlay) |
+| Requests | {requests_md} |
 | Replay span | {span_s:.0f} s |
 | Inter-arrival p50 / p90 / max | {statistics.median(gaps) if gaps else 0:.1f} / {sorted(gaps)[int(len(gaps) * 0.9)] if gaps else 0:.1f} / {max(gaps) if gaps else 0:.1f} s |
 | Prompt tokens p50 / p90 / max | {statistics.median(inputs):.0f} / {sorted(inputs)[int(len(inputs) * 0.9)]} / {max(inputs)} |

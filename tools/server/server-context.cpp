@@ -3248,11 +3248,17 @@ private:
 
         // Different FFN policies require separate decode batches. Rotate the
         // policy anchor so a lower-index slot cannot starve the other groups.
+        // A slot with a pending prompt takes its turn as well: FFN control
+        // reaches a slot only in decode, so a new prompt runs under the
+        // default policy and would otherwise wait for every decoding slot
+        // under another policy to finish.
         if (!slots.empty()) {
             for (size_t offset = 0; offset < slots.size(); ++offset) {
                 const size_t index = (batch_slot_cursor + offset) % slots.size();
                 auto & slot = slots[index];
-                if (slot.state == SLOT_STATE_GENERATING) {
+                if (slot.state == SLOT_STATE_GENERATING ||
+                    slot.state == SLOT_STATE_STARTED ||
+                    slot.state == SLOT_STATE_PROCESSING_PROMPT) {
                     slot_batched = &slot;
                     batch_slot_cursor = (index + 1) % slots.size();
                     break;

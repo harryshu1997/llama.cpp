@@ -1,0 +1,22 @@
+{
+  "at": "2026-10-08T15:46:40.975824+00:00",
+  "input": "/mnt/data_h16t/zs89458/claude-scratch/q32-tpu/diag/i4bw-down/ffn.tflite",
+  "input_sha256": "be2d1f346720f34cc4ea7287c305c52e77c48444313bdcab55c41b99243ff4ef",
+  "sdk_plugin_sha256": "d74bea45081aa90a39505a675c15f566d46dbcc35e55a98f755c02017464cd1f",
+  "target": "Tensor_G5",
+  "compiler_flags": {
+    "google_tensor_truncation_type": "half",
+    "google_tensor_sharding_intensity": "minimal",
+    "google_tensor_enable_dynamic_range_quantization": "true"
+  },
+  "compiler_script_sha256": "0318a1ede03d5bfc42fd6b75fba92689cd53487db3f000d5c9e14be623cbbc7c",
+  "status": "PASS",
+  "elapsed_s": 1.7786865020170808,
+  "partition_report": "Google_Tensor_G5\n==========================\nPartition Stats:\nSubgraph 0 fully compiled:\t1 / 1 ops offloaded to 1 partitions.\n\n",
+  "outputs": {
+    "ffn_Google_Tensor_G5.tflite": {
+      "bytes": 1738736,
+      "sha256": "819a5bf1856ff8583c4f2c1944690418287e71869ae44797c1a8ff7472a688e7"
+    }
+  }
+}

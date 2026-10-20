@@ -24,12 +24,14 @@ from ..runtime_plan import (
     RuntimeTransitionPlan,
 )
 from ..runtime_resources import RuntimeResourceError, preview_runtime_memory
-from .remote_resident import RouteRemoteResidentMixin
+from .remote_resident import RouteRemoteResidentMixin, remote_resident_share_keys
 from .common import (
     CO_HELPER_UNAVAILABLE,
     RouteGenerationError,
     _ceil_div,
     _Pattern,
+    per_helper_outage_enabled,
+    route_helper_devices,
     unavailable_co_helpers,
 )
 
@@ -66,6 +68,9 @@ class ThermalGateLog:
         self._events: list[Mapping[str, object]] = []
         self._limited_since_us: dict[str, int] = {}
         self._observed_at_us: dict[str, int] = {}
+        # WS23 ``per_helper_outage``: helpers whose deferral a route tolerated, device -> note time
+        self._deferred_helpers: dict[str, int] = {}
+        self._helper_noted_at_us: dict[str, int] = {}
 
     def observe(self, capability, state, at_us: int, limited: bool) -> None:
         device_id = capability.device_id
@@ -106,6 +111,22 @@ class ThermalGateLog:
     def events(self) -> tuple[Mapping[str, object], ...]:
         with self._lock:
             return tuple(self._events)
+
+    def note_helper_deferral(self, device_id: str, deferred: bool, at_us: int) -> None:
+        """A ``per_helper_outage`` route kept running without ``device_id`` (deferred) or saw it usable."""
+        with self._lock:
+            if at_us < self._helper_noted_at_us.get(device_id, 0):
+                return
+            self._helper_noted_at_us[device_id] = at_us
+            if deferred:
+                self._deferred_helpers.setdefault(device_id, at_us)
+            else:
+                self._deferred_helpers.pop(device_id, None)
+
+    def deferred_helpers(self) -> Mapping[str, int]:
+        """Helpers currently deferred under per-helper outage handling -> deferral onset."""
+        with self._lock:
+            return MappingProxyType(dict(self._deferred_helpers))
 
 
 class RouteFeasibilityMixin:
@@ -569,6 +590,46 @@ class RouteFeasibilityMixin:
                       if row is workspace and extra else row for row in result]
         return tuple(result)
 
+    def _deferred_helpers(
+        self,
+        coordinator: object,
+        pattern: _Pattern,
+        snapshot: HeterogeneousRuntimeSnapshot,
+        observed_at_us: int,
+        absent: frozenset[str],
+    ) -> frozenset[str]:
+        """Helpers of a ``per_helper_outage`` composite that are thermal / battery limited right now.
+
+        Empty unless the composite opted in, and empty when no other helper would remain (the route then
+        keeps today's route-wide THERMAL_LIMIT / BATTERY_LIMIT). Records the thermal gate log row."""
+        if not per_helper_outage_enabled(coordinator):
+            return frozenset()
+        helpers = route_helper_devices(coordinator) & set(pattern.device_ids)
+        deferred = set()
+        usable = set()
+        for device_id in sorted(helpers - absent):
+            if snapshot.telemetry_unavailable_reason(device_id, observed_at_us) is not None:
+                continue
+            capability = self.catalog.executor_by_device[device_id]
+            state = snapshot.executors.get(capability.executor_id)
+            if state is None:
+                continue
+            thermal_qualified = state.thermal_qualified_under(capability.maximum_thermal_status)
+            thermal_limited = (
+                thermal_qualified is False
+                or (thermal_qualified is None
+                    and state.temperature_millic > capability.maximum_temperature_millic)
+            )
+            self.thermal_gate_log.observe(capability, state, observed_at_us, thermal_limited)
+            if thermal_limited or state.battery_ppm < self._minimum_battery_ppm(device_id):
+                deferred.add(device_id)
+            else:
+                usable.add(device_id)
+        result = frozenset(deferred) if usable else frozenset()
+        for device_id in sorted(deferred | usable):
+            self.thermal_gate_log.note_helper_deferral(device_id, device_id in result, observed_at_us)
+        return result
+
     def _eligibility(
         self,
         manifest: ModelManifest,
@@ -589,6 +650,11 @@ class RouteFeasibilityMixin:
     ) -> tuple[str, ...]:
         reasons = []
         absent_co_helpers = unavailable_co_helpers(coordinator, snapshot) & set(pattern.device_ids)
+        # WS23 opt-in: a thermally / battery deferred helper is out of this route only while another helper of
+        # it stays available; it is then handled exactly like an elastic absent co-helper.
+        absent_co_helpers = absent_co_helpers | self._deferred_helpers(
+            coordinator, pattern, snapshot, observed_at_us, absent_co_helpers
+        )
         unknown_telemetry = {
             device_id for device_id in pattern.device_ids
             if device_id not in absent_co_helpers
@@ -692,14 +758,20 @@ class RouteFeasibilityMixin:
                     for release_us in owned_release_bounds
                 )
                 and all(
-                    residency_states[device_id] == "hot"
-                    and (
-                        residency := self._matching_residency(
-                            manifest, pattern, snapshot, device_id
-                        )
-                    ) is not None
-                    and residency.state == "hot"
-                    and residency.executor_id == coordinator.executor_id
+                    # a remote-resident owner's phone holds its sessions under the
+                    # preloading executor; the bound owner group is its residency
+                    # (pB1q8oa 2026-10-10: a full owner server refused a replan)
+                    device_id in remote_owner_devices
+                    or (
+                        residency_states[device_id] == "hot"
+                        and (
+                            residency := self._matching_residency(
+                                manifest, pattern, snapshot, device_id
+                            )
+                        ) is not None
+                        and residency.state == "hot"
+                        and residency.executor_id == coordinator.executor_id
+                    )
                     for device_id in coordinator.participant_device_ids
                 )
             )
@@ -954,6 +1026,7 @@ class RouteFeasibilityMixin:
         request_io_protocol: str | None = None,
         batch_plan: str | None = None,
         maximum_tokens: int = 1,
+        whole_payload: bool = False,
     ) -> Mapping[str, int | str]:
         if (
             type(slot_payload_multiplier) is not int
@@ -1039,7 +1112,9 @@ class RouteFeasibilityMixin:
         capacity_h2d = h2d
         capacity_d2h = d2h
         qualified_transfer_payload_bytes = required_maximum_payload_bytes
-        if required_maximum_payload_bytes and batch_plan == "split-row":
+        # whole_payload: a remote-resident owner's calls carry whole prefill ubatches, so the
+        # identity must qualify the full slot payload whatever the batch plan
+        if required_maximum_payload_bytes and batch_plan == "split-row" and not whole_payload:
             qualified_transfer_payload_bytes = _ceil_div(
                 required_maximum_payload_bytes, maximum_tokens
             )
@@ -1270,7 +1345,7 @@ class RouteFeasibilityMixin:
         service_us: int,
         service_upper_us: int,
         snapshot: HeterogeneousRuntimeSnapshot,
-        *, transitions=(),
+        *, transitions=(), share_keys=None,
     ):
         busy = snapshot.busy_until_by_resource(self.catalog)
         not_before = max(
@@ -1281,6 +1356,7 @@ class RouteFeasibilityMixin:
         )
         demands = runtime_phase_lease_demands(
             route_id, resource_slots, transitions, service_us, service_upper_us,
+            share_keys,
         )
         return self.timeline.preview_leases(
             demands, not_before, service_us, service_upper_us
@@ -1309,6 +1385,13 @@ class RouteFeasibilityMixin:
             candidate.cost.service_upper_us,
             snapshot,
             transitions=candidate.plan.transitions,
+            share_keys=remote_resident_share_keys(
+                self.catalog,
+                executor_id=candidate.binding.executor_id,
+                endpoint=candidate.binding.endpoint,
+                parameters=candidate.plan.adapter_parameters,
+                resource_ids=candidate.plan.resource_ids,
+            ),
         )
 
     def _participants(

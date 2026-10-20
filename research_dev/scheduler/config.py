@@ -67,6 +67,7 @@ from .configuration.campaign import (
     SpeculativeRowsModelConfiguration as SpeculativeRowsModelConfiguration,
     speculative_rows_configuration as speculative_rows_configuration,
     PhoneResidentModelReprovisioningConfiguration as PhoneResidentModelReprovisioningConfiguration,
+    RemoteResidentOwnerConfiguration as RemoteResidentOwnerConfiguration,
     StartupDesktopParentConfiguration as StartupDesktopParentConfiguration,
     CampaignManifest as CampaignManifest,
 )
@@ -148,6 +149,16 @@ def load_scheduler_configuration(
             and set(model.backend_ids) >= set(model.endpoint_ids),
             "model physical bindings are incomplete",
         )
+    owner = campaign.remote_resident_owner
+    if owner is not None:
+        owner_models = [row for row in models.assisted_models if row.model_id == owner.model_id]
+        _require(
+            len(owner_models) == 1
+            and owner_models[0].phone_ffn_shard_index_path is not None
+            and bool(owner_models[0].helper_phone_ffn_shards) == owner.static_co_helpers,
+            "remote-resident owner model must be an assisted model with phone FFN shards, "
+            "with static co-helper phones exactly when static_co_helpers is set",
+        )
     identities = MappingProxyType({
         "campaign": campaign_identity,
         "evidence": evidence_identity,
@@ -208,6 +219,7 @@ __all__ = [
     'PhoneHtpMemoryCapConfiguration',
     'PhoneThermalStatusLimitConfiguration',
     'PhoneResidentModelReprovisioningConfiguration',
+    'RemoteResidentOwnerConfiguration',
     'PhonePowerEvidenceConfiguration',
     'PhoneRigConfiguration',
     'RESOLVED_CONFIGURATION_SCHEMA',

@@ -1,0 +1,25 @@
+start 2026-10-08T11:17:19-04:00 boot=dbff3b27-a613-4e1e-a9ab-1f9cd3ae1d1e
+=== smoke-f32 2026-10-08T11:17:19-04:00
+/mnt/storage/s43-ws17-quantized-20261003/q32-phone/tpu/stage/smoke-f32-half.tflite: 1 file pushed, 0 skipped. 116.0 MB/s (15963808 bytes in 0.131s)
+pushed smoke-f32-half.tflite bytes=15963808 s=.205486468
+/mnt/storage/s43-ws17-quantized-20261003/q32-phone/tpu/stage/inputs_M32.f32: 1 file pushed, 0 skipped. 172.6 MB/s (1310720 bytes in 0.007s)
+pushed inputs_M32.f32 bytes=1310720 s=.087441901
+exit smoke-f32 rc=73 2026-10-08T11:17:21-04:00
+=== smoke-f16 2026-10-08T11:17:21-04:00
+/mnt/storage/s43-ws17-quantized-20261003/q32-phone/tpu/stage/smoke-f16-half.tflite: 1 file pushed, 0 skipped. 115.8 MB/s (15963824 bytes in 0.131s)
+pushed smoke-f16-half.tflite bytes=15963824 s=.210279291
+exit smoke-f16 rc=73 2026-10-08T11:17:22-04:00
+=== smoke-i4bw 2026-10-08T11:17:22-04:00
+/mnt/storage/s43-ws17-quantized-20261003/q32-phone/tpu/stage/smoke-i4bw-half.tflite: 1 file pushed, 0 skipped. 134.6 MB/s (4684240 bytes in 0.033s)
+pushed smoke-i4bw-half.tflite bytes=4684240 s=.139749583
+exit smoke-i4bw rc=73 2026-10-08T11:17:23-04:00
+=== smoke-i8pc 2026-10-08T11:17:23-04:00
+/mnt/storage/s43-ws17-quantized-20261003/q32-phone/tpu/stage/smoke-i8pc-half.tflite: 1 file pushed, 0 skipped. 120.0 MB/s (8129440 bytes in 0.065s)
+pushed smoke-i8pc-half.tflite bytes=8129440 s=.177587562
+exit smoke-i8pc rc=73 2026-10-08T11:17:24-04:00
+=== smoke-f32-root 2026-10-08T11:17:24-04:00
+/mnt/storage/s43-ws17-quantized-20261003/q32-phone/tpu/stage/smoke-f32-half.tflite: 1 file pushed, 0 skipped. 110.4 MB/s (15963808 bytes in 0.138s)
+pushed smoke-f32-half.tflite bytes=15963808 s=.206851075
+exit smoke-f32-root rc=73 2026-10-08T11:17:26-04:00
+done 2026-10-08T11:17:26-04:00 boot=dbff3b27-a613-4e1e-a9ab-1f9cd3ae1d1e same_boot=1
+ALLDONE

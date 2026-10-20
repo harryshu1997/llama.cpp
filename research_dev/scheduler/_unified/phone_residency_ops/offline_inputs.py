@@ -65,6 +65,8 @@ def _offline_phone_target(
         discovery.helper_id, sessions, queued_work_by_artifact
     )
     demands, packing_sessions = controller._fixed_phone_inputs(discovery, sessions)
+    # a fixed assignment may name a subset of the discovered sessions (the 32B owner uses two of three)
+    packing_ids = {row.session_id for row in packing_sessions}
     layouts = generate_mixed_ffn_residency_layouts(
         demands,
         packing_sessions,
@@ -73,7 +75,9 @@ def _offline_phone_target(
         current_shards=(
             () if memory.current is None else memory.current.shards
         ),
-        transition_energy_uj_by_session=transition_costs,
+        transition_energy_uj_by_session={
+            key: value for key, value in transition_costs.items() if key in packing_ids
+        },
     )
     if controller._fixed_phone_residency is not None:
         layouts = tuple(row for row in layouts if controller._fixed_phone_layout_matches(row))

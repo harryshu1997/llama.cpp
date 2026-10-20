@@ -1,0 +1,15 @@
+{
+  "at": "2026-10-08T15:20:25.831834+00:00",
+  "input": "/mnt/data_h16t/zs89458/claude-scratch/q32-tpu/smoke/i4bw_poshi-c512-m32/ffn.tflite",
+  "input_sha256": "0681371f8e9237ef29b5260ba132d389753c96183ec29f9dab5eae07f7cab828",
+  "sdk_plugin_sha256": "d74bea45081aa90a39505a675c15f566d46dbcc35e55a98f755c02017464cd1f",
+  "target": "Tensor_G5",
+  "compiler_flags": {
+    "google_tensor_truncation_type": "half",
+    "google_tensor_sharding_intensity": "minimal"
+  },
+  "compiler_script_sha256": "0318a1ede03d5bfc42fd6b75fba92689cd53487db3f000d5c9e14be623cbbc7c",
+  "status": "FAIL",
+  "elapsed_s": 0.3751196020748466,
+  "error": "ValueError('apply_plugin failed to apply plugin. See /mnt/data_h16t/zs89458/claude-scratch/q32-tpu/tmpdir/tmpn_i54h5v.error for details.')"
+}

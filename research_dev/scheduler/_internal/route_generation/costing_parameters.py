@@ -7,6 +7,8 @@ from typing import Mapping
 from ..model_manifest import ModelManifest, ModelRequestWork
 from ..plan_contracts.co_helpers import (
     PHONE_HELPERS_PARAMETER,
+    STATIC_HELPER_ANCHOR_PARAMETER,
+    anchored_co_helper_declaration,
     co_helper_declaration,
 )
 from ..runtime_capabilities import (
@@ -17,6 +19,7 @@ from ..runtime_cost import RuntimeExecutorBinding, RuntimeMemoryDemand
 from ..runtime_plan import RuntimeOperatorAssignment
 from ..runtime_residency_cohorts import runtime_residency_component_identity_from_parts
 from ..runtime_search import request_shape_bucket
+from ..types import canonical_sha256
 from .common import (
     RouteGenerationError,
     _DORMANT_PHONE_FFN_RUNTIME_PARAMETER,
@@ -29,8 +32,83 @@ from .common import (
 from .costing import (
     _physical_interference_resources,
 )
-from .remote_resident import REMOTE_RESIDENT_FFN_PARAMETER, remote_resident_link_ids
+from .remote_resident import (
+    REMOTE_RESIDENT_CO_HELPER_DECODE_PARAMETER,
+    REMOTE_RESIDENT_FFN_PARAMETER,
+    remote_resident_link_ids,
+)
 
+
+
+def anchored_resident_parameters(
+    adapter_parameters: Mapping[str, object],
+    feed_forward_length: int,
+    minimum_quantum: int,
+) -> dict[str, object] | None:
+    """WS23 (2026-10-05): the resident-superset parameters of a helper-led route.
+
+    The scheduled phone of a ``static_helper_anchor`` route is a co-helper's trace-lifetime worker: no HTP sessions,
+    no residency layout, so the usual ``_FfnResidentEnvelope`` is None and the route never reached the decode planner
+    (``ffn_weight_buffer_layout`` must be ``resident-superset`` for a decode policy; the Pixel-led arm of 06:30 UTC
+    made 0 phone calls). The helper's declared slice IS its resident superset: its whole layer mask at full width.
+    None when the route is not helper-anchored."""
+    if adapter_parameters.get(STATIC_HELPER_ANCHOR_PARAMETER) != 1:
+        return None
+    declaration = anchored_co_helper_declaration(adapter_parameters)
+    device_id = adapter_parameters.get("phone_device_id")
+    if declaration is None or type(device_id) is not str:
+        return None
+    rows = [row for row in declaration.helpers if row.device_id == device_id]
+    if len(rows) != 1 or rows[0].layer_mask <= 0:
+        return None
+    row = rows[0]
+    quantum = adapter_parameters.get("ffn_column_quantum")
+    if type(quantum) is not int or quantum <= 0:
+        quantum = row.column_quantum
+    return {
+        "ffn_weight_buffer_layout": "resident-superset",
+        "ffn_resident_columns": feed_forward_length,
+        "ffn_resident_layer_mask": row.layer_mask,
+        "ffn_resident_weight_bytes": row.resident_bytes,
+        "ffn_resident_geometry_sha256": canonical_sha256({
+            "device_id": device_id, "layer_mask": row.layer_mask, "columns": feed_forward_length,
+            "shard_sha256": row.shard_sha256, "kind": "anchored-helper-resident-v1",
+        }),
+        "ffn_minimum_column_quantum": minimum_quantum,
+        "ffn_column_quantum": quantum,
+        "ffn_runtime_partition_count": 1,
+        "resident_model_identity_sha256": row.shard_sha256,
+    }
+
+
+def co_helper_capacity(
+    co_helpers,
+    maximum_tokens: int,
+    step_tokens: int,
+    *,
+    remote_capped: bool,
+    decode_phase: bool,
+) -> tuple[bool, bool]:
+    """Whether every co-helper can serve the server's batches, and whether their rows need caps.
+
+    Every client's HELLO carries the server's maximum tokens, or its own cap
+    (``S41_SERVER_FFN_HELPER<k>_MAX_TOKENS``): under a remote parent's decode co-helpers, and on
+    a decode route whose primary declares more rows than one decode step (it is sized for a
+    remote-resident owner's whole prefill ubatch, 2026-10-10) a co-helper that holds the step is
+    capped at its own rows. Returns ``(compatible, rebind)``; ``rebind`` asks for the capped
+    ``phone_helpers`` binding of the decode case.
+    """
+    decode_capped = decode_phase and not remote_capped and maximum_tokens > step_tokens
+    compatible = all(
+        row.max_tokens == maximum_tokens
+        or (remote_capped and row.max_tokens < maximum_tokens)
+        or (decode_capped and step_tokens <= row.max_tokens < maximum_tokens)
+        for row in co_helpers.helpers
+    )
+    rebind = decode_capped and any(
+        row.max_tokens < maximum_tokens for row in co_helpers.helpers
+    )
+    return compatible, compatible and rebind
 
 class RouteParameterMixin:
     """Route costing: route profiles, resource context, adapter parameters, FFN geometry and execution plans."""
@@ -437,6 +515,11 @@ class RouteParameterMixin:
                     resident_envelope.layer_mask,
                 )
             return runtime_partition_error
+        if pattern.assistance_phase == "decode" and resident_envelope is None:
+            anchored = anchored_resident_parameters(adapter_parameters, feed_forward_length, minimum_quantum)
+            if anchored is not None:
+                adapter_parameters.update(anchored)
+                return runtime_partition_error
         runtime_columns = [selected_columns]
         if isinstance(coordinator, RuntimeCompositeExecutorCapability):
             for fraction in coordinator.split_fractions_ppm:
@@ -518,17 +601,31 @@ class RouteParameterMixin:
                         work.input_tokens, work.output_tokens
                     )
                     maximum_tokens = min(ubatch_size, input_bucket)
+                step_tokens = maximum_tokens
                 declared_tokens = adapter_parameters.get("ffn_max_tokens", maximum_tokens)
                 if (type(declared_tokens) is not int or declared_tokens < maximum_tokens
                         or declared_tokens > ubatch_size):
                     raise RouteGenerationError("resident FFN batch capacity is invalid")
                 maximum_tokens = declared_tokens
                 adapter_parameters["ffn_max_tokens"] = maximum_tokens
-                if co_helpers is not None and any(
-                    row.max_tokens != maximum_tokens for row in co_helpers.helpers
-                ):
-                    # every client's HELLO must carry the server's maximum tokens
-                    return "co-helper phone batch capacity differs"
+                capped = adapter_parameters.get(REMOTE_RESIDENT_CO_HELPER_DECODE_PARAMETER) == 1
+                if co_helpers is not None:
+                    compatible, rebind = co_helper_capacity(
+                        co_helpers, maximum_tokens, step_tokens,
+                        remote_capped=capped,
+                        decode_phase=pattern.assistance_phase == "decode",
+                    )
+                    if not compatible:
+                        return "co-helper phone batch capacity differs"
+                    if rebind:
+                        primary_mask = (
+                            int(adapter_parameters["ffn_resident_layer_mask"])
+                            & ~co_helpers.layer_mask
+                        )
+                        adapter_parameters[PHONE_HELPERS_PARAMETER] = co_helpers.phone_helpers(
+                            adapter_parameters["phone_device_id"], primary_mask,
+                            maximum_tokens=maximum_tokens,
+                        )
                 if pattern.assistance_phase != "decode":
                     adapter_parameters["ubatch_size"] = maximum_tokens
                 required_maximum_payload_bytes = (
@@ -545,6 +642,8 @@ class RouteParameterMixin:
                 adapter_parameters.get("request_io_protocol"),
                 adapter_parameters.get("usb_batch_plan"),
                 adapter_parameters.get("ffn_max_tokens", 1),
+                **({"whole_payload": True}
+                   if REMOTE_RESIDENT_FFN_PARAMETER in adapter_parameters else {}),
             ))
         except RouteGenerationError as exc:
             return str(exc)

@@ -1238,6 +1238,18 @@ class AdaptiveDecodeController:
             terminal_at_us,
         )
 
+    def _seal_released_remainder(
+        self, session, boundary, observation, terminal_token_index, terminal_at_us,
+    ) -> AdaptiveDecodeDirective:
+        return _completion._seal_released_remainder(
+            self,
+            session,
+            boundary,
+            observation,
+            terminal_token_index,
+            terminal_at_us,
+        )
+
     def seal_tail(
         self,
         request_id: str,
