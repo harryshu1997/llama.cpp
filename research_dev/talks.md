@@ -1,3 +1,16 @@
+## 2026-10-20 21:06 UTC - Repo: .gitignore now excludes the raw campaign run trees; Oct 1-16 work committed as b11b69c0c and pushed to the fork
+
+| | before | after |
+|---|---|---|
+| `git status` untracked entries | 173,885 files (28 GB of run trees, SDK, source snapshots) | 0 |
+| HEAD on `wip/unified-scheduler-cleanup-20260813` | 1b2ce381f (Oct 1) | b11b69c0c (pushed to origin = harryshu1997/llama.cpp) |
+
+Ignored from now on: `reports/*/physical*`, `software/`, `raw*/`, `source-before*/`, `failed-*/`, big binary
+extensions under reports, September report JSON/TSV/TXT summaries, `baselines/cuda_graph_v1` run trees,
+`TPU_SDK/installed` + the SDK zip, stray root files (`update`, `device`, `arch_info.png`, research_dev PNGs).
+Still tracked: READMEs, tools, tests, scheduler code, and the small artifacts of the October reports
+(ws24 traces, 32B two-phone, prima.cpp baseline). The raw run trees stay on this host only.
+
 ## 2026-10-16 19:05 UTC - Paper: Table 5 is now the main comparison (baselines vs ours, incl. prima.cpp); variants moved to a new Table 6 in "Ablations and Variants"
 
 ```
