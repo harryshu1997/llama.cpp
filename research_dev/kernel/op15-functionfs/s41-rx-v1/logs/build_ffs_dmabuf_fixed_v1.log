@@ -1,0 +1,35 @@
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+Analyzing: target //common:kernel_aarch64_gki_artifacts (0 packages loaded, 0 targets configured)
+Analyzing: target //common:kernel_aarch64_gki_artifacts (0 packages loaded, 0 targets configured)
+
+INFO: Analyzed target //common:kernel_aarch64_gki_artifacts (0 packages loaded, 0 targets configured).
+INFO: From BazelWorkspaceStatusAction stable-status.txt:
+WARNING: Unable to execute repo manifest -r: [Errno 2] No such file or directory: 'repo'
+[6 / 8] Building kernel (trim;zstd_dwarf_compression_disabled) //common:kernel_aarch64; 1s processwrapper-sandbox
+[6 / 8] Building kernel (trim;zstd_dwarf_compression_disabled) //common:kernel_aarch64; 11s processwrapper-sandbox
+[6 / 8] Building kernel (trim;zstd_dwarf_compression_disabled) //common:kernel_aarch64; 41s processwrapper-sandbox
+[6 / 8] Building kernel (trim;zstd_dwarf_compression_disabled) //common:kernel_aarch64; 101s processwrapper-sandbox
+INFO: From Building kernel (trim;zstd_dwarf_compression_disabled) //common:kernel_aarch64:
+/home/myid/zs89458/Documents/s41-op15-kernel-rx-v1/kernel_platform/out/bazel/output_user_root/818ad93610d1fad156d4ff6675da326c/sandbox/processwrapper-sandbox/157/execroot/_main/common/scripts/Makefile.vmlinux:51: gki vmlinux files is not found!
+WARN: multiple IDs found for 'inode': 322, 29677 - using 322
+WARN: multiple IDs found for 'module': 257, 29719 - using 257
+WARN: multiple IDs found for 'vm_area_struct': 580, 29794 - using 580
+WARN: multiple IDs found for 'task_struct': 430, 29801 - using 430
+WARN: multiple IDs found for 'cgroup': 495, 29814 - using 495
+WARN: multiple IDs found for 'seq_file': 511, 29830 - using 511
+WARN: multiple IDs found for 'file': 248, 29844 - using 248
+WARN: multiple IDs found for 'path': 2007, 29930 - using 2007
+[7 / 8] [Prepa] Building GKI artifacts //common:kernel_aarch64_gki_artifacts
+[7 / 8] Building GKI artifacts //common:kernel_aarch64_gki_artifacts; 1s processwrapper-sandbox
+INFO: Found 1 target...
+Target //common:kernel_aarch64_gki_artifacts up-to-date:
+  bazel-bin/common/kernel_aarch64_gki_artifacts/boot-img.tar.gz
+  bazel-bin/common/kernel_aarch64_gki_artifacts/gki-info.txt
+  bazel-bin/common/kernel_aarch64_gki_artifacts/boot.img
+  bazel-bin/common/kernel_aarch64_gki_artifacts/boot-lz4.img
+  bazel-bin/common/kernel_aarch64_gki_artifacts/boot-gz.img
+INFO: Elapsed time: 111.792s, Critical Path: 111.24s
+INFO: 3 processes: 5 action cache hit, 1 internal, 2 processwrapper-sandbox.
+INFO: Build completed successfully, 3 total actions

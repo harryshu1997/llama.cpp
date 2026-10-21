@@ -1,0 +1,43 @@
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+Analyzing: target //common:kernel_aarch64 (0 packages loaded, 0 targets configured)
+Analyzing: target //common:kernel_aarch64 (0 packages loaded, 0 targets configured)
+
+INFO: Analyzed target //common:kernel_aarch64 (0 packages loaded, 0 targets configured).
+INFO: From BazelWorkspaceStatusAction stable-status.txt:
+WARNING: Unable to execute repo manifest -r: [Errno 2] No such file or directory: 'repo'
+[7 / 10] [Sched] Building kernel (trim;zstd_dwarf_compression_disabled) //common:kernel_aarch64
+[7 / 10] Building kernel (trim;zstd_dwarf_compression_disabled) //common:kernel_aarch64; 1s processwrapper-sandbox
+[7 / 10] Building kernel (trim;zstd_dwarf_compression_disabled) //common:kernel_aarch64; 10s processwrapper-sandbox
+[7 / 10] Building kernel (trim;zstd_dwarf_compression_disabled) //common:kernel_aarch64; 40s processwrapper-sandbox
+[7 / 10] Building kernel (trim;zstd_dwarf_compression_disabled) //common:kernel_aarch64; 100s processwrapper-sandbox
+INFO: From Building kernel (trim;zstd_dwarf_compression_disabled) //common:kernel_aarch64:
+/home/myid/zs89458/Documents/s41-op15-kernel-rx-v1/kernel_platform/out/bazel/output_user_root/818ad93610d1fad156d4ff6675da326c/sandbox/processwrapper-sandbox/152/execroot/_main/common/scripts/Makefile.vmlinux:51: gki vmlinux files is not found!
+WARN: multiple IDs found for 'inode': 322, 29677 - using 322
+WARN: multiple IDs found for 'module': 257, 29719 - using 257
+WARN: multiple IDs found for 'vm_area_struct': 580, 29794 - using 580
+WARN: multiple IDs found for 'task_struct': 430, 29801 - using 430
+WARN: multiple IDs found for 'cgroup': 495, 29814 - using 495
+WARN: multiple IDs found for 'seq_file': 511, 29830 - using 511
+WARN: multiple IDs found for 'file': 248, 29844 - using 248
+WARN: multiple IDs found for 'path': 2007, 29930 - using 2007
+[9 / 10] [Prepa] Checking for kmi_symbol_list_violations (trim;zstd_dwarf_compression_disabled) //common:kernel_aarch64
+INFO: Found 1 target...
+Target //common:kernel_aarch64 up-to-date:
+  bazel-bin/common/kernel_aarch64/System.map
+  bazel-bin/common/kernel_aarch64/modules.builtin
+  bazel-bin/common/kernel_aarch64/modules.builtin.modinfo
+  bazel-bin/common/kernel_aarch64/vmlinux
+  bazel-bin/common/kernel_aarch64/vmlinux_oki
+  bazel-bin/common/kernel_aarch64/vmlinux.symvers
+  bazel-bin/common/kernel_aarch64/Image
+  bazel-bin/common/kernel_aarch64/Image.lz4
+  bazel-bin/common/kernel_aarch64/Image.gz
+  bazel-bin/common/kernel_aarch64_kmi_strict_out/kmi_symbol_list_strict_mode_checked
+  bazel-bin/common/kernel_aarch64/kernel_aarch64_Module.symvers
+  bazel-bin/common/kernel_aarch64/kernel_aarch64_dot_config
+  bazel-bin/common/kernel_aarch64_kmi_symbol_list_violations/kernel_aarch64_kmi_symbol_list_violations_checked
+INFO: Elapsed time: 108.011s, Critical Path: 107.37s
+INFO: 3 processes: 6 action cache hit, 1 internal, 2 processwrapper-sandbox.
+INFO: Build completed successfully, 3 total actions

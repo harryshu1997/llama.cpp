@@ -1,0 +1,21 @@
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+Analyzing: target //common:kernel_aarch64_gki_artifacts (0 packages loaded, 0 targets configured)
+Analyzing: target //common:kernel_aarch64_gki_artifacts (0 packages loaded, 0 targets configured)
+
+INFO: From BazelWorkspaceStatusAction stable-status.txt:
+WARNING: Unable to execute repo manifest -r: [Errno 2] No such file or directory: 'repo'
+INFO: Analyzed target //common:kernel_aarch64_gki_artifacts (0 packages loaded, 1 target configured).
+[607 / 608] [Prepa] Building GKI artifacts //common:kernel_aarch64_gki_artifacts
+[607 / 608] Building GKI artifacts //common:kernel_aarch64_gki_artifacts; 1s processwrapper-sandbox
+INFO: Found 1 target...
+Target //common:kernel_aarch64_gki_artifacts up-to-date:
+  bazel-bin/common/kernel_aarch64_gki_artifacts/boot-img.tar.gz
+  bazel-bin/common/kernel_aarch64_gki_artifacts/gki-info.txt
+  bazel-bin/common/kernel_aarch64_gki_artifacts/boot.img
+  bazel-bin/common/kernel_aarch64_gki_artifacts/boot-lz4.img
+  bazel-bin/common/kernel_aarch64_gki_artifacts/boot-gz.img
+INFO: Elapsed time: 6.198s, Critical Path: 4.22s
+INFO: 2 processes: 6 action cache hit, 1 internal, 1 processwrapper-sandbox.
+INFO: Build completed successfully, 2 total actions

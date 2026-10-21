@@ -1,0 +1,34 @@
+Starting local Bazel server and connecting to it...
+Computing main repo mapping: 
+Loading: 
+Loading: 1 packages loaded
+Loading: 1 packages loaded
+    currently loading: common
+Analyzing: target //common:kernel_aarch64_dist (2 packages loaded)
+Analyzing: target //common:kernel_aarch64_dist (2 packages loaded, 0 targets configured)
+Analyzing: target //common:kernel_aarch64_dist (2 packages loaded, 0 targets configured)
+
+INFO: From BazelWorkspaceStatusAction stable-status.txt:
+WARNING: Unable to execute repo manifest -r: [Errno 2] No such file or directory: 'repo'
+INFO: Repository +_repo_rules+libcap_ng instantiated at:
+  <builtin>: in <toplevel>
+Repository rule new_kleaf_local_repository defined at:
+  /home/myid/zs89458/Documents/s41-op15-kernel-rx-v1/kernel_platform/build/kernel/kleaf/impl/local_repository.bzl:106:45: in <toplevel>
+INFO: Repository +_repo_rules+libcap instantiated at:
+  <builtin>: in <toplevel>
+Repository rule new_kleaf_local_repository defined at:
+  /home/myid/zs89458/Documents/s41-op15-kernel-rx-v1/kernel_platform/build/kernel/kleaf/impl/local_repository.bzl:106:45: in <toplevel>
+ERROR: /home/myid/zs89458/Documents/s41-op15-kernel-rx-v1/kernel_platform/build/kernel/kleaf/impl/local_repository.bzl:65:17: An error occurred during the fetch of repository '+_repo_rules+libcap_ng':
+   Traceback (most recent call last):
+	File "/home/myid/zs89458/Documents/s41-op15-kernel-rx-v1/kernel_platform/build/kernel/kleaf/impl/local_repository.bzl", line 93, column 33, in _new_kleaf_local_repository_impl
+		_kleaf_local_repository_impl(repository_ctx)
+	File "/home/myid/zs89458/Documents/s41-op15-kernel-rx-v1/kernel_platform/build/kernel/kleaf/impl/local_repository.bzl", line 65, column 17, in _kleaf_local_repository_impl
+		fail("{} does not exist".format(target))
+Error in fail: /home/myid/zs89458/Documents/s41-op15-kernel-rx-v1/kernel_platform/external/libcap-ng does not exist
+ERROR: no such package '@@+_repo_rules+libcap_ng//': /home/myid/zs89458/Documents/s41-op15-kernel-rx-v1/kernel_platform/external/libcap-ng does not exist
+ERROR: /home/myid/zs89458/Documents/s41-op15-kernel-rx-v1/kernel_platform/common/BUILD.bazel:2680:19: //common:kselftest_capabilities_validate_cap depends on @@+_repo_rules+libcap_ng//:libcap-ng in repository @@+_repo_rules+libcap_ng which failed to fetch. no such package '@@+_repo_rules+libcap_ng//': /home/myid/zs89458/Documents/s41-op15-kernel-rx-v1/kernel_platform/external/libcap-ng does not exist
+ERROR: Analysis of target '//common:kernel_aarch64_dist' failed; build aborted: Analysis failed
+INFO: Elapsed time: 6.756s, Critical Path: 0.14s
+INFO: 1 process: 1 internal.
+ERROR: Build did NOT complete successfully
+ERROR: Build failed. Not running target
