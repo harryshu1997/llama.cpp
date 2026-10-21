@@ -1,3 +1,21 @@
+## 2026-10-21 02:41 UTC - Documents cleanup: code consolidated in this repo, raw data moved to /mnt/data_h16t, rebuildable trees ready for the user to delete
+
+| Content | Action | Where now |
+|---|---|---|
+| June 2026 clone `~/Documents/llama.cpp` uncommitted work (QNN backend draft, tierKV, coexec, early layersplit; 173 files) | committed in place (08159ed15), imported here | local branch `archive/route2-b9531-june2026` (not pushed) |
+| MoE side project code (355 files, configs, docs, tests) | git init + commit (236caa356), imported here | local branch `archive/moe-resident-routing-a6000` (not pushed) |
+| OnePlus 15 kernel build recipe, logs, boot notes, kernel.config | copied into the repo | `research_dev/kernel/op15-functionfs/` (README has provenance: vendor tree, patches, booted image SHA) |
+| Raw metered run trees under `reports/*` (28 GB, 150k files) | moved, symlinked back; 35 mixed trees rebuilt so the 810 tracked scripts inside them stay tracked | `/mnt/data_h16t/zs89458/xband-runs/campaigns-raw/<report>/` |
+| S42 frozen results, S40 bundles, Aug 25 cleanup archive, MoE results + artifacts, built kernel images, stock backups, cancel-kernel verification | moved | `/mnt/data_h16t/zs89458/xband-runs/` |
+| Trace inputs (s8_sources, s33_sources) | moved; `~/Documents/s8_sources` is a symlink | `/mnt/data_h16t/zs89458/xband-data/traces/` |
+| `.gitignore` | raw-tree patterns now match the symlinks too | this commit |
+| `research_dev/README.md` | new "Where things live" table at the top | this commit |
+
+Pending the user's own `rm -rf` (the harness refused to delete for me): `~/Documents/llama.cpp` (144 GB, April models + builds; code saved in the archive branch),
+`s41-op15-kernel-rx-v1` + `op15-cancel-kernel-20260913-QEC2Bo` (~60 GB vendor kernel trees, re-fetchable), `llama.cpp-host`, `llama.cpp-upstream`, `s39_v25_live`,
+`moe-resident-routing-a6000` (remaining: build, third_party, downloads, two venvs), and the four sanitizer build dirs in this repo. Root disk: 47 GB free before, 87 GB now, ~330 GB after the deletes.
+Untouched: other projects (Unifer, LiteRT-LM, WIKI-Research-Paper, QNNBlast, CLBlast, whisper.cpp, StreamVGGT, MLCarbon), `~/Documents/models`, `Project_2027`.
+
 ## 2026-10-20 21:06 UTC - Repo: .gitignore now excludes the raw campaign run trees; Oct 1-16 work committed as b11b69c0c and pushed to the fork
 
 | | before | after |

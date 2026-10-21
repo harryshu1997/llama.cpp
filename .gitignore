@@ -251,11 +251,11 @@ AGENTS.local.md
 # Scheduler campaign raw run outputs: metered run trees, phone captures,
 # source snapshots and failed attempts (tens of GB). READMEs, tools and
 # small summaries in the same report directories stay tracked.
-/research_dev/scheduler/campaigns/burstgpt/reports/*/physical*/
-/research_dev/scheduler/campaigns/burstgpt/reports/*/software/
-/research_dev/scheduler/campaigns/burstgpt/reports/*/raw*/
-/research_dev/scheduler/campaigns/burstgpt/reports/*/source-before*/
-/research_dev/scheduler/campaigns/burstgpt/reports/*/failed-*/
+/research_dev/scheduler/campaigns/burstgpt/reports/*/physical*
+/research_dev/scheduler/campaigns/burstgpt/reports/*/software
+/research_dev/scheduler/campaigns/burstgpt/reports/*/raw*
+/research_dev/scheduler/campaigns/burstgpt/reports/*/source-before*
+/research_dev/scheduler/campaigns/burstgpt/reports/*/failed-*
 /research_dev/scheduler/campaigns/burstgpt/reports/**/*.f16
 /research_dev/scheduler/campaigns/burstgpt/reports/**/*.raw
 /research_dev/scheduler/campaigns/burstgpt/reports/**/*.spv

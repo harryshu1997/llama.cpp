@@ -18,6 +18,23 @@ rearm:    GPU = model B HOT        phones prepare model A WARM
 This is an executable model cache, not remote coherent memory and not a fixed
 layer pipeline.
 
+## Where things live (since 2026-10-20)
+
+| What | Where | Git |
+|---|---|---|
+| All XBand code: scheduler, layersplit transport, server and ggml changes, rig tools, report READMEs and small artifacts | this repository, branch `wip/unified-scheduler-cleanup-20260813`, fork `harryshu1997/llama.cpp` | tracked |
+| Paper | `~/Documents/MultiDNN` (Overleaf git) | tracked |
+| OnePlus 15 kernel build recipe, logs and provenance | `research_dev/kernel/op15-functionfs/` (vendor source trees removed; re-fetch from OnePlusOSS) | tracked |
+| Pre-XBand June 2026 work (QNN backend draft, tierKV, coexec tools) | local branch `archive/route2-b9531-june2026` | local branch, not pushed |
+| MoE resident-expert routing side project (code, configs, docs, tests) | local branch `archive/moe-resident-routing-a6000` | local branch, not pushed |
+| Raw metered run trees of every report (`physical*`, `software`, `raw*`, `source-before*`, `failed-*`) | `/mnt/data_h16t/zs89458/xband-runs/campaigns-raw/<report>/`, symlinked from the report directories | ignored |
+| Older result archives (S42 frozen results, S40 bundles, Aug 25 cleanup archive), MoE results, built kernel images | `/mnt/data_h16t/zs89458/xband-runs/` | not in git |
+| Trace inputs (BurstGPT CSV, RAGPulse, wikitext) | `/mnt/data_h16t/zs89458/xband-data/traces/` (`~/Documents/s8_sources` is a symlink) | not in git |
+| Models | `~/Documents/models` on this host; `/mnt/storage` on the desktop rig | not in git |
+| Desktop deploy and run directories | `/mnt/storage/s43-two-phone-eval-20260925` (`$R`), `/mnt/storage/s42-trace-v2-20260921-prep` (`$D`), `/mnt/storage/s43-prima-baseline-20261016` (`$P`) on zhihao@172.20.74.85 | not in git |
+
+The README below this line is the original warm-tier design note and predates the XBand scheduler; `talks.md` is the live log.
+
 ## Primary question
 
 Can a low-power, collectively sharded phone tier eliminate the service blackout
