@@ -1,3 +1,15 @@
+## 2026-11-18 14:37 UTC - Pushed to GitHub (user: "you can push to github now"): branch `wip/unified-scheduler-cleanup-20260813`, two commits
+
+| commit | content |
+|---|---|
+| `e63c05761` | Scheduler Oct 23 - Nov 11: launch-wait and queue fixes, preflight GPU override, Pixel OpenCL re-qualification, `generality_gap.py`, `service_energy.py`, reports `20261026-ws23-gap12-anchored-envelope`, `20261027-pixel-opencl-q4-gemv`, `20261110-weight-stream-energy` (142 files) |
+| `b831eb8e5` | Portable path: site file, drivers, onboarding, run engine, tests, docs, `talks.md` (39 files) |
+
+Before the push (the fork is public): no secret found in the pending changes; four lines of the pending log that
+named other lab members' accounts or folders were reworded. Two earlier entries already on GitHub name such accounts
+(4 mentions); they were left as they are. Not pushed: the paper repository (`~/Documents/MultiDNN`), which also holds
+the user's own uncommitted edits; run directories and site files stay on the data disk.
+
 ## 2026-11-18 02:18 UTC - PORTABLE PATH: OnePlus 12 onboarded and checked on real requests (proof b, on a 4-layer probe); round finished except the full shard on that phone
 
 **OnePlus 12 over `adb-tcp`, no root, USB 2.0** (`portable/run-onboard-op12-q32f16-8`, 01:57-02:05 UTC, one
