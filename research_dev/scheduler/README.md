@@ -155,6 +155,15 @@ and experiment code must not import `_internal` modules. Keeping implementation
 modules private preserves reviewable contracts without presenting each planner
 as another scheduler.
 
+## Portable path
+
+`campaigns/portable/` runs the shared-layer mode on any host from one site file: `discover` and `doctor`
+describe and check the machine, `onboard-host` and `onboard-phone` measure it and write `PROFILE.json`,
+`provision` puts the planned shards on a phone, `run` replays a schedule alone or shared and `report`
+reads run directories. Device specifics live in `configuration/site.py` and behind the drivers in
+`drivers/`. See `campaigns/portable/README.md` for the steps of a new host and a new phone, and
+`ARCHITECTURE.md` for the module rules.
+
 ## Offline FFN shard files
 
 The phone FFN split worker serves, per selected layer, the suffix of the FFN

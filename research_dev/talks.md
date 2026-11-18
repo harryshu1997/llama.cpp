@@ -1,3 +1,2011 @@
+## 2026-11-18 02:18 UTC - PORTABLE PATH: OnePlus 12 onboarded and checked on real requests (proof b, on a 4-layer probe); round finished except the full shard on that phone
+
+**OnePlus 12 over `adb-tcp`, no root, USB 2.0** (`portable/run-onboard-op12-q32f16-8`, 01:57-02:05 UTC, one
+command: `onboard-phone --site site.json --phone op12 --model q32f16 --binding .../op12-q32f16-s12800-probe.json`):
+
+| share (4 layers) | layer ms | model ms | host share ms | phone call ms (compute) | token time |
+|---|---|---|---|---|---|
+| 12.5 % | 8.79 | 8.74 | 8.76 | 5.69 (2.42) | -1.0 % |
+| 25.0 % | 8.17 | 7.79 | 7.48 | 7.94 (4.60) | -2.2 % |
+| 37.5 % | 9.84 | 9.82 | 6.31 | 9.73 (6.36) | +0.6 % |
+| 50.0 % | 11.95 | 11.84 | 5.07 | 11.85 (8.34) | +3.2 % |
+
+Three phone paths on this host, same model (Qwen3-32B f16, 18 CPU layers, 291.5 ms per token alone):
+
+| | OnePlus 15 direct USB | OnePlus 15 adb-tcp | OnePlus 12 adb-tcp, USB 2.0 |
+|---|---|---|---|
+| call = link + f x layer (ms) | 1.62 + f x 13.07 | 2.29 + f x 12.91 | 3.73 + f x 16.22 |
+| best share / layer ms | 36.3 % / 6.36 | 34.0 % / 6.68 | 24.0 % / 7.62 |
+| plan | 9,600 col x 18 layers, 2 sessions, 5.31 GB | 6,400 x 16, 1 session, 3.15 GB | 6,400 x 16, 1 session, 3.15 GB |
+| predicted ms saved per token | 53.6 (18.4 %) | 29.0 (9.9 %) | 32.0 (11.0 %) |
+| measured | -18.4 % time, -16.4 % energy (13 requests) | sweep only | 4-layer probe, below |
+
+**Real requests on the OnePlus 12's probe shard** (`portable/run-op12-seq-1`, 02:06-02:17 UTC; requests 001, 003,
+008, 012 of the trace, alone and shared at 25 % on 4 layers):
+
+| per decoded token (622 tokens) | alone | shared | change | prediction |
+|---|---|---|---|---|
+| time ms | 293.1 | 286.8 | -2.1 % (6.3 ms; per request -1.7 .. -2.3) | 8.0 ms (2.7 %) |
+| host J (CPU + GPU) | 98.4 | 96.6 | -1.8 % | |
+| total J with the phone at an assumed 4.5 W | 98.4 | 98.0 | -0.5 % | |
+
+Identical tokens in 4 of 4; 2,956 phone calls; shared layer 8.12 ms (host 7.50, call 7.89, compute 4.60); clean
+stop. Measured gain within 0.6 point of the prediction (criterion: 3 points). At the balance point the measured
+layer is 0.33-0.38 ms above the model (the mean of the larger of two noisy times), so the 16-layer plan is more
+likely to give about 25 ms per token (8.6 %) than the predicted 32.0. Phone energy is assumed, not measured.
+
+NOT done: the 3.15 GB production shard on the OnePlus 12 (phone 98-99 % full: it fits only after removing the
+probe and would leave about 1.5 GB for its other users) -> needs the user's word. Our 1.57 GB probe shard was
+removed from the OnePlus 12 at 02:18 UTC (free space back to 4.64 GB, as found); the local copy stays in
+`portable/shards/q32f16-op12-probe-s12800/`. Nothing else on that phone changed; no worker, no forward left.
+
+Not strictly "zero code edits" for the new phone: its second-to-second clock cap on the little cluster made the
+doctor's cap rule change (floor over six seconds, recorded at onboarding). Everything else was site fields.
+
+State: OnePlus 15 asleep with `stay_on_while_plugged_in` 0 as found (probe shard and sampler script stay in our
+directory there); GPU 1 free; no server, worker or forward of ours; 314 tests green (new and touched modules);
+`run_all.py` green except the unrelated `test_bridge_lifecycle.py` (2 assertions, files untouched); nothing under
+`paper_config_v1` changed; nothing committed.
+
+## 2026-11-18 01:55 UTC - PORTABLE PATH: new-phone rehearsal done on the OnePlus 15 (adb-tcp, no root); OnePlus 15 restored; OnePlus 12 first contact PASS, its sweep running
+
+**Rehearsal (01:32-01:43 UTC, `portable/run-onboard-op15tcp-q32f16-5`)**: the OnePlus 15 declared as a generic phone
+(`site-op15-tcp.json`: transport `adb-tcp`, worker as the shell user) -> `provision --probe` -> `onboard-phone`.
+
+| share (4 layers) | layer ms | host share ms | phone call ms (compute) | token time |
+|---|---|---|---|---|
+| 12.5 % | 8.69 | 8.69 | 3.95 (1.84) | -1.8 % |
+| 25.0 % | 7.55 | 7.51 | 5.47 (3.53) | -3.2 % |
+| 37.5 % | 7.23 | 6.39 | 7.12 (5.21) | -2.6 % |
+| 50.0 % | 8.88 | 5.17 | 8.77 (6.90) | -0.4 % |
+
+Fit: phone call 2.29 + f x 12.91 ms (direct USB: 1.62 + f x 13.07), host 0.52 + (1-f) x 9.34; best share 34.0 %,
+layer 6.68 ms. Plan for one session: 6,400 columns (25 %) on 16 of 18 layers, 3.15 GB, 29.0 ms per token predicted
+(9.9 %), bound by the session limit. The generic link costs 0.7 ms more per call and one session holds fewer layers.
+
+Gap found and fixed: Android's `ps -o ARGS` prints a command without its path, and the generic session confirmed
+such a basename only for rooted workers, so a worker started without root was never seen (launch receipt
+`worker_pids []`), never signalled, and the stop waited 120 s before the cleanup ended its adb client. Fix in
+`adapters/phone_tcp_session.py::_executable_pids`: the shell user's own exe link is read without `su`. New test;
+the 6 test modules that use the session pass. Live check `run-stopcheck-1`: pid found, SIGTERM, exit 143, forward
+removed, `HELPER_STOP.json` written. Also new: each phone is gated on the CPU caps recorded when it was onboarded
+(`doctor.site_checks(required_caps_by_phone=...)`), because a phone may always run with one cluster capped.
+
+**OnePlus 15 restored at 01:49 UTC**: `stay_on_while_plugged_in` back to 0; asleep again 45 s later (caps 1997 MHz),
+no worker, no forward. Its shards and the probe shard stay in our directories.
+
+**OnePlus 12 (user's choice for proof b), 01:50-01:56 UTC**, all through the commands, no code edit:
+
+| step | result |
+|---|---|
+| `discover --add-phone declared-op12.json` | SM8650, kernel 6.1.118, 11.8 GB, no root, USB `5-4` at 480 Mb/s |
+| `doctor --phone op12 --unmetered` | 0 blocking; degraded: USB 2.0, no root, power assumed (its nodes are unreadable without root), cluster 0 capped at 1,459 of 2,265 MHz; no LLM workload, 7.1 GB memory available |
+| `provision --probe` | 1.57 GB probe shard (layers 0-3, 12,800 columns) pushed to `/data/local/tmp/stream-energy-20261110/` (ours since 11-10) in 47 s, sha256 verified; /data free 4.6 -> 3.1 GB |
+| smoke `run-op12-smoke-1` (unmetered) | worker of 11-10 (`libggml-htp-v75.so`) ready on the NPU as the shell user; tokens identical alone and shared; 12.5 % share: layer 8.71 ms, phone call 5.64 ms (compute 2.40); clean stop |
+
+First start of `onboard-phone --phone op12` (01:55 UTC) was refused by its own gate: this phone's little cluster
+moves its clock cap between 1,459 and 2,265 MHz from second to second while awake, so one reading taken as the bar
+was failed by the next. Rule changed: onboarding records the floor of the caps over six seconds
+(`read_phone_caps_floor`) and later runs are held to that; a phone with no record is blocked only when its
+fastest cluster is capped (a sleeping phone), a capped slower cluster is `degraded`. Restarted 01:57 UTC.
+
+## 2026-11-18 01:32 UTC - PORTABLE PATH: PROOF (a) PASS - the workstation result reproduced through the new path (13 requests: -18.4 % time, -16.4 % energy, 13/13 identical)
+
+`portable/run-seq-1` (00:43-01:31 UTC, 48 min, quiet host: foreign load 0.55 cores mean, no phase repeated),
+`python3 -m research_dev.scheduler.campaigns.portable run --site site.json --plan PLAN_q32f16_dormant.json
+--schedule SCHED_seq-a.json`, report in `run-seq-1/REPORT.json`. Same model, binary, shards and schedule as the
+harness run `a6000-trace/run-seq` of 11-17; everything device-specific came from `site.json` and the drivers.
+
+| per decoded token (3,545 tokens) | alone | shared | change | harness 11-17 | pass criterion |
+|---|---|---|---|---|---|
+| time ms | 294.8 | 240.7 | -18.4 % (per request -14.3 .. -19.0) | -17.9 % | -17.9 +/- 1.5 points: PASS |
+| CPU / GPU / phone J | 59.0 / 40.4 / 0 | 46.4 / 35.7 / 1.00 | | | |
+| total J | 99.4 | 83.1 | -16.4 % (per request -14.2 .. -17.4) | -15.6 % | -15.6 +/- 1.5 points: PASS |
+| whole requests | 1,071.7 s / 359.5 kJ | 879.4 s / 301.6 kJ | -17.9 % / -16.1 % | -17.3 % / -15.2 % | |
+
+- Output tokens identical in 13 of 13 requests; all 28 phases give the same token hashes as the harness run.
+- Host alone 294.8 ms against 297.4 ms (-0.9 %, criterion 2 %). Loaded idle 94.0 + 22.7 W (11-17: about 100 + 23).
+- Phone energy measured (generic sampler, gauge ratio 0.42 from the site file); 71,388 phone calls; phone back on
+  adb, awake, 31.5 C at the end; GPU 1 released.
+
+The two small differences from the harness run (0.5 and 0.8 points better) are within the per-request spread; the
+host was quieter this time (no phase repeated, against 7 on 11-17).
+
+Running since 01:32 UTC: rehearsal of a new phone on the OnePlus 15 over `adb-tcp` without root
+(`onboard-phone --site site-op15-tcp.json --phone op15tcp`, probe shard of 4 layers x 12,800 columns).
+
+## 2026-11-18 00:43 UTC - PORTABLE PATH: shared smoke PASS on the OnePlus 15 through the new engine; 13-request sequence (proof a) running
+
+User's answers (2026-11-18 about 00:28 UTC): keep the OnePlus 15 awake by setting "stay awake while charging" and restoring it after
+the runs; the second phone for proof (b) is the OnePlus 12. Set at 00:29 UTC: `stay_on_while_plugged_in` 0 -> 7 and
+one wake event (caps 1997 / 2438 -> 3629 / 4608 MHz). To restore: 0 (`portable/OP15_RESTORE_NOTE.txt`).
+
+Shared smoke `portable/run-smoke-shared-1` (plan `PLAN_q32f16_dormant.json`, schedule = request 001 of the trace
+alone and shared, two warm-ups; doctor 0 blocking; another user's ~105-core burst ended during the model load):
+
+| request 001 (160 in, 124 out) | alone | shared (9,600 columns, 18 layers, 2 sessions) | change |
+|---|---|---|---|
+| ms per decoded token | 293.9 | 240.6 | -18.1 % |
+| CPU / GPU / phone J per token | 58.5 / 37.8 / 0 | 46.6 / 34.2 / 0.91 | |
+| total J per token | 96.3 | 81.7 | -15.2 % |
+
+Identical output tokens; 3,276 phone calls; shared layer 6.64 ms (host share 6.24, phone call 6.55), as on 11-17;
+phone power measured by the repo's generic sampler (767 samples, 3.79 W); launch reply dropped with status 255 and
+tolerated; helper stop recorded the known multi-session exit status 1 (`HELPER_STOP_ERROR.json`), cleanup empty;
+phone back on adb, awake, 27.2 C; GPU 1 released.
+
+OnePlus 12, read-only first look (before any metered run): SM8650 (Hexagon v75), kernel 6.1.118, 11.8 GB RAM,
+USB 2.0 (480 Mb/s), `su` does not answer for adb now (it did on 11-10), awake, 27.9 C, battery 24 % charging,
+7.25 GB memory available, 4.76 GB free on /data, no LLM workload process. Our bundle of 11-10 is still there
+(`/data/local/tmp/stream-energy-20261110/bin-v75`: worker + `libggml-htp-v75.so`). Other people's folders untouched.
+
+Running since 00:43 UTC: `portable/run-seq-1` (13 requests alone and shared, phase retry). Nothing touches the phones
+or loads the host until it ends. Then: adb-tcp rehearsal on the OnePlus 15, restore its setting, OnePlus 12.
+
+## 2026-11-17 22:23 UTC - PORTABLE PATH: full test harness run, probe shard provisioned over the generic path; next step is the user's (keep the OnePlus 15 awake)
+
+- `tests/run_all.py` (every scheduler test file in its own process + the 32 historical files): all pass except
+  `test_bridge_lifecycle.py`, 2 assertions (`timeout_s` 179 != 180, 89 != 90). Not from this work: the test and
+  `adapters/phone_session_ops/completion.py` are unmodified and committed; `_close_until_restored` passes
+  `int(deadline - clock())`, which is one second short of the full window on any real clock. Fails the same way alone
+  on a quiet host (3 of 3). Left as found.
+- "New phone" rehearsal prepared on the OnePlus 15 as a generic phone (`portable/site-op15-tcp.json`, transport
+  `adb-tcp`): `provision --probe` sliced a probe shard (layers 0-3, 12,800 columns, 1.57 GB), pushed it to our own
+  directory on the phone, verified its sha256 and wrote the binding, 22 s in all.
+- The OnePlus 15 sleeps: last wake 12:38 EST, asleep again 11 s later by the 30 s screen timeout;
+  "stay awake while charging" is now 0 (it was 7 on 11-16). A wake event alone would last 30 s. Keeping it awake is
+  a phone setting, so it is the user's: Developer options -> Stay awake, or their word to set it and restore it after.
+
+Ready to run once the phone stays awake (commands, from the repo root, M = `python3 -m research_dev.scheduler.campaigns.portable`,
+W = `claude-scratch/portable`):
+
+```
+M doctor --site W/site.json                                    # must show 0 blocking
+M run --site W/site.json --plan W/PLAN_q32f16_dormant.json --schedule W/SCHED_smoke-shared.json --output W/run-smoke-shared-1
+M run --site W/site.json --plan W/PLAN_q32f16_dormant.json --schedule W/SCHED_seq-a.json --output W/run-seq-1     # proof (a)
+M report seq W/run-seq-1                                       # pass: 13/13 identical, time -17.9 +/- 1.5, energy -15.6 +/- 1.5
+M onboard-phone --site W/site-op15-tcp.json --phone op15tcp --model q32f16 --binding W/bindings/op15tcp-q32f16-s12800-probe.json
+```
+
+## 2026-11-17 22:09 UTC - PORTABLE PATH: milestones 3 and 5 coded; host-only smoke PASS through the new engine; shared runs wait for an awake OnePlus 15
+
+New since the last entry: `drivers/host.py` (`HostLaunchPolicy`, `LinuxNvidiaHostDriver`), meters in `drivers/meter.py`
+(`HostMeter` by GPU index, `PhoneSysfsMeter` with the repo's generic sampler, `AssumedPhoneMeter`),
+`drivers/phone_functionfs.py`, `drivers/phone_adb_tcp.py` (any phone, root optional), `configuration/site_profile.py`,
+`campaigns/portable/{schedule,engine,provision,onboard}.py`, commands `onboard-host`, `onboard-phone`, `provision`,
+`adopt`, `make-plan`, `run`; runbook `campaigns/portable/README.md`; one section each in `ARCHITECTURE.md` and
+`README.md`; `tests/test_portable_boundaries.py` (import rule, ASCII, no spikes). New tests so far: 119 in 9 modules.
+
+Checks without the phone:
+
+| check | result |
+|---|---|
+| `adopt` of the shards already on the OnePlus 15 (read-only hashing, 9 s) | 2 shards x 9,600 columns, 18 layers, 10 bundle files pinned |
+| `run --dry-run` against `a6000-trace/run-seq/SERVER_COMMAND.json` | server argv and environment equal (except port and slot path) |
+| phone-side launch command against the harness's | 41 words, equal except the manifest's three label digests |
+| `schedule.seq` / `schedule.trace` against `SCHED_seq-a.json`, `SCHED_t1x-*.json`, `SCHED_t2x-shared.json` | equal |
+| `onboard-host --ingest` + `onboard-phone --ingest` on the 11-16 runs | fit 9.50 / 0.31 / 1.62 / 13.07 ms; plan 9,600 x 18 in [9, 9]; measured at that share -18.6 % / -16.0 % over 11 legs |
+
+Host-only smoke on the real server (`portable/run-smoke-alone-1`, `run --alone --unmetered`, model load 5 min 23 s):
+
+| leg | ms per token | package W | board W | host J per token |
+|---|---|---|---|---|
+| leg00 | 292.7 | 196.7 | 121.0 | 93.0 |
+| leg01 | 293.1 | 197.4 | 124.0 | 94.2 |
+
+RESULT PASS, identical tokens in both legs, slot erased after each request (285 cells), loaded idle 95.9 + 22.4 W,
+foreign load 0.5 cores, GPU 1 released. The harness's host-alone figure for this prompt class was 291.7 ms.
+
+Open, in this order: (1) the OnePlus 15 must be awake for the shared smoke and the 13-request sequence (proof a) -
+the doctor blocks a metered run while it sleeps, and waking it is the user's call; (2) rehearsal of a "new phone" on
+the OnePlus 15 over adb-tcp; (3) OnePlus 12 or 11 when the user has arranged access.
+
+## 2026-11-17 21:47 UTC - PORTABLE PATH: milestone 2 done (site file, guarded adb, discovery, doctor); live on FCHLLX01, read-only
+
+New: `configuration/site.py` (`research-scheduler-site-v1`), `drivers/adb.py` (`AdbGuard`: no listener = no command,
+never a server-control or mode command), `drivers/gates.py` (`ForeignLoadWatch`, GPU-free), `drivers/phone.py`
+(`PhoneDriver` interface, registry by transport, read-only health and facts), `drivers/discover.py`, `drivers/doctor.py`
+(`Check` rows, `RunLock`), `campaigns/portable/__main__.py` (`discover`, `doctor`, `report`). Existing file changed:
+`adapters/host_runtime.py` takes an optional GPU index (default call and callback unchanged; 30 power tests green).
+Tests: 32 new (site manifest 6, drivers 26). Not changed after all: `adapters/probes.py` (the drivers read health
+through the guard).
+
+Site file made by the commands only: `claude-scratch/portable/site.json` (`discover --init ...`, then
+`discover --add-phone declared-op15.json`).
+
+```
+$ python3 -m research_dev.scheduler.campaigns.portable doctor --site .../portable/site.json
+OK        host-gpu            GPU 1 NVIDIA RTX A6000 GPU-431a4567-...
+OK        host-gpu-free       58 MiB in use, compute processes none
+OK        host-rapl           readable: intel-rapl:0
+OK        phone-usb:op15      8-3 at 5000 Mb/s
+OK        phone-kernel:op15   6.12.23-android16-5-o-g227664cbe007-4k
+OK        phone-bundle:op15   10 files, libggml-htp-v81.so
+BLOCKING  phone-awake:op15    the phone is asleep (its CPU clocks are capped)
+BLOCKING  phone-cpu:op15      CPU clocks capped: policy0 1996 MHz (needs 3628), policy6 2438 MHz (needs 4608)
+2 blocking, 0 degraded, 16 ok
+```
+
+The OnePlus 15 is asleep again (it was awake at 08:40 UTC). Proof (a) needs it awake; waking it stays the user's call.
+Attached now (host-side facts only): OnePlus 15 `8-3` 5000 Mb/s, Pixel `6-3` 5000, OnePlus 12 `5-4` 480, OnePlus 11
+`1-1` 480.
+
+## 2026-11-17 21:37 UTC - PORTABLE PATH (user: "encapsulate the system into several modules and scheduler coordinate them, make it easy to migrate to another host and adapt new phones"): plan approved, milestones 0 and 1 done
+
+Decisions (user, plan mode): new path first (paper campaign and `paper_config_v1` stay byte-identical); this round =
+modules + one-command onboarding with a static share from the measured profile; proofs = (a) the workstation result
+reproduced through the new path, (b) a OnePlus 12 or 11 onboarded (user arranges access). Plan file:
+`~/.claude/plans/eventual-jingling-chipmunk.md`.
+
+```
+              scheduler (planner: placement + share from the profile)
+ site.json -> Site (discover, doctor)   Onboarding (measure, fit, provision) -> site profile
+              Host driver               Phone drivers (one interface)           Meter (quality flag)
+                         \_____________ Run engine (campaigns/portable) _____________/
+ import rule: configuration, _internal, adapters < drivers < campaigns/portable
+```
+
+| milestone | content | state |
+|---|---|---|
+| M0 | `_internal/shared_layer.py` (fit, bracketed savings, static share plan, fold into the planner profile), `drivers/meter.py` (phone power parsing), `campaigns/portable/{rundir,report}.py` | DONE: 34 unit tests; offline parity with the harness outputs to 1e-14 |
+| M1 | direct-USB session moved to `adapters/phone_functionfs_bridge_session.py` (tool re-exports it); opt-in `tolerate_launch_disconnect` and `multi_session` keywords, public `release()` | DONE: 7 new tests, 26 existing tool tests green; keyword path builds the launch command recorded in `run-seq` |
+| M2 | `configuration/site.py`, `drivers/{adb,discover,doctor,gates}.py` | next |
+| M3 | `drivers/{host,meter,phone,phone_functionfs}.py`, `campaigns/portable/{schedule,engine}.py` | |
+| M4 | proof (a): 13-request sequence through the new path | |
+| M5 | `drivers/phone_adb_tcp.py`, `provision.py`, `onboard.py`, `configuration/site_profile.py` | |
+| M6 | proof (b): OnePlus 12 or 11, gated on the user | |
+
+Offline parity (new report code on the recorded runs, no machine time):
+
+| recorded output | new code |
+|---|---|
+| `a6000-trace/run-seq/REPORT.json` | time -17.87 %, energy -15.61 %, 13/13 identical: every field equal |
+| `REPORT_t1x-c.json`, `REPORT_t2x-c.json` | saving 4.60 % / 4.01 %, E2E -17.0 % / -18.1 %: every field equal |
+| `a6000-split/AGGREGATE_1116.json` | 37.5 % share -18.6 % / -16.0 % over 11 legs; fit 9.503 / 0.310 / 1.622 / 13.070 ms, f* 36.3 % |
+
+Share plan from that fit: 9,600 columns on 18 layers in two sessions (5.31 GB), 53.6 ms per token predicted, 53.1 ms
+measured. With one 3.3 GB session it keeps 13 layers at 31 % (34.6 ms); a slow link gives `not-beneficial`.
+
+Found on the way, not changed: `adapters/phone_helpers.py:126-136` holds validation code after a `return`, so
+`PhoneHelperBinding` never validates its ids, mask or transport parameters.
+
+## 2026-11-17 17:33 UTC - Question (user): how to make the system easy to adapt to new phones or a new host? Assessment only, nothing built
+
+What the three bring-ups cost: second desktop 3 days (10-23 to 10-26), workstation 2 days and outside the scheduler
+(`claude-scratch/a6000-split`, `a6000-trace`), second phone (OnePlus 11 / 12) never finished.
+
+| # | change | what it removes | exists today |
+|---|---|---|---|
+| 1 | `onboard host` / `onboard phone`: one command -> one measured profile (stream time per layer and format, link time, P_F, P_W, idle power, usable RAM) | hand-run microbenchmarks, hand-edited profile (`bytes_per_s 51.5e9`), only checked-in profile is `MEASURED_4060TI_OP15_KERNEL_PROFILE_V1.json` | parts: `weight_stream_microbench.py`, `desktop_parent_calibration.py`, WS11 probe (`_internal/layer_placement_onboarding.py`), `layer_placement.py profile` |
+| 2 | share found by feedback (move f until the host share and the phone call end together); shards hold the largest share, columns chosen at run time; evidence store keyed by host + phone, cold on a new pair | 8-point sweep on the workstation; inherited whole-layer verdict on the second desktop (split never probed); shards sliced to a fixed 9,600 columns | server logs both times per layer; run-time column split in the scheduler path |
+| 3 | one `site.json` per machine from discovery (GPU by index / UUID, phones by serial, adb path, core list); templates hold workload and policy only | 61 absolute paths in the 4 template JSONs, forked `-5070ti` templates and rig scripts, symlink tree, env overrides, affinity "20-23" | `phone_session_discovery.py`, env overrides in `preflight.py` |
+| 4 | phone ladder: adb TCP on the stock kernel first, direct USB when root and kernel allow; one build script for Hexagon v73 / v75 / v81 and an arm CPU build with dotprod / i8mm | a new phone is blocked on root, kernel and HTP library before it can serve one call | TCP session (`phone_tcp_session.py`), AOA and FunctionFS sessions |
+| 5 | two modes: strict (paper rows, digest-pinned identities) and adaptive (identity recorded, output-identity smoke test) | 15 receipts after every rebuild or cable move | strict only |
+| 6 | `doctor` preflight (RAPL, GPU index and free memory, adb listener owner, USB speed, phone awake and uncapped, thermal, charge hold, stale samplers, page cache, foreign load) and a sampler for several GPUs, AMD / Intel RAPL, no sudo; move phase retry, slot erase and resident host weights into the scheduler | each of these lost at least one run | scattered: `rig_ready.sh`, `preflight.py`, the gate in `campaign_trace.sh` |
+
+Recommended order: 1 and 2 (also the paper's claim: a new device needs one profile, and the controller finds the
+share), then 3, then 6. Waiting for the user's choice.
+
+## 2026-11-17 15:44 UTC - Question (user): would the fraction technique of the workstation save more on the second desktop (9700X, DDR5, RTX 5070 Ti)? Answer from the 10-26 runs: no on trace energy, yes on time
+
+No new run. The same technique (host and phone compute disjoint column shares of one FFN layer at the same time) ran
+on that desktop on 2026-10-26 (g121half, g131half2: share 0.5 on every Gemma and Qwen layer, both phones).
+
+| second desktop | whole layer (paper rows) | share 0.5 | desktop alone |
+|---|---|---|---|
+| 1x total kJ | 166.4 (-7.4 %) | 168.0 (-6.5 %) | 179.6 |
+| 2x total kJ | 105.3 (-9.9 %) | 109.9 (-6.0 %) | 116.9 |
+| 1x TPOT ms / E2E p50 / p90 s | 295 / 95 / 230 | 236 / 85 / 176 | 303 / 104 / 219 |
+| 2x TPOT ms / E2E p90 s | 322 / 368 | 262 / 222 | 325 / 323 |
+| Gemma token (ms / J) | 312 / 33.1 | 230 / 29.4 | 284 / 36.6 |
+
+(Savings against the paper's alone column, phones not counted in it; the 10-26 entries used 181.2 / 117.7 kJ.)
+
+Why the two hosts differ (Eq. motivation-breakeven):
+
+- Second desktop: the OnePlus streams a Gemma layer at 52 GB/s, the CPU at 51. A whole-layer call takes 1.16 of the
+  CPU's time, under the bound of 1.3, so the CPU waits at 97 W in place of streaming at 139 W. A share gives part of
+  the layer back to the CPU at 139 W (CPU +7 to 9 kJ per trace); the time it saves is idle time at 53 W in a fixed
+  window. Per token with the idle fill counted: share 29.4 + 0.082 s x 53 W = 33.7 J against 33.1 J = equal.
+- Workstation: the CPU streams at 83 GB/s; a whole-layer call takes 1.55 of its time against a bound of 1.4 and loses,
+  so the share is the only form that saves there.
+
+Estimate for a tuned policy on the second desktop (share 0.42 on the Gemma layers, whole layers for Qwen on the Pixel,
+which is 1.9 times faster than this CPU): energy within about 1 % of the whole-layer rows, latency close to the 0.5
+rows. Not run; the phones are on the workstation now.
+
+## 2026-11-17 08:40 UTC - A6000 TRACE REPLAY DONE: 13 real requests -17.9 % time / -15.6 % energy per token; trace at 1x / 2x -4.6 % / -4.0 % total energy, E2E mean -17.0 % / -18.1 %; paper Table 11 + Faster host text filled (red, uncommitted)
+
+Setup: FCHLLX01 (5995WX, RTX A6000 index 1), Qwen3-32B f16, `-ngl 47` (18 CPU layers), 32 threads, 4 slots, 8192-token
+shared KV; OnePlus 15 only (2 NPU sessions, 37.5 % of every CPU-resident FFN layer), awake. 13 requests of the 32B
+trace (5,331 input / 3,558 output tokens). All in `claude-scratch/a6000-trace/`.
+
+A. One request at a time, alone and shared back to back (`run-seq`, 03:30-04:48 UTC, 13/13 identical outputs):
+
+| per decoded token | alone | shared | change |
+|---|---|---|---|
+| time ms | 297.4 | 244.3 | -17.9 % (per request -12.7 .. -18.9) |
+| CPU / GPU / phone J | 61.9 / 40.5 / 0 | 49.6 / 35.9 / 1.0 | |
+| total J | 102.5 | 86.5 | -15.6 % (per request -12.1 .. -20.0) |
+| whole requests | 1,080.7 s, 370.3 kJ | 894.3 s, 314.1 kJ | -17.3 % / -15.2 % |
+
+B. Trace replay, matched pairs of the quiet night (alone 06:08 / 06:42 UTC, shared 07:42 / 08:12 UTC, idle floor equal
+in both arms: CPU ~100 W, GPU 23 W loaded-idle; shared arm with host weights resident):
+
+| rate | arm | CPU kJ | GPU kJ | phone kJ | total kJ | saving | E2E mean s | TTFT p50 s | busy s | TPOT ms | same out |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1x | alone  | 258.6 | 144.1 | 0   | 402.7 | -     | 84.7 | 1.38 | 879.3 | 302.2 | |
+| 1x | shared | 240.7 | 138.9 | 4.6 | 384.2 | 4.6 % | 70.3 (-17.0 %) | 1.43 | 756.8 (-13.9 %) | 250.4 (-17.1 %) | 12/13 |
+| 2x | alone  | 157.5 | 104.9 | 0   | 262.5 | -     | 87.5 | 1.41 | 709.7 | 312.0 | |
+| 2x | shared | 145.2 | 103.7 | 3.0 | 251.9 | 4.0 % | 71.6 (-18.1 %) | 1.36 | 627.1 (-11.6 %) | 257.5 (-17.5 %) | 10/13 |
+
+Why 4-5 % for the trace and 15.6 % per token: the window is fixed. 1x alone = 879 s busy at 332.8 W + 818 s idle at
+134.6 W (40 % of busy power, 48 % of the window). The phone removes 122 busy seconds; they become idle seconds.
+saving ~= 122 s x (333 - 135 W) - 4.6 kJ phone = 19.6 kJ ~ 4.6-4.9 %.
+Second desktop (paper): 7.4 % / 9.9 % -> its rows stay; the workstation rows were ADDED (user rule: replace only if better).
+The four requests with different tokens all decoded together with another request (batch composition differs per arm).
+
+Other pairs measured on the way (not used):
+
+| pair | saving | note |
+|---|---|---|
+| 1x / 2x, phone asleep (CPU capped), evening | 2.6 % / 1.9 % | phone call 6.85 ms instead of 6.07 |
+| 1x / 2x, phone awake, dormant host share, vs matched alone | 4.0 % / 4.1 % | TTFT p50 2.37 / 2.31 s (weight restore) |
+| same shared arms vs the EVENING alone arms | 7.4 % / 8.2 % | WRONG pairing: idle CPU 121-135 W in the evening, 100 W at night |
+
+Lessons (also in memory):
+
+1. Arms must be run in the same hour: the idle floor of this shared host moves 25-35 W with other users' background.
+2. Phone asleep = CPU capped at 1997 / 2438 MHz (3629 / 4608 awake); gate on policy0 scaling_max_freq.
+3. Dormant host share (release 14 GB of host weights at decode, restore at the next prompt) costs 0.26-0.95 s per
+   request here; `S41_SERVER_FFN_DORMANT_HOST_SHARE=0` (config mode `resident`) -> TTFT equal to the alone arm,
+   decode unchanged (238.7-240.0 vs 294.7-296.5 ms).
+4. `--phase-retry` in `trace_replay.py`: server + phone session stay up, wait for 60 s below 4 foreign cores before
+   each phase, cancel on > 6 cores for 15 s (client disconnect -> server cancels -> slots erased), repeat the phase;
+   a finished phase with mean excess > 0.10 cores above 4 is repeated too. 7 of 28 phases repeated in `run-seq`, the
+   1x resident trace once.
+5. Other users' jobs evict the 65 GB model from the page cache: loads of 1 min became 12-25+ min from the hard disk
+   (readiness timeout raised to 5400 s).
+
+Paper (`~/Documents/MultiDNN`, red, uncommitted, build OK 19 pages, p. 15): Table 11 has six workstation rows (1x, 2x,
+one request at a time); Faster host text: opening sentence, 13-request per-token sentence, trace sentences, the
+fixed-window explanation; discussion: "one workstation with 13 requests of the 32B trace", multi-socket still untested.
+State left: OnePlus 15 awake (screen on, as before 15:05 EST), candidate kernel, 80 %; GPU 1 free; one default-port
+adb server (user's); nothing committed.
+
+## 2026-11-17 02:14 UTC - A6000 TRACE REPLAY: first pairs done (phone CPU was capped: asleep), two more faults fixed, reruns wait for a quiet host; paper has placeholder rows + text
+
+Runs (`claude-scratch/a6000-trace/`, Qwen3-32B f16, 13 trace requests, OnePlus 15 only, 37.5 % share of 18 CPU layers):
+
+| pair (UTC 11-16/17) | total kJ alone -> shared | saving | E2E mean s | TPOT | busy s | outputs equal |
+|---|---|---|---|---|---|---|
+| 1x (23:31 / 00:08) | 417.4 -> 406.7 | 2.6 % | 83.9 -> 74.1 (-11.6 %) | -12.1 % | 873 -> 785 | 13/13 |
+| 2x (00:56 / 01:19) | 273.9 -> 268.7 | 1.9 % | 87.5 -> 78.4 (-10.4 %) | -10.2 % | 710 -> 664 | 11/13 |
+
+Second desktop (paper Table 11): 7.4 % / 9.9 %. So on energy the workstation trace is NOT better; time gain is real.
+Why small: in-run idle = CPU 122 W + GPU 29 W = 151-155 W against ~332 W while decoding, and the 1x window is ~50 %
+idle. Saving ~= (busy seconds saved) x (332 - 155 W) - phone energy = 88 s x 177 W - 3.5 kJ.
+Solo decode (one request alone): 293 -> 250 ms per token (-14.7..-15 %), not the -19 % of rows-a / last night.
+
+Faults found in this round:
+
+1. Slot-save stall (alone arm of 22:46 UTC discarded, `run-t1x-alone.slotsave-stall`): with flash attention off the V
+   cache is transposed and the server's idle-slot save reads it element row by element row from the GPU. A request
+   reaching an idle server waited 40-297 s for its first token. Fix: `--cache-ram 0 --slot-save-path <dir>` and the
+   driver POSTs `/slots/N?action=erase` when a request ends (both arms). Check: TTFT 1.35 s, solo 289 ms per token.
+2. OnePlus 15 asleep = CPU capped. Power button at 15:05 EST, OPlus deep-sleep standby from ~15:38 EST: policy0 max
+   1997 MHz (3629 awake), policy6 2438 MHz (4608). Phone call 6.07 ms (last night) -> 6.85 ms, compute 5.04 -> 5.32.
+   `phone-power.txt` fields m0 / m6 show it: all earlier runs 3628 / 4608, tonight's shared arms 1996 / 2438.
+   High performance mode was already on; it does not prevent this. `input keyevent KEYCODE_WAKEUP` lifted the caps
+   (01:55 UTC). The campaign gate now requires policy0 max = 3628800.
+3. `seq` step died at load (01:47 UTC): CUDA out of memory on our board for a moment (someone else's job). The
+   campaign now checks GPU 1 right before the server starts and retries on an out-of-memory load.
+4. Campaign report call used a clobbered variable (`n`, also set in gate()); reports run by hand, script fixed.
+
+Now: `campaign_trace.sh 4 seq reshared1x-b reshared2x-b` (phone awake) waits in the quiet gate; another user runs four
+~22-core jobs since 02:03 UTC.
+
+Paper (uncommitted, red): Table 11 keeps the second-desktop rows and gains workstation rows for 1x, 2x and
+"one request at a time" with XX placeholders; Faster host text has the matching sentences with XX; the discussion no
+longer says "We have not run a trace on a workstation". Each placeholder has a `% PLACEHOLDER` comment naming its run.
+Build OK, 19 pages.
+
+## 2026-11-16 20:30 UTC - A6000 TRACE REPLAY (in progress): tooling built, overlap test PASS (phone helps at 1-4 rows), two harness faults found and fixed, run set waits for a quiet host
+
+User: "retest the trace for the fast host but use our a6000 and phones ... phone only help a fraction ... keep the 32b
+model results as well, but test more requests on the 32b model by using real requests from the trace ... demonstrate
+that even for the powerful server we can still save energy and time"; later "lets now just use op15 to help the server".
+
+Plan (all in `claude-scratch/a6000-trace/`): `trace_replay.py` (open-loop replay against one llama-server, 4 slots,
+8192-token shared KV, plain server = workstation alone, shared = OnePlus 15 share applied at each request's first
+token), `make_trace_inputs.py`, `trace_report.py` (rows / seq / trace), `campaign_trace.sh`.
+Workload = the 13 Qwen requests of the paper's 32B trace (BurstGPT window, recorded arrivals and token counts,
+5,331 input / 3,558 output tokens) on Qwen3-32B f16. Not the 14B + 12B multi-user trace: 53 GB of weights against a
+48 GB board leaves almost nothing on the CPU to share.
+
+```
+run set (queued)   alone 1x -> shared 1x -> alone 2x -> shared 2x -> 13 requests paired (alone, shared back to back)
+energy window      alone arm's service time; the shared arm keeps its meters on for the same window
+warm-up            one 400-token request before each trace (board power climbs 120 -> 136 W in the first minutes)
+```
+
+Overlap test `run-rows-a` (19:43-19:53 UTC, PASS, 13,644 phone calls; k identical requests decoding together):
+
+| rows per step | alone ms/step | 37.5 % share | time | J/token alone -> shared | energy | 25 % share time / energy |
+|---|---|---|---|---|---|---|
+| 1 | 292.0 | 236.4 | -19.0 % | 91.4 -> 78.2 | -14.5 % (baseline leg still warming) | -13.4 / -7.3 % |
+| 2 | 303.7 | 253.9 | -16.4 % | 49.7 -> 42.9 | -13.6 % | -13.1 / -10.3 % |
+| 3 | 305.3 | 265.8 | -12.9 % | 33.7 -> 30.3 | -10.1 % | -11.4 / -7.6 % |
+| 4 | 316.9 | 293.9 | -7.3 % | 27.1 -> 25.2 | -7.1 % | -12.2 / -9.8 % |
+
+- Batching is almost free for the host (292 -> 317 ms for 4 rows), so J/token alone falls 91 -> 27.
+- The phone call grows with rows (6.4 -> 8.1 ms at 37.5 %, host share stays 6.2 ms), so the best share falls with
+  the batch: at 4 rows 25 % beats 37.5 %. A fixed 37.5 % is right for 1-3 rows. Idle (model loaded): 95 + 67 W.
+
+Faults found on the way:
+1. `--cache-ram 0` (my setting) switched off llama.cpp's idle-slot clearing: finished requests stayed in the shared KV
+   buffer and every later token paid for their cells in the 18 CPU layers (315-339 ms per token against 293).
+   First alone arm discarded (`run-t1x-alone.stalekv-aborted`). Default cache kept now: `run-kvcheck` shows 293.0 ->
+   293.2 ms for a probe before / after a 1,961-token request (+0.7 s TTFT for saving the idle slot).
+2. Host contention: at 20:23 UTC another user started a 60-110 core job. `trace_replay.py` now watches foreign CPU
+   (everything outside its own process tree) and aborts above 6 cores for 30 s; the campaign waits for < 3 busy cores
+   and repeats an aborted run.
+
+adb on FCHLLX01 (19:38-20:23 UTC): the shared default-port server changed hands twice; my own status check auto-started
+one under our account (stopped again on the user's instruction). Now ONE default-port server under our account serves
+all four phones; the OnePlus 15 was handed to it by a scheduled adbd restart. Rule saved in memory
+(adb-default-port-autostart-fchllx01). The other user was added to `plugdev` by the user.
+
+## 2026-11-16 05:53 UTC - A6000 split, repeats + share sweep: -18.6 % time / -16.0 % energy per token over 11 shared requests in 4 runs; the shared-layer model matches every share within 0.25 ms; paper updated (one equation in Sec. 3.7, Table 4 row, Table 11 rows, Faster host text, all red)
+
+User: "lets test with a6000 server and with the phones to test our savings, and update our equation and text for this",
+then "just use the Faster host section, no new sections; add to Table 11 or replace it; in 3.7 replace the previous
+equation with the new one; mark the new changes in red".
+
+Campaign `claude-scratch/a6000-split/campaign_1116.sh` (05:05-05:47 UTC, 4 runs, all PASS, tokens identical in all 50 legs):
+Qwen3-32B f16, one A6000 (46 layers), 18 CPU layers, 32 host threads, OnePlus 15 on the candidate kernel.
+
+Repeats (two NPU sessions, share of ALL 18 CPU layers; each shared request against its two neighbouring host-only requests;
+host alone = package + board, no phone counted; shared = host + the phone's whole power):
+
+| share | requests / runs | ms per token | J per token (CPU / GPU / phone) | time | energy |
+|---|---|---|---|---|---|
+| host alone | - | 291.7 | 97.8 (57.7 / 40.1 / 0) | - | - |
+| 12.5 % | 3 / 3 | 276.7 | 95.5 (55.6 / 39.3 / 0.6) | -5.2 % (4.9..5.7) | -3.5 % (2.6..5.0) |
+| 25 % | 4 / 4 | 254.2 | 88.3 (50.4 / 37.2 / 0.8) | -12.8 % (12.5..13.1) | -10.7 % (9.3..11.3) |
+| 37.5 % | 11 / 4 | 237.5 (4.21 tok/s vs 3.43) | 82.2 (46.1 / 35.1 / 0.9) | -18.6 % (18.0..19.2) | -16.0 % (14.9..16.5) |
+| 37.5 %, 16 threads (11-15) | 2 / 1 | 316.1 -> 249.5 | 93.1 -> 77.1 | -21.0 % | -17.3 % |
+| 37.5 %, 64 threads (11-15) | 2 / 1 | 293.3 -> 241.1 | 117.7 -> 97.5 | -17.8 % | -17.1 % |
+
+Share sweep (one NPU session, 4 layers, run-op15-t32-v): layer wall time against
+t_f = max(c_host + (1-f) t_host, t_link + f t_phone), t_host 9.50 ms (82.8 GB/s), c_host 0.27 ms, t_link 1.62, t_phone 13.07
+
+```
+share      12.5    25     37.5    50     62.5    75     87.5    100 %
+measured   8.63   7.43   6.70    8.21   9.85   11.52  13.31   14.74 ms
+model      8.63   7.44   6.52    8.16   9.79   11.42  13.06   14.69 ms      -> best share 36.3 %, 6.36 ms
+token time -1.3   -3.0   -3.8    -1.8   +0.8   +3.3   +5.1    +7.1 %  (4 of 18 layers)
+energy     -0.9   -1.5   -2.4    -1.1   +0.5   +1.1   +1.6    +1.8 %
+plain two-endpoint prediction (host 9.5 ms, whole call 14.7 ms, link 1.6 ms): share 35 %, layer 6.2 ms; measured 6.5 ms at 37.5 %
+```
+
+Whole-layer case (f = 1), two runs: token +6.6 / +7.1 % time, +0.8 / +1.8 % energy. Derived powers: P_F 307 W (host energy
+saved per second saved, 11 legs), P_W + P_H 222 W (P_W 206 / 221, P_H 8-9 W during the call) -> bound 1.38 < time ratio 1.55.
+For the paper's 354 MB layer: saves energy above 72 GB/s, also faster above 108 GB/s (1 ms link) -> both phones are below.
+Correction to earlier entries: the host-alone layer is 9.5 ms (not 10.0); 10.0 was the host share time scaled up, which
+carries a fixed 0.27 ms cost of sharing. Token check: 18 x (9.5 - 6.53) = 53.5 ms, measured 54.2 ms.
+
+Caveat: a paper build ran on this host at 05:23:41 UTC (top-level main.pdf), during the last shared request of run r2
+(the -15.2 % leg); it stays in the pool. Single requests only, no wall meter, second A6000 idle and unmetered.
+
+Paper (`~/Documents/MultiDNN`, uncommitted, new marks RED, build at build/main.pdf, 18 pages, no errors):
+- Sec. 3.7 "Host and link": the old Eq. (1) is replaced by the shared-layer equation (the only equation there),
+  E_f/E_host = (1-f) + [P_W (t_f - (1-f) t_host) + P_H t_rpc(f)] / (P_F t_host); f = 1 gives the old bound inline;
+  f* and the ratio (1-f*)(1+P_H/P_F) in text; GPU paragraph: sharing does not help there (f* near zero).
+- Table 4: workstation row (83 GB/s, 307 W, 222 W, bound 1.4, 72 / 108 GB/s); caption "whole ... at f = 1".
+- Sec. 6.5 "Faster host": one setup sentence, two workstation rows in Table 11 (second-desktop rows kept), one paragraph.
+- Discussion: "we have not tested a server" -> one workstation with single requests, no trace there.
+Tools: `aggregate_1116.py` (pooled table, sweep fit; output AGGREGATE_1116.json), runs run-op15x2-t32-r1..r3, run-op15-t32-v.
+OnePlus 15 still on the candidate kernel, no workers, 80 %, 29 C. OnePlus 12 / 11 / Pixel not used.
+
+## 2026-11-16 04:57 UTC - Why paper Eq. (1) says "no saving" on the A6000 server CPU while we measured one: Eq. (1) is the whole-operator case; the saving comes from the shared-operator case (new form below)
+
+User: "why use the equation in our paper, we have no savings for the a6000 server cpu?" Nothing was run; numbers
+are from run-op15-t32-c (whole layer, 4 layers) and run-op15x2-t32 (shared, 18 layers), 32 host threads.
+
+```
+Eq. (1), phone takes the WHOLE layer, host waits:      E_phone/E_host = (t_rpc/t_host) * (P_W + P_H)/P_F
+  t_rpc/t_host = 14.7 / 10.0 = 1.47        P_F = 338 W (package 199 + board 139, token average)
+  P_W + P_H    = 241 W  (from the whole-layer leg: 4 layers, +19.3 ms and +0.79 J per token)
+  bound P_F/(P_W+P_H) = 1.40 < 1.47  ->  ratio 1.05  ->  NO saving.   Measured: +6.6 % time, +0.8 % energy.  Eq. (1) is right.
+  (testbed desktop: bound 2.9, call ratio 1.14 -> saves)
+
+Shared layer, phone takes a fraction f, host computes the rest AT THE SAME TIME (host stays at P_F, never waits):
+  t_split = max( (1-f) t_host ,  t_link + f t_phone )            E_split/E_host = (t_split/t_host) * (P_F + P_H)/P_F
+  best share   f* = (t_host - t_link) / (t_host + t_phone)        = (10.0 - 1.3) / 23.4 = 37 %      measured optimum 37.5 %
+  best time    t_split/t_host = t_rpc / (t_host + t_rpc - t_link) = 14.7 / 23.4 = 0.63 (6.3 ms)     measured 6.5 ms
+  power ratio  (192 + 149 + 4.0) / 338 = 1.02  ->  energy ratio 0.66 per shared layer
+  per token (FFN of 18 CPU layers = 180 of 291 ms): measured -18.5 % time, -16.8 % energy
+```
+
+Two levers: Eq. (1) saves through POWER (the host rests while a slower phone works; needs a low waiting power and
+a host that is not much faster than the phone). The shared form saves through TIME (bandwidths add; it is below 1
+whenever t_link < t_host, and energy follows because P_H << P_F). The server fails the first (waiting still costs
+241 of 338 W and the phone call is 1.47x slower) and passes the second.
+Paper: Eq. (1) and Table tab:ranges stay valid but describe whole-operator offload only; the sentence "below the
+lower threshold, offloading saves no energy" needs that qualifier once the server result goes in. Paper not edited.
+
+## 2026-11-16 04:36 UTC - More phones on the same layer (OnePlus 12, OnePlus 11)? ESTIMATE ONLY: a few more points, with falling returns; not possible with today's server
+
+User: "if we use op12 and op11 will we save more?" Nothing was run. Model fitted to the measured 32-thread legs:
+
+```
+layer time T solves   T/10 + (T - 1.3)/13.9 + sum_k (T - L_k)/F_k = 1      (ms; all shares finish together)
+  host            10.0 ms per whole FFN layer (786 MB, ~79 GB/s)
+  OnePlus 15      13.9 ms per whole layer (56 GB/s) + 1.3 ms link            -> two-way T = 6.36, measured 6.49 (x1.02)
+  OnePlus 12      F = 17.5-27 ms (45-29 GB/s, stream benchmark 11-11), L = 1.5 ms (AOA-like, untested there) .. 4.2 ms (adb TCP)
+  OnePlus 11      F = 17 ms (42-50 GB/s),                              L = same range
+per token = 18 layers x (10 - T) x 0.855   (0.855 = measured 53.9 ms saved / 63 ms from the layer times), host-only 290.7 ms
+energy    = (345 W measured while sharing + ~4 W per extra phone) x time, host-only 98.2 J
+```
+
+| phones on each CPU layer | layer FFN ms | time per token | energy per token | status |
+|---|---|---|---|---|
+| OnePlus 15 | 6.5 | -18.5 % | -16.8 % | measured |
+| + OnePlus 12 | 5.3 .. 6.1 | -25 .. -21 % | -23 .. -18 % | estimate |
+| + OnePlus 12 + OnePlus 11 | 4.5 .. 5.7 | -29 .. -23 % | -26 .. -19 % | estimate (OnePlus 11 power assumed 4 W) |
+| unlimited phones | ~1.3 (link) | about -45 % | - | bound: only the FFN of 18 CPU layers is shared (180 of 291 ms) |
+
+Why the returns fall: the host is the fastest streamer, the OnePlus 15 is next, every phone pays a fixed call cost,
+and each added share only shortens what is left. The low end of each range is the phone on adb TCP (4.2 ms per call:
+the OnePlus 12 would then carry about 7 % of a layer); the high end needs a sub-2 ms link on a 5 Gb/s port.
+
+What blocks it today:
+- Server: one phone per layer, one common column share. A three-way layer needs two concurrent phone calls and a
+  three-part merge in the server, plus a column-offset option in the shard tool (it stores the suffix only).
+  The existing multi-helper mode (different layers on different phones) adds nothing here: the OnePlus 15 already
+  holds all 18 CPU layers and the layers run one after another.
+- OnePlus 12: 480 Mb/s port, no direct-USB kernel, 4.1 GB storage free (a 20 % share of 18 layers is 2.8 GB),
+  another person's llama-server was on it earlier today. Idle at 04:36 UTC (6.3 GB RAM available, 80 %, 26 C).
+- OnePlus 11: not rooted -> no power reading, so no energy number at all with it; our session scripts need root;
+  single NPU buffers >= 2.4 GB fail. Idle at 04:36 UTC (13.2 GB available, 48 GB free, 100 %, 27 C).
+
+Recommendation: the OnePlus 12 as a third share is worth building only for a "saving grows with each phone" curve
+(1 phone measured, 2 phones new); leave the OnePlus 11 out until it is rooted. Repeats of the one-phone result
+and a trace run are worth more to the paper than the third share.
+
+## 2026-11-16 03:25 UTC - A6000 split, host thread settings: the saving holds at 16 / 32 / 64 threads (-18..-21 % time, -17 % energy) and beats the best host-only setting on both axes
+
+Same setup as the 02:50 entry (Qwen3-32B f16, one A6000, 18 CPU-resident layers, OnePlus 15 with two NPU sessions
+holding the 37.5 % column share of every CPU layer; two shared legs per run between host-only legs; tokens identical).
+
+| host threads | host alone ms / J per token | package W | shared 37.5 % ms / J | package W | time | energy | layer FFN ms (host share / phone rpc) |
+|---|---|---|---|---|---|---|---|
+| 16 | 315.5 / 93.5 | 161 | 249.5 / 77.1 | 158 | -20.9 % | -17.6 % | 6.95 (6.92 / 6.46) |
+| 32 | 290.7 / 98.2 | 199 | 236.8 / 81.7 | 192 | -18.5 % | -16.8 % | 6.49 (6.21 / 6.39) |
+| 64 | 292.6 / 117.5 | 262 | 241.1 / 97.5 | 247 | -17.6 % | -17.0 % | 6.67 (6.26 / 6.61) |
+| 25 % share, 16 / 32 / 64 | | | 269.5 / 253.9 / 254.9 ms | | -14.6 / -12.8 / -12.9 % | -12.1 / -11.5 / -12.9 % | |
+
+```
+host-only frontier:  cheapest = 16 threads (93.5 J, 315.5 ms)   fastest = 32 threads (290.7 ms, 98.2 J)   64 threads = same speed, +20 % energy
+shared, 32 threads:  236.8 ms / 81.7 J  = -18.5 % vs the fastest host-only AND -12.6 % vs the cheapest host-only
+shared, 16 threads:  249.5 ms / 77.1 J  = -14 % vs the fastest host-only AND -17.5 % vs the cheapest host-only
+-> tuning the host (32 -> 16 threads: -4.8 % energy, +8.5 % time) does not replace the phone share (4x the energy saving, and faster)
+phone: 3.7-4.0 W while sharing (1.3 W idle), battery 28-30 C after six runs, no throttling seen
+```
+
+Gotcha: back-to-back runs on one server port fail the harness' port probe (TIME_WAIT, "Address already in use") ->
+give each config its own port (t64 rerun on 27404; failed attempt kept as run-op15x2-t64.portbusy, nothing started).
+Scope of the claim: single requests (126 decode tokens per leg), one run per thread setting, energy = RAPL package +
+one NVML board + phone (no wall meter, second A6000 idle and uncounted), f16 weights, 18 of 64 layers on the CPU.
+Not done: a trace through the scheduler on this host; a second NPU on the same layer (server shares a layer with one
+phone). OnePlus 15 left on the candidate kernel (adb reboot returns stock); Pixel back in normal USB mode.
+
+## 2026-11-16 02:50 UTC - A6000 SERVER SPLIT SCREEN: host + OnePlus 15 sharing each CPU-resident FFN = -18.5 % time, -16.6 % energy per token (Qwen3-32B f16, one A6000); whole-layer offload and the Pixel lose (user: "the original idea is host and phones hold a part of one op, then the results merge"; "use multiple sessions for npu ... show that even for highend server we can still save")
+
+Setup (all on FCHLLX01, phones attached here): Qwen3-32B converted BF16 -> F16 (65.5 GB, sha 408b5192..., llama-quantize),
+llama-server rebuilt from the tree (build-cuda-s43), one RTX A6000 (index 1), -ngl 47 = 18 CPU-resident layers (0-17),
+-t 32, ctx 4096, 256-token prompt, 128 output tokens, one request per leg, same seed; tokens identical in every leg.
+OnePlus 15 RAM-booted into the candidate kernel (user OK "yes you can reboot it to ours"; image f13c7c03, identity
+verified, boot record claude-scratch/a6000-split/op15-boot-20261116T015949Z) -> direct USB path, 1.3-1.4 ms per call.
+Energy = RAPL package + NVML board 1 + phone (USB input + battery); no wall meter. Each phone leg is compared with
+the host-only legs before and after it (package and board power drift up ~8 % while the machine warms).
+
+Per FFN layer (786 MB f16), server S41SERVERFFNSHAPE means:
+
+| phone columns | phone rpc ms | phone compute ms | host share ms | layer FFN ms | vs host alone (~10.0) |
+|---|---|---|---|---|---|
+| OnePlus 15 25 % | 4.9 | 3.5 | 7.4 | 7.4 | -26 % |
+| OnePlus 15 37.5 % | 6.4 | 5.2 | 6.2 | 6.5 | -35 % |
+| OnePlus 15 50 % | 8.2 | 6.9 | 5.0 | 8.4 | -16 % |
+| OnePlus 15 100 % | 14.6 | 13.2 | - | 14.7 | +47 % |
+| Pixel f16 12.5 % | 6.3 | 4.8 | 8.7 | 9.2 | -8 % |
+| Pixel f16 25 % | 9.7 | 8.3 | 7.5 | 9.8 | -2 % |
+| Pixel f16 37.5 % | 13.3 | 11.9 | 6.3 | 13.4 | +34 % |
+| Pixel f16 100 % | 30.1 | 28.7 | - | 30.3 | x3 |
+
+Per token (host alone 290.5 ms, ~98 J = package 198 W + board 139 W):
+
+| run | phone layers | share | ms/token | time | J/token | energy |
+|---|---|---|---|---|---|---|
+| run-op15-t32-c (1 NPU session, whole-layer shard) | 4 | 37.5 % | 279.7 | -3.5 / -4.2 % | 95.3 | -2.6 / -3.1 % |
+| same | 4 | 100 % | 311.1 | +6.6 % | 100.1 | +0.8 % |
+| run-pixel-t32 (AOA, f16 CPU) | 8 | 12.5 % | 289.7 | -0.7 % | 99.4 | +1 % |
+| same | 8 | 25 / 37.5 / 100 % | 294 / 323 / 457 | +0.7 / +11 / +57 % | 99 / 107 / 128 | +1 / +10 / +31 % |
+| **run-op15x2-t32 (2 NPU sessions, sliced shards)** | **18** | **37.5 %** | **236.8** | **-18.5 %** | **81.7** | **-16.6 %** |
+| same | 18 | 25 % | 253.9 | -12.8 % | 87.6 | -11.5 % |
+
+```
+full test = OnePlus 15 alone: 2 NPU sessions (HTP0 layers 0-8, HTP1 9-17), each holds only the 37.5 % column suffix
+            (shards-s9600: 2 x 2.65 GB instead of 14 GB of whole layers), production resident workers + router
+            (/data/local/tmp/s43-p2-owner-v1), 6,804 calls, bridge status ok, phone 4.0 W (1.3 W idle), 3.44 -> 4.22 tok/s
+why energy < time:  CPU package stays ~192 W while it shares (198 W alone); GPU does the same work in less time
+                    (board 139 -> 148 W average); only the CPU time and the GPU's waiting power are saved
+why only the OnePlus: the server shares a layer with ONE phone and one common column share; the OnePlus NPU is the
+                    fastest (55 GB/s); the Pixel's f16 CPU path (29 GB/s) is slower than the Threadripper per byte
+next lever (not built): a third share on a second NPU (OnePlus 12, idle again at 02:30 UTC) -> est. layer 5.5 ms, ~-28 %/token
+```
+
+Gotchas found: (1) the session launch reply drops (adb exit 255) because the phone leaves adb at once on this host ->
+harness tolerates it (LaunchTolerantSession); (2) one NPU session holds 3.3 GB = 4 whole f16 32B layers -> use sliced
+shards (ffn_shard_gguf.py SESSION=LAYERS:COLUMNS, suffix slice) and S41_SERVER_FFN_COLUMNS = stored width; (3) the
+multi-session session ends with worker_status=1 at bridge shutdown -> harness saves RESULT first, records the stop error;
+(4) the host sampler's nvidia-smi parse assumes one GPU -> harness reads board 1 by index; (5) the adb server on this
+host belongs to another user (never restart it); (6) a foreign power sampler (/data/local/tmp/pi0-hdpad) ran on the
+OnePlus 15 before the reboot (user approved the reboot). Pixel returned to normal USB with aoa_bridge.py restore.
+Tools + runs: /mnt/data_h16t/zs89458/claude-scratch/a6000-split/ (split_screen.py, make_config*.py, analyze.py,
+finalize.py, run-*/). Thread settings 16 / 64 running; nothing committed.
+
+## 2026-11-16 01:35 UTC - A6000 server + four phones checked for a "very large model" trace arm (user: "can we use them to run a very large model with our trace with phones to save energy? will it strength the paper?"): read-only check, estimates only, nothing run
+
+State found (read-only: nvidia-smi, free, lsusb, adb getprop / meminfo / df / dumpsys battery / ps):
+
+| | state 2026-11-16 01:30 UTC |
+|---|---|
+| FCHLLX01 | TR PRO 5995WX, RAM 125 GB (113 available), 2 x RTX A6000 49 GB both idle (24 W, no compute process), load 0.2, 1 other user logged in |
+| meters | RAPL package readable (chmod of 11-10 still holds, no reboot since), NVML per board; no DRAM domain, no wall meter |
+| disks | root NVMe 91 GB free; /mnt/data_s4t NVMe 490 GB free (no directory of ours); /mnt/data_h16t HDD 14 TB free; usbfs_memory_mb 16 |
+| models on disk | Qwen3-32B bf16 65.5 GB + Q4_0 18.6 GB (HDD), Qwen3-14B f16, Gemma-4-12B f16; llama-server in build-cuda-s43 is from 09-28 |
+| OnePlus 15 | 5 Gb/s port, stock kernel, 9.4 GB RAM available, 57 GB free, 74 %, 25 C, rooted |
+| Pixel 10 Pro | 5 Gb/s port, 11.2 GB RAM available, 17 GB free, 100 %, 24 C, rooted |
+| OnePlus 12 | 480 Mb/s port, IN USE BY ANOTHER PERSON (llama-server from another person's folder started ~6 min before the check), 1.9 GB RAM available, 4 GB free -> not touched, not available |
+| OnePlus 11 | 480 Mb/s port, 13.2 GB RAM available, 48 GB free, NOT rooted (no power reading) |
+
+Estimates from the 11-11/11-13 device numbers (server CPU 82.5 GB/s at 284 W, idle 74 W; A6000 board 78 W with weights
+loaded; OnePlus 15 56 GB/s at 9 W; Pixel f16 29.3 GB/s at 10.4 W; link 1.5-2 ms per call). None of this is measured.
+
+```
+rule  E_phone/E_host = (t_rpc/t_host) * (P_W + P_H) / P_F
+
+A. Qwen3-32B bf16 (65.5 GB, on disk) on ONE A6000: ~20 of 64 layers on the CPU, FFN 786 MB per layer
+   host layer 9.5 ms at 362 W (package + board);  waiting 152 W;  bound 362 / 161 = 2.25
+   OnePlus 15 whole layer  15.8 ms -> ratio 1.65 -> -27 % per layer, +65 % time   (16-thread host: bound 1.52, ratio 1.46 -> -4 %)
+   Pixel f16 whole layer   27.8 ms -> ratio 2.9  -> no saving
+   token (12 layers on the OnePlus): ~113 J -> ~102 J (-10 %), step 0.30 -> 0.38 s (+25 %)
+   concurrent split host + OnePlus (33 % of the columns on the phone, ideal): layer 9.5 -> 6.4 ms, -31 % energy AND faster;
+   token about -19 % energy, -20 % time ideal; the testbed's measured splits reached about half of ideal -> expect -8..-15 %
+
+B. 70B-class f16 (~141 GB, not on disk) on BOTH A6000s: ~28 of 80 layers on the CPU, FFN 1.41 GB per layer
+   bound (two loaded boards wait) 440 / 239 = 1.84;  OnePlus 15 27 ms vs host 17.2 ms -> ratio 1.57 -> -15 % per layer
+   OnePlus 15 holds 6-7 layers -> token ~319 J -> ~311 J (-2 %), step +10 %
+   anything that fits 96 GB (70B Q8_0 ~75 GB) leaves nothing on the CPU -> phones cannot help
+```
+
+Assessment given to the user: a full trace arm on a very large model is feasible but not a headline (whole-partition
+offload is slower and saves ~2-10 % by estimate; ~0 against a 16-thread host). It would only strengthen the paper as a
+measured point for Eq. (1) on a fast host, or, if a one-evening screen confirms it, as a concurrent-split result on a third
+host class. Proposed order: (1) one-request metered screen, Qwen3-32B bf16, one A6000, arms host / OnePlus whole layer /
+split 25-33-40 %, OnePlus on the direct USB path (needs the user's OK for the candidate kernel boot); (2) trace arm only if
+the split saves >= ~15 %. Known blockers for (2): server build predates the October server fixes, rig + transport receipts
+live on the desktop and must be re-qualified here, shared host needs a quiet window, usbfs 16 MB is decode-only.
+Earlier data points on this host: 09-20 (phone path 3.4-7.5x slower than this CPU on 14B), 09-29 S1 (WiFi: split-25 +3 %
+step time, whole phone +72 %).
+
+## 2026-11-13 19:18 UTC - Artifact "Offload Break-Even" v2: batch section added (user: "can we add one more to show what batch size will affect this"); same URL https://claude.ai/artifact/L2wTrP1bqbm4Lemojw6VK6
+
+```
+E_phone(b) / E_host(b) = [rho_phone(b) / rho_host(b)] * (t_rpc / t_host at one row) * (P_W + P_H) / P_F
+rho(b) = time of a b-row call / time of a 1-row call; powers held at their one-row values -> the bound does not move,
+the batch moves only the time ratio; the layer's energy is shared by b tokens on every device.
+```
+
+One Qwen3-14B FFN layer on the testbed = Table 2 (one row) x the row factors of paper Fig. 2b:
+
+| rows | desktop CPU ms / J per token | OnePlus 15 call ms / call:host / J per token / energy | Pixel 10 Pro call ms / call:host / J per token / energy |
+|---|---|---|---|
+| 1 | 18.7 / 2.88 | 9.8 / 0.52 / 0.76 / -74 % | 9.4 / 0.50 / 0.70 / -76 % |
+| 2 | 19.1 / 1.47 | 9.9 / 0.52 / 0.38 / -74 % | 13.4 / 0.70 / 0.50 / -66 % |
+| 4 | 20.2 / 0.78 | 12.7 / 0.63 / 0.25 / -68 % | 23.1 / 1.14 / 0.43 / -45 % (slower, still saves) |
+
+- Row factors (microbenchmark, fixed cadence, Oct 2026): CPU 18.39/18.74/19.81 ms (1.02, 1.08); RTX 4060 Ti 2.00/2.02/2.03 ms;
+  OnePlus 15 NPU compute 7.81/7.86/10.19 ms (1.01, 1.30); Pixel CPU 10.11/14.47/24.87 ms (1.43, 2.46). Production agrees for the
+  OnePlus (9.6 -> 12.7 ms round trip at 4 rows, 09-27 batch-4 qualification).
+- Headroom: the saving ends when the phone's rows cost bound / (one-row ratio) times the host's: OnePlus 3.8x (at 4 rows: 1.2x),
+  Pixel 4.1x (at 4 rows: 2.3x). Saving per token for this layer 2.1 J (1 row) -> 0.5 J (4 rows), per step unchanged (2.1 J).
+- Against the RTX 4060 Ti holding the weights (estimate, board power): call:host 4.9 -> 4.9 -> 6.3, bound 2.7, +80 -> +130 %.
+  A larger batch moves the phone further past the bound there.
+- Stops at 4 rows: no desktop CPU time measured beyond. Quoted as text only: 10-08 prefill screen (OnePlus NPU 3.9/9.6/45.5 ms at
+  1/32/512 rows, Pixel CPU 9.4/39.1/531 ms, 32B Q4_0 layer), A6000 12B Q4_0 1.83 -> 0.137 J/token above idle at 1 -> 256 rows.
+  Second-desktop 2-row windows disagree (-18 % on 10-26, +2 % on 10-27) -> not charted.
+- Assumption to keep in mind: phone power at 2 and 4 rows was not metered; J per token at 2/4 rows = one-row system J x rho / b.
+- Page: new section "What the batch changes" (two figures: time bars per rows with a dashed desktop-time guide; range tracks with
+  marks numbered 1/2/4), 3 new source rows, kicker "batch 1 unless stated". Checked as before (stub DOM + cairosvg raster of the two
+  new figures, tags balanced); not seen in a browser. v1 copy kept in the session scratch only.
+
+## 2026-11-13 16:56 UTC - Artifact "Offload Break-Even" (research_dev/figures/offload-breakeven.html, published https://claude.ai/artifact/L2wTrP1bqbm4Lemojw6VK6) (user: "create an artifact with graph to demonstrate it ... timeline of one op ... energy per GB ... equation ... range we will have savings ... tradeoff ... what make it has no savings")
+
+```
+E_phone / E_host = (t_rpc / t_host) * (P_W + P_H) / P_F
+t_rpc < t_host                              -> saves time and energy
+t_host <= t_rpc < t_host * P_F / (P_W+P_H)  -> slower, still saves energy (time traded for energy)
+t_rpc >= t_host * P_F / (P_W+P_H)           -> no saving
+per GB:  e_host - e_phone > P_W / B_rpc      (the J/GB gap has to clear the host's waiting J per GB)
+```
+
+| section | content |
+|---|---|
+| timeline | Table 2 layer on the testbed: desktop 18.7 ms / 2.88 J; OnePlus 15 call 9.8 ms (9.25 compute + 0.55 USB) / 0.75-0.77 J; Pixel 9.4 ms (8.5 + 0.9) / 0.70 J |
+| J/GB | seven devices alone, 0.152 to 3.44 J/GB, with GB/s, W and J per Qwen3-14B token |
+| rule | equation, three ranges, J/GB form; live figure of system power over time (area = energy) with a dashed break-even outline, five host presets, five sliders, per-GB bars |
+| hosts | call/host ratio against each host's bound (table below); what removes the saving, what brings it back |
+| sources | which numbers are measured, derived, estimated |
+
+| host | call / host | bound | energy | kind |
+|---|---:|---:|---|---|
+| testbed CPU, one Qwen layer, OnePlus 15 | 0.52 | 2.0 | -74 % | measured (Table 2) |
+| testbed CPU, GPU unused, whole 32B token, both phones | 1.14 | 3.0 | -62 % | measured 10-14 |
+| second desktop CPU, one Gemma layer | 1.16 | 1.3 | -13 % | measured times + waiting W, streaming W derived |
+| Threadripper 64 threads | 1.3-1.7 | 2.2-3.6 | -63 to -24 % | estimate |
+| RTX 4060 Ti, weights fit | 4.4-5.6 | 2.7 | +60 to +100 % | estimate, board only |
+| RTX A6000, weights fit | 11-14 | 3.4 | +230 to +320 % | estimate, board only |
+
+- CORRECTION to the 01:33 table: the second desktop saves about 13 % per offloaded Gemma layer, not 24 %. Token energies
+  36.5 -> 33.1 J over 26 layers = 0.13 J per layer; with 97 W waiting + ~7 W phone over the 208 ms chain the host's streaming
+  power is ~139 W (bound 1.34). The 24 % row took ~160 W from the rough -0.27 J per layer of 10-26 16:14, which would be 7 J per
+  token against the 3.4 J measured. The paper never used the 24 %.
+- Dropped "Pixel 7.0 ms against 13.0 ms on that host's CPU": 13.0 ms is the CPU's full Qwen layer (0.66 GB, FFN + attention),
+  the Pixel call is FFN only (CPU FFN at 51 GB/s is ~10.5 ms). The page gives the token times instead (305 vs 367 ms).
+- The paper's "Faster host" paragraph was edited after the 01:47 entry (LPDDR6 estimate in place of the "what helps" block);
+  the page follows the current text.
+- Checked by running the page script against a stub DOM and rasterizing the four charts with cairosvg (no browser here):
+  no script errors, label collisions fixed. Colors = first three palette slots, validated all-pairs in both themes. Not committed.
+
+## 2026-11-13 01:47 UTC - Paper: break-even equation in "The opportunity has a boundary" + faster-host explanation (user: "explain it with equations, do not make it too long ... why we have less benefits and what would make our phones help more. mark the changes in blue")
+
+```
+Eq. (1), sec-motivation:   E_phone / E_host = (t_rpc / t_host) * (P_W + P_H) / P_F      phone saves while t_rpc/t_host < P_F/(P_W + P_H)
+testbed (Table 2):  154 W streaming, 63 W waiting, 14 W phone -> bound 2.0;  OnePlus call 0.52 of the CPU's time -> layer costs 26 %
+second desktop:     Gemma call 1.16x the CPU's time (0.68 on the testbed);  97 W while waiting, 55 W of it idle power
+```
+
+| file | blue text added |
+|---|---|
+| `tex/sec-motivation.tex`, "Host and link" | definitions, Eq. (1), the testbed numbers, "A faster host raises the first factor, and a higher waiting power raises the second", "the first factor rises from 0.68 to 1.16". Replaces the three sentences that began "The saving comes from the phone's low power". |
+| `tex/sec-results.tex`, "Faster host" | each host property raises one factor of Eq. (1); 97 W vs 63 W while waiting; Gemma step 10 % longer at 16 % less power = 8 % less energy; what helps: packed-weight calls (Pixel Qwen layer 7.0 ms vs 13.0 ms on that CPU, OnePlus f16 Gemma 8.0 vs 6.9), batched steps (Qwen token -18 % at two requests vs -4 % at one); waiting power hard to lower (55 of 97 W is idle). |
+
+- Symbols follow the design section (P_F, P_W); P_H is new (phone power during the call). The design equations move to (2)-(4); the paper
+  has no other numbered equation references.
+- Second-desktop numbers (97 W, 10/16/8 %, 7.0 vs 13.0 ms, 18 % vs 4 %) are from the 10-26 log entries (controller windows of g62new /
+  g72new and server call logs). The run records live on the second desktop and were not re-read today.
+- Build `build/main.pdf`: 18 pages, no undefined references, no overfull boxes. Not committed. Backups:
+  `claude-scratch/paper-backup-20261112/sec-motivation.before-breakeven-eq.tex`, `sec-results.before-breakeven-eq.tex`.
+
+## 2026-11-13 01:33 UTC - Break-even rule for a faster host (user: "can we have some kind of formula ... how much faster the cpu or gpu is will we lose the benefits")
+
+```
+per GB of offloaded weights:   host alone  E_h = P_h / B_h        with phone  E_a = (P_w + P_p) / B_p
+s = B_h / B_p  (host speed over phone-call speed)      saving = 1 - s / s*      s* = P_h / (P_w + P_p)
+same thing in J/GB:  the phone pays when  e_h - e_p > P_w / B_p     latency on those weights: x s
+```
+P_h host power while streaming, P_w host power while waiting for the phone, P_p phone power, B_p includes call overhead.
+
+| host | P_h W | P_w + P_p W | break-even s* | actual s | saving on those weights |
+|---|---:|---:|---:|---:|---|
+| testbed CPU, both phones (measured 10-14) | 107 | 36 | 2.9x | 1.14x | 61 % |
+| second desktop CPU (per Gemma layer, 10-26; P_h implied by -0.27 J) | ~160 | 106 | 1.5x | 1.16x | 24 % |
+| Threadripper 64 threads (estimate) | 267-286 | 80-123 | 2.2-3.6x | 1.3-1.7x | 24-63 % |
+| Threadripper 16 threads (estimate) | 167 | 80-123 | 1.4-2.1x | 1.2-1.5x | -8 to +45 % |
+| RTX 4060 Ti, weights fit (estimate, board only) | 101 | 37 | 2.7x | 4.4-5.6x | loses (1.6-2.0x the energy) |
+| RTX A6000, weights fit (estimate, board only) | 299 | 87 | 3.4x | 11-14x | loses (3.3-4.2x the energy) |
+
+- The rule is an accounting identity once the three powers are measured on one boundary; its use is the break-even: a host may be
+  up to P_h / (P_w + P_p) times faster than the phone call before offloading stops saving energy.
+- Total saving = this fraction x the share of baseline energy spent streaming the offloaded weights.
+- Not in the paper yet. Candidate place: "The opportunity has a boundary" (sec-motivation).
+
+## 2026-11-13 01:21 UTC - Can the fast CPU trade speed for energy? Thread sweep on the Threadripper (user: "can we trade the speed for energy?")
+
+| threads | GB/s | package W | J/GB | above idle | vs 64 threads |
+|---:|---:|---:|---:|---:|---|
+| 64 (benchmark setting) | 80.8 | 267 | 3.31 | 2.45 | |
+| 32 | 81.2 | 207 | 2.54 | 1.66 | same speed, -23 % energy |
+| **16** | **72.0** | **167** | **2.32** | **1.27** | **-11 % speed, -30 % energy** |
+| 8 | 44.9 | 144 | 3.21 | 1.63 | -44 % speed, -3 % energy |
+| 4 | 42.6 | 150 | 3.53 | 1.81 | -47 % speed, +7 % energy |
+
+- Qwen3-14B, 8 layers (4.28 GB set), one run each, package idle 69-75 W. Below 16 threads the 70 W idle floor is paid over a
+  longer call, so slower costs more. Even at 16 threads the CPU is 14x the OnePlus 15 NPU (0.161 J/GB).
+- Raw runs `xband-runs/stream-energy-20261110/server-cpu-threads-20261113/t{64,32,16,8,4}`; table added to RESULTS.md.
+- Answer given (from this sweep and the October runs): J/GB counts the streaming device only. With a phone holding the layer
+  the host still draws its wait power for the whole call, so the saving is (streaming W - waiting W) x time, minus the phone,
+  minus floor W x extra time. Testbed floor 14 W: CPU-only server + both phones -61 % counted energy for +13 % time (10-14).
+  Second desktop floor 53 W, ~97 W while waiting: -0.27 J and +1.1 ms per Gemma layer, fleet -7 to -10 % (10-26).
+  Threadripper: 69-75 W idle, 112-116 W with one busy thread, 267-286 W streaming; estimate 1.3-2.5 J per phone-held GB against
+  2.3-3.4 J on the host (no USB phone run on this host yet).
+- Trades that exist: host threads (free on both CPUs down to the bandwidth knee), whole layers on phones up to the latency
+  bound (energy optimum = all-phone on every host measured), not same-layer splits (the CPU stays at full power).
+
+## 2026-11-13 01:10 UTC - Paper Fig. 1(a) back to five rows (user: "revert to previous 5 rows")
+
+| file | state now |
+|---|---|
+| `tex/sec-introduction.tex` | restored byte for byte to the five-row version (4060 Ti row, no workstation clause, "the GPU") |
+| `tex/sec-motivation.tex` | keeps the one correction: within 8 % on the testbed's CPUs and NPU, within 14 % on its GPU |
+| `figure/make_models_fig.py` | five rows by default again; `--server` gives the seven-row variant |
+
+- Build `build/main.pdf`: 18 pages, no undefined references, same 1.888 pt overfull box. Not committed.
+- The seven-row introduction is kept as `claude-scratch/paper-backup-20261112/sec-introduction.seven-rows.tex`.
+- The server numbers (A6000 0.425 J/GB, Threadripper 3.44) are in RESULTS.md only; no sentence was added to the paper.
+
+## 2026-11-13 01:04 UTC - Paper Fig. 1(a): workstation rows added (user: "add the server result to the figure 1 a. will it make our paper better?")
+
+| row (new in bold) | J/GB (J per Qwen3-14B token) | label (vs Core i9-12900K) | usable memory |
+|---|---|---|---:|
+| Core i9-12900K, 30 GB/s | 2.97 (83) | | 30 GB |
+| **Threadripper PRO 5995WX, 82 GB/s** | **3.44 (97)** | | 125 GB |
+| RTX 4060 Ti, 273 GB/s | 0.37 (10) | 8.0x less | 16 GB |
+| **RTX A6000, 705 GB/s** | **0.43 (12)** | 7.0x less | 48 GB |
+| Tensor G5, 27 GB/s | 0.35 (9.8) | 8.5x less | 11 GB |
+| Snapdragon 8 Elite Gen 5, 55-72 GB/s | 0.16 (4.5) | 18x less | 10 GB |
+| Snapdragon 8 Gen 3, 29-45 GB/s | 0.15 (4.3) | 20x less | 6 GB |
+
+- `figure/make_models_fig.py`: seven rows by default (CPUs, GPUs, phones; testbed first in each class), `--no-server` gives the
+  five-row figure back byte for byte. Ratio labels are computed against the first row; J/token labels come from SUMMARY.json.
+  Memory panel now runs 0-125 GB (phone bars become slivers), energy axis 0-5.9. Figure height 4.29 -> 5.97 cm.
+- Blue text: intro paragraph 2 now reads "On our desktop (RTX 4060 Ti, Core i9-12900K) and on a workstation (RTX A6000,
+  Threadripper PRO 5995WX), the CPU streams weights 9x slower than the GPU and uses 8x more energy per gigabyte"; "the GPU" ->
+  "its GPU" in the observation sentence; alt text lists seven devices.
+- Correction in `sec-motivation.tex` (left over from the 4060 Ti row): "each testbed device stays within 8 %" was wrong for the
+  GPU (+13.6 % on the 0.5B model). Now "within 8 % ... on the testbed's CPUs and NPU and within 14 % on its GPU".
+- Build `build/main.pdf`: 18 pages, no undefined references, same 1.9 pt overfull box. Not committed. Backups in
+  `claude-scratch/paper-backup-20261112/` (`sec-introduction.before-server-rows.tex`, `sec-motivation.before-server-rows.tex`).
+- My view given to the user: small gain (the 8x CPU/GPU gap and the phone advantage hold on a second host class), three costs
+  (48 GB bar shows a GPU that holds the whole 14B model; the workstation has no end-to-end result in the paper and its CPU
+  out-streams every phone; phone memory bars shrink). Suggested alternative: five rows in Fig. 1(a) plus one sentence in the
+  "Host and link" paragraph of the motivation section. Decision is the user's.
+
+## 2026-11-13 00:56 UTC - Server CPU rerun matches the 11-11 leg (user: "also run the A6000 machine cpu")
+
+| Threadripper PRO 5995WX, 64 threads | 11-11 leg | 11-12 rerun |
+|---|---:|---:|
+| J/GB fit (runs used) | 3.44 (9) | **3.43 (9)** |
+| DRAM-bound GB/s | 81.8 | 80.0 |
+| package W on sets of 1 GB and more | 275-286 | 276-286 |
+| J per Qwen3-14B token | 97.4 | 98.3 |
+| idle package W | 66-78 (94-96 before two runs) | 66-74 (108-117 before the last five) |
+
+- Same protocol, started three minutes after the A6000 GPU leg ended. The 11 runs of 1 GB and more agree within 2.6 % in
+  J/GB run by run. Runs under about 1 GB sit in the 256 MB cache in both legs (21 excluded now, 20 before).
+- The last five runs (from 00:18 UTC) had other activity on this shared host: about one busy core, idle 108-117 W. Two of
+  them started at 78.6-79.4 C, above the 76 C gate, after the 5-minute wait limit. Gross J/GB moved by at most 2.4 %.
+- Decision: tables keep the 11-11 leg (cleaner idle); the rerun is a repeatability note under Flags in RESULTS.md
+  (`make_results.sh` analyzes `server-cpu-20261112`, `assemble.py` writes the note). Column order is now desktop GPU,
+  desktop CPU, server GPU, server CPU.
+- Same machine, both engines: A6000 0.425 J/GB at 705 GB/s, CPU 3.44 J/GB at 82 GB/s = 8.1x the energy, 8.6x slower.
+
+## 2026-11-12 23:45 UTC - RTX A6000 added to the weight-streaming benchmark (user: "also use A6000 to run the test")
+
+| device | GB/s | device W | J/GB (fit) | J per Qwen3-14B token (28 GB) | holds, of 28 GB |
+|---|---:|---:|---:|---:|---:|
+| **RTX A6000 (weights in VRAM)** | **700-707** | **298-299** | **0.425** | **11.9** | 48 GB (all) |
+| RTX 4060 Ti (weights in VRAM) | 272-274 | 100-106 | 0.370 | 10.3 | 16 GB |
+| Threadripper PRO 5995WX (CPU, 64 thr, 11-11 leg) | 82 | 275-286 | 3.44 | 97.4 | all |
+| Snapdragon 8 Elite Gen 5 (OnePlus 15 NPU) | 55-72 | 8.6-12.9 | 0.161 | 4.5 | 10 GB |
+
+- 30/30 runs used, no thermal slowdown (GPU 58-61 C at the start of the measured window, at most 73 C). Per model 0.424-0.523
+  J/GB: 0.424-0.426 from 8B up, 0.43-0.46 for 1B-4B, 0.50-0.52 for the two 0.5B models (per-kernel launch cost).
+- The board sits at its 300 W power limit in 29 of 30 runs (NVML software power cap, graphics clock 1,841-1,888 MHz). That is the
+  card's normal operating point for this load, so the runs stay in the fit and are reported as "at power limit", not throttled.
+- Against the 4060 Ti: 2.6x the bandwidth for 3.0x the power, so 15 % more energy per GB. Against its own CPU: 8.1x less energy
+  per GB and 8.6x faster, the same ratios as on the desktop (8.0x, 9x).
+- GPU board only (NVML, 10 Hz). The host thread feeding it holds the CPU package at 112-116 W (66-78 W idle): with it, 0.587
+  J/GB. Board idle 21-27 W without a CUDA context, 77-78 W with the weights resident. Above idle: 0.390 J/GB.
+- Ran on the second A6000 (nvidia-smi index 1), no other compute process on either card. Start gate 45 C (idles at 38-40 C,
+  about four minutes of cool-down per run). `run_gpu.sh` takes `GPU_INDEX`; `analyze_gpu.py` separates the power-cap bit (0x4)
+  from the slowdown bits. Raw runs `xband-runs/stream-energy-20261110/server-gpu`; RESULTS.md regenerated (Server GPU column).
+- Server CPU rerun (user: "also run the A6000 machine cpu") queued behind it, 64 threads, into `server-cpu-20261112`.
+
+## 2026-11-12 21:16 UTC - Paper Fig. 1(a): RTX 4060 Ti row added (user: "add this in figure 1 a and modify the text")
+
+| row | J/GB (J per Qwen3-14B token) | label | usable memory |
+|---|---|---|---:|
+| Core i9-12900K, 30 GB/s | 2.97 (83) | | 30 GB |
+| **RTX 4060 Ti, 273 GB/s (new, gold)** | **0.37 (10)** | 8.0x less | 16 GB |
+| Tensor G5, 27 GB/s | 0.35 (9.8) | 8.5x less | 11 GB |
+| Snapdragon 8 Elite Gen 5, 55-72 GB/s | 0.16 (4.5) | 18x less | 10 GB |
+| Snapdragon 8 Gen 3, 29-45 GB/s | 0.15 (4.3) | 20x less | 6 GB |
+
+- `figure/make_models_fig.py` now reproduces the hand-edited paper figure (no Threadripper row, "Usable memory" panel on a
+  0-32 GB scale) and adds the GPU row; the paper block is its output with `\xbfigw` -> `\columnwidth`. `--no-gpu` gives the old one.
+- Blue text in `~/Documents/MultiDNN/tex/sec-introduction.tex`: (1) new sentence in paragraph 2, "On our desktop (RTX 4060 Ti,
+  Core i9-12900K), the CPU streams weights 9x slower than the GPU and uses 8x more energy per gigabyte (Figure 1a)."; (2) the
+  observation sentence now reads "... 8.5-20x less energy than the desktop CPU and up to 2.4x less than the GPU, although its
+  memory holds only part of a model (Figure 1a)". Alt text updated. Caption unchanged.
+- Build `build/main.pdf`: 18 pages, no undefined references, same 1.9 pt overfull box on the last page. Not committed.
+  Backup of the file before this edit: `claude-scratch/paper-backup-20261112/sec-introduction.before-gpu-row.tex`.
+
+## 2026-11-12 21:12 UTC - RTX 4060 Ti added to the weight-streaming benchmark (user: "what would be the j/gb and j/token for 4060ti?")
+
+| device | GB/s | device W | J/GB (fit) | J per Qwen3-14B token (28 GB) | holds, of 28 GB |
+|---|---:|---:|---:|---:|---:|
+| RTX 4060 Ti (weights in VRAM) | 272-274 | 100-106 | **0.370** | **10.3** | 16 GB |
+| Core i9-12900K (CPU) | 30 | 89-92 | 2.97 | 82.7 | 30 GB |
+| Tensor G5 (Pixel CPU) | 27 | 9.9-10.4 | 0.350 | 9.8 | 11 GB |
+| Snapdragon 8 Elite Gen 5 (OnePlus 15 NPU) | 55-72 | 8.6-12.9 | 0.161 | 4.5 | 10 GB |
+
+- 30/30 runs used, none throttled (GPU 52-59 C, no NVML slowdown reason). Per model 0.367-0.449 J/GB: 0.37 from 8B up,
+  0.38-0.41 for 1B-4B, 0.44-0.45 for the two 0.5B models (per-kernel launch cost on 26-38 MB layers).
+- GPU board only (NVML, 10 Hz). The host thread feeding it holds the CPU package at 27-28 W (2 W idle): with it, 0.471 J/GB.
+  Board idle 8-9 W without a CUDA context, 27 W with the weights resident. Above idle: 0.338 J/GB.
+- So the GPU costs 8x less per GB than the desktop CPU, the same as the Pixel CPU, 2.3x more than the OnePlus NPU, and is
+  4-5x faster than any phone. What it lacks is capacity: 16 GB of the 28 GB a Qwen3-14B token streams.
+- Tooling: `ffn-stream-bench --device CUDA0`, `tools/gpu_sampler.py`, `tools/run_gpu.sh`, `tools/analyze_gpu.py`; raw runs
+  `xband-runs/stream-energy-20261110/desktop-gpu`; RESULTS.md regenerated (GPU column, per-run table, flags). Start gate 44 C:
+  the card stops its fans when idle and settles at 42-43 C. Paper figure not changed (no GPU row yet).
+- Same day, discussion (no runs): why the faster host saves 7-10 % (CPU streams a Gemma layer in 6.9 ms vs the phone's 8.0 ms;
+  idle floor 53-55 W = 53 % of energy), smaller phone share = latency optimum only (measured 10-26), more phones help only as
+  same-layer parallel shares (estimate 8.0 -> ~5.1-5.7 ms per call with a second phone; sync cost unmeasured).
+
+## 2026-11-11 21:00 UTC - Paper Fig. 1(a) v2: one thin bar per model, rows named by chip (user: "update the graph ... use the device SoC type")
+
+| row (chip; device, engine) | J/GB fit | per-model range | vs its mean |
+|---|---:|---:|---:|
+| Threadripper PRO 5995WX (CPU, 64 thr) | 3.44 | 3.01-3.48 (5 models) | -8 % / +6 % |
+| Core i9-12900K (CPU, 8 thr) | 2.97 | 2.74-2.98 (9 models) | -6 % / +2 % |
+| Tensor G5 (Pixel 10 Pro CPU) | 0.35 | 0.340-0.382 | -4 % / +8 % |
+| Snapdragon 8 Elite Gen 5 (OnePlus 15 NPU) | 0.16 | 0.154-0.178 | -8 % / +6 % |
+| Snapdragon 8 Gen 3 (OnePlus 12 NPU) | 0.15 | 0.117-0.155 | -16 % / +11 % |
+
+- Each device row is now a block of thin bars, one per model from 0.5B (top) to 32B (bottom); CPU bars are omitted where the
+  runs fit in the CPU cache. Generator: `reports/20261110-weight-stream-energy/figure/make_models_fig.py` (reads tables/SUMMARY.json).
+- Blue text added: caption clause on the thin bars, and in the intro "Across models from 0.5B to 32B, the energy per GB of each
+  testbed device stays within 8 % of its mean (Figure 1a)." Build: `build/main.pdf`, 18 pages, no undefined references.
+
+## 2026-11-11 20:10 UTC - Paper: Figure 1(a) replaced by the per-device weight-streaming bars (user: "replace the graph ... bar graph style, mark the text changes in blue, minimum text changes")
+
+| row in the new Fig. 1(a) | J/GB (J per Qwen3-14B token) | vs desktop CPU | holds, of 28 GB |
+|---|---|---|---|
+| Server CPU (64 thr, 82 GB/s) | 3.44 (97) | - | 125 GB |
+| Desktop CPU (i9-12900K, 30 GB/s) | 2.97 (83) | 1x | 30 GB |
+| Pixel 10 Pro CPU (27 GB/s) | 0.35 (9.8) | 8.5x less | 11 GB |
+| OnePlus 15 NPU (55-72 GB/s) | 0.16 (4.5) | 18x less | 10 GB |
+| OnePlus 12 NPU (29-45 GB/s) | 0.15 (4.3) | 20x less | 6 GB |
+
+- `~/Documents/MultiDNN/tex/sec-introduction.tex`: panel (a) = two aligned bar panels (pgfplots, paper colors), panel (b) unchanged;
+  caption (a) and one intro sentence rewritten in blue ("Figure 1a shows how large the potential is: ... 8.5-20x less energy ...
+  holds only 6 to 11 GB ..."); the 3.8-4.1x system saving now cites Table 2 (also in sec-motivation.tex). Builds: `build/main.pdf`,
+  18 pages, no undefined references, one 1.9 pt overfull box on the last page.
+- Open choices left with the user: keep or drop the two non-testbed rows; capacity = free memory (phones) / installed RAM (hosts);
+  the Pixel bar is f16 (its deployed packed path is 0.14 J per f16-equivalent GB); no GPU row (not measured).
+- Draft sources: `reports/20261110-weight-stream-energy/figure/`; backups of the two tex files in `claude-scratch/paper-backup-20261111/`.
+
+## 2026-11-11 18:50 UTC - Weight-streaming energy per device, all six devices done (user task: "measure weight-streaming energy efficiency per device, cool state only")
+
+| device (f16, batch 1, 2/4/8 FFN layers per call) | GB/s | device W | J/GB (fit) | Qwen3-14B J/token (27.98 GB) | runs used |
+|---|---:|---:|---:|---:|---:|
+| OnePlus 15 NPU (v81) | 55-72 | 8.6-12.9 | 0.161 | 4.50 | 29/30 |
+| OnePlus 12 NPU (v75) | 29-45 | 3.4-7.1 | 0.152 | 4.30 | 29/29 |
+| OnePlus 11 NPU (v73, no root) | 42-50 | no power data | - | - | 25/30 (timing) |
+| Pixel 10 Pro CPU, f16 (6 threads) | 26-29 | 9.9-10.4 | 0.350 | 9.77 | 30/30 |
+| Pixel 10 Pro CPU, production packed Q4_K | 27 physical (6.0 ms/layer) | 12.5 | 0.46 per Q4_K GB = 0.14 per f16-equivalent GB | - | 3 (8-layer run slowed 6 %) |
+| desktop CPU i9-12900K, 8 threads | 30.4 DRAM-bound | 89-92 (idle 2) | 2.97 | 82.7 | 22/30 (8 in cache) |
+| server CPU TR 5995WX, 64 threads | 81.8 DRAM-bound (300-900 in cache) | 275-286 (idle 66-78) | 3.44 | 97.4 | 9/30 (20 in cache, 1 slowed) |
+
+- Method: production FFN worker on each phone + device-local client over loopback (no USB traffic), ggml CPU bench on the hosts;
+  22 s of back-to-back calls per run, idle windows before, cool-down gate on SoC and skin sensors. 10 models (the 7 asked for,
+  Qwen3-8B / Qwen2.5-0.5B downloaded, plus Qwen3-0.6B/1.7B/4B extras); J/token = J/GB x all matrices + head at two bytes/weight.
+- Findings: (1) J/GB is flat in model size and layer count on every device (R2 0.998-0.9997), so one number per device
+  extrapolates; (2) OnePlus 15 has two operating points set by the CPU governor (prime cluster 2.4 GHz: 60-72 GB/s at 10-13 W;
+  CPUs at 0.9 GHz for long calls: 55 GB/s at 9 W, 10 % cheaper per GB); (3) its vendor policy caps the CPUs once the back shell
+  passes 38.2 C (+15-19 % call time) - 22 s runs with a 36.8-37.2 C start gate avoid it; (4) the Pixel's packed Q4_K path is
+  3.3x faster and 2.5x cheaper per layer than f16 on the same CPU; (5) on the server CPU working sets under ~1 GB sit in the
+  256 MB L3 (not weight streaming) - excluded from fits.
+- Phone power = USB + battery current x V / ratio; ratio calibrated against the coulomb counter in design-capacity mAh:
+  OnePlus 15 0.415, OnePlus 12 0.445 (its gauge counts 3,642 mAh for a 5,400 mAh pack), Pixel 1.002. OnePlus watts +-10 %.
+- CPU energy = RAPL package counter (user ran `sudo chmod a+r /sys/class/powercap/intel-rapl:0/energy_uj` on both hosts 11-11;
+  it resets at reboot). Per GB the NPUs are ~18-21x cheaper than either CPU, the Pixel CPU f16 ~8.5x; the server CPU streams
+  2.7x faster than the desktop at 3.1x the power. Rerun: `tools/rerun_cpu_energy.sh desktop|server`, `tools/make_results.sh`, `tools/assemble.py`.
+- Files: `reports/20261110-weight-stream-energy/{RESULTS.md,tools/,tables/}`; raw `/mnt/data_h16t/zs89458/xband-runs/stream-energy-20261110/`.
+  Both rooted OnePlus phones show charge latch 512 (OnePlus 15 at 73 %, OnePlus 12 at 68 %): replug or reboot to recharge.
+
+## 2026-10-28 05:00 UTC - Paper: second-desktop ablation subsection drafted (user: "draft one ablation section ... with a table, not too long")
+
+- `~/Documents/MultiDNN/tex/sec-results-second-desktop.tex` (\subsection{A Faster Host} + Table tab:second-desktop), \input before
+  "Operator and Transport Measurements" in sec-results.tex; main.pdf builds (18 pages, section p.13, table p.14, Table 9).
+- Rows: 1x pair A 181.2 -> 166.4 (-8.2 %), 1x pair B 173.6 -> 170.3 (-1.9 %), 2x 117.7 -> 105.3 (-10.6 %), 4x 74.5 -> 76.1 (+2.1 %,
+  modeled phones), GPU cap + spin 171.0 -> 163.4 (-4.4 %), Pixel FFN on GPU 173.6 -> 168.1 (-3.2 %); framing = 55 W idle floor
+  (94 of 174 kJ; 19 % saving above it) + 51 GB/s host CPU ~ OnePlus 52 GB/s (energy, not time, is saved).
+
+## 2026-10-28 04:30 UTC - Idle floors removed (user: "remove the gpu idle floor energy?"): GPU floor on this rig = 13 W (22 kJ/run, 20 W on 10-26 with the console user's GPU apps), host floor 55 W (94 kJ)
+
+| run | GPU kJ = idle + dynamic | host ex GPU floor kJ (vs g161nph) | host dynamic kJ, whole floor removed (vs g161nph) |
+|---|---|---|---|
+| g161nph desktop | 53.6 = 22.2 + 31.4 | 151.5 | 79.9 |
+| g16c1new CPU-Pixel | 54.9 = 22.6 + 32.3 | 136.5 (-9.9 %) | 64.9 (-18.8 %) |
+| g16o1new OpenCL-Pixel | 54.0 = 22.1 + 31.9 | 136.2 (-10.1 %) | 64.6 (-19.1 %) |
+| g62nph / g62new (10-26) | 58.9 = 34.9 + 24.0 / 55.2 = 24.0 + 31.1 | 144.8 / 131.3 | 76.5 / 63.0 (-17.7 % within the pair) |
+
+- Floors = lowest 60 s mean window in the paid interval (generality_gap method), per run; the GPU floor is a quarter of the host
+  floor, so removing it moves the pair's saving from -8.4/-8.8 % to -9.9/-10.1 %; removing the whole host floor gives -19 %.
+  The OpenCL-vs-CPU Pixel difference stays nil on the desktop (-0.2 % ex GPU floor, -0.4 % dynamic: CPU package 104.2 -> 104.3 kJ,
+  GPU dynamic 32.3 -> 31.9 kJ) - the desktop's dynamic energy is the CPU package, which the Pixel's speed does not touch.
+  Files: `trace-g16/gpu-floor-split.{md,json,py}`.
+
+## 2026-10-28 04:05 UTC - Same-night A/B DONE: OpenCL Pixel vs CPU Pixel on the 1x trace - host energy equal (-0.5 %), Pixel energy -31 %, Qwen decode -6 %
+
+| arm | host kJ (vs g161nph desktop 173.7) | fleet kJ | Pixel metered kJ (W) | OP15 kJ | Qwen TPOT | Gemma TPOT | E2E mean | queue wait |
+|---|---|---|---|---|---|---|---|---|
+| g16c1new CPU-Pixel 02:51-03:22 | 159.1 (-8.4 %) | 170.3 | 3.9 (2.30) | 7.3 | 331 ms | 312 | 124 s | 418 s |
+| g16o1new OpenCL-Pixel 03:22-03:53 | 158.3 (-8.8 %) | 168.1 | 2.7 (1.56) | 7.1 | 311 ms | 309 | 119 s | 394 s |
+
+- Both arms had full Gemma assistance (48.8 k / 46.3 k OnePlus calls) and identical Qwen phone-call counts (34.4 k / 33.7 k);
+  the derived inputs differ only in the Pixel worker block. So the answer to "more savings?": not on the desktop side (-0.8 kJ,
+  inside run-to-run noise), yes on the phone (-31 % metered Pixel energy, meter valid in both) and in latency (Qwen -6 %/token,
+  E2E -4 %, queue -6 %). The first OpenCL arm g16r1new (165.6 kJ) is explained: its Gemma requests ran unassisted (OnePlus
+  shard-load timing), not a kernel effect; `trace-g16/phone-calls-by-model.txt`.
+- Files: `reports/20261027-pixel-opencl-q4-gemv/{RESULTS.md,trace-g16/,evidence/}`; records on FCHLLX01 `$S/inputs-*-g16*`,
+  meters `$S/g16*`, accounting `$S/analysis-g16ab/`. Rig idle: no server, no PAUSE, Pixel 83 % (charging restored 95-100),
+  OnePlus 100 %, Pixel clock floors back at defaults, Pixel on the accessory USB identity (2d01) as the runs leave it.
+- Production state: the Pixel route is now the OpenCL worker (`evidence-aoa-opencl-1-23-5070ti-r2`, policy
+  int8-activation-class); `W/DERIVE_AOA_EVIDENCE.cpu-path` + `DERIVE_MP_ARGS.cpu-path` restore the CPU route.
+
+## 2026-10-28 03:05 UTC - g16 pair with the Pixel OpenCL worker: latency best of all runs, energy confounded; same-night A/B (CPU-Pixel then OpenCL-Pixel) launched
+
+- Worker fix (accept wait without the 60 s deadline), re-qualified (identity PASS, numerics 2.36e-3, bundle `-r2`), Pixel arm
+  rerun g16r1new 02:18-02:47 UTC (exit 0, 5 router connections, 149 MB over the bridge in 11 min; clocks restored).
+- Accounting (`$S/analysis-g16/`, baseline g161nph; g62 pair = 10-26 CPU-Pixel pair):
+
+| run | host kJ | fleet kJ (phones modeled) | Qwen TPOT ms | Gemma TPOT ms | E2E mean s | total queue wait s |
+|---|---|---|---|---|---|---|
+| g62nph desktop (10-26) | 179.6 | 181.2 | 366 | 279 | 119 | 337 |
+| g62new CPU-Pixel (10-26) | 155.3 | 166.4 | 326 | 307 | 121 | 407 |
+| g161nph desktop (today) | 173.7 | 173.6 | 371 | 281 | 145 | 557 (002 waited 264 s, 005 196 s) |
+| g16r1new OpenCL-Pixel (today) | 165.6 | 170.6 | **309** | **282** | **112** | **335** |
+
+- Reading: the OpenCL Pixel gives the fastest Qwen decode of the four (-5 % vs CPU-Pixel, -16 % vs desktop) and the best
+  E2E/queue, but host energy is only -4.6 % vs today's desktop arm (which itself was disturbed: two long queue waits, 3 policy
+  bypasses, 173.7 vs 179.6 kJ on 10-26) and +6.6 % vs the CPU-Pixel arm. The CPU side carries the difference (112.6 vs
+  100.2 kJ): in g16r1new two Gemma requests (006, 008) opened with PHONE_HELPER_UNAVAILABLE (OnePlus Gemma shard not resident)
+  and the run recorded 357 physical-work windows vs 778 - Gemma ran mostly on the desktop (TPOT 282 = desktop speed) where the
+  10-26 arm had it OnePlus-assisted (307). One sample each; the OnePlus meter was invalid (100 %, COUNTER_JUMP) both today.
+- Launched `rig/ab_cpu_vs_opencl.sh`: g16c1new (pointer back to the CPU bundle) then g16o1new (OpenCL r2) back to back, log
+  `chains/AB-cpu-vs-opencl.log`; the pointer ends on the OpenCL bundle. ~1 h.
+
+## 2026-10-28 02:25 UTC - g16 pair: desktop arm g161nph done (01:04-01:33), Pixel arm g161new FAILED at its first Qwen call - the OpenCL worker had exited 60 s after "ready"
+
+- Cause: the OpenCL worker is built from the `pixel10pro-aoa-v1` source whose accept loop polls the listen socket with a
+  60 s timeout and `return 1`s on expiry; the production CPU worker (`pixel-cpugpu-v1`) blocks in accept() forever. In the
+  fleet arm the first Pixel call came 238 s after start (the resident router connects at the first Qwen request, not at
+  launch), so the relay found no listener (bridge `open_ack_failed`, `FFN split HELLO exchange failed`, CONTROL_FAILED on
+  request 001) and the stop phase saw exit code 1 unsignalled. The identity run never idled 60 s (numerics client first).
+- Fix: wait without a deadline (`while (!wait_readable(listen_fd)) {}`), accept errors retried as in production. New binary ->
+  re-qualification (worker-config -r2, identity run, rebind-worker -r2), pointer switch, then the Pixel arm alone as g16r1new
+  (`rig/launch_g16r_opencl.sh`); g161nph stands as the desktop arm. Clocks on the Pixel were restored by the worker's exit.
+
+## 2026-10-28 01:05 UTC - Pixel OpenCL route qualified under a named numerics policy; 1x pair g16 running (user: "i think we can do 2")
+
+- Production variant = int8 activations rounded exactly as ggml `quantize_row_q8_0` (blocks of 32, f16 scale, half-to-even);
+  the residual two-dot variant is archived (`*.residual.*`). Official receipt tool (`native/ffn_numerics.py`, ggml-cpu reference
+  from the f16 parent): worst rel-L2 2.36e-3 over all 23 layers x rows 1/2/4 (f32 distance 3.2e-2). Stage-by-stage check
+  (`worker-ab/dump_check.py`): x rounding bit-identical to the reference, gate/up 2.1e-4 apart (the parent's f16-rounded
+  weights vs the shard's exact Q4_K), h 3e-4 apart, and the reference's int8 re-quantisation of h turns that into 2.3e-3
+  (28 % of the h codes differ by one step) - inherent to comparing two int8-activation implementations, not a kernel defect.
+- Policy: `prepare_aoa_evidence.FFN_NUMERICS_POLICIES["int8-activation-class"]` = rel-L2 <= 5e-3 vs the ggml-cpu reference,
+  recorded in the receipt (`policy`, `threshold`, `policy_note`); the default 1e-3 stays for every other route. New tooling:
+  `worker-config` (identity-run config for another worker binary: pins incl. the kernel source, environment, ffn_numerics with
+  the policy threshold as text - the run hashes its config canonically) and `rebind-worker` (fresh server-token-identity +
+  numerical receipt, kernel rate re-measured, link/session receipts carried with an annex as the 10-02 fused precedent).
+- Identity run over the AOA bridge (`$A/server-identity-opencl-1-23-5070ti`): PASS, tokens identical on all 4 requests
+  (64 each; host-only 24.2 s, Pixel 8704 cols 15.7 s, 17408 cols 17.4 s), 2852 phone calls, full-width compute 5.63 ms/call
+  (kernel rate 28.5 GB/s vs the CPU path's ~24.7). Bundle `$A/evidence-aoa-opencl-1-23-5070ti/PIXEL_EVIDENCE_AOA.json`
+  (loader-accepted; worker sha e6ffd9f3..., kernels 5f9077be..., env + S43_PIXEL_OPENCL=1 / KERNELS / KEEPALIVE_MS=1 /
+  CPU_MIN_KHZ=2073000). First attempt failed on a float in the config hash (threshold now text); its orphaned server/bridge killed.
+- Placement pointers switched (`rig/switch_pixel_evidence.sh`, backups `*.cpu-path`): W/DERIVE_AOA_EVIDENCE + the
+  --helper-evidence line of W/DERIVE_MP_ARGS. Queue g16 launched 01:03 UTC: g161nph (desktop) + g161new (derived-mpaoa, 1x,
+  `template-eval2-s2-dp-online-5070ti`), compare with g62nph/g62new (181.2 / 166.4 kJ). Copies of the config, receipts and
+  scripts: `reports/20261027-pixel-opencl-q4-gemv/evidence/`. Phone power model unchanged (ASSUMED_4P5W): the GPU path's
+  measured 5.8 W busy is above the assumption, so phone-side energy is not claimed from this run.
+
+## 2026-10-28 00:30 UTC - Pixel GPU inside the FFN worker (user: "use our new code to rerun the trace and to see if we can have more savings"): integrated and measured against the production CPU path on the real shard - the GPU wins only without the accuracy fix the receipt requires; a decision is needed before any trace rerun
+
+- Worker `pixel10pro-opencl-v1` (OpenCL path behind `S43_PIXEL_OPENCL=1`, kernels loaded at runtime, `BUILD.sh`); staged on the Pixel
+  (`/data/local/tmp/s43-pixel-opencl-20261027-v1/`, `single/` variant). A/B with `pixel-ffn-replay` on layers 18-23 of the 1-23 shard,
+  recorded activations, 1/2/4 rows, burst + production cadence. Mean compute per call (ms), p90 in brackets:
+
+| path | 1 row burst | 1 row prod cadence | 2 rows | 4 rows | rel-L2 vs CPU path |
+|---|---|---|---|---|---|
+| production packed CPU | 5.83 (6.4) | 7.66 (14.6) | 7.18 | 13.71 | - (4e-4 vs f32) |
+| GPU as first integrated | 6.6 (7.6) | 6.8 (7.9) | 8.2 | 12.8 | 1.1e-2 |
+| GPU single-dot, core-7 floor 2 GHz, keep-alive 1 ms | **5.34 (5.9)** | **5.51 (6.3)** | 7.37 | **12.14** | 1.1e-2 - fails the 1e-3 receipt |
+| GPU residual two-dot (same fixes) | 6.60 (7.4) | 6.70 (7.3) | 11.29 | 20.55 | 2e-4 - passes |
+
+- Why the first build was slow (bisected over ~20 single-variable tests, all logged in RESULTS.md): the kernel is the microbench kernel
+  (1.35 ms per matrix in the harness), but (1) the submitting big core idles at 533 MHz at the call cadence and the driver's CPU-side
+  launch work costs ~0.9 ms there vs 0.3 ms at >= 2 GHz (uclamp is ignored by sched_pixel; `scaling_min_freq` works, floored by the
+  worker and restored at exit/SIGTERM), and (2) the GPU pays a wake-up after the ~1.5 ms gap between calls (keep-alive 1 ms fixes it).
+  Everything else - placement, buffer flags, input transfer, Vulkan instance, root, pool threads, many buffers - was excluded.
+- Accuracy: int8 activations give 1.1e-2 vs f32 (same class as the desktop's CUDA Q8_1 activations); the receipt compares against the
+  Pixel CPU worker at 1e-3, which that path meets with a residual second dot. The same residual on the GPU passes (2e-4) but the kernel
+  turns ALU-bound (25 GB/s): +25 % at 1 row, +50-60 % at 2-4 rows.
+- Verdict: (a) gate-compliant = residual, only -13 % at 1 row at production cadence and +50 % at 2-4 rows -> hybrid at best, expected
+  inside run-to-run noise on the trace; (b) single-dot needs the numerics receipt relaxed to ~2e-2 for the GPU route (desktop
+  int8-activation parity): -8/-28 % at 1 row (burst/prod), -12 % at 4 rows, tail 6.3 vs 14.6 ms. No trace rerun started; phone clocks
+  restored, no worker running. Open: idle power with the 1 ms keep-alive and the 2 GHz core floor (meter), evidence bundle for whichever
+  variant is chosen. Files: `reports/20261027-pixel-opencl-q4-gemv/{RESULTS.md,worker-ab/}`, worker sources in
+  `reports/20260922-fast-path-M3/software/pixel10pro-opencl-v1/` (incl. `cllaunch.cpp`, `clffn_standalone.cpp`).
+
+## 2026-10-27 22:46 UTC - Pixel GPU pre-warming (user: "pre-warm the weights to reach max bandwidth?"): no cache to pre-warm (re-reads of 0.5-44 MB never exceed 47 GB/s), but the CLOCKS must be: at the production cadence (23 calls per token, 2.5-8 ms host gaps, 150 ms between tokens) the governor leaves the GPU at 396 MHz most of the time and a layer costs 14.8 ms wall; pinning the GPU devfreq min to 1094 MHz gives 5.8, plus memss 932 MHz 5.35; a one-work-group keep-alive dispatch every 20-50 ms in the token gap removes the 3.5 ms wake-up of a token's first layer (8.0 -> 4.8-5.2 ms). Idle power with the pins: unchanged (0.64 vs 0.66 W)
+
+- Same mechanism as the Pixel CPU worker's DVFS fix of 09-25, now for the GPU: without the pin the GPU path (15 ms) would LOSE to the CPU
+  packed path (6.25 ms) in production; with it the Qwen chain is 23 x 5.3 = 122 ms vs 144 ms CPU, and batch 4 is 1.85x.
+- Driver power parameters are read-only (444); keep-alive is the workable form. Files: cllat.cpp (cadence + keep-alive modes), prewarm*.sh,
+  RESULTS.md in `campaigns/burstgpt/reports/20261027-pixel-opencl-q4-gemv/`. Clocks restored on the Pixel.
+
+## 2026-10-27 20:24 UTC - Pixel bandwidth, lower level (user: "check more lower level why we cannot achieve higher bandwidth"): the GPU's 47 GB/s is set by the memory-subsystem clock `memss_freq` (max 932 MHz) - bandwidth scales linearly with it (233 MHz 14.5, 466 28.6, 666 39.6, 800 44.9, 932 47.3 GB/s = 50.8 GB/s per GHz); DRAM is not the limit (CPU + GPU streaming together reach 53.7 GB/s; a raised DRAM vote does nothing for the GPU); fabric (fabhbw) binds only below ~400 MHz; allocation flags and load width change nothing
+
+- Votes: the real DRAM clock is a PM QoS aggregate (`/sys/kernel/debug/google_pm_qos/{gmc_freq,irm_gmc_freq,memss_freq,...}`); the CPU
+  memlat governor votes 2688 MHz idle / 672 during GPU-only load / 3686 under CPU load; the GPU places no visible vote. The devfreq
+  `gmc_freq` node (powersave, 409 MHz) is one voter whose cur_freq/trans_stat never show the aggregate - which is why "pinning" looked
+  like no-ops: the DRAM was already fast enough for the GPU. Capping gmc at 1536 MHz drops the GPU to 22 GB/s (so the cap works);
+  capping memss at 466 drops the CPU stream from 31.6 to 25.9 (shared path).
+- cl_img allocation flags (uncached/cached CPU, GPU-local): 46.6 GB/s all; GPU-cached/write-combine/CPU-local/relaxed rejected (-64).
+  uint16 loads at WG 512: 47.4 (+3 %). Everything restored (governor minima, max clocks) and re-checked at 47.2.
+- So on this Pixel: GPU alone 47, CPU alone 32, both 54; the kernel at 41 is 87 % of the GPU's port. Files: RESULTS.md, lowlevel*.sh,
+  phone_pmqos.sh, chase.cpp in `campaigns/burstgpt/reports/20261027-pixel-opencl-q4-gemv/`.
+
+## 2026-10-27 19:45 UTC - Pixel GPU kernels for the other precisions (user): Q4_K = the Pixel shard's own format runs at 37/34 GB/s (1.34 / 1.46 ms) = **4.1 ms per Qwen FFN layer**, 8 % behind Q4_0 (3.8 ms) and 1.5x the CPU packed path - so the integration can keep the existing shards; Q8_0 2.18 ms per matrix at 43.5 GB/s (the ceiling, no unpacking), 6.6 ms per layer; F16 19.6 ms per layer (28 GB/s). All exact against their quantized references (1-2e-7)
+
+| format | bits | per matrix (gate/up) | per layer | note |
+|---|---|---|---|---|
+| F16 | 16 | 6.28 ms / 28 GB/s | 19.6 ms | 535 MB per layer |
+| Q8_0 | 8.5 | 2.18 ms / 43.5 GB/s | 6.6 ms | bandwidth-bound at the ceiling |
+| Q4_K (shard format), rows interleaved in 16 B pieces, meta as one uint4 | 4.5 | 1.34 ms / 37.3 GB/s | 4.1 ms | naive 128 B-per-row layout was 2.07 ms (24 GB/s): layout > format |
+| Q4_0 | 4.5 | 1.21 ms / 41.6 GB/s | 3.8 ms | reference |
+- Q6_K (the shard's other tensor type) not implemented yet (~5.5-6 ms per layer expected at Q4_K efficiency). Sources + RESULTS.md updated
+  (`campaigns/burstgpt/reports/20261027-pixel-opencl-q4-gemv/`, clgemv.cl now 18 kernels).
+
+## 2026-10-27 19:29 UTC - Pixel OpenCL instruction/command matrix (user: "check other commands and instructions and test them"): 14 variants measured; nothing beats q4_v2 (1.21 ms, 41.6 GB/s on the wide shapes) / q4_global R=16 (1.38 ms) on the down projection. Two rules for the integration: never allocate weights with CL_MEM_ALLOC_HOST_PTR (10.5 GB/s, 5x slower; COPY/USE_HOST_PTR both 46/41 GB/s) and keep the int8 dot instructions (without them 26.9 GB/s, 1.55x slower)
+
+| tried | effect |
+|---|---|
+| dot forms: signed vector 38.9 / mixed vector + activation sum 41.6 / packed uu + nibble sums 42.3 GB/s but 1.32 ms (more bytes) / packed ss with byte subtract = wrong (borrow) / no-dot short16 26.9 / half math 26.1 | mixed vector (q4_v2) stays |
+| driver flags: only unsigned dots "accelerated" | signed and mixed vector forms run at full speed anyway |
+| sub-group reduction (lanes of a row contiguous) | 9-10 GB/s: strided loads kill it |
+| allocation: COPY_HOST_PTR 46.1 / USE_HOST_PTR 45.9 / ALLOC_HOST_PTR 10.6 GB/s | zero-copy from the worker's mmap is fine; ALLOC_HOST_PTR is poison |
+| cl_khr_priority_hints high/low | round trip 1.7-1.9 ms either way |
+| -cl-fast-relaxed-math, -cl-unsafe-math-optimizations, -cl-opt-disable | no change / no change / kernel creation fails |
+| SVM caps = coarse-grain buffer only | no fine-grained hand-off; write/read or map stays |
+| async_work_group_copy 3-5 GB/s, clEnqueueCopyBuffer 0.5 GB/s | plain loads are the fast path |
+
+RESULTS.md + sources (clgemv.cl now 14 kernels, clprobe2.cpp, matrix.sh) in `campaigns/burstgpt/reports/20261027-pixel-opencl-q4-gemv/`.
+
+## 2026-10-27 19:21 UTC - Pixel GPU "DMA path" question (user): measured - plain compute loads 46.1 GB/s; `async_work_group_copy` into local memory 3.2-4.9 GB/s (10x slower, driver copy loop); `clEnqueueCopyBuffer` 0.54 GB/s (host memcpy class). The GPU's load units ARE its fastest path; no DMA engine is exposed to OpenCL compute on PowerVR, and the whole-SoC cap of 46-47 GB/s would bind any such engine anyway. The OnePlus' 52 GB/s comes from a faster LPDDR5X (10.7 vs 8.4 Gbps, ~85 vs 67.6 GB/s theoretical) feeding the HTP's DMA; the Pixel realises 69 % of its peak vs the OnePlus' 61 %. RESULTS.md updated.
+
+## 2026-10-27 19:16 UTC - Pixel GPU bandwidth ceiling (user: "still slow, can we do better?"): raw OpenCL read ceiling 46.1 GB/s; a v2 kernel reaches 41.4 GB/s on the wide projections (1.21 ms), the down projection stays at 36.3 (1.38 ms, q4_global R=16) -> best Qwen FFN layer 3.80 ms device; the WHOLE SoC caps at 46-47 GB/s for any CPU+GPU mix (pinned memory/fabric clocks change nothing), so ~50 GB/s is not available on this Pixel
+
+| measurement | result |
+|---|---|
+| stream_read (uint4 xor) on the GPU | 46.1 GB/s device |
+| q4_global best (R=32/256) | 38.8 GB/s (gate/up), 36.3 (down, R=16/128) |
+| q4_v2: unsigned nibbles + per-block activation sum, aligned in-stream scales, pipelined loads | 41.4 GB/s gate/up (1.21 ms); down 31.5-32.9 (worse; long-K, few work-groups) |
+| gmc/memss/fabhbw/GPU clocks pinned to max (root) | no change (46.0 / 38.8); the devfreq cur_freq nodes are vote proxies (409/178/172 MHz "during" 46 GB/s) |
+| CPU stream alone (NEON xor) | 26 GB/s 1 thread, 32 GB/s 3-6 threads |
+| GPU loop + CPU stream concurrently (1/3/5 threads) | GPU 30.4/26.6/26.1 + CPU 15.7/20.1/20.4 = 46.0-46.8 aggregate; same pinned |
+
+- Reading: the Q4 kernel is at 84-90 % of the GPU's port and the port is ~46 of the SoC's ~47; a CPU+GPU column split could gain ~13 %
+  per layer (3.8 -> ~3.2 ms) for ~9-10 W and the interference problems documented on 09-25 - not worth it. The Pixel's practical optimum
+  is the GPU-only path: layer 3.8 ms device, ~4.4 ms wall, 1.6x the CPU packed path; the SoC's theoretical 67.6 GB/s is realised at 69 %.
+- Sources/RESULTS.md updated in `campaigns/burstgpt/reports/20261027-pixel-opencl-q4-gemv/` (clgemv.cl now has stream_read, q4_global_u2,
+  q4_v2; cpustream.cpp; bw2.sh/bw3.sh). Clocks restored to governor minima on the Pixel.
+
+## 2026-10-27 19:09 UTC - Pixel GPU path FIXED in a microbenchmark (user: "why is the Pixel GPU so slow? let's write kernels; use OpenCL"): a Q4 tile GEMV in OpenCL with packed int8 dot products streams at 38.7 GB/s on the Pixel 10 Pro's PowerVR, a full Qwen FFN layer in 3.9 ms device / 4.6 ms wall (CPU packed path 6.0-6.25 ms; old Vulkan path 19.8 ms), batch 4 in 9.3 ms vs 17.2; 5.8 W; no throttling in 60 s. Sources + RESULTS.md in `campaigns/burstgpt/reports/20261027-pixel-opencl-q4-gemv/`
+
+- Why it was slow: the old Vulkan q4_K shader took the same 19.8 ms as F16 for a quarter of the bytes (compute-bound shader, no multi-column
+  pipeline on PowerVR); the GPU's streaming ceiling is 37-38 GB/s. OpenCL is shipped on the Pixel (/vendor/lib64/libOpenCL.so ->
+  libPVROCL.so, OpenCL 3.0, cl_khr_integer_dot_product, fp16, RGBA32UI images, 1 GB __constant). Kernels compile on the phone.
+- Texture layout (your idea) measured: identical to coalesced global loads (36.6 vs 36.6 GB/s); __constant activations used in both.
+  The win came from the tile layout (a work-group reads contiguous 16*R-byte chunks) + `dot_acc_sat` int8 dots: R=32/WG=256 -> 38.7 GB/s.
+- Second bug found and fixed: per-layer wall was 16.6 ms because the OpenCL submission ran on a little core; `taskset 80` (core 7) -> 4.6 ms
+  (write + run + read 5.1 ms); pinning the GPU clock adds nothing (already 1094 MHz under load).
+- Batch rows share the weight stream: M=1/2/4 = 1.29/1.92/3.09 ms per matrix -> per-row 39/52/65 GB/s-equivalent (CPU path grows
+  near-linearly). Power 5.8 W busy (idle 0.65; F16 kernel 3.9 W): ~20 mJ per layer above idle, same as the CPU path; the saving is time:
+  Qwen token chain 23 x (6.25 -> 4.6 ms) = -38 ms (-13 % Qwen TPOT), host wait -3.7 J per token; at batch 2-4 it doubles.
+- Not yet done: Q4_K-layout kernel (shards are Q4_K/Q6_K; this is Q4_0-style blocks), worker integration (OpenCL backend owning whole
+  layers, pinned submitter, 3 dispatches per call), receipts/evidence requalification, phone power model (5.8 W). Rig: Pixel GPU
+  min_freq restored to 396 MHz; test binaries in /data/local/tmp/s43-pixel-cl; nothing else touched.
+
+## 2026-10-27 17:40 UTC - Figure: "Fast Host, Small Saving" (research_dev/figures/ddr5-fast-host-saving.html, published https://claude.ai/artifact/XExessS6hFbNDYT91Ts5a3) - why DDR5 on the second desktop halves the phones' saving, for the user
+
+Four panels: (1) per Gemma FFN layer, paper host 11.8 ms (0.354 GB / 30 GB/s) vs new host 6.9 ms vs OnePlus 8.0 ms - the phone went from 32 % faster to 16 % slower than the host, so the assisted token stretches 283 -> 309 ms and the floor bills it; (2) per-token J on the new host: 36.5 = 15.0 floor + 21.5 work -> 33.1 = 16.4 floor + 6.1 host + 9.2 waiting (97 W - floor over the 208 ms chain) + 1.4 phones; (3) per-run kJ both rigs: paper 25.6 + 132.3 + 1.6 -> 25.0 + 49.0 + 12.7 (-46 %), new 90.9 + 88.7 + 1.6 -> 90.6 + 64.7 + 11.1 (-8 %): the phones remove 83 vs 24 kJ for the same 10-11 kJ; (4) the lever table (above-floor metric, attention-on-GPU ~-16 kJ, Q8 shards ~-3 kJ and a faster phone layer, co-residency -14..-17 kJ loads / +7 kJ tokens, dead ends: clocks+spin, prefill). Equation: saving per layer = E_host - (E_phone + P_wait*t_phone + P_floor*(t_phone - t_host)); DDR5 halves E_host and flips the sign of the floor term.
+
+## 2026-10-27 02:43 UTC - Host-wait power A/B (g15) DONE: the lever is exhausted on this host. Both knobs worked as intended (GOMP_SPINCOUNT=3000 in both servers; GPU locked at 592-600 MHz through decode) but bought only ~1.5 % per arm and no differential: the 5070 Ti draws ~37 W at the 600 MHz cap in P1 (memory clock stays up; 39-40 W at 1200), and the 9700X's spinning OpenMP threads cost <1 W although llama-server dropped from 2.57 to 1.46 cores. TPOT +3-4 %. Verdict: do not adopt; the "97 W wait" is idle floor + attention streaming + GPU P1 static power, not spin or SM clock
+
+| 1x arm (cooled) | host kJ | CPU kJ | GPU kJ | GPU W at the decode cap (share of run) | llama-server cores | fleet kJ | vs own desktop | TPOT mean ms | E2E p50/p90 s |
+|---|---|---|---|---|---|---|---|---|---|
+| g62nph (1200 cap, default spin) | 179.6 | 120.7 | 58.9 | 39.9 (53 %) | 4.37 | 181.2 | - | 303 | 104 / 219 |
+| g62new | 155.3 | 100.2 | 55.2 | 38.4 (58 %) | 2.57 | 166.4 | -8.2 % | 295 | 95 / 230 |
+| g151nph (600 cap, spin 3000) | 171.1 | 118.9 | 52.2 | 36.9 (50 %) | 3.92 | 172.5* | - | 314 | 108 / 379 |
+| g151new (600 cap, spin 3000) | 153.1 | 99.2 | 53.9 | 37.4 (59 %) | 1.46 | 163.4 | -4.4 % (-7.5 % vs nph mean 176.6) | 305 | 100 / 248 |
+
+\* OnePlus meter invalid in both g151 arms (COUNTER_JUMP + CHARGING_IN_WINDOW with the battery at 100 %: fuel-gauge re-sync, -0.9 kJ);
+host + modeled phones. Per-token controller windows (Qwen, fraction 1.0): batch-1 34.2 -> 33.7 J (-1.5 %) but 301 -> 309 ms; batch-2
+38.6 -> 39.4 J, 347 -> 366 ms. CPU package mean: desktop 68.5 -> 67.9 W, assisted 58.4 -> 57.7 W. The desktop arm's GPU -6.7 kJ is mostly
+more time at idle clocks (47 vs 44 %) plus console-user noise, not the cap (-3 W at the cap). Desktop queue waits 1124 vs 520 s (Qwen
+883 vs 364) = the residency-switch lottery between two runs of the same arm -> single runs cannot resolve a 2 % effect; a 3-repeat block
+would be needed to even measure it, and the expected size is ~1-2 % absolute, 0 differential. Templates `-pw`/`-pw-d2x` stay on the rig,
+unused. Accounting: `second-desktop/analysis-g15/`, host bands `claude-scratch/lane/host_bands.py`.
+
+- CORRECTION of the 2026-10-26 17:33 entry ("every phone-assisted arm decodes ONE request per model at a time, active_slots_peak 1"):
+  `active_server_slots` is not written for the coordinated (assisted) routes, so its peak is meaningless there. The controller's own windows
+  show per-step batching of assisted Qwen requests: g62new 42 % of assisted Qwen tokens at batch 2; g81new2 40 % at batch >= 2; g81new4 39 %
+  (after the lane fix g141new4 70 %, 35 % at batch 4). Same-model requests share one server step and one phone call per layer (rows =
+  batch); what does not exist is cross-stage pipelining (GPU on batch B while the phones run batch A), which needs asynchronous remote
+  ops in the ggml scheduler.
+- OnePlus meter rule for this rig: with the battery at 100 % (status full) the charge counter jumps even with charging disabled -> the
+  measured OP15 energy is unusable; g62/g72 (battery < 100 %) were fine. Either drain the OnePlus below ~95 % before metered arms or quote
+  host + modeled phones (fleet_energy "phones modeled").
+- Remaining energy levers on this host, by size: attention of phone-owned layers on the GPU (lever 3 of the 14:10 list, ~-16 kJ at full
+  coverage, needs Q8 OnePlus shards for VRAM); Q8 shards themselves (phone energy and thermal); planner recalibration (prediction only).
+
+## 2026-10-27 01:31 UTC - Host-wait power A/B launched (user: "cut the power while the host waits"): queue g15 = fleet-trace pair (g151nph / g151new) with BOTH arms on template `-pw` (device_power.decode_cap.sm_max_mhz 1200 -> 600) and `GOMP_SPINCOUNT=3000` exported to llama-server (inherits os.environ). Expected: GPU "clocked but idle" 37.5 W -> ~25 W during decode (both arms, ~-8 kJ each), CPU spin ~8-17 W during the ~690 s of phone calls removed (assisted arm only, ~5-11 kJ) -> fleet saving from -8 % to roughly -11..-13 %
+
+| knob | evidence on this host | who gains |
+|---|---|---|
+| GPU decode cap 600 MHz | resource-samples: GPU 37-38 W at the 1200 MHz cap with <=5 % util (1,299 s of g141nph4), 19-27 W at <=300 MHz, 11.5 W in P8; 600 MHz is in the supported table (502..697 step 7.5) | both arms (absolute) |
+| GOMP_SPINCOUNT=3000 | llama-server averages 2.57 cores in g62new vs 1.37 expected from 48 ms attention + 40 ms overhead per 309 ms token -> ~1.2 cores of libgomp spin during the 208 ms phone chain (~8 W); desktop-only the setting was neutral on the paper rig (spin_check: same ms/token, same W) | assisted arm (differential) |
+
+- Not changed: the planner, phones, placement, store; prefill stays unlocked (`protect_prefill`); templates `-pw` and `-pw-d2x` created
+  on the rig (CHANGES.txt), launcher `rig/launch_g15_pw.sh [REPEATS] [SUFFIX]`. Verification during the run: /proc/<llama-server>/environ
+  and `nvidia-smi` lock state are sampled by the waiter (claude-scratch/lane/wait_g15.log).
+- Baseline fairness: the desktop arm gets the same cap and env (the cap is a host-tuning choice the "tuned desktop" should also have);
+  the differential saving comes from the spin during phone waits. Started 01:30 UTC, OnePlus 20.3 C.
+
+## 2026-10-26 23:12 UTC - g14 (4x pair after the lane-compaction fix) DONE: the Qwen stall is gone (007 acquired 469 s vs 623 s; Qwen queue wait 1687 s vs 1984 s, now BELOW the desktop arm's 1750 s); assisted arm at 4x is energy-neutral on the host (74.2 vs 74.0 kJ full window, service window -2.9 %) instead of +9 %; tail 156 s vs 235 s. One Gemma request (010) lost 228 s to the Qwen switch arbitration - a separate projection-length problem, not caused by the fix
+
+| 4x arm | fleet kJ (full) | host kJ | tail s | Qwen queue wait s | 007 acq s | E2E p50 / p90 s | Qwen E2E p50 / p90 | Gemma TTFT p90 |
+|---|---|---|---|---|---|---|---|---|
+| g81nph4 (desktop, before) | 76.6 | 76.1 | 115 | 1624 | 459 | 189 / 423 | 331 / 429 | 12.8 |
+| g81new4 (assisted, before) | 83.6 (+9.1 %) | 78.6 | 235 | 1984 | 623 | 221 / 458 | 448 / 462 | 34.1 |
+| g141nph4 (desktop, fixed) | 74.5 | 74.0 | 131 | 1750 | 477 | 188 / 438 | 347 / 446 | 20.9 |
+| g141new4 (assisted, fixed) | 76.1* (+2.1 %) | 74.2 (+0.3 %) | 156 | 1687 | 469 | 206 / 432 | 342 / 438 | 247.8 (010) |
+
+\* host + modeled phones (1.9 kJ): the OnePlus meter is INVALID this run (COUNTER_JUMP + CHARGING_IN_WINDOW: charge counter rose
+5932->6256 mAh at 100 % / status full with ~100 mA USB -> fuel-gauge re-sync; fleet_energy's attached number -4.3 % uses that -3.6 kJ).
+Pixel 0.7 kJ measured. Service window (service_energy.py): host 56.3 vs 58.0 kJ (-2.9 %); the post-trace tail shrank from 235 s to
+156 s (one control episode instead of two). Records: `$S/inputs-*-g141*`, meters `$S/g141*`, accounting `$S/analysis-g14/`
+(fleet/latency/service md+json, `queue-g14.md` per-request table from `compare_qwen_queue.py`), S=/mnt/data_h16t/zs89458/xband-runs/second-desktop.
+
+- Per-request (queue-g14.md): every Qwen request in g141new4 is acquired within 8 s of the desktop arm's time or earlier (003/004/005
+  417 vs 428, 007 469 vs 477, 011 523 vs 531, 012 527 vs 531); the fix path fired (compaction followers on freed lanes) and the
+  `capacity_released_early` replans landed at the release instant. 19 affinity bypasses vs 22 before.
+- Gemma 010 (arrived 374.8 s, 10 s of work) waited 228 s: at arrival the only admitted candidate was the Gemma server at 626.9 s =
+  behind 009's PREDICTED finish on lane 2 (009 predicted 255 s / upper 708 s, actual 20 s; 006 predicted 462 s, actual 185 s - the
+  Gemma plans are 3-10x too long, so lanes look busy), the affinity/continuous-join bypass re-resolved to the same 626.9 ("no barrier
+  recorded"; first CONTINUOUS_JOIN_REFUSED seen on this host), and when 009 and 006 ended together at 392 s the overdue Qwen switch
+  (001, waiting since 30 s) took all cuda0/desktop-cpu lanes for its 23 s cold load and then the Qwen residency held them; 010 ran at
+  603 s. In g81new4 the same arrival was rescued by 009 ending 24 s before 006 (switch not yet startable). The lane fix was not on this
+  path (submission-time plan). Next item for lane sharing: Gemma/Qwen predicted service windows vs actual (a 20 s request reserving
+  708 s), and why 009's early completion at 392.3 did not wake its direct lane successor 010.
+- Rig: queue g14 done 23:03 UTC, charging restored, phones idle (OnePlus 100 %, Pixel 99 %); no PAUSE set.
+
+## 2026-10-26 22:38 UTC - Lane-sharing work, step 1: the 4x assisted arm's queue stall is a dispatch-queue bug (stale projection on a lane released early), not a phone-lease effect. Fixed in `_internal/runtime_queue.py::priority_compaction_followers` (+2 tests), deployed to the new desktop (clone + stage), paired 4x rerun queue `g14` (nph4 + new4) launched
+
+Diagnosis (g81new4, Qwen cohort on the 4-slot hot server; all seven requests are Qwen):
+
+| t (s) | event | effect on request 007 (arrived 248 s) |
+|---|---|---|
+| 423.9-440.7 | 001 acquires lane 0 (cold route, leases to 693.8); 003/004/005 acquire lanes 1-3 (to 687-742) | 007 planned on lane 1 at 687.4 behind 003 (lane 0 is busier: 693.8) |
+| 441.0-441.2 | 011 and 012 (arrived later) get projections: 011 lane 3 at 690.9, 012 **lane 0 at 693.8** behind 001 | - |
+| 492.2 | 001 completes early (planned 693.8); early frontier wakes 007 (`capacity_released_early`) | replan at 492.3 lands on **lane 1 at 687.4 again**: lane 0's gap 492.3-693.8 (201 s) is shorter than 007's upper service window (443 s) because 012's stale projection still sits on lane 0; `_next_resource_start` jumps to the earliest lane end = 687.4 |
+| 548.6 / 549.6 / 572.3 / 580.3 | 005, 003, 004, 012 complete; lanes free | 007 is NOT re-woken: `_mark_selected_followers` skips a request already replanned for early capacity whose plan still starts in the future while >1 request is active |
+| 623.3 | 011 completes = server empty | 007 finally replanned and acquired (lane 0); first token 625 s vs 461 s in the desktop arm (+164 s); 011/012 took the free lanes at 549 s ahead of it (FIFO inversion) |
+
+- Desktop arm comparison: 001 ended 459.2 and 007 was placed at 459.2 on lane 0 because 011/012 had NO projections yet
+  (they were still deferred); the assisted arm had projected them at 441 s after a `predecessor_replan` cascade.
+- The shared helper leases (SERVER_HELPER_LEASES_SHARED, lease-470..480) are phone/USB resources (coordinator:hot:phone-assisted,
+  desktop-usb-root, link:pixel-aoa-*, link:usb-*), not desktop slot lanes - the earlier hypothesis is withdrawn. decode cohorts: none.
+- Mechanism in code: a replan for `capacity_released_early` runs priority compaction, but `priority_compaction_followers(root)` only
+  moved later arrivals whose projections overlap the root's OLD lanes (lane 1); the blocking projection was on the lane the root
+  should take (lane 0). Fix: later-sequence QUEUED projections on any lane of the root's resources that no ACTIVE request holds
+  (released ahead of plan) are compacted too -> the root replans at the release instant, the followers replan behind it in
+  sequence order inside the same serialized compaction (no race, FIFO kept). The follower-skip guard is left as is (it no longer
+  triggers once the first replan lands at the release).
+- Tests: `tests/test_dispatch_policy.py::WorkConservingQueueTests::test_priority_compaction_moves_projections_off_lanes_released_early`
+  (queue level, incl. the negative case: a projection behind a still-running lane is not a follower) and
+  `DispatchPolicySchedulerTests::test_early_release_replans_the_woken_request_ahead_of_the_projection_behind_the_owner`
+  (2-lane GPU scheduler: a3 replans at the release on a1's lane, a4 is compacted behind). Suites: test_dispatch_policy 86,
+  test_runtime_queue + test_runtime_controller + test_automated_runtime_{runtime,admission} + test_adaptive_runtime 186: all pass.
+- Deployed: md5 3ccf108a runtime_queue.py / 6530dcb5 test_dispatch_policy.py on the clone and $R/stage; the two tests pass on the
+  deployed clone. Rerun: `rig/launch_g14_lane.sh 1` -> queue g14 = g141nph4 + g141new4 (shuffled), gate READY (OnePlus 17.2 C, 100 %).
+  Compare against g81nph4 / g81new4: Qwen first-token times (007/011/012), hot-server steps per token (759 vs 481), service-window
+  energy (service_energy.py) and p90.
+- Open after this step: (a) the guard in `runtime_controller_ops/queue.py::_mark_selected_followers` still blocks re-wakes of a
+  future-planned request while others run (latent); (b) the real lane-sharing goal - same-model arrivals joining a running assisted
+  batch (continuous_join) - produced no CONTINUOUS_JOIN reasons in any 5070 Ti arm; to be investigated once g14 confirms the queue fix.
+
+## 2026-10-26 21:53 UTC - "Batching idea" investigation: the 4x-density energy penalty was NOT scheduling - it is the paid window's post-trace tail. New tool `campaigns/burstgpt/tools/service_energy.py` splits each run at its last request completion: at 4x the desktop arm's tail is 115 s / 14.7 kJ and the assisted arm's 235 s / 26.9 kJ (post-drain control requests + phone re-provisioning + end_trace, at 114-127 W), while the service window itself is -11.6 % for Ours. Load curve on service energy: 1x -7.8 %, 2x -9.1 %, 4x -11.6 % (full-window: -8.2 / -10.6 / +9.1 %)
+
+| trace | arm | paid s | service s | tail s | host service kJ | host tail kJ | fleet service kJ | vs desktop (service) | fleet full kJ | vs desktop (full) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1x | g62nph / g62new / g121half | 1715 / 1709 / 1704 | 1704 / 1703 / 1698 | 11 / 6 / 6 | 178.2 / 154.8 / 158.7 | 1.4 / 0.6 / 0.6 | 179.8 / 165.8 / 167.5 | - / -7.8 % / -6.9 % | 181.3 / 166.4 / 168.0 | - / -8.2 % / -7.3 % |
+| 2x | g81nph2 / g81new2 / g131half2 | 927 / 898 / 892 | 889 / 878 / 865 | 37 / 20 / 28 | 112.5 / 97.6 / 101.2 | 4.4 / 2.1 / 3.3 | 113.3 / 103.0 / 106.4 | - / -9.1 % / -6.1 % | 117.8 / 105.3 / 109.9 | - / -10.6 % / -6.7 % |
+| 4x | g81nph4 / g81new4 / g91fx4 | 599 / 712 / 651 | 484 / 477 / 481 | 115 / 235 / 170 | 61.5 / 51.7 / 57.6 | 14.7 / 26.9 / 20.3 | 61.9 / 54.7 / 59.0 | - / -11.6 % / -4.8 % | 76.6 / 83.7 / 80.1 | - / +9.1 % / +4.5 % |
+
+- Tail contents (4x): after the last completion the runner drains, then runs the end-of-trace control tickets (device_power
+  ticket_queued -> load_begin/load_end -> execution_active -> arrival_likely -> idle_timeout -> end_trace; the Llama 1B control model
+  loads); the assisted arm additionally re-evaluates phone residency (PHONE_RESIDENCY_REPROVISION_RETAINED x6, DEMAND_UNAVAILABLE x4)
+  and runs a second control episode 623-706 s (81 s) -> +120 s at ~115 W = +12 kJ, more than the whole 4x difference. At 1x/2x the
+  tail is 6-37 s (the trace's own end coincides with the last completions), so the headline rows are unaffected.
+- Batching itself is already happening in the assisted arms: controller windows at batch 2/3/4 = 449/148/131 (g81new4) and
+  257/111/125 (g81new2); Qwen servers ran 759 decode steps for 1,524 tokens (2.0 tokens/step) vs the desktop's 481 (3.2/step) at
+  4x - a modest occupancy gap, and the Qwen request timelines are nearly identical in both arms (model-affinity switches dominate).
+- Consequence for the paper: report the load curve on service-window energy (or fix the runner's tail: it is end-of-trace overhead,
+  not inference); the two-context async pipeline is a throughput feature for >2x load, no longer needed to explain the 4x row.
+- Still worth doing for batching: lane sharing so same-model arrivals join the assisted step sooner (2.0 -> 3.2 tokens/step at 4x).
+
+## 2026-10-26 20:40 UTC - Split at 2x density (g131half2): fleet 109.9 kJ (-6.7 % vs desktop 117.7) vs all-phone 105.3 (-10.6 %); latency p90 222 s vs 323 (desktop) / 368 (all-phone), TPOT 262 vs 325 / 322 ms, p50 122 vs 186 / 89. Verdict for items 1+2: on the 5070 Ti all-phone is the energy optimum (-8 % at 1x, -11 % at 2x) and the 0.5 split is the latency optimum at 1-4 % more energy than all-phone; the controller's probe loop cannot see the split today, and the planner asked for it
+
+| trace | arm | policy | dur s | CPU kJ | GPU kJ | phones kJ | fleet kJ | vs desktop | E2E p50 / p90 s | TPOT ms |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1x | g62nph | desktop | 1715 | 120.7 | 58.9 | 1.6 | 181.2 | - | 104 / 219 | 303 |
+| 1x | g62new, g111cold | all-phone | 1709 | 100.2 | 55.2 | 11.1 | 166.4 (165.9) | -8.2 % | 95 / 230 | 295 |
+| 1x | g121half | split 0.5 | 1704 | 109.4 | 49.8 | 8.8 | 168.0 | -7.3 % | 85 / 176 | 236 |
+| 2x | g81nph2 | desktop | 927 | 78.0 | 39.0 | 0.8 | 117.7 | - | 186 / 323 | 325 |
+| 2x | g81new2 | all-phone | 898 | 63.0 | 36.7 | 5.6 | 105.3 | -10.6 % | 89 / 368 | 322 |
+| 2x | g131half2 | split 0.5 | 892 | 70.4 | 34.0 | 5.5 | 109.9 | -6.7 % | 122 / 222 | 262 |
+
+- The split's per-token energy win (Gemma 29.4 vs 33.1 J) does not survive at the fleet level on either density: the makespan is set by
+  the trace, and the CPU's half of the FFN streaming (+7-9 kJ CPU) outweighs the shorter wait (GPU -3 to -5 kJ, phones -0.1 to -2 kJ).
+  What the split delivers is the tail: p90 -20 % (1x) and -31 % (2x) vs the desktop, and -23 % / -40 % vs all-phone; TPOT -22 % / -19 %.
+- Paper framing (second host): (a) energy saving 8-11 % with all-phone, smaller than the paper rig's 40-46 % for the measured reasons
+  (idle floor 4x, OnePlus F16 as fast as the host CPU per layer); (b) the same scheduler, pointed at latency, turns the phones into a
+  tail-latency win at near-equal energy by splitting each layer (the planner's 0.5); (c) controller defect: the probe loop adopts the
+  first coarse winner (both rigs, seeded or cold) - a probe-order/budget fix, future work; (d) the planner's phone timing is within 10 %
+  once calls are measured in situ; its energy prediction assumed the split, which is why it looked 2x optimistic.
+- Rig idle, both phones on adb, OnePlus 21-23 C throughout. Archive: `second-desktop/` on FCHLLX01 (g111cold, g121half, g131half2 +
+  analysis-g11/g12). Templates: -cold (empty store), -half (probe order 0.5 first), -half-d2x.
+
+## 2026-10-26 20:22 UTC - SPLIT RESULT (g121half, cold store, probe order [0.5, 0.75, 1.0, 0.25]): the controller adopted the 0.5 column split for every Gemma and Qwen request; fleet 168.0 kJ (-7.3 % vs desktop, vs -8.2/-8.5 % all-phone) at a large latency win: E2E p50 85 s (desktop 104, all-phone 95), p90 176 (219 / 230), TPOT 236 ms (303 / 295), TTFT p50 14.8 s (21.6 / 17.9). Split-at-2x-density arm g131half2 launched
+
+| arm (cooled, fleet 1x) | policy | CPU kJ | GPU kJ | host kJ | OP15 / Pixel kJ | fleet kJ | vs desktop | E2E p50 / p90 s | TPOT ms | TTFT p50 s |
+|---|---|---|---|---|---|---|---|---|---|---|
+| g62nph | desktop only | 120.7 | 58.9 | 179.6 | 0.8 / 0.8 | 181.2 | - | 104 / 219 | 303 | 21.6 |
+| g62new / g111cold | all-phone (1.0) | 100.2 / 100.8 | 55.2 / 53.7 | 155.3 / 154.5 | 7.3 / 3.8 | 166.4 / 165.9 | -8.2 / -8.5 % | 95 / 230 | 295 | 17.9 |
+| g121half | column split 0.5 | 109.4 | 49.8 | 159.2 | 6.0 / 2.8 | 168.0 | -7.3 % | 85 / 176 | 236 | 14.8 |
+
+- Per-token (controller windows): Gemma baseline 284 ms / 36.6 J -> split 230 ms / 29.4 J (-19 % / -20 %) vs all-phone 312 / 33.1;
+  Qwen batch-1 263/35.9 -> 255/33.4 (all-phone 298/33.7); batch-2 375/46.8 -> 270/35.4 (all-phone 345/38.2). Same phone calls (82k).
+- Why the per-token -20 % does not reach the fleet total at 1x: the trace's makespan is fixed (1704 s) and arrivals are sparse, so a
+  shorter token moves floor-energy from "during token" to "between requests" without removing it; host dynamic is +4 kJ vs all-phone
+  (the CPU streams half the FFN: 109.4 vs 100.2 kJ), GPU -5 kJ, phones -2.3 kJ -> net +1.6 kJ vs all-phone, -13 kJ vs desktop.
+  At load the shorter token is throughput, and throughput is energy (d2x all-phone was -10.6 %): g131half2 (split, 2x) running.
+- Reading for the paper: on the fast host the optimum moves from all-phone (min energy) to the 50/50 split (min latency at equal energy)
+  - the planner asked for 0.5 all along; the controller needs to probe it (probe order / budget), not just verify a carried verdict.
+- Rig: g121half OnePlus 21.4-22.5 C; accounting `$R/analysis-g12/` (fleet/latency g12), copies to FCHLLX01 `second-desktop/`.
+
+## 2026-10-26 19:50 UTC - Cold-store arm g111cold DONE (PASS, 13/14, 84,170 calls): even with an empty observation store the controller probed only fractions 0 and 1.0 and adopted 1.0 (policies at 0.75/0.5/0.25 existed in the run: 384/172/246 mentions). The probe loop (`_advance_probe_candidate`) walks the candidate list in `coarse_probe_fractions_ppm` order and skips candidates whose `_measurement_pair_budget` is None; after 1.0 won against the baseline the rest were never measured. Split-first arm g121half launched 19:49 UTC (template `-half`: coarse order [0.5, 0.75, 1.0, 0.25], cold store)
+
+- g111cold per-token windows: Gemma baseline 284 ms / 36.4 J -> all-phone 312 ms / 33.1 J; Qwen batch-1 261/35.6 -> 298/33.7, batch-2
+  374/46.7 -> 345/38.2. Same as the seeded arms -> the seed was not what blocked the split; the probe order + budget gating is.
+- g111cold counts as a 4th cooled all-phone repeat (accounting in `second-desktop/analysis-g11/`).
+
+## 2026-10-26 19:13 UTC - Paper items 1+2 in progress. ROOT CAUSE of "the split was never probed": every derived arm is seeded with the paper rig's adaptive observation store (template evidence `adaptive_observation_store_path` -> s42-sparse-locality24-adaptive-20260902-v8 store, 30 groups); its cached verdict (fraction 1.0 = all-phone) passes operational verification on this host (33.0 vs 36.2 J/token, 309 vs 281 ms within the 1.25x bound) so the controller adopts it and never runs its cold-start sweep [1.0, 0.75, 0.5, 0.25]. Cold-store arm g101cold launched 19:12 UTC; measured planner profile built
+
+- Per-token measurements from the controller's own windows (g62new/g72new, this host; per token incl. all domains):
+  Gemma baseline 36.2-36.5 J / 281-282 ms -> all-phone 33.0-33.7 J / 309 ms (-9 % energy, +10 % latency); Qwen batch-1 35.3 -> 33.9 J,
+  batch-2 46.5 -> 38.0 J (-18 %), batch-3 48.2 -> 46.4 J. In all-phone Gemma windows the host draws CPU 64 W + GPU 38 W = 102 W over the
+  token although it computes only 61 of 309 ms -> waiting power ~97 W, not the 68 W the profile assumed (CPU spin ~17 W + GPU at the
+  1200 MHz cap ~19 W above idle clocks) = ~9 J of the 33 J token. Historical rows in the store (paper rig) show the 0.5 split was
+  FASTER there too (312 vs 393 ms/token) but dearer (36.5 vs 18.6 J) - correct choice on that rig, untested on this one.
+- Task 2 (planner): `plan-5070ti-measured/PROFILE.json` (op15 F16 51.8 GB/s, FunctionFS overhead 1.17 ms, Pixel q4k 25.6 GB/s, AOA
+  0.75 ms, desktop wait_w 97, calls compute_ms 6.84/9.87/6.25, call energy 0.065/0.095/0.093 J) -> plan unchanged (Gemma OP15 0-25;
+  Qwen OP15 0 + Pixel 1-23; column fraction 0.5); predictions Gemma 10.27 -> 9.72 J/token, Qwen 14.79 -> 16.31. The planner's chain
+  (98.6 ms) was for the 0.5 split it asked for; the runtime executed 1.0 (208 ms chain). The planner is near-right; the controller is
+  the gap -> the "1.8x" is the executed fraction, not the timing model. Final measured profile (rows-2 call rows rescaled by the paper-rig
+  rows factor, provenance "derived"): Gemma 9.58 J/token (chain 92.9 ms), Qwen 16.84 (chain 148 ms: the Pixel's measured 6.25 ms/layer
+  is slower at the split than the old 17.7 GB/s q4k model assumed at rows 2); owners and column fraction unchanged, so the derived arms
+  need no re-derivation. Predicted full-use saving with the measured profile: 15.5 (Gemma) + 14.9 (Qwen) = 30.4 kJ per fleet run.
+- Task 1 (controller): template `template-eval2-s2-dp-online-5070ti-cold` = empty adaptive store (`evidence-cold/
+  ADAPTIVE_DECODE_OBSERVATIONS.empty.json`, generated from a fresh scheduler snapshot) + overrides maximum_probe_tokens 160, attempts 4,
+  exploration budgets 30 %. Queue g10 (one cooled derived arm, OnePlus 17.2 C, GPU footprint 2.5 GB / 11 W).
+  Expect the cold start to probe 1.0, 0.75, 0.5, 0.25 (widest-first) and pick by measured energy; the split's prediction: ~206 ms/token.
+  g101cold FAILED at run start (19:14 UTC): `load_adaptive_decode_observations` with a source catalog requires >= 1 group profile
+  ("adaptive observation source profile is invalid") -> cold template now sets `adaptive_observation_source_catalog_path` null
+  (optional in launch.py); stale g101cold sampler files removed from both phones; relaunched as g111cold 19:17 UTC (OnePlus 17.3 C).
+
+## 2026-10-26 18:59 UTC - User asks whether the idle GPU (7 % util) could load other layers while the phones/CPU run. Assessment: within a token the shared bottleneck is host DRAM (51 GB/s) feeding whichever engine consumes it, and VRAM headroom (1.2 GB) only stages ~2.5 layers (~22 ms); the overlap that does exist is the FFN column split (host ∥ phone inside each layer) - and the adaptive controller NEVER probed it on this host (every request explored only fractions 0 and 1.0, coarse_probe_fractions [1.0, 0.75, 0.5, 0.25] unused, planner column_fraction 0.5 ignored)
+
+- Per Gemma layer with a split fraction f on the phone: host streams 6.9(1-f) ms, phone 6.84f + 1.17 ms, in parallel; equal at f = 0.42 ->
+  5.9 ms/layer vs 9.8 (all-phone) / 8.75 (all-CPU) -> token ~206 ms vs 309 (-33 %). Energy per token with the 53 W floor charged per
+  second: all-phone ~16.4 (floor) + 11.4 (host dyn) + 1.0 (phone) = 28.8 J; split ~10.9 + ~11.5 + 0.6 = 23 J (-20 %) - a shorter token
+  is cheaper here because the floor dominates. To be measured, not assumed.
+- GPU-DMA weight streaming (pinned cudaMemcpyAsync per layer + GPU compute) would replace CPU streaming at the same ~7 ms/layer (PCIe 5 x16
+  ~50 GB/s = DRAM 51 GB/s) but possibly at much lower host power than 8 CPU threads; worth a microbench (energy per streamed GB, DMA vs cores).
+- Cross-request stage pipelining (GPU stage for B while phones serve A) is the other way to fill the GPU; blocked by the assisted lease's
+  capacity-1 phone lanes (active_slots_peak 1).
+- Next experiments (cheap): (1) one cooled derived arm with the controller forced to probe 0.5/0.75 (probe budget / widest-first knobs)
+  -> measures the split's real latency and energy; (2) DMA-vs-CPU streaming microbench on the 5070 Ti.
+
+## 2026-10-26 18:52 UTC - Figure: "5070 Ti Stage Breakdown" (research_dev/figures/5070ti-stage-breakdown.html, published https://claude.ai/artifact/RpwBMT4NsojcGTC6ujDbEF)
+
+Panel A = ms per decode token by stage (GPU layers / CPU streaming / phone FFN compute / call overhead / server+sampling) for Gemma and Qwen,
+desktop-only vs phone-assisted (283 -> 309 ms Gemma; 367 -> 305 ms Qwen), from the server call logs + 51 GB/s DRAM model. Per-layer table:
+OnePlus HTP F16 Gemma 6.84 + 1.17 ms vs CPU 6.9 ms; Pixel Q4 Qwen 6.25 + 0.75 vs CPU 13.0. Panel B = kJ per run split idle floor / host
+dynamic / phones: 5070 Ti 90.9 + 88.7 + 1.6 = 181.2 -> 90.6 + 64.7 + 11.1 = 166.4; paper rig 25.6 + 132.3 + 1.6 = 159.5 -> 25.0 + 49.0 +
+12.7 = 86.7. Stat tiles: 55 % idle share, -24 kJ host dynamic, +9.5 kJ phones, -8 % net. Palette validated (dataviz validator; contrast
+WARN relieved by in-bar labels + table view).
+
+## 2026-10-26 17:33 UTC - 4x-density root cause found in the records: every phone-assisted arm decodes ONE request per model at a time (RESULT active_slots_peak 1 for Gemma, Qwen, Llama in g62new/g71new/g81new2/g81new4/g91fx4) while the desktop arms batch up to 4 Qwen / 2 Gemma slots (servers launched with parallel 4 / 2 in BOTH arms). Phones' per-call cost under rows=2 is small (+0.6 / +1.9 ms), so the 4x penalty is the assisted lease's capacity-1 phone lanes (memory: dispatch-serialization-root-cause-2026-09-27), not phone speed
+
+- Evidence: g81nph4 peak slots {gemma 2, qwen 4} vs g81new4 {gemma 1, qwen 1}; Qwen waits in g81new4: model_affinity_displaced 20x 1054 s,
+  capacity_released_early 7x 544 s, predecessor_replan 5x 278 s (nph4: 1009 / 434 / 131 s). Per-token TPOT under concurrency is fine
+  (Qwen 303 -> 372-386 ms with 1-3 co-decoders = 3-4x throughput), so batching the assisted requests would recover most of the +9 %.
+- The continuous_join / hysteresis / late-adoption / batch-verdict work of 09-27/28 targeted exactly this; the 5070ti template has
+  dispatch_policy.continuous_join true, yet no joins happened here (peak 1). Candidate: joiners need the leader's phone lanes free
+  (capacity-1 op15-htp / op15-functionfs resources) - the lease model, not a timing fork. This is lever "load-aware admission" made
+  concrete: let a same-model joiner share the assisted leader's phone session (rows 2-4 qualified) instead of waiting for the lane.
+- Also recorded: at 1x density the same mechanism shows as the Qwen tail (g62new 2 concurrent Qwen only via the cohort window).
+
+## 2026-10-26 17:31 UTC - CORRECTION + exact per-token decomposition from the server's own call logs (S41SERVERFFNUSB / S41SERVERFFNSHAPE, g62new): the hand-off is ~1 ms per call, not 4.4 ms; the phones' COMPUTE is the big block. OnePlus HTP F16 Gemma layer = 6.84 ms (as slow as this desktop's CPU at 6.9 ms); Pixel Q4 Qwen layer = 6.25 ms (vs CPU 13 ms). WS16 phone legs on this host: Pixel AOA rpc 7.22 / compute 6.10 ms (overhead 1.1 ms); OnePlus adb-tcp legs FAILED (worker graph overflow, the 10-07 WS16 bug)
+
+| per layer call (production, p50) | total/rpc ms | compute ms | overhead ms | bytes/call | effective GB/s |
+|---|---|---|---|---|---|
+| OnePlus FunctionFS HTP, Gemma F16 FFN (48,100 calls) | 8.0 | 6.84 | 1.17 (p90 1.95) | 0.354 GB | 52 |
+| OnePlus FunctionFS HTP, Qwen layer 0 F16 (1,139 calls) | 11.6 | 9.87 | 1.8 (tokens=2: 2.35) | 0.535 GB | 54 |
+| Pixel adb-tcp/AOA relay, Qwen Q4 packed FFN (12,719 calls) | 7.0 (tokens=2: 8.9) | 6.25 (7.2) | 0.75 (1.7) | ~0.16 GB | 26 (CPU) |
+| 5070 Ti CPU streaming, Gemma full layer / Qwen full layer | 6.9 / 13.0 | - | - | 0.354 / 0.66 GB | 51 |
+
+- Gemma token (Ours) = GPU 13 + CPU attention 48 + phone 26 x 8.0 = 208 + desktop per-token overhead ~40 => 309 ms (measured 307-309).
+  Desktop-only = 13 + 228 + 42 = 283. The ~40 ms desktop overhead (sampling, graph, batch management) is the same in both arms.
+  => "waiting on backends" is 26 x 1.2 = 30 ms (10 %) + nothing else; the phone is simply not faster than this host's CPU at F16.
+- Qwen token (Ours) = 13 + CPU attention 59 + Pixel 23 x 7.0 = 161 + OP15 layer 0 11.6 + ~40 => ~285-305 (measured 305); desktop-only 367.
+  Qwen offload IS latency-positive here (-17 %) because the Pixel's packed-Q4 layer (6.25 ms) beats the CPU's F16 streaming (13 ms).
+- Rows=2 coalescing is cheap on both phones (+0.6 ms OP15, +1.9 ms Pixel per call) -> per-token phone time halves for 2 concurrent
+  requests; the 4x-density slowdown (windows 411-503 ms/token) is therefore NOT the phones - to be checked on the desktop side.
+- The previous entry's "4.4 ms hand-off" was derived from the planner's 3.8 ms/layer phone estimate, which is 1.8x too optimistic
+  (planner chain 98.6 ms vs measured 178 ms of compute per Gemma token). Same 1.8x as the energy over-prediction: the planner's phone
+  timing model needs the measured per-layer numbers (lever 5).
+- Lever ranking after this: (1) faster OnePlus layers = fewer bytes (Q8/Q4 HTP shards: 6.84 -> ~2-3.5 ms/layer; Gemma 309 -> ~190-230
+  ms/token, thermal and energy down) - regime caveat for the fleet pair, native for the 32B pair; (2) whole-layer stages remove CPU
+  attention (48-59 ms) + 25 hops (30 ms) but add attention on the phone - energy win, latency ~neutral, needs (1); (3) per-call
+  overhead is already ~1 ms: a hot call path can save at most ~30 ms/token.
+- Rig: the OnePlus carried two orphaned `direct_phone_ffn_session.sh` watchdogs (+ `sleep 7200`) after the g9 arms (known
+  session-watchdog-orphan); SIGKILLed; phone stays in adb mode, both phones clean. Microbench outputs: `$M/run-phones-5070ti/`.
+
+## 2026-10-26 16:24 UTC - Lever 1 VERDICT (queue g9 done 16:22 UTC): pinning the OnePlus layout fixes the latency tail but is not an energy lever on this host; at 4x density it halves the penalty without turning it into a saving
+
+| trace | arm | phone calls | dur s | host kJ | phones kJ | fleet kJ | vs desktop | E2E p50 / p90 s |
+|---|---|---|---|---|---|---|---|---|
+| 1x fleet | g62nph desktop | 0 | 1715 | 179.6 | 1.6 | 181.2 | - | 104 / 219 |
+| 1x fleet | g62new dynamic | 82,780 | 1709 | 155.3 | 11.1 | 166.4 | -8.2 % | 95 / 230 |
+| 1x fleet | g91fx pinned | 40,903 | 1712 | 165.4 | 6.3 | 171.7 | -5.2 % | 98 / 214 |
+| 4x | g81nph4 desktop | 0 | 599 | 76.1 | 0.5 | 76.6 | - | 189 / 423 |
+| 4x | g81new4 dynamic | 62,610 | 712 | 78.6 | 4.9 | 83.6 | +9.1 % | 221 / 458 |
+| 4x | g91fx4 pinned | 9,801 | 651 | 77.8 | 2.2 | 80.1 | +4.5 % | 221 / 453 |
+
+- 1x: swaps 0, Qwen fully assisted, p90 214 s (= desktop); Gemma's 17-layer slice abandoned by the controller after the probes
+  (301 ms/token vs 279-284 desktop-only) -> Gemma on the desktop -> -5.2 % instead of -8 %.
+- 4x: the phone-assisted Qwen policy itself is slower under concurrency (learning windows 503 ms/token at rows>1 vs 303-412) and
+  the controller mostly stayed with the server's shared desktop policy (SERVER_POLICY_COHERENCE); Gemma probes hit 585 ms/token
+  -> probe budget exhausted. So the 4x penalty is the phone path's per-token cost under batching (rows>1 calls: WS16 rows=4 rpc
+  24.9 ms vs 10.1 at rows=1), not the OnePlus swaps. The run was still 52 s longer than the desktop's (651 vs 599 s).
+- Meter flags on both pinned arms' OnePlus energy (CHARGING_IN_WINDOW, COUNTER_JUMP): treat their OP15 kJ as approximate.
+- Takeaway for the paper/scheduler: on a fast host the per-layer FFN hand-off (4-5 ms, not the wire) makes partial offload
+  latency-negative and makes rows>1 coalescing a loss; the structural fix is fewer hops (whole-layer stages) or a ~1 ms call path.
+  Lever 1 stays available as a latency-tail option (static layout) but is not worth a paper row on its own.
+- Rig idle and clean (both phones on adb, charging restored, OnePlus 100 % / 22 C). Accounting: `second-desktop/analysis-g9/`.
+
+## 2026-10-26 16:17 UTC - Hand-off decomposition: the wire is not the cost. FunctionFS receipts on this host at the 7680 B activation payload: response-ready median 0.19 ms, p99 0.38 ms (d2h, depth 4); the paper rig's WS16 phone legs show the same shape for the Pixel AOA path (rpc 10.1 ms vs compute 6.1 ms per layer call, rows=1). So the ~4.4-5.6 ms per-layer hand-off measured in situ is HTP/worker invocation + desktop-side call scheduling, not USB
+
+- Implication for the user's pipelining question: within a token nothing can be prefetched (weights resident, strict layer chain); the
+  waste is 24-26 synchronous per-layer calls per token. Fixes in order of leverage: (1) whole-layer stages (one hop per token; needs
+  phone shards that fit: Q8/Q4 -> regime caveat for the 12B/14B pair, natural for the 32B pair where the GPU cannot hold Q4);
+  (2) a hot call path (HTP kept at performance vote between calls, desktop-side call issue without thread hand-offs) to cut the
+  4-5 ms toward ~1 ms; (3) rows>1 coalesced calls across concurrent requests (already used: `operator_split:coalesced-batch`;
+  WS16 rows=2 rpc 14.5 ms vs 2 x 10.1); (4) cross-request stage pipelining for >=2x load.
+- 32B on the 5070 Ti (the clean whole-layer demo): paper rig used Qwen3-32B (Q8_0 34.8 GB file; q32op15 template = Q4_0 manifest
+  QWEN32_Q40 with OP15 shards 0-20 `s43-q32-shards-v1`); the new desktop has no 32B GGUF yet (110 GB free; WiFi copy ~2 h for Q8).
+  Phones' q32 shard dirs: Pixel shows s43-q32-pixel-* dirs; OnePlus unknown (in direct mode during the fx4 arm - do not query).
+
+## 2026-10-26 16:14 UTC - Lever 1 fleet arm (g91fx, pinned OnePlus residency) RESULT: swaps gone and the latency tail fixed (E2E p90 214 s = baseline), but Gemma's 17-layer slice was abandoned by the controller (SERVER_PROBE_BUDGET_EXHAUSTED) -> fleet -5.2 % (171.7 kJ) vs -8.2/-8.7 % for the dynamic arms. Root cause quantified: on this host each offloaded FFN layer costs +1.3 ms latency (hand-off 4.4 ms > 3.1 ms gained) and saves ~0.27 J; partial offload cannot clear the controller's gates
+
+| arm (cooled) | phone requests | calls | host kJ | OP15 / Pixel kJ | fleet kJ | vs g62nph | E2E p50 / p90 s | Qwen queue total s | Gemma TPOT ms |
+|---|---|---|---|---|---|---|---|---|---|
+| g62nph desktop | 0 | 0 | 179.6 | 0.8 / 0.8 | 181.2 | - | 104 / 219 | 364 | 279 |
+| g62new dynamic | 13/14 | 82,780 | 155.3 | 7.3 / 3.8 | 166.4 | -8.2 % | 95 / 230 | 411 | 307 |
+| g72new dynamic | 13/14 | 51,104 | 156.0 | 6.1 / 3.4 | 165.4 | -8.7 % | 90 / 447 | 1023 | 304 |
+| g91fx pinned | 12/14 | 40,903 | 165.4 | 2.6 / 3.7 | 171.7 | -5.2 % | 98 / 214 | 354 | 284 |
+
+- Pinned layout did its job: 0 residency transitions (3 initial loads), every Qwen request fully assisted (Pixel 1,610-6,992 calls
+  each = paper-rig pattern), Qwen queue 354 s = baseline, p90 214 s vs 230-447 s dynamic.
+- Gemma: HTP1/HTP2 (layers 9-25) served only ~84 tokens per request (756+672 calls) during the adaptive probes, then every decision
+  was SERVER_PROBE_BUDGET_EXHAUSTED (93-103 per request) -> desktop-only for the rest. The probe windows measured 301 ms/token with
+  17 layers on the phone vs 279-284 ms desktop-only: the phone policy is slower and its energy gain too small to pass the gates.
+- Per-layer economics on the 5070 Ti (from learning windows: 305-309 ms/token at full offload vs compute sum 160-195 ms):
+  hand-off ~4.4 ms per layer call (USB RTT + HTP invoke + desktop sync); CPU streaming saved per Gemma layer 6.9 ms (0.354 GB at
+  51 GB/s) minus phone compute 3.8 ms = 3.1 ms gained -> net +1.3 ms/layer latency (26 layers: +34 ms/token, matches 309 vs 283);
+  energy ~0.62 J saved (CPU) vs ~0.35 J spent (phone 3.8 ms x 5 W + host waiting 8 ms x 40 W) = -0.27 J per layer-token.
+  On the paper rig the CPU streamed at 30 GB/s (11.8 ms/layer) so the same hand-off was latency-positive. => the hand-off cost is THE
+  parameter on fast hosts; fewer hops (whole-layer stages) or a cheaper call path are the structural fixes.
+- Meter flags on g91fx op15 (BATTERY_SIGN_MISMATCH, CHARGING_IN_WINDOW, COUNTER_JUMP): the OnePlus energy of this arm is suspect; check
+  the meter log before quoting 2.6 kJ.
+- g91fx4 (pinned, 4x trace) running; its comparison is g81new4 (+9.1 %).
+
+## 2026-10-26 15:39 UTC - Lever 1 test launched (queue g9): OnePlus residency pinned (campaign `fixed_phone_residency`: HTP0 Qwen layer 0, HTP1 Gemma 9-17, HTP2 Gemma 18-25; `phone_resident_model_reprovisioning` null) on the fleet trace (g91fx) and the 4x trace (g91fx4)
+
+- Why this form: the swaps are policy-driven, not RAM-driven - the reprovision manager "follows the desktop's model"
+  (EVALUATED records: followed_artifact_sha256s flips between [qwen, gemma] and [gemma] with desktop_commitment_source
+  loading/queued), and a 4th session (Gemma 9.2 GB + Qwen 0.52 GB = 9.7 GB + HTP workspaces) does not fit the 10 GB cap.
+  A Pixel-only Qwen route (OP15 without a Qwen shard) is the WS23 led route = gap 12 (parked). So the test pins the manager's own
+  mixed layout: Gemma keeps 17 of 26 layers on the OnePlus (layers 0-8 go back to the desktop CPU: -4.9 kJ of the planner's 14.1 kJ
+  Gemma saving), Qwen is always ready on HTP0 + Pixel 1-23.
+- Expected: 0 swaps (vs 8-10 x 12 s), Qwen never waits on `residency_transition_completed` / Gemma's HTP0 (tail p90 230-447 s ->
+  ~baseline 215 s), fleet energy roughly neutral on the 1x trace, and the 4x trace should move from +9.1 % toward negative.
+- Shard files unchanged (gemma26 HTP1/HTP2 + qwen0 HTP0 already on the phone); templates `template-eval2-s2-dp-online-5070ti-fx`
+  and `-fx-d4x` (CHANGES.txt), made by `rig/make_fx_templates.py`. Cooled regime (fan), OnePlus 18.0 C at start 15:38 UTC;
+  GPU footprint before: 2.6 GB / 20 W. Compare against g62new/g71new/g72new (dynamic) and g81new4 (dynamic, 4x).
+- Gotcha: `pgrep -x bash -a | grep matrix_queue2` matches the ssh shell's own command line -> false "queue running";
+  use `pgrep -f "^bash matrix_queue2.sh"`.
+
+## 2026-10-26 14:10 UTC - Optimization diagnosis on the cooled 5070 Ti runs (user: "can we optimize it?"): where the energy goes and the ranked levers
+
+Measured on g62new / g72new (cooled, 13/14 phone requests) vs g62nph, from resource-samples (4 Hz), meters and run records:
+
+| where | number | meaning |
+|---|---|---|
+| idle floor | 53 W = 91 kJ of 166 (55 %) | untouchable by offload; AMD package ~38 W + GPU ~15 W (console user's apps) |
+| host while phones resident | CPU 58.8 W (busy 21 % of 16 CPUs), GPU 32.5 W at 7 % util | vs baseline CPU 70 W / GPU 34 W: the phones cut CPU 11 W, GPU ~2 W |
+| GPU clock state | 58 % of the run at the 1200 MHz decode cap drawing 38-40 W for 7-11 % util; 35-44 % at <=300 MHz drawing 19-25 W | ~8-10 kJ per arm sits in "clocked but idle" GPU time (both arms) |
+| phone-busy time | ~390 s of 1709 s (Gemma 2034 tok x 99 ms + Qwen 1524 x 126 ms) | the phones are busy 23 % of the run; wait power (68 W profile) only costs ~6 kJ |
+| CPU-held attention | 26 Gemma / 24 Qwen layers' attention streams ~2.4-3.0 GB per token from DRAM (~60-76 ms/token) | ~16 kJ per run and ~25 % of TPOT; attn is 0.094 GB/layer (Gemma), FFN 0.354 |
+| OnePlus residency swaps | 10 / 8 per run, 12 s each (102-120 s), HTP0 flips Gemma 0-8 <-> Qwen layer 0 | planner gives Qwen layer 0 to the OP15 (0.21 J/token "gain"); RAM (10 GB cap, Gemma 9.2 GB) cannot hold a 4th session |
+| Qwen queueing | 320 / 545 s total vs 255 s baseline; waits are mostly `capacity_released_early` + desktop model swap (`residency_transition_completed` 121 s in the BASELINE too) | the desktop's own Qwen<->Gemma reload dominates; phone swaps add 30-290 s on top and block Qwen behind Gemma's HTP0 |
+| split fraction | 13/14 requests settle at 1,000,000 ppm (whole FFN on the phone), planner assumed 0.5 | the column split is unused on this host |
+| planner | predicts 2x the measured saving (both rigs) | PROFILE power states (ffn_w 125 / wait_w 68 / other 25.7) and ASSUMED 4.5 W phones are off: measured OP15 4.3 W avg incl. battery, Pixel 2.1 W |
+
+Ranked levers (potential per 1709 s fleet run, fleet 166 kJ):
+1. **Decouple Qwen from the OnePlus** (planner constraint: Qwen layer 0 stays on the desktop or gets a permanent 4th session with Gemma
+   trimmed to 25 layers): removes 100-120 s of swaps and the Gemma-blocks-Qwen serialization (tail latency 447 s p90, d4x +9 %);
+   energy +3-8 kJ, latency the main win. Cheapest robust form needs the 4th-session RAM check (`_PhoneMemoryBudget`, htp workspace).
+2. **Q8 OnePlus Gemma shards** (9.2 -> 4.6 GB): frees RAM for lever 1 and for attention-on-GPU, halves HTP weight traffic (cooler phone =
+   the thermal gate problem, lower phone energy than 7.3 kJ), tooling exists from the 32B Q8 arms; quality cost to re-check (Q8).
+3. **Attention of phone-owned layers on the GPU** (`--override-tensor "blk.(22..47).attn_.*=CUDA0"`, supported by this llama.cpp):
+   Gemma needs 2.4 GB VRAM (fits only with ~16 full layers -> 32 phone FFN layers -> needs lever 2); Qwen: 12 full + 28 attention-only
+   layers fits 13.0 GB with the Pixel taking 27 layers (4.3 GB packed). Removes ~60-76 ms/token of CPU streaming: ~-16 kJ and -25 % TPOT
+   at full coverage, ~-5 kJ for Qwen alone. Needs a launch-contract flag + planner awareness (CPU-held layer cost drops to attention-free).
+4. **GPU decode clock cap** 1200 -> ~600 MHz (campaign `device_power.decode_cap.sm_max_mhz`, both arms): ~-8 kJ per arm (-5 %), +4 % TPOT;
+   absolute energy, not the gap. One A/B pair to confirm.
+5. **Planner recalibration** from measured power states + phone power: halves the prediction error, and stops choosing Qwen layer 0 on
+   the OP15 for 0.21 J/token. Config only (PROFILE.json).
+6. **Idle floor** (CPU EPP / c-states; both arms; user's sudo): unknown gain, measure 5 min at idle before deciding.
+7. Load-aware admission for >2x density: mostly addressed by lever 1 (Qwen no longer waits for HTP0); re-run d4x after lever 1.
+Diagnostic script: /mnt/data_h16t/zs89458/claude-scratch/diag_waste.py (band counts are 0.25 s samples, not seconds).
+
+## 2026-10-26 14:00 UTC - New desktop cooled block g7 DONE (07:22 UTC; both PASS, 13/14 phone requests each). Capability row, cooled, n=3: Ours 166.4 / 179.2 / 165.4 kJ (mean 170.3) vs tuned desktop 174.4 / 174.2 / 181.2 (mean 176.6) = -3.5 % fleet (-6.0 % vs the cooled nph); CPU-package energy -15 % consistently, GPU-board energy is the console user's noise (+-5 %); all measurement blocks of the program are complete, rig idle
+
+| arm (fleet trace, 5070 Ti, cooled regime, OnePlus 21-28 C) | phone requests / calls | CPU kJ | GPU kJ | host kJ | OP15 kJ | Pixel kJ | fleet kJ | vs g62nph (cooled nph) | vs mean nph 176.6 | E2E p50/p90 s | queue total s |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| g62new | 13/14, 82,780 | 100.2 | 55.2 | 155.3 | 7.3 | 3.8 | 166.4 | -8.2 % | -5.8 % | 95/230 | 562 |
+| g71new | 13/14, 82,208 | 103.7 | 64.7 | 168.4 | 7.2 | 3.6 | 179.2 | -1.1 % | +1.5 % | 90/312 | 829 |
+| g72new | 13/14, 51,104 | 99.9 | 56.1 | 156.0 | 6.1 | 3.4 | 165.4 | -8.7 % | -6.3 % | 90/447 | 1023 |
+| nph g51/g61/g62 | 0 | 119.2 / 119.0 / 120.7 | 52.8 / 53.5 / 58.9 | 172.0 / 172.5 / 179.6 | 1.7 / 0.9 / 0.8 | 0.7 / 0.8 / 0.8 | 174.4 / 174.2 / 181.2 | | | 106/211, 99/216, 104/219 | 485 / 471 / 520 |
+
+- Signal vs noise: CPU-package energy (unaffected by the console user) is -15.3 % (101.3 vs 119.6 kJ, every repeat within +-2 %);
+  GPU-board energy swings 52.8-64.7 kJ with the other user's GPU apps (g71new +9 kJ) -> fleet -3.5 % +- 4 % (n=3). The derived arms'
+  own GPU work is unchanged (the GPU holds 16/22 layers either way), so the GPU column is background. Report: fleet mean + range, the
+  CPU-package saving, and the idle floor (53 W, 4x the paper rig) as the structural explanation.
+- Run-to-run phone use: g72new's first two Gemma requests got their OnePlus residency late (first phone work at 282 s for request 000;
+  780 / 1,768 calls vs ~12k / 15.9k) -> 51k calls instead of 82k, yet the lowest fleet energy (the desktop was busy anyway); tail latency
+  differs between repeats (E2E p90 230 / 312 / 447 s, queue total 562 / 829 / 1023 s vs nph ~500 s): the phone-assisted Qwen path
+  serializes while the desktop batches - same mechanism as the d4x result, visible already at 1x in the tail.
+- Dynamic saving (53 W floor, vs g62nph): g71new +12.3 %, g72new +26.1 %, g62new +17.7 %; planner full-use prediction +42 %.
+- Program status (items 1-5): 1 cooled block DONE (3 arms); 2 parked (gap 12 plan + patch saved; user to decide); 3+4 tool + numbers
+  DONE for both rigs; 5 DONE (d2x -10.6 %, d4x +9.1 %). Rig idle at 18.0 C, lock free, no PAUSE. Records for every arm are on FCHLLX01
+  under /mnt/data_h16t/zs89458/xband-runs/second-desktop (analysis-g6/g7/g8, analysis-gap).
+- Next: paper text for the generality subsection (second-host table: strict / cooled / load curve; idle floor + CPU-package framing;
+  planner overestimate sentence) once the user confirms the framing; commit of the repo changes (launch fix, sampler fix, preflight env,
+  generality_gap.py, launch-wait tests, gap-12 design note) when asked.
+
+## 2026-10-26 06:23 UTC - New desktop queue g8 DONE (item 5, cooled regime): the saving is load-dependent - 2x arrival density -10.6 % fleet (and E2E p50 halved), 4x density +9.1 % (phone path serializes Qwen, makespan +19 %); cooled fleet repeats g7 running
+
+| pair (5070 Ti, cooled, OnePlus < 28 C) | arrival scale | dur s nph -> new | host kJ | phones kJ | fleet kJ | fleet saving | dynamic saving (53 W floor) | phone requests | E2E p50 s nph -> new | TTFT p50 s | Qwen queue p50 s |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| g62nph / g62new (fleet trace) | 1.0 | 1715 -> 1709 | 179.6 -> 155.3 | 1.6 -> 11.1 | 181.2 -> 166.4 | -8.2 % | -17.7 % | 13/14 | 104 -> 95 | 21.6 -> 17.9 | - |
+| g81nph2 / g81new2 (d2x) | 0.5 | 927 -> 898 | 116.9 -> 99.7 | 0.8 -> 5.6 | 117.7 -> 105.3 | -10.6 % | -23.2 % | 11/14 | 186 -> 89 | 121 -> 9.8 | 132 -> 16 |
+| g81nph4 / g81new4 (d4x) | 0.25 | 599 -> 712 | 76.1 -> 78.6 | 0.5 -> 5.0 | 76.6 -> 83.6 | +9.1 % | +7.7 % dyn. saving but +113 s of idle floor | 13/14 | 189 -> 221 | 99 -> 133 | 224 -> 326 |
+
+- Reading: at 2x density the phones add capacity the host lacks (queue p50 120 -> 8 s, Gemma E2E p50 186 -> 52 s) and the fleet saving
+  grows to -10.6 % (dynamic -23 %). At 4x the Qwen requests pile up: the phone-assisted Qwen path serves them one after another (queue p50
+  224 -> 326 s, Qwen E2E p50 331 -> 448 s) while the desktop alone batches them, so the derived run lasts 19 % longer and the idle floor
+  (53 W x 113 s = 6 kJ) plus the phones' 4.5 kJ outweigh the 2.3 kJ of host work saved. Per-request Pixel calls shrink with density
+  (Qwen 001: 2,576 -> 345 calls) - the adaptive fraction yields to the busy desktop.
+- Consequence for the paper: a load curve (1x / 2x / 4x) with an optimum; the honest statement is that the cost model prices energy per
+  token but not the queueing-induced makespan, so a load-aware admission (fall back to desktop batching when the phone path's queue
+  grows) is the next scheduler step. All 4 arms PASS, 0 THERMAL_LIMIT (OnePlus 21-27 C throughout).
+- Tool: `generality_gap.py --idle-w 53` (fixed rig idle power; dense traces never idle so the lowest-window floor is meaningless there).
+  Files: `second-desktop/analysis-g8/{fleet,latency}-g8.*`, `analysis-gap/gap-g81nph{2,4}-g81new{2,4}.idle53.*`; templates copied too.
+- Minor: g81nph4's OnePlus meter flags BATTERY_CURRENT_READS_ZERO (idle phone, charging disabled; its 0.3 kJ is modeled from USB).
+- Queue g7 (2 cooled fleet derived repeats, 28 C gate) started 06:21 UTC at 21.7 C.
+
+## 2026-10-26 05:21 UTC - New desktop queue g6 DONE (4/4 PASS): a cooling source appeared at ~04:15 UTC (OnePlus cooled from 32 to 25 C under full load) -> g62new is the first cooled derived arm: 13/14 requests on phones, 82.8k calls, fleet 166.4 vs 181.2 kJ (-8.2 %); the two uncooled derived arms stay at ~0 / +4 %. Dense-trace queue g8 launched 05:19 UTC (cooled regime, 21 C start)
+
+| arm (fleet trace, 5070 Ti) | regime | start C | >=34 C at | phone requests | calls | host kJ | OP15 kJ | Pixel kJ | fleet kJ | vs own nph | E2E p50/p90 s | TTFT p50/p90 s |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| g51nph | strict | 29.2 | - | 0/14 | 0 | 172.0 | 1.7 | 0.7 | 174.4 | - | 106/211 | 18.7/88.7 |
+| g61nph | strict | 31.8 | - | 0/14 | 0 | 172.5 | 0.9 | 0.8 | 174.2 | - | 99/216 | 17.2/87.6 |
+| g62nph | cooled | 25.2 | - | 0/14 | 0 | 179.6 | 0.8 | 0.8 | 181.2 | - | 104/219 | 21.6/104.6 |
+| g6s1new | strict | 31.9 | 6.3 min | 7/14 | 53,700 | 164.8 | 7.4 | 1.2 | 173.5 | -0.6 % | 97/235 | 16.6/138.1 |
+| g61new | strict | 30.5 | 6.4 min | 7/14 | 52,556 | 172.4 | 7.5 | 1.2 | 181.1 | +3.8 % (vs g61nph) | 98/243 | 21.4/122.8 |
+| g62new | cooled | 32.0 | never (max 33.8, end 25.2) | 13/14 | 82,780 | 155.3 | 7.3 | 3.8 | 166.4 | -8.2 % (vs g62nph); -5.8 % vs mean nph 176.6 | 95/230 | 17.9/110.1 |
+
+- The regime split is read off the battery/temp trace, as planned: g6s1new/g61new heat 32 -> 39 C in 20 min (618 THERMAL_LIMIT rows,
+  6 of 7 Qwen requests desktop-only); g62new (04:16-04:47 UTC) COOLS 32 -> 25 C under the same load, 0 THERMAL_LIMIT, every Qwen request on
+  OP15 layer 0 + Pixel 1-23 (Pixel calls 1,610-6,716 per request = the paper rig's pattern, total 82.8k vs 80-87k). The user's fan (or
+  room cooling) must have arrived around 04:15 UTC - to be confirmed by the user; g62nph then started at 25.2 C and g81new2 at 21.4 C.
+- Energy: cooled "Ours" saves 24 kJ host (-13.5 %) for +9.5 kJ phones (Pixel 3.8 kJ at 2.2 W, OP15 7.3 kJ) -> -14.8 kJ fleet (-8.2 %).
+  generality_gap: dynamic saving -17.7 % (planner full-use prediction -42 % dynamic / -18 % fleet; residual 17.4 kJ = the ~2x planner
+  overestimate seen on both rigs). Uncooled: g61new +3.8 % (host equal to its baseline: the deferred requests ran on the desktop while the
+  OnePlus still drew 7.5 kJ for Gemma), g6s1new -0.6 %. nph arms vary 172-180 kJ host (GPU board 52.8 / 53.5 / 58.9 kJ: the console user's
+  GPU share differs between arms - the shared-GPU caveat the user accepted; the derived arms' own GPU energy is similar 55-62).
+- Idle-floor estimate (lowest 60 s window) wobbles 53-62 W with the console user's GPU activity -> report it as a range; dynamic shares
+  computed per pair.
+- Queue g8 (item 5, arrival_scale 0.5 and 0.25 pairs) started 05:19 UTC with g81new2 (OnePlus 21.4 C, cooled regime); standard 32 C gate.
+  Then g7 (cooled fleet derived repeats). Accounting: `/mnt/data_h16t/zs89458/xband-runs/second-desktop/analysis-g6/{fleet,latency}-g5g6.*`,
+  `analysis-gap/gap-g6{1,2}nph-g6{1,2}new.*`; run records + meters copied there (QUEUE-g6.log too).
+- Item 2 (Pixel-led route under OnePlus deferral): the cooled result reaches 13/14 phone requests WITHOUT a scheduler change, so the
+  gap-12 work (plan + step-1 patch saved under reports/20261026-ws23-gap12-anchored-envelope/) now only improves the uncooled/strict row
+  and the robustness story -> ask the user whether to continue it or park it behind the measurement blocks.
+
+## 2026-10-26 03:30 UTC - "Show the savings" program (user: items 1-5): idle-floor/dynamic decomposition tool written and run on both rigs - the second desktop idles at 53 W (paper rig 14 W), so 53 % of its fleet energy is untouchable; thermal deferral cost half the predicted saving; denser-trace templates created; WS23 helper independence needs gap 12
+
+New tool `campaigns/burstgpt/tools/generality_gap.py` (baseline + treatment run dirs, METER.json, planner REPORT): idle floor = lowest 60 s mean host
+power in the paid window x duration; decode tokens per model split by phone use (physical proofs); planner saving J/token applied at full vs actual use.
+
+| pair | idle floor W | idle kJ (share of baseline) | dynamic kJ nph -> new | dynamic saving | phones kJ nph -> new | fleet kJ | fleet saving | planner predicted (full use) | lost to deferral |
+|---|---|---|---|---|---|---|---|---|---|
+| paper rig p5n1 | 13.9 | 25.6 (16 %) | 132.3 -> 49.0 | -63.0 % | 1.6 -> 12.7 | 159.5 -> 86.7 | -45.6 % | 125.4 kJ (-79 %) | 0 |
+| paper rig p5n2 | 13.5 | 24.3 (16 %) | 124.8 -> 54.0 | -56.7 % | 1.6 -> 12.2 | 150.7 -> 90.8 | -39.8 % | 125.4 kJ | 0 |
+| paper rig p5n3 | 12.7 | 23.9 (15 %) | 134.9 -> 55.8 | -58.7 % | 1.8 -> 11.5 | 160.7 -> 95.1 | -40.8 % | 125.4 kJ | 0 |
+| 5070 Ti g51nph/g6s1new | 53.0 | 90.9 (53 %) | 81.1 -> 72.0 | -11.2 % | 2.5 -> 8.7 | 174.4 -> 173.5 | -0.6 % | 32.2 kJ (-18.5 % fleet, -40 % dynamic) | 16.6 kJ (Qwen 1/7 requests) |
+
+- Reading: (1) the Ryzen 9700X + 5070 Ti box idles ~4x higher than the i9 + 4060 Ti box (AMD package RAPL ~38 W + GPU ~15 W with the
+  console user's apps), so the idle floor alone caps any fleet saving here at ~47 % of the dynamic saving; (2) the planner's full-use
+  prediction on this host is -40 % dynamic / -18.5 % fleet; the smoke realised -11 % dynamic because 6 of 7 Qwen requests were
+  deferred (16.6 of 32.2 kJ predicted saving lost) and the OnePlus cost 6.2 kJ more than in the baseline; (3) on BOTH rigs the planner
+  overestimates the realised saving (paper rig: predicted 125 kJ vs measured 60-73 kJ fleet / 71-83 kJ dynamic) - worth a sentence.
+- Outputs: `/mnt/data_h16t/zs89458/xband-runs/{paper-rig,second-desktop}/analysis-gap/gap-*.{json,md}` (run records copied there:
+  paper rig p5n1-3 nph/new + meters + plan-v2/REPORT2.json; second desktop g51nph, g6s1new + plan-5070ti).
+- Item 5 (utilization): the paper rig already has arrival-compressed fleet traces (`burstgpt-source/longtail_eval_v2_d2x` arrival_scale 0.5,
+  `_d4x` 0.25, same 14 requests / 3604 decode tokens; never run) and they are present on the new desktop -> templates
+  `template-eval2-s2-dp-online-5070ti-d2x` / `-d4x` created (copy of the 5070ti fleet template, three trace paths swapped; CHANGES.txt).
+  Plan: after g6 -> queue `g8 1 "nph2=desktop:...-d2x new2=derived-mpaoa:...-d2x nph4=desktop:...-d4x new4=derived-mpaoa:...-d4x"`.
+- Item 2 (per-helper degradation): the opt-in exists (campaign `elastic_phones.helper_independence: true` -> per_helper_outage +
+  Pixel-led families; 17 tests in tests/test_ws23_helper_independence.py) but hardware gap 12 is OPEN (ws23 memory): a desktop ticket's
+  helper envelope needs a phone residency LAYOUT (HTP sessions) and the static Pixel has none -> led route = baseline only. No paper-rig
+  template ever enabled it. A Plan agent is mapping the "anchored helper envelope" design; implementation is a real work item (days, with
+  the new desktop's deferral as the hardware test).
+- Item 1 (cooling): queue g6 keeps the strict protocol (no fan). The user adds a fan at the OnePlus; the cooled block runs afterwards as
+  queue `g7` (derived arms only, `RIG_READY_MAX_TEMP=280` so arms start near the paper rig's 26-29 C) - the arm's battery/temp trace tells
+  which regime each run was in, so the fan may go on at any time (arms are classified post hoc).
+- Queue g6: g61nph started 03:03 UTC (gate opened at 31.8 C after 14 min of cooling).
+
+## 2026-10-26 02:53 UTC - New desktop: derived smoke g6s1new PASS with phone calls (launcher fix works) but only 7/14 requests used phones: the OnePlus hit THERMAL_LIMIT (started at the 32.0 C gate; paper rig started at 26.1 C) -> fleet 173.5 vs tuned desktop 174.4 kJ; queue g6 (2 x nph+new) running
+
+| run (new desktop) | dur s | CPU kJ | GPU kJ | host kJ | OP15 kJ (W) | Pixel kJ (W) | fleet kJ | phone requests | phone calls |
+|---|---|---|---|---|---|---|---|---|---|
+| g51nph tuned desktop | 1716 | 119.2 | 52.8 | 172.0 | 1.7 (1.00) | 0.7 (0.43) | 174.4 | 0/14 | 0 |
+| g6s1new Ours (smoke) | 1711 | 109.2 | 55.6 | 164.8 | 7.4 (4.34) | 1.2 (0.72) | 173.5 | 7/14 | 53,700 |
+| paper rig p5n1new (ref) | - | - | - | - | - | - | 90.9 | 13/14 | 86,812 |
+
+- Latency g6s1new: E2E p50/p90 97/235 s, TTFT p50/p90 16.6/138 s, TPOT 311 ms (g51nph: 106/211, 18.7/88.7, 304 ms).
+- Phone use: the 6 Gemma (cold) requests all ran on the OnePlus HTP0-2 (same per-request call counts as the paper rig: 13598/15860/15340/
+  4264/1274/676) and ONE Qwen (hot) request used OP15 layer 0 + Pixel 1-23 (2688 calls); the other 6 Qwen requests ran desktop-only
+  (paper rig: all of them used the phones, 1632-7296 calls each). Decision reasons present here and absent on the paper rig:
+  PHONE_HELPER_UNAVAILABLE 347, THERMAL_LIMIT 62, TRANSFER_PLAN_ABSENT 42, RESIDENCY_EXECUTOR_MISMATCH 12, HELPER_PHONE_SESSION_LOAD 11.
+  The arm started exactly at the rig gate (battery 32.0 C, thermal status 0; p5n1new started at 26.1 C) after the phone had sat
+  charging in direct mode for 1.5 h; right after the run it was 37.7 C / Android thermal status 1 -> the runtime deferred phone work.
+- Net: on this desktop "Ours" currently saves ~0.5 % fleet energy (host -4 %, OnePlus +5.7 kJ) - the GPU-held layers are cheap here
+  (827 GB/s vs 288) and the phones were half-used. Whether the thermal deferral is this box's environment (phone placement/room) or
+  the faster desktop driving the phone harder is what g61new/g62new will show; they start only once the gate (<= 32.0 C, status 0) opens.
+- Thermal detail: both rigs run the strict default policy (no `phone_thermal_status_limits` in either template -> any Android thermal status >= 1
+  defers the phone). Battery/temp trace (new sampler node, 1 s): 31.9 C at start, 33.9 C at 6 min, 37.8 C at 12 min, 38.9 C max at 20 min,
+  38.1 C at the end -> the ~34 C status-1 onset (op15-thermal-limit memory: ~13 min into a Gemma-heavy arm on the paper rig) came at ~6 min
+  here: the 5070 Ti host finishes the Gemma requests ~40 % faster (180 vs 262 s), so the OnePlus does the same work in less time, from a
+  6 C warmer start. Phone telemetry itself was fine (1 PHONE_TELEMETRY_DEFERRED at 33 s during the first USB switch, recovered 50 ms later).
+- Launcher fix validated in production: 3 OnePlus sessions (HTP0-2) + residency reconfigurations across the run, no "launcher exited".
+- Queue g6 launched 02:49 UTC (`matrix_queue2.sh g6 2 "nph=... new=..."` -> g61nph, g61new, g62nph, g62new; order shuffled per repeat;
+  GPU footprint before 3.0 GB / 14 W). Accounting: `$R/analysis-g6/{fleet,latency}-g6s1new.*` via
+  `campaigns/burstgpt/tools/fleet_energy.py --run L=<inputs> --meter L=<METER.json> --json --md` and `latency_report.py --run L=<inputs>`.
+
+## 2026-10-26 01:52 UTC - New desktop: g51nph PASS (174.4 kJ) but g51new made ZERO phone calls - root cause = the runtime's session launcher treats the adb exit during the phone's USB switch as a failed launch; wait loop fixed (+3 tests), deployed; needs the user to replug the OnePlus
+
+- g51nph (tuned desktop + online power): fleet 174.4 kJ (CPU 119.2 / GPU 52.8 / phones 2.4), 1716 s; E2E p50 106 s, TTFT p50 18.7 s, TPOT ~304 ms.
+- g51new (derived-mpaoa): RESULT PASS, 14 requests, 1715 s, but `phone_call_count=0` everywhere, host 179.5 kJ -> NOT an "Ours" point.
+  Decision log: 6x `physical_helper_preparation_failed:phone session launcher exited` (helper prep at 83/90/108/188 s), then
+  206x `...: adb: device '3C15AU002CL00000' not found`; all failures are the OnePlus (Pixel 1-23 never activates without it).
+
+  ```
+  adb shell 'su -c "... nohup sh session.sh ... &"'   # launcher, adapters/phone_session_ops/launch.py
+        | phone switches USB function (adb link drops) -> adb exits non-zero, no stderr
+        v
+  _wait_for_phone_session: returncode not in {None,0} -> break "phone session launcher exited"   <- old desktop: adb returned 0 first
+        v
+  _fail_phone_session_start -> close direct USB -> wait for adb -> raise; scheduler marks helper prep failed; phone left in direct mode at the end
+  ```
+  Same race as the receipt driver (talks 22:35 UTC); this time in the runtime, so it hit every arm attempt (the receipt driver copy was fixed, the runtime was not).
+- Fix (repo, UNCOMMITTED): `_wait_for_phone_session` records a non-zero launcher exit but keeps probing for the FunctionFS device until the
+  launch deadline (`launch_timeout_s x shards`); the remote failure probe (worker.pid / terminal.status via adb) still ends the wait early;
+  the launcher detail is reported only if the device never enumerates ("phone session launcher exited...; FunctionFS USB did not enumerate").
+  New `tests/test_phone_launch_wait.py` (tolerated exit / never-enumerates / remote failure wins). Deployed to the new desktop's clone AND
+  $R/stage (md5 65b3293cc798 both; stage -> source rsync is content-checked). adb on the new desktop: 36.0.2 (platform-tools) vs 34.0.5-debian on the paper rig -> plausible reason the launcher's exit status differs.
+- Rig state after the aborted queue: the OnePlus is still in the direct-link state (18d1:2d00 at 2-1, not on adb) -> user replug
+  (same port) required before anything else; g51new's `meter/.../METER.json` is MISSING (op15 pull failed; sampler file still on the phone);
+  both phone-side samplers of g51new must be stopped via their .stop files before the next arm (hygiene rule from 23:14 UTC).
+- Scheduler suite with the fix: 2868 passed, 2 failed (`test_bridge_lifecycle` 179!=180 / 89!=90 s timing asserts: they fail identically on the
+  committed HEAD tree, pre-existing), `test_split_kv_attention.py` relative-import collection error (pre-existing; run with --ignore).
+- g51new op15 METER.json cannot be rebuilt: the sampler rows are phone-uptime based and the start anchors lived only in meter_phones.sh's
+  memory (op15 stop/pull failed -> the final json step died -> no METER.json). Not needed: the point is invalid anyway (host energy known).
+  The g51new meter also could NOT restore the OnePlus charge control (mmi_charging_enable 1 -> 0 for the run; restore read ""), so the
+  phone is sitting at mmi=0 in direct mode -> must be put back to 1 before the next arm or meter_phones.sh will record 0 as the original.
+- `rig/g6_after_replug.sh` (new desktop): adb + kernel check, stops BOTH g51new OnePlus samplers via .stop, pulls the meter file, removes the
+  phone-side files, reports charge control/battery/rig_ready (changes no phone setting).
+- 02:06 UTC: user replugged -> OnePlus back on adb at usb 2-1, candidate kernel confirmed; `g6_after_replug.sh` stopped both g51new
+  samplers (7474 / 7389 samples, "# stop"), pulled the meter file, removed the phone-side files; charge control was still mmi=0 (the
+  g51new meter's restore had failed) -> set back to 1 (the meter's own restore action; OnePlus charging again, 97 %).
+- 02:08 UTC: smoke queue launched: `matrix_queue2.sh g6s 1 "new=derived-mpaoa:template-eval2-s2-dp-online-5070ti"` (-> g6s1new),
+  GPU footprint before: 3.2 GB used by the console user, 21 W idle. rig_ready gate = battery <= 32.0 C; the phone was 35.7 C after
+  charging in direct mode, so the queue is waiting (up to 3 h) for it to cool before preflight + run.
+- Plan: replug -> `rig/g6_after_replug.sh` -> charge control back to 1 (user's call) -> smoke derived arm via the queue
+  (`matrix_queue2.sh g6s 1 "new=derived-mpaoa:template-eval2-s2-dp-online-5070ti"` -> g6s1new; check phone_call_count > 0) (full arm with meter,
+  -> `matrix_queue2.sh g6 2 "nph=... new=..."` -> accounting (3 nph: g51/g61/g62; 3 new: g6s1new/g61new/g62new).
+
+## 2026-10-25 23:35 UTC - New desktop: queue g5 RUNNING (g51nph started 23:30:00 UTC, 2 servers, GPU 15.2 GB) after the last pin: the resident CPU server's affinity "20-23" (i9 E-cores) from the overlay catalog -> 5070 Ti overlay copy with "4-7"
+
+- "llama-server exited during model load" = `taskset --cpu-list 20-23` (OVERLAY_RUNTIME_CATALOG.json cpu_affinity, the i9's E-cores)
+  on a 16-thread Ryzen (CPUs 0-15; SMT siblings i and i+8). Fix: `calib-5070ti/OVERLAY_RUNTIME_CATALOG.5070ti.json` (same catalog,
+  cpu_affinity "4-7" = cores 4-7 primary threads, 4 CPUs like the 4 E-cores) and both 5070ti templates' evidence.json
+  overlay_catalog_path -> the copy. Side effect to mention in the paper: on this box the resident CPU server shares physical
+  cores with the main server's 8 threads; on the i9 it had its own E-cores.
+- park_failed_attempt.sh refuses once a run-eval exists; for crashed runs move inputs/meter/chain jsonl aside by hand
+  (parked-g51nph-affinity-*, meter/parked-..., chains/*.affinity.jsonl).
+- Env for all rig commands on this box: `rig/env_5070ti.sh` (identity 5070TI on usb 2-1, server-identity-r8-5070ti, Pixel usb 2-2,
+  GPU identity overrides). Six arms ~3.5-4 h; waiter running.
+
+## 2026-10-25 23:14 UTC - New desktop: identity rebuilt on port 2-1 (15 receipts); queue relaunches blocked by TWO phone-side samplers that survived the OnePlus unplug (meter sampler + run-stage sampler) -> stopped via their stop files
+
+- After the cable move the receipts chain re-measured all 15 cases on 2-1 (link 0.64 s) and materialized the identity (same filename,
+  usb 2-1). Queue relaunch attempts: exit=5 x3 = meter_phones.sh "sampler files exist on op15" (the Oct-25 22:49 meter sampler
+  `phone_power_sampler.sh ... g51nph-desktop-op15.txt` was STILL RUNNING on the OnePlus and recreated the file after every rm;
+  park_failed_attempt.sh only removes files) -> fixed by touching its .stop file. Then exit=1 at run start: the run stage's own
+  sampler (`/data/local/tmp/s43-two-phone-eval-20260925/inputs-desktop-g51nph-run-op15.txt`) had survived the same way -> stop files
+  on both phones, files removed. Lesson: after any run interrupted by a phone disconnect, stop BOTH sampler kinds by stop file first.
+- Preflight PASS each time (WARN set = paper rig). Next: park g51nph again -> relaunch queue -> waiter.
+
+## 2026-10-25 22:56 UTC - New desktop: identity built (port 4-2), two preflight pins fixed, queue g5 launched 22:49 UTC - then the user moved the OnePlus to another cable/port during the first arm: run lost ("phone session ADB command failed"), identity invalid; re-measuring on port 2-1
+
+- Fixes needed before the first preflight PASSed: (1) template evidence `transport_qualification_directories` must list this desktop's
+  receipt dir (catalog: "identity-bound transport qualification receipts are absent"); (2) preflight.py pinned the paper GPU
+  (EXPECTED_GPU_UUID/NAME/CAPACITY_BYTES) -> now env-overridable (S43_EXPECTED_GPU_*; defaults unchanged; 13 preflight tests pass),
+  and the dp-online-5070ti campaign.json device_power gpu_uuid -> the 5070 Ti. Preflight PASS with exactly the paper rig's WARN set
+  (desktop cost evidence ASSUMED; Pixel executor health False at preflight time, same as p5n1new). All env in `rig/env_5070ti.sh`.
+- g51nph (tuned desktop) run STARTED 22:49:19; the OnePlus was unplugged for a cable/port change at ~22:50 -> runtime ADB to the OnePlus
+  failed -> run FAIL 22:50:36 -> queue ABORT. Parked (run-eval moved aside, inputs parked as parked-g51nph-replug-*).
+- OnePlus now at port 2-1 (bus 2, 5 Gbps), still on the candidate kernel. Old receipts/identity kept as *-port42; chain re-measuring
+  the 15 receipts on 2-1 (link ~0.64 s) -> identity (same filename) -> rm PAUSE -> relaunch queue g5.
+- Rule reinforced with the user: no phone/cable changes while arms run.
+
+## 2026-10-25 22:35 UTC - New desktop: OnePlus receipts RUNNING on root port 4-2 (14/15 done, link appears in 0.6-0.75 s) - the failures were a timing race in the receipt driver, not the port
+
+- User moved the OnePlus to a motherboard port (bus 4, 4-2, 5 Gbps); first retry still failed the same way -> a 45 s host-side poll of
+  sysfs during a session showed the phone's direct link DID appear (18d1:2d00 at 5 Gbps, 2.9 s after start) while the driver had already
+  aborted: the phone switches its USB function while the session-start `adb shell` is still attached, adb exits 255, and `set -e`
+  killed the script before its link wait (on the old desktop adb returned first). Attempts with rc=1 ("did not enumerate") were the
+  same race seen from the other side. Fix in the driver COPY only (`rig/run_transport_case_5070ti.sh`): the session-start adb step may
+  return non-zero; the link wait decides. udev: /etc/udev/rules.d/51-android.rules (admin) gives 18d1 and 22d9 nodes plugdev 0660.
+- Probe case: rc 0, link after 639 ms, d2h 250 MB/s at 7680 B depth 4. Chain relaunched after clearing the phone-side case dirs of the
+  failed attempts: 14/15 receipts in ~4 min, then materialize -> TRANSPORT_QUALIFICATION_IDENTITY_5070TI_20261024.json.
+- Answer to the user: no further cable move needed.
+
+## 2026-10-25 01:08 UTC - PAUSED for the night: new-desktop rig clean; user moves the OnePlus to a motherboard USB 3 port tomorrow, then receipts -> identity -> six arms
+
+State: no processes of ours on the new desktop, rig lock free, $R/PAUSE set, GPU idle (console user 3.4 GB). OnePlus still on the
+candidate kernel (100 %, 29 C), Pixel adb mode (99 %). Ready: 5070ti templates, calibration plans, server-identity-r8-5070ti, Pixel
+evidence (5070ti bundle + 1-23 rebind), planner profile/plan, DERIVE_* wiring, GPU footprint recorder. Missing: the OnePlus FunctionFS
+identity (receipts need the phone on a root port). Tomorrow's exact sequence is in memory (new-desktop-rig-2026-10-23.md); rule: if the
+OnePlus is no longer on the candidate kernel, ask before re-booting.
+
+## 2026-10-24 23:29 UTC - New desktop: WS16 desktop legs measured, 5070 Ti planner profile + plan built (same owners, smaller predicted gain), "Ours" arm wired to the new evidence; OnePlus direct link still does not appear on the host behind the hub (30 s)
+
+| WS16 desktop leg (rows 1) | 9700X / 5070 Ti | old i9 profile |
+|---|---|---|
+| Qwen3-14B FFN layer on CPU | 10.46 ms, 51.1 GB/s, 0.60 J/call incremental (idle 37.7 W) | 18.70 ms (28.6 GB/s) |
+| Gemma-4-12B FFN layer on CPU | 6.90 ms, 51.3 GB/s, 0.46 J | 13.11 ms |
+| Qwen FFN layer on GPU | 0.65 ms, 827 GB/s | - |
+| attention projections on CPU | 2.16 ms, 58 GB/s | - |
+
+- Profile `W/plan-5070ti/PROFILE.json` = plan-v2 profile + measured desktop rows (1/2/4) for both models, bytes_per_s 51.1e9,
+  power ffn_w 125 / wait_w 68 / other_w 25.7 W (derived: WS16 idle + incremental, GPU idle 30 W; other_w not re-measured).
+- Plan (`layer_placement plan --risk --growth-ppm 250000`): owners IDENTICAL to the old plan (Gemma OP15 0-25; Qwen OP15 0 + Pixel 1-23),
+  predicted FFN-chain J/token: Qwen 26.6 (CPU only) -> 14.8, Gemma 17.2 -> 10.3 (old desktop: 58.7 -> 15.1, 40.3 -> 11.3) -> the phones
+  still pay on paper, but the desktop side shrank 2.2x, so expect a much smaller fleet saving than -44 %.
+- W/DERIVE_MP_ARGS -> plan-5070ti REPORT/PROFILE + helper-evidence evidence-aoa-1-23-5070ti (old kept as .old-desktop); DERIVE_AOA_EVIDENCE -> same bundle.
+- OnePlus receipts: with the 30 s wait the host still never saw the phone's direct link (enumerated=0 after 31.7 s) while the phone side
+  had bound it; the OnePlus is behind the ASM107x hub (2-5.2). Asking the user for a root-port cable move; chain detects the port by serial.
+- Arms are otherwise ready: templates 5070ti, server-identity-r8-5070ti, Pixel evidence, calibration, plan. Missing only the OnePlus identity.
+
+## 2026-10-24 23:18 UTC - User decisions: run with the GPU as it is (free VRAM = our budget, both arms see the same background); OnePlus stays on its hub port for now -> receipts retried with a 30 s link wait, queued behind WS16
+
+- GPU: no idle window needed; calibration was already live-VRAM-selected (13.1-13.4 GB free with the console user's ~3.4 GB).
+  Record the other session's GPU footprint (memory, compute apps) at the start/end of every arm for the paper's notes.
+- OnePlus receipts: `rig/run_transport_case_5070ti.sh` = copy of the qualification driver with a 30 s (was 10 s) wait for the phone's
+  direct link to appear on the host, logging the time; the chain uses it. The identity digests the qualification BINARY and phone
+  scripts, not this driver, so the receipts stay comparable. If the link still does not appear, the hub (ASM107x, port 2-5.2) is the
+  prime suspect and a root-port cable move is the fallback.
+- Queue on the rig lock: WS16 desktop legs (running, ~23:30 UTC) -> OnePlus receipts x15 -> identity materialize. Waiters set for both.
+
+## 2026-10-24 22:58 UTC - New desktop: OnePlus RAM-booted into the candidate kernel (PASS), Pixel direct-USB evidence rebuilt for this host (DONE), OnePlus receipts blocked: no enumeration behind the USB hub -> cable move requested; WS16 desktop legs running
+
+- OnePlus: boot_candidate.py succeeded (kernel 6.12.23-...-o-g227664cbe007-4k, notes/BTF match the candidate identity; the kit's own
+  record write collided with a reference copy I had placed in its directory -> fixed by copying the reference under another name).
+  Boot kit preconditions adapted in the kit COPY only: GPU name 5070 Ti, console user's GPU apps accepted, SYSFS pin from the serial.
+  Chain now skips the boot when the phone already runs the candidate kernel; port detected by serial (chain, kit, materializer).
+- First receipt case (r5070-20261024-7680-d2h): the phone side bound its direct link and the worker enabled, but the HOST saw no
+  18d1:2d00 device within the script's 10 s window; the phone watchdog restored normal USB (worker_status 143). Here the OnePlus is behind
+  an ASM107x hub (2-5.2); on the old desktop it was on a root port (2-2). Asked the user to move it to a motherboard USB 3 port.
+- Pixel: g5s1 prepare with the corrected USB pin (third literal fixed: line 398 hardware_identity) -> bundle PASS (pins 2-2, host
+  controller 0000:0a:00.0, new host build 79f68088) -> rebind to layers 1-23 with server-identity-ffn-1-23-5070ti PASS ->
+  W/DERIVE_AOA_EVIDENCE -> $A/evidence-aoa-1-23-5070ti/PIXEL_EVIDENCE_AOA.json (old value kept as DERIVE_AOA_EVIDENCE.old-desktop).
+- WS16 desktop legs (cpu-ffn Qwen/Gemma, gpu-ffn Qwen/Gemma, cpu-attn, gpu-head; rows 1/2/4) running: run-desktop-5070ti, ~30 min.
+- Still open: OnePlus identity (after the cable move), GPU-idle window for the arms, PAUSE file removed.
+
+## 2026-10-24 22:30 UTC - User OK: "ok we can boot into ours and test" -> OnePlus RAM-boot + receipts + identity chain queued behind the Pixel chain on the new desktop
+
+- Authorization record: the user approved the temporary RAM boot of the OnePlus into the candidate kernel on the second desktop
+  (RAM boot only; no flash; a normal reboot restores stock). Both phones confirmed free of our workloads (OnePlus 100 %, 26.8 C,
+  0 workers, screen on).
+- Boot kit copy `/mnt/storage/s43-op15-kernel-boot-5070ti-20261024` = boot_candidate.py + restore-original.py + candidate-boot.img +
+  src/ with `src/run_direct_usb_device.py` SYSFS -> /sys/bus/usb/devices/2-5.2 (the only hard-coded USB pin; digest checks for
+  image f13c7c03, recorder 82fa4ebf, fastboot 76dde33f all pass; matched-rig.json copied to its pinned path).
+- `rig/op15_requal_5070ti.sh`: waits for PIXEL-REQUAL to finish -> PAUSE -> boot_candidate.py -> wait-for-device -> g2 recreate ->
+  kernel release + notes/BTF check -> the SAME 15 receipt cases (task1 7680/10240/40960 + coalesced 38400/61440 x h2d/d2h/duplex;
+  req/resp from the recorded command.json, warm 8 iter 64 depth 4, S41_STAGE_ROOT = microbatch dir, phone session/restore scripts)
+  into /mnt/storage/s43-transport-receipts-5070ti-20261024/receipts -> `rig/materialize_identity_5070ti.py` (FUSED3 recipe with new
+  hardware pins 2-5.2, new host stack, new receipts) -> $D/TRANSPORT_QUALIFICATION_IDENTITY_5070TI_20261024.json.
+- Pixel chain: A/B arm 11/20 at 22:35 UTC; then analyze -> bundle -> rebind 1-23 -> DERIVE_AOA_EVIDENCE.
+- Gotcha: the whole-$R sync also brought the old desktop's PAUSE file (Oct 14 text) -> remove before queuing arms.
+- Open: GPU-idle window (console user holds ~3.4 GB), desktop layer timing re-measurement for the planner profile.
+
+## 2026-10-24 22:15 UTC - New desktop: host DRAM 51 GB/s (old 30), both Pixel identity runs PASS, Pixel evidence must be re-bundled (USB pins), re-qualification chain running
+
+| STREAM-like test (2 GiB, OpenMP) | old desktop i9-12900K | new desktop Ryzen 7 9700X |
+|---|---|---|
+| read bandwidth | 30.5 GB/s | 51.5 GB/s |
+| copy bandwidth (2x traffic) | 25.6 GB/s | 39.6 GB/s |
+| GPU memory (nvidia-smi max mem clock) | RTX 4060 Ti, 288 GB/s | RTX 5070 Ti, ~896 GB/s |
+| llama.cpp Qwen3-14B f16 decode, 24 CPU layers | 1.64 tok/s (cost model) | 2.99 tok/s (smoke) |
+
+Implication: a 0.55 GB desktop FFN layer now streams in ~11 ms (was ~18) = a phone call (OP15/Pixel ~10-11 ms at rows 1) -> latency parity,
+energy per layer desktop ~0.9 J (87 W package measured in calibration) vs OP15 0.75-0.77 J, Pixel packed ~0.21 J -> the saving will be
+smaller than on the old desktop (expect well below -44 %), i.e. this box sits near the paper's host-stream boundary. The planner's
+desktop layer timings MUST be re-measured here before the "Ours" arm (the i9 profile would over-offload).
+
+- server-identity-r8-5070ti PASS (Pixel adb-tcp, 4/4 identical, 372 calls/column); Pixel 1-23 AOA identity PASS (4/4, 1,426 calls/column,
+  server-identity-ffn-1-23-5070ti) with AOA_BRIDGE.5070ti.json (usb_sysfs_device 2-2).
+- Pixel evidence pins phone_usb_sysfs_device 2-9.2 + host controller 00:14.0 and these ARE checked at runtime (phone_helpers.py:576,
+  helper_phone_evidence.py:64/127, transport.py:313) -> fresh bundle needed: rig/pixel_requal_5070ti.sh = prepare g5s0 (fresh adb-tcp
+  evidence, S43_PIXEL_USB_SYSFS=2-2 env added to prepare_campaign_eval.py) -> AOA identity (frozen layout) -> pixel_transport_ab run
+  (20 arms, ~42 min) + analyze -> bundle -> rebind-shard 1-23 -> DERIVE_AOA_EVIDENCE. Dependencies chased: qualification/, cpugpu-evidence/,
+  s42-pixel10pro-packed-server-20260924-v1/, mechanism-r1/ -> finally synced every <20 MB file of $R (no inputs-*), which silently
+  restored the unpatched prepare script (re-patched; copy kept as prepare_campaign_eval.5070ti-patched.py).
+- Still blocked on the user: OnePlus RAM boot (FunctionFS identity), GPU-idle window.
+
+## 2026-10-23 21:53 UTC - New desktop: desktop-parent calibration PASS on the RTX 5070 Ti (Qwen 16 / Gemma 22 GPU layers); 5070ti templates created; arms blocked on adb symlink + OnePlus RAM boot
+
+| calibration (calib-5070ti/out/run) | Qwen3-14B dequant f16 | gemma-4-12B dequant f16 |
+|---|---|---|
+| live free VRAM at calibration | 13.39 GB | 13.10 GB (console user holds ~3.4 GB) |
+| maximum GPU layers | 16 | 22 |
+| peak VRAM | 12.21 GB | 12.84 GB |
+| baseline request energy | CPU 14,076 J @ 86.9 W, GPU 8,359 J @ 51.6 W (cold) | CPU 14,196 J @ 87.0 W, GPU 8,633 J @ 52.9 W (hot) |
+
+Same layer split as the old desktop (16 GB on both). Sampler fix verified first: 60 s self-test 261 rows, last row 0.14 s before stop, max gap 0.24 s.
+Templates: `template-eval2-5070ti` (= template-eval2 with models.json desktop_baseline_plans_path -> calib-5070ti plans) and
+`template-eval2-s2-dp-online-5070ti` (= dp-online with campaign manifests -> template-eval2-5070ti). Kernel profile (desktop
+layer timings) still the 4060 Ti/i9 profile -> listed as a limitation unless the WS16 desktop legs get re-run here.
+
+Arm prerequisites mapped (prepare_campaign_eval.py / launch_one_arm.sh): (1) fresh server-token-identity run bound via
+S43_SERVER_IDENTITY_DIR (run_chain_eval.py --server-identity CONFIG OUT; Pixel-only, needs /usr/bin/adb + the new server build);
+(2) S43_TRANSPORT_IDENTITY = new FunctionFS identity (OnePlus candidate kernel + receipts on THIS USB path, OnePlus is usb 2-5.2 here);
+(3) /usr/bin/adb symlink (admin); (4) the Pixel AOA evidence may pin the old USB path (Pixel is 2-2 here) -> re-materialize if preflight says so.
+BLOCKED on the user: `sudo ln -s /opt/platform-tools/adb /usr/bin/adb`, OK for the OnePlus RAM boot, a GPU-idle window.
+
+## 2026-10-23 21:45 UTC - New desktop: all models landed; first calibration FAILED on a latent host-energy-sampler bug (queue stall) -> fixed, redeployed, calibration rerunning
+
+- Models complete on the new desktop: Qwen3-14B dequant (29,543,423,360 B), gemma dequant (23,832,065,056 B, regenerated here), Llama 1B, Qwen3-0.6B.
+- Calibration (`launch.py <inputs>/campaign.json <out> --desktop-parent-calibration-only`) needed a patched inputs copy: the dp-online
+  campaign.json points at template-eval2/{evidence,models,rig}.json whose transport identity path is a placeholder the arm
+  prepare step fills, and rig.json pins /usr/bin/adb (adb is at /opt/platform-tools here -> admin symlink requested).
+- Run 1 failed: `PhysicalAdapterError: energy sample coverage is incomplete` in the COLD measurement (cold phase 5.6 min here).
+  Root cause (self-test, 120 s under load): HostEnergySampler's forked child pushes rows into a multiprocessing Queue that the
+  parent drains only inside rows(); after ~41 s (~144 rows, 64 KB pipe) the child blocks on put() and STOPS SAMPLING until the next
+  drain -> no GPU samples for the rest of a long unobserved phase. nvidia-smi itself was fine (470 queries under load, max 121 ms).
+  Fix: parent-side drain thread (`_drain_loop`, interval/2) started in start(), stopped in stop() -> adapters/host_runtime.py;
+  115 tests pass. Deployed to the clone + $R/stage on the new desktop; 60 s self-test + calibration rerun in progress.
+- Caution for the old desktop: the same stall could have affected any phase longer than ~40 s that nobody observed through rows();
+  arms drain at token boundaries (adaptive decode), the Sept-6 calibration's 64 s cold phase was borderline.
+
+## 2026-10-23 20:49 UTC - New desktop: Qwen3-14B landed and runs (ngl 16: decode 3.0 tok/s vs ~1.6 on the i9 host path); qualification kit complete; Gemma regenerated here and pushing
+
+- Qwen3-14B dequant f16 complete (29,543,423,360 B). Smoke with the old plan's 16 GPU layers on the 5070 Ti: decode 2.99 tok/s,
+  VRAM 15.1 GB used incl. the console user's 3.3 GB. Gemma dequant f16 regenerated on FCHLLX01 from the local Q4_0 (494518c2 ->
+  ed76f218, byte-identical to the recipe) and pushed from here; the old desktop's 1.8 MB/s copy was stopped.
+- Transport qualification kit on the box: s42-ffn-microbatch-20260916-v4-arwuw3 (ffs_dmabuf_host 61bc2907 = identity pin,
+  run_transport_case.sh, qualify_transport.py), the Sep-22 receipt set, WS16 microbench configs; OnePlus has the phone-side
+  session/restore scripts and ffs_dmabuf_phone.android. Receipt recipe + materializer args recorded in memory.
+- Old calibration was live-VRAM-selected (13.4 GB free -> Qwen 16 / Gemma 22 GPU layers); here ~12.9 GB free with the console
+  user's session -> re-calibration will pick its own split.
+- Gotchas: `kill $(pgrep -f PATTERN)` inside an ssh command matched the ssh shell twice (killed my session, left a 15 GB llama-server
+  running) -> always `pgrep -x llama-server` / PID files. A bash waiter using `pgrep -f` on its own command text never exits.
+
+## 2026-10-23 19:31 UTC - New desktop: 5070 Ti build OK (CUDA 13.2.1, sm_120a, gcc 15; 28 binaries, 0 errors), smoke PASS; rig kit complete, models still streaming
+
+- Smoke: llama-server + Llama-3.2-1B Q4_0 on the 5070 Ti: up in 2 s, prompt 952 tok/s, decode 494 tok/s.
+- On the box now: clone @1fb52be (= $D/source and $R/stage), rig scripts/launchers/tools/chains/templates, p5n reference
+  qualification bundles, placement work dir s43-ws12-pixel-placement-20261002 (2.5 GB), full RAM-boot kit
+  (boot_candidate.py, restore-original.py, candidate-boot.img), shard indexes, evidence JSONs; phone-side scripts and
+  binaries verified present on both phones (g2 recreate, op15_state, session script, resident workers/router, Pixel AOA relay).
+- Transport identity (FUSED3) pins phone kernel 6.12.23-...-o-g227664cbe007-4k, boot image sha f13c7c03..., USB sysfs device 2-2
+  (OnePlus is 2-5.2 here) and the host lib hashes -> full re-qualification on this desktop after the OnePlus RAM boot (user OK needed).
+- Models: Qwen3-14B dequant 6.3/29.5 GB from FCHLLX01, gemma dequant 0.8/23.8 GB from the old desktop (WiFi, shared).
+
+## 2026-10-23 19:03 UTC - New desktop: admin steps verified (incl. sudo nvidia-smi), code cloned from the fork, minimal file-level copy running; CUDA 13.1 there cannot build (glibc), so the 13.2.1 toolkit is copied first
+
+```
+new desktop /mnt/repository/zhihao/
+  llama.cpp-release/      shallow clone of the fork @ 1fb52be  (= $D/source, = $R/stage source)
+  storage/                -> /mnt/storage (admin symlink): s42-trace-v2 (scripts, identities, build-5070ti.sh), s43-two-phone-eval
+                           (rig 115 scripts, chains, templates, tools, root launchers, p5n reference qualification), burstgpt-source,
+                           ws24-traces, s21_deps/cuda-13.2.1 (copying), s43-ws12-pixel-placement-20261002 (copying)
+  home-zhihao/            manifest files only (shard INDEXES, usb-close binary, evidence JSONs, boot image, .cache manifest);
+                           /home/zhihao/<dir> -> symlinks (17); models/: Llama 1B done, Qwen3-14B dequant + gemma dequant partial
+```
+- Transfer reduced 90 -> ~55 GB (code via git, file-level manifest copy, no shard binaries/toolkit dupes); models cannot be downloaded
+  (own dequant artifacts; HF 1.6 MB/s there). Both desktops on WiFi: old->new 3.5 MB/s, FCHLLX01->new 6 MB/s, and the two
+  streams starve each other, so the order is toolkit (4 GB) -> build -> models in parallel.
+- Build: local CUDA 13.1 nvcc fails on Ubuntu 26.04 glibc (`rsqrt` noexcept mismatch in mathcalls.h, all host compilers);
+  the old desktop's CUDA 13.2.1 toolkit builds fine on the same OS -> copied to the pinned path /mnt/storage/s21_deps/cuda-13.2.1.
+  build-5070ti.sh = build.sh flags with CMAKE_CUDA_ARCHITECTURES=120 (a waiter launches it when the toolkit lands).
+- GPU-specific items to re-measure before arms: desktop baseline plans (`launch.py <inputs>/campaign.json <out> --desktop-parent-calibration-only`,
+  hot+cold ~3 min), desktop FFN layer timings for the kernel profile, device_power sm_max_mhz 1200 / gpu_min_clocks_mhz 210
+  (both exist in the 5070 Ti clock table: 180..3090 MHz), transport qualification identities (host lib hashes change).
+- Gotchas found: rsync --files-from does not recurse listed directories (rig/chains landed empty -> re-copied with -r);
+  pkill/pgrep -f with the script name inside an ssh command kills the ssh shell itself (use PID files).
+
+## 2026-10-23 18:34 UTC - Second desktop for the generality ablation: zhihao@172.21.122.109 (RTX 5070 Ti, Ryzen 7 9700X); admin steps done except sudoers; reduced copy running at WiFi speed
+
+| | old desktop | new desktop |
+|---|---|---|
+| GPU | RTX 4060 Ti 16 GB (Ada) | RTX 5070 Ti 16 GB (Blackwell, 180-3090 MHz, 300 W) |
+| CPU / RAM | i9-12900K 16c / 30 GB | Ryzen 7 9700X 8c / 29 GB |
+| OS / toolchain | Ubuntu 26.04, gcc 15, CUDA 13.2.1 (s21_deps) | same OS and gcc; CUDA 12.8/13.1 local, s21_deps copied |
+| phones | both USB | both USB, adb OK, plugdev OK (OnePlus on the stock kernel, bundles present) |
+| layout | /mnt/storage, /home/zhihao/<dir> | /mnt/repository/zhihao/{storage,home-zhihao} + symlinks at the old paths |
+
+Scope (user): ablation only -> fleet trace, `nph` (tuned desktop + online power) vs `new` (measured placement + Pixel AOA + online power), 3 repeats each,
+same arm definitions as the p5n block (`start_phase2.sh`). Copy reduced to ~90 GB (`migrate_reduced.sh` on the old desktop, source and rig first).
+OPEN: (1) sudoers NOPASSWD nvidia-smi not in effect on the new box (needed for online GPU power); (2) both desktops on WiFi -> 3.5 MB/s; asked for an Ethernet cable
+or USB SSD; (3) GPU shared with the console user (4.2 GB held); (4) after the sm_120 rebuild: transport re-qualification, desktop calibration, GPU clock table.
+
 ## 2026-10-21 02:41 UTC - Documents cleanup: code consolidated in this repo, raw data moved to /mnt/data_h16t, rebuildable trees ready for the user to delete
 
 | Content | Action | Where now |

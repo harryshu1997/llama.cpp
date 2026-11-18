@@ -219,7 +219,13 @@ class AdbTcpPhoneWorkerSession:
         return self._executable_pids(self.configuration.worker_path)
 
     def _executable_pids(self, path: str) -> list[int]:
-        """Phone processes running exactly ``path`` (a rooted basename match is confirmed by its exe link)."""
+        """Phone processes running exactly ``path`` (a basename match is confirmed by its exe link).
+
+        Android's ``ps -o ARGS`` prints the command line without the path of its first word, so a worker
+        shows up by its basename. A rooted worker's exe link needs ``su``; a worker of the shell user
+        (a phone without root) is the shell's own process and its link is readable as it is
+        (2026-11-18: without this a worker started without root was never seen, hence never signalled).
+        """
         pids = []
         for line in self._shell("ps -A -o PID,ARGS").splitlines():
             fields = line.split(None, 1)
@@ -228,8 +234,9 @@ class AdbTcpPhoneWorkerSession:
             executable = fields[1].split()[:1]
             if executable == [path]:
                 pids.append(int(fields[0]))
-            elif self.configuration.as_root and executable == [Path(path).name]:
-                target = self._shell("su -c " + shlex.quote(f"readlink /proc/{fields[0]}/exe || true")).strip()
+            elif executable == [Path(path).name]:
+                probe = f"readlink /proc/{fields[0]}/exe || true"
+                target = self._shell("su -c " + shlex.quote(probe) if self.configuration.as_root else probe).strip()
                 if target == path:
                     pids.append(int(fields[0]))
         return pids

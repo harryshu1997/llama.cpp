@@ -207,11 +207,14 @@ def linux_process_resident_bytes(pid: int) -> int:
     raise PhysicalAdapterError("Linux process memory sample is incomplete")
 
 
-def nvidia_gpu_snapshot(*, clocks: bool = False) -> dict[str, object]:
+def nvidia_gpu_snapshot(*, clocks: bool = False, index: int | None = None) -> dict[str, object]:
     """One ``nvidia-smi`` sample; ``clocks`` adds ``clocks_sm_mhz``, ``clocks_mem_mhz`` and
-    ``pstate`` (device power control runs), every other row key is unchanged."""
+    ``pstate`` (device power control runs), every other row key is unchanged. ``index`` samples that
+    one board of a host with several (absent = the host's only board, as before)."""
     if type(clocks) is not bool:
         raise PhysicalAdapterError("NVIDIA GPU sample clock flag is invalid")
+    if index is not None and (type(index) is not int or index < 0):
+        raise PhysicalAdapterError("NVIDIA GPU sample index is invalid")
     completed = subprocess.run(
         [
             "nvidia-smi",
@@ -219,6 +222,7 @@ def nvidia_gpu_snapshot(*, clocks: bool = False) -> dict[str, object]:
             "utilization.gpu,power.draw"
             + (",clocks.sm,clocks.mem,pstate" if clocks else ""),
             "--format=csv,noheader,nounits",
+            *(("-i", str(index)) if index is not None else ()),
         ],
         capture_output=True,
         text=True,
@@ -241,6 +245,16 @@ def nvidia_gpu_snapshot(*, clocks: bool = False) -> dict[str, object]:
     }
 
 
+class _IndexedGpuSnapshot:
+    """``nvidia_gpu_snapshot`` of one board (a picklable callable: the sampler runs in a child process)."""
+
+    def __init__(self, index: int, clocks: bool) -> None:
+        self.index, self.clocks = index, clocks
+
+    def __call__(self) -> dict[str, object]:
+        return nvidia_gpu_snapshot(clocks=self.clocks, index=self.index)
+
+
 def rapl_package_snapshot() -> dict[str, object]:
     root = Path("/sys/class/powercap/intel-rapl:0")
     if root.joinpath("name").read_text(encoding="ascii").strip() != "package-0":
@@ -261,10 +275,20 @@ def rapl_package_snapshot() -> dict[str, object]:
     }
 
 
-def default_host_metric_callbacks(*, gpu_clocks: bool = False) -> HostMetricCallbacks:
-    """The host samplers; ``gpu_clocks`` (device power control) adds the GPU clock columns."""
+def default_host_metric_callbacks(*, gpu_clocks: bool = False, gpu_index: int | None = None) -> HostMetricCallbacks:
+    """The host samplers; ``gpu_clocks`` (device power control) adds the GPU clock columns, ``gpu_index``
+    samples one board of a host with several (absent = the single board, the plain sampler as before)."""
     if type(gpu_clocks) is not bool:
         raise PhysicalAdapterError("host metric GPU clock flag is invalid")
+    if gpu_index is not None:
+        if type(gpu_index) is not int or gpu_index < 0:
+            raise PhysicalAdapterError("host metric GPU index is invalid")
+        return HostMetricCallbacks(
+            gpu_snapshot=_IndexedGpuSnapshot(gpu_index, gpu_clocks),
+            rapl_package_snapshot=rapl_package_snapshot,
+            system_memory=linux_system_memory,
+            host_activity=linux_host_activity,
+        )
     return HostMetricCallbacks(
         gpu_snapshot=(lambda: nvidia_gpu_snapshot(clocks=True)) if gpu_clocks else nvidia_gpu_snapshot,
         rapl_package_snapshot=rapl_package_snapshot,
@@ -511,12 +535,28 @@ class HostEnergySampler:
         self._last_probe_error: str | None = None
         self._events: list[dict[str, object]] = []
         self._rows: list[dict[str, object]] = []
+        # The child blocks on ``put`` once the queue's pipe is full (about 64 KB, ~40 s of rows),
+        # so a parent-side thread drains it continuously; otherwise a long unobserved phase loses
+        # its samples (2026-10-23, second-desktop calibration: coverage incomplete after a 5-minute cold phase).
+        self._drain_stop = threading.Event()
+        self._drain_thread: threading.Thread | None = None
 
     def start(self) -> None:
         if self._started:
             raise PhysicalAdapterError("host energy sampler already started")
         self._process.start()
         self._started = True
+        self._drain_thread = threading.Thread(
+            target=self._drain_loop, name="heterogeneous-host-energy-drain", daemon=True
+        )
+        self._drain_thread.start()
+
+    def _drain_loop(self) -> None:
+        while not self._drain_stop.wait(self._interval_s / 2):
+            try:
+                self._sync()
+            except Exception:  # the next rows() call reports queue problems
+                pass
 
     def _sync(self) -> None:
         with self._sync_lock:
@@ -605,6 +645,9 @@ class HostEnergySampler:
         if not self._started:
             return
         self._stop.set()
+        self._drain_stop.set()
+        if self._drain_thread is not None:
+            self._drain_thread.join(timeout=2)
         deadline = time.monotonic() + 15
         while self._process.is_alive() and time.monotonic() < deadline:
             self._sync()

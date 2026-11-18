@@ -445,6 +445,39 @@ the server decodes, and the next prefill pays the populate cost. It never
 frees VRAM, and it cannot raise `n_ctx` by itself because llama.cpp allocates
 the KV cache at launch while the weights must be resident for prefill.
 
+## The portable path: a site file and drivers (2026-11-17)
+
+The scheduler core takes devices through catalogs, profiles and snapshots and names none. What tied a
+run to the first desktop was the layer around it: the campaign runner, preflight and catalog builders,
+and a template of absolute paths. The portable path replaces that layer for a new host or phone; the
+BurstGPT campaign and `paper_config_v1` are unchanged and move onto the same modules later.
+
+| Module | Files | Owns |
+|---|---|---|
+| Site | `configuration/site.py`, `drivers/discover.py` | what the machine is: discovered facts and the few declared fields |
+| Doctor | `drivers/doctor.py` | the checks that have cost runs, with their fixes; the gate before a run |
+| Host driver | `drivers/host.py`, `drivers/gates.py` | server launch on a GPU by index, slot erase, other users' load |
+| Phone drivers | `drivers/phone.py`, `drivers/phone_adb_tcp.py`, `drivers/phone_functionfs.py` | one `PhoneDriver` interface, a registry keyed by transport |
+| Meters | `drivers/meter.py` | host package + GPU board; phone power with a quality (measured, assumed, absent) |
+| Shared-layer model | `_internal/shared_layer.py` | fit of a share sweep, the static share plan, the fold into `LayerPlacementProfile` |
+| Site profile | `configuration/site_profile.py` | what was measured on a site, including the planner's own profile rows |
+| Run path | `campaigns/portable/` | onboarding, provisioning, the run engine, reports, the command line |
+
+Rules:
+
+- Import order `configuration`, `_internal`, `adapters` < `drivers` < `campaigns/portable`; nothing below
+  imports the portable path, and it does not import the BurstGPT campaign
+  (`tests/test_portable_boundaries.py`).
+- A new phone is a site row and, at most, a driver registered by transport. A new host is a site file.
+  Neither edits a campaign or the scheduler.
+- The drivers never start or stop an adb server and never change a phone's mode, kernel or settings;
+  `drivers/adb.py` refuses those commands and refuses every call when no server listens.
+- The profile is written in the planner's own types, so a later generic catalog builder can register
+  a site with `UnifiedScheduler` without a conversion. Not built yet: that builder, and run-time share
+  feedback in the adaptive controller.
+
+Runbook: `campaigns/portable/README.md`.
+
 ## Working on the code
 
 - Change behavior in its implementation module, not by adding a second
