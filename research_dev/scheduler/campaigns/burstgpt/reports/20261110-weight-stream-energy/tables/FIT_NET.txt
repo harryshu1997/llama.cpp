@@ -1,0 +1,29 @@
+| Model | GB/token | OnePlus 15 NPU J/GB | OnePlus 15 NPU J/token | OnePlus 12 NPU J/GB | OnePlus 12 NPU J/token | OnePlus 11 NPU J/GB | OnePlus 11 NPU J/token | Pixel 10 Pro CPU J/GB | Pixel 10 Pro CPU J/token | Desktop GPU J/GB | Desktop GPU J/token | Desktop CPU J/GB | Desktop CPU J/token | Server GPU J/GB | Server GPU J/token | Server CPU J/GB | Server CPU J/token |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Qwen2.5-0.5B | 0.99 | 0.166 | 0.16 | 0.099 | 0.10 | - | - | 0.360 | 0.36 | 0.415 | 0.41 | 2.67 | 2.64 | 0.463 | 0.46 | 2.46 † | 2.43 † |
+| Qwen3-0.6B * | 1.19 | 0.151 | 0.18 | 0.090 | 0.11 | - | - | 0.361 | 0.43 | 0.410 | 0.49 | 2.90 † | 3.46 † | 0.482 | 0.57 | 2.46 † | 2.94 † |
+| Llama-3.2-1B | 2.47 | 0.165 | 0.41 | 0.102 | 0.25 | - | - | 0.328 | 0.81 | 0.351 | 0.87 | 2.85 | 7.04 | 0.404 | 1.00 | 2.46 † | 6.09 † |
+| Qwen3-1.7B * | 3.44 | 0.162 | 0.56 | 0.120 | 0.41 | - | - | 0.318 | 1.10 | 0.361 | 1.24 | 2.86 | 9.85 | 0.410 | 1.41 | 2.46 † | 8.47 † |
+| Gemma-4-E2B | 4.60 | 0.161 | 0.74 | 0.097 | 0.45 | - | - | 0.328 | 1.51 | 0.382 | 1.76 | 2.83 | 13.0 | 0.419 | 1.93 | 2.46 † | 11.3 † |
+| Qwen3-4B * | 8.04 | 0.167 | 1.34 | 0.121 | 0.97 | - | - | 0.327 | 2.63 | 0.359 | 2.89 | 2.89 | 23.3 | 0.403 | 3.24 | 2.26 | 18.1 |
+| Qwen3-8B | 15.14 | 0.141 | 2.13 | 0.132 | 1.99 | - | - | 0.320 | 4.84 | 0.334 | 5.06 | 2.91 | 44.1 | 0.391 | 5.92 | 2.45 | 37.0 |
+| Gemma-4-12B | 23.81 | 0.143 | 3.40 | 0.127 | 3.02 | - | - | 0.318 | 7.57 | 0.341 | 8.12 | 2.92 | 69.4 | 0.394 | 9.37 | 2.10 | 50.0 |
+| Qwen3-14B | 27.98 | 0.147 | 4.11 | 0.134 | 3.76 | - | - | 0.328 | 9.19 | 0.336 | 9.40 | 2.89 | 80.9 | 0.391 | 10.9 | 2.33 | 65.3 |
+| Qwen3-32B | 63.97 | 0.147 | 9.43 | 0.139 | 8.87 | - | - | 0.330 | 21.1 | 0.338 | 21.6 | 2.91 | 186 | 0.388 | 24.8 | 2.54 | 163 |
+| **Device fit (all runs)** |  | **0.147** |  | **0.132** |  | **-** |  | **0.328** |  | **0.338** |  | **2.90** |  | **0.390** |  | **2.46** |  |
+
+OnePlus 15 NPU: 29/30 runs used, J/GB through origin 0.147, with intercept 0.146 J/GB + 2.61 mJ/call (R2 0.9985), flagged ['qwen3-8b-L4']
+
+OnePlus 12 NPU: 29/29 runs used, J/GB through origin 0.132, with intercept 0.136 J/GB + -8.67 mJ/call (R2 0.9949)
+
+OnePlus 11 NPU: 0/25 runs used, J/GB through origin -, flagged ['gemma4-12b-L4']
+
+Pixel 10 Pro CPU: 30/30 runs used, J/GB through origin 0.328, with intercept 0.328 J/GB + -1.43 mJ/call (R2 0.9996)
+
+Desktop GPU: 30/30 runs used, J/GB through origin 0.338, with intercept 0.335 J/GB + 8.54 mJ/call (R2 0.9998)
+
+Desktop CPU: 22/30 runs used, J/GB through origin 2.90, with intercept 2.92 J/GB + -37.88 mJ/call (R2 1.0000), DRAM-bound 30.4 GB/s, cache-assisted runs excluded: 8
+
+Server GPU: 30/30 runs used, J/GB through origin 0.390, with intercept 0.387 J/GB + 8.94 mJ/call (R2 0.9999)
+
+Server CPU: 9/30 runs used, J/GB through origin 2.46, with intercept 2.58 J/GB + -420.92 mJ/call (R2 0.9951), flagged ['gemma4-12b-L8'], DRAM-bound 81.8 GB/s, cache-assisted runs excluded: 20

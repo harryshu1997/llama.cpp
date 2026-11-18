@@ -1,0 +1,171 @@
+{
+ "qwen25-05b": {
+  "path": "/mnt/data_h16t/zs89458/xband-data/models/stream-energy-dl/qwen2.5-0.5b-instruct-fp16.gguf",
+  "architecture": "qwen2",
+  "blocks": 24,
+  "tied_head": false,
+  "bytes": {
+   "output_head": 272269312,
+   "lookup": 272269312,
+   "one_d": 143104,
+   "ffn": 627572736,
+   "attention": 88080384,
+   "other_2d": 0
+  },
+  "streamed_bytes": 987922432,
+  "ffn_share": 0.635244950081263,
+  "other_2d_tensors": []
+ },
+ "qwen3-06b": {
+  "path": "/mnt/data_h16t/zs89458/xband-data/models/stream-energy-dl/Qwen3-0.6B-BF16.gguf",
+  "architecture": "qwen3",
+  "blocks": 28,
+  "tied_head": true,
+  "bytes": {
+   "output_head": 311164928,
+   "one_d": 131072,
+   "ffn": 528482304,
+   "attention": 352321536,
+   "other_2d": 0
+  },
+  "streamed_bytes": 1191968768,
+  "ffn_share": 0.4433692544534858,
+  "other_2d_tensors": []
+ },
+ "llama32-1b": {
+  "path": "/home/myid/zs89458/Documents/models/Llama-3.2-1B-Instruct-F16.gguf",
+  "architecture": "llama",
+  "blocks": 16,
+  "tied_head": true,
+  "bytes": {
+   "one_d": 135232,
+   "output_head": 525336576,
+   "ffn": 1610612736,
+   "attention": 335544320,
+   "other_2d": 0
+  },
+  "streamed_bytes": 2471493632,
+  "ffn_share": 0.6516758591429783,
+  "other_2d_tensors": []
+ },
+ "qwen3-17b": {
+  "path": "/mnt/data_h16t/zs89458/xband-data/models/stream-energy-dl/Qwen3-1.7B-BF16.gguf",
+  "architecture": "qwen3",
+  "blocks": 28,
+  "tied_head": true,
+  "bytes": {
+   "output_head": 622329856,
+   "one_d": 247808,
+   "ffn": 2113929216,
+   "attention": 704643072,
+   "other_2d": 0
+  },
+  "streamed_bytes": 3440902144,
+  "ffn_share": 0.6143531921377419,
+  "other_2d_tensors": []
+ },
+ "gemma4-e2b": {
+  "path": "/home/myid/zs89458/Documents/models/gemma-4-E2B-it-fp16.gguf",
+  "architecture": "gemma4",
+  "blocks": 35,
+  "tied_head": true,
+  "bytes": {
+   "one_d": 584774,
+   "output_head": 805306368,
+   "lookup": 4697620480,
+   "ffn": 3114270720,
+   "other_2d": 82575360,
+   "attention": 594542592
+  },
+  "streamed_bytes": 4596695040,
+  "ffn_share": 0.6775021385799829,
+  "other_2d_tensors": [
+   "inp_gate.weight",
+   "per_layer_model_proj.weight",
+   "proj.weight"
+  ]
+ },
+ "qwen3-4b": {
+  "path": "/mnt/data_h16t/zs89458/xband-data/models/stream-energy-dl/Qwen3-4B-BF16.gguf",
+  "architecture": "qwen3",
+  "blocks": 36,
+  "tied_head": true,
+  "bytes": {
+   "output_head": 777912320,
+   "one_d": 392192,
+   "ffn": 5379194880,
+   "attention": 1887436800,
+   "other_2d": 0
+  },
+  "streamed_bytes": 8044544000,
+  "ffn_share": 0.6686761710794298,
+  "other_2d_tensors": []
+ },
+ "qwen3-8b": {
+  "path": "/mnt/data_h16t/zs89458/xband-data/models/stream-energy-dl/Qwen3-8B-BF16.gguf",
+  "architecture": "qwen3",
+  "blocks": 36,
+  "tied_head": false,
+  "bytes": {
+   "lookup": 1244659712,
+   "one_d": 616448,
+   "ffn": 10871635968,
+   "attention": 3019898880,
+   "output_head": 1244659712,
+   "other_2d": 0
+  },
+  "streamed_bytes": 15136194560,
+  "ffn_share": 0.7182542431589886,
+  "other_2d_tensors": []
+ },
+ "gemma4-12b": {
+  "path": "/home/myid/zs89458/Documents/models/gemma-4-12B-it-f16.gguf",
+  "architecture": "gemma4",
+  "blocks": 48,
+  "tied_head": true,
+  "bytes": {
+   "one_d": 1540192,
+   "output_head": 2013265920,
+   "attention": 4812963840,
+   "ffn": 16986931200,
+   "other_2d": 0
+  },
+  "streamed_bytes": 23813160960,
+  "ffn_share": 0.71334214002642,
+  "other_2d_tensors": []
+ },
+ "qwen3-14b": {
+  "path": "/home/myid/zs89458/Documents/models/Qwen3-14B-f16.gguf",
+  "architecture": "qwen3",
+  "blocks": 40,
+  "tied_head": false,
+  "bytes": {
+   "lookup": 1555824640,
+   "one_d": 849920,
+   "ffn": 21390950400,
+   "attention": 5033164800,
+   "output_head": 1555824640,
+   "other_2d": 0
+  },
+  "streamed_bytes": 27979939840,
+  "ffn_share": 0.7645102356302993,
+  "other_2d_tensors": []
+ },
+ "qwen3-32b": {
+  "path": "/mnt/data_h16t/zs89458/ws17-quantized/Qwen3-32B-bf16.gguf",
+  "architecture": "qwen3",
+  "blocks": 64,
+  "tied_head": false,
+  "bytes": {
+   "lookup": 1555824640,
+   "one_d": 1353728,
+   "ffn": 50331648000,
+   "attention": 12079595520,
+   "output_head": 1555824640,
+   "other_2d": 0
+  },
+  "streamed_bytes": 63967068160,
+  "ffn_share": 0.7868368747822879,
+  "other_2d_tensors": []
+ }
+}

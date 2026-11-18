@@ -1,0 +1,272 @@
+{
+  "aoa_bridge": {
+    "bridge_options": {
+      "ping_interval_ms": 1000,
+      "ping_timeout_ms": 5000,
+      "status_interval_ms": 2000
+    },
+    "bridge_script_sha256": "sha256:59445fa48515347c9e6d9a2ebbcd471a208298b83924df300fbf6716a644aaa1",
+    "forbidden_serials": [
+      "3C15AU002CL00000",
+      "SCHEDFFN0001"
+    ],
+    "mode_switch_timeout_s": 40,
+    "python_path": "/usr/bin/python3",
+    "ready_timeout_s": 60,
+    "relay_lock_path": "/data/local/tmp/.s43-pixel-aoa-relay.lock",
+    "relay_options": {
+      "qos_latency_us": 0,
+      "qos_window_ms": 1500
+    },
+    "relay_path": "/data/local/tmp/s43-pixel-aoa-20261001-v1/s43-aoa-relay",
+    "relay_sha256": "sha256:124feb791839a7a2caaed0803f7e191dabc6ff8bc5bcf14c262f366ce03571f2",
+    "trace": false,
+    "usb_sysfs_device": "2-2"
+  },
+  "derived_from": {
+    "adb_evidence": "/mnt/storage/s43-two-phone-eval-20260925/qualification-g5s1/PIXEL_EVIDENCE.json",
+    "adb_evidence_sha256": "sha256:994f2d25f5dcedf42a5d31fae5d621d206811389eeac180f11fe6afddb1e126b",
+    "link_calibration": "aoa"
+  },
+  "host_software_paths": {
+    "host_binary_sha256": "/mnt/repository/zhihao/storage/s42-trace-v2-20260921-prep/cuda-build/bin/llama-server",
+    "host_bridge_sha256": "/mnt/storage/s42-trace-v2-20260921-prep/source/research_dev/scheduler/adapters/aoa_bridge.py",
+    "host_impl_sha256": "/mnt/repository/zhihao/storage/s42-trace-v2-20260921-prep/cuda-build/bin/libllama-server-impl.so",
+    "transport_client_source_sha256": "/mnt/storage/s42-trace-v2-20260921-prep/source/examples/layersplit/ffn-split-client.cpp"
+  },
+  "power": {
+    "active_power_mw": 4500,
+    "allow_assumed_for_scheduling": true,
+    "device_id": "pixel10pro-phone",
+    "domain_id": "pixel10pro-phone-system",
+    "estimation_version": "assumed-phone-power-v1",
+    "evidence_kind": "ASSUMED_4P5W",
+    "idle_power_mw": 875,
+    "minimum_battery_ppm": 50000
+  },
+  "profile_fragment": {
+    "devices": [
+      {
+        "allocation_limit_bytes": 12884901888,
+        "device_id": "pixel10pro-phone",
+        "kind": "phone",
+        "memory_pool_id": "pixel-ram",
+        "ready": true
+      }
+    ],
+    "domains": [
+      {
+        "domain_id": "pixel10pro-phone-system",
+        "evidence_ids": [
+          "ASSUMED_4P5W"
+        ],
+        "idle_power_mw": 875,
+        "status": "estimated"
+      }
+    ],
+    "idle_charge_domains": [
+      "pixel10pro-phone-system"
+    ],
+    "kernels": [
+      {
+        "active_power_mw": 4500,
+        "device_id": "pixel10pro-phone",
+        "domain_id": "pixel10pro-phone-system",
+        "effective_bytes_per_s": 28506906609,
+        "effective_ops_per_s": 95044413405,
+        "evidence_ids": [
+          "sha256:a43981de5d3a044f75de905f09dedfa13497181954c92dddb3020aa317da16b3",
+          "ASSUMED_4P5W"
+        ],
+        "kernel_id": "prior:pixel10pro-phone:ffn",
+        "launch_us": 0,
+        "profile_id": "prior:pixel10pro-phone:ffn",
+        "status": "measured"
+      }
+    ],
+    "links": [
+      {
+        "bandwidth_bytes_per_s": 34014688,
+        "concurrent_streams": 4,
+        "domain_active_power_mw": {},
+        "dynamic_pj_per_byte": 0,
+        "evidence_ids": [
+          "sha256:5e32bf560bdf7acf9e6d9e4ab9c4c485400ff93f8016becbdcc816518ae463cb"
+        ],
+        "fixed_dynamic_uj": 0,
+        "fixed_latency_us": 295,
+        "link_id": "pixel-aoa-out",
+        "maximum_payload_bytes": 40960,
+        "ready": true,
+        "source_device": "desktop-cpu",
+        "status": "measured",
+        "target_device": "pixel10pro-phone"
+      },
+      {
+        "bandwidth_bytes_per_s": 34014688,
+        "concurrent_streams": 4,
+        "domain_active_power_mw": {},
+        "dynamic_pj_per_byte": 0,
+        "evidence_ids": [
+          "sha256:5e32bf560bdf7acf9e6d9e4ab9c4c485400ff93f8016becbdcc816518ae463cb"
+        ],
+        "fixed_dynamic_uj": 0,
+        "fixed_latency_us": 295,
+        "link_id": "pixel-aoa-in",
+        "maximum_payload_bytes": 40960,
+        "ready": true,
+        "source_device": "pixel10pro-phone",
+        "status": "measured",
+        "target_device": "desktop-cpu"
+      }
+    ],
+    "memory_pools": [
+      {
+        "capacity_bytes": 12884901888,
+        "pool_id": "pixel-ram",
+        "reserved_bytes": 0
+      }
+    ]
+  },
+  "rebound_from": {
+    "evidence": "/mnt/repository/zhihao/storage/s43-pixel-aoa-20261001-v1/evidence-aoa-5070ti/PIXEL_EVIDENCE_AOA.json",
+    "evidence_sha256": "sha256:ccd673d0c27763208f25b765970e053955c58cb68af8568f0de2e30c14da8765",
+    "numerical": "carried-over",
+    "shard_index": "/mnt/repository/zhihao/storage/s43-ws12-pixel-placement-20261002/pixel-1-23/PIXEL_FFN_SHARDS.json",
+    "shard_index_sha256": "sha256:23009e8ebe55e14cd246843e93d62ca6cffccdadb8889aa3fd92d2c919c0dd45"
+  },
+  "receipt_paths": {
+    "aoa-bridge-byte-identity": "/mnt/storage/s43-pixel-aoa-20261001-v1/evidence-aoa-5070ti/aoa-bridge-byte-identity.json",
+    "aoa-bridge-round-trip": "/mnt/storage/s43-pixel-aoa-20261001-v1/evidence-aoa-5070ti/aoa-bridge-round-trip.json",
+    "numerical-rows-1-2-4": "/mnt/storage/s43-pixel-aoa-20261001-v1/evidence-aoa-opencl-1-23-5070ti/numerical-rows-1-2-4.json",
+    "scheduler-launched-session": "/mnt/storage/s43-pixel-aoa-20261001-v1/evidence-aoa-5070ti/scheduler-launched-session.json",
+    "server-token-identity": "/mnt/storage/s43-pixel-aoa-20261001-v1/evidence-aoa-opencl-1-23-5070ti/server-token-identity.json",
+    "usb-link-speed": "/mnt/storage/s43-pixel-aoa-20261001-v1/evidence-aoa-5070ti/usb-link-speed.json"
+  },
+  "schema": "s42-static-helper-evidence-v1",
+  "status": "PASS",
+  "transport_identity": {
+    "device_id": "pixel10pro-phone",
+    "hardware_identity": {
+      "adb_usb_identity": "18d1:2d01",
+      "aoa_usb_identity": "18d1:2d01",
+      "host_usb_controller": "0000:0a:00.0",
+      "phone_kernel_release": "6.6.102-android15-8-g6eb5b2a8c46b-ab14739656-4k",
+      "phone_usb_serial": "5A040DLCH004ES",
+      "phone_usb_sysfs_device": "2-2"
+    },
+    "minimum_usb_speed_mbps": 5000,
+    "receipts": {
+      "aoa-bridge-byte-identity": "sha256:a652178bc8542a76507bcd03ad42e34b411c915a5601d0a06f5d422aaee3057b",
+      "aoa-bridge-round-trip": "sha256:5e32bf560bdf7acf9e6d9e4ab9c4c485400ff93f8016becbdcc816518ae463cb",
+      "numerical-rows-1-2-4": "sha256:1a4799606ecd406a27702b784071edc6daf9157e10e0ab2444bbc0eb7ef51b34",
+      "scheduler-launched-session": "sha256:9426d6ba1e71c1a655649c87f58e21180186fb394bb61dd4b6ee82a4291538b3",
+      "server-token-identity": "sha256:55d6b78da1e3b2f7ad472e49575ec41355d110a71d9f56ec602794e278fef619",
+      "usb-link-speed": "sha256:eb5df84cda2f821a2ea5e9493d0a2f858cb2898b71f0c093aa752cf4c4fd5d96"
+    },
+    "schema": "research-scheduler-phone-helper-transport-identity-v1",
+    "software_identity": {
+      "aoa_bridge_options_sha256": "sha256:8d71da9107d824c962df71d6ef941ae2a2e227928e243584f5952248bf035cd6",
+      "host_binary_sha256": "sha256:79f6808853dd428eee40122b86759bcc2f8f23155bfd00dbdd18d15a40f7c13f",
+      "host_bridge_sha256": "sha256:59445fa48515347c9e6d9a2ebbcd471a208298b83924df300fbf6716a644aaa1",
+      "host_impl_sha256": "sha256:4862cdba83864694edd0efb6babc7ebcab2f74ae835f0d7fa068acc8119cf44b",
+      "phone_library_sha256:/data/local/tmp/s43-pixel-opencl-20261027-v1/libggml-base.so": "sha256:ec8396655c0b24bf828702a6e83371fe6bd3f24b57149e3be7d666813ff9f49d",
+      "phone_library_sha256:/data/local/tmp/s43-pixel-opencl-20261027-v1/libggml-cpu.so": "sha256:b911532d756cad93e74391e86ed4d0e8e6f66773ec0dab79f8aa893021b0589d",
+      "phone_library_sha256:/data/local/tmp/s43-pixel-opencl-20261027-v1/libggml-vulkan.so": "sha256:892bf36afff1c3b964afe421a25b9b6cbf0e55de949bee093c91038114cd4fa1",
+      "phone_library_sha256:/data/local/tmp/s43-pixel-opencl-20261027-v1/libggml.so": "sha256:601b8a7c7d14ab951ee85e6680bea3ed428b73ed63fc8a1fcb55d4999760c6f2",
+      "phone_library_sha256:/data/local/tmp/s43-pixel-opencl-20261027-v1/pixel_opencl_kernels.cl": "sha256:5f9077be3efd40087515cc1164bf26919124e9ba860f1d29450239b533c82bf6",
+      "phone_relay_sha256": "sha256:124feb791839a7a2caaed0803f7e191dabc6ff8bc5bcf14c262f366ce03571f2",
+      "phone_shard_sha256": "sha256:7f5f33854a32c4ae32d40fb5f62d3d8bb60b13973b92b8a2cfb325c6b63b890e",
+      "phone_worker_sha256": "sha256:e6ffd9f3d41e63464213becb41ff676f9ff5ffc0cbf5577e64edcfd01a37a8df",
+      "transport_client_source_sha256": "sha256:7439bee7460129bbe7092dcba1628be17cc3f1a6c042b48a562facdc44bb8eda",
+      "worker_environment_sha256": "sha256:fd3afbcb5b5abce224d5330474564ab6a3bea9a4d0b8ad2b61d49cd2c1eaa7c7"
+    },
+    "transport": "aoa-bridge",
+    "transport_generation": "aoa-bridge-s43a1-worker-v6"
+  },
+  "worker": {
+    "adb_path": "/usr/bin/adb",
+    "adb_port": 5037,
+    "artifact_sha256": "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718",
+    "as_root": true,
+    "backend": "CPU",
+    "column_quantum": 4352,
+    "columns": 17408,
+    "device_id": "pixel10pro-phone",
+    "expected_sha256_by_path": {
+      "/data/local/tmp/s43-pixel-opencl-20261027-v1/libggml-base.so": "sha256:ec8396655c0b24bf828702a6e83371fe6bd3f24b57149e3be7d666813ff9f49d",
+      "/data/local/tmp/s43-pixel-opencl-20261027-v1/libggml-cpu.so": "sha256:b911532d756cad93e74391e86ed4d0e8e6f66773ec0dab79f8aa893021b0589d",
+      "/data/local/tmp/s43-pixel-opencl-20261027-v1/libggml-vulkan.so": "sha256:892bf36afff1c3b964afe421a25b9b6cbf0e55de949bee093c91038114cd4fa1",
+      "/data/local/tmp/s43-pixel-opencl-20261027-v1/libggml.so": "sha256:601b8a7c7d14ab951ee85e6680bea3ed428b73ed63fc8a1fcb55d4999760c6f2",
+      "/data/local/tmp/s43-pixel-opencl-20261027-v1/llama-ffn-split-worker": "sha256:e6ffd9f3d41e63464213becb41ff676f9ff5ffc0cbf5577e64edcfd01a37a8df",
+      "/data/local/tmp/s43-pixel-opencl-20261027-v1/pixel_opencl_kernels.cl": "sha256:5f9077be3efd40087515cc1164bf26919124e9ba860f1d29450239b533c82bf6",
+      "/data/local/tmp/s43-ws12-pixel-v1/QWEN_PACKED_1_23.ffn.gguf": "sha256:7f5f33854a32c4ae32d40fb5f62d3d8bb60b13973b92b8a2cfb325c6b63b890e"
+    },
+    "forward_port": 26991,
+    "layer_mask": 16777214,
+    "library_directories": [
+      "/data/local/tmp/s43-pixel-opencl-20261027-v1"
+    ],
+    "max_requests": 0,
+    "max_tokens": 4,
+    "n_embd": 5120,
+    "phone_lock_path": "/data/local/tmp/.s42-pixel-ffn-kernels.lock",
+    "phone_port": 26990,
+    "serial": "5A040DLCH004ES",
+    "shard_path": "/data/local/tmp/s43-ws12-pixel-v1/QWEN_PACKED_1_23.ffn.gguf",
+    "swiglu": true,
+    "worker_environment": {
+      "S42_PIXEL_CPU_MASK": "fc",
+      "S42_PIXEL_CPU_PAIR_DOT": "1",
+      "S42_PIXEL_CPU_POOL": "1",
+      "S42_PIXEL_CPU_QUANT_RESIDUAL": "1",
+      "S42_PIXEL_CPU_ROW_CHUNK": "64",
+      "S42_PIXEL_CPU_ROW_PROFILE": "0",
+      "S42_PIXEL_CPU_THREADS": "6",
+      "S42_PIXEL_FUSED_RESIDUAL": "1",
+      "S42_PIXEL_PACKED_WEIGHTS": "1",
+      "S43_PIXEL_CL_CPU_MIN_KHZ": "2073000",
+      "S43_PIXEL_CL_KEEPALIVE_MS": "1",
+      "S43_PIXEL_CPU_BATCH_PAIR": "1",
+      "S43_PIXEL_CPU_POLL": "100",
+      "S43_PIXEL_OPENCL": "1",
+      "S43_PIXEL_OPENCL_KERNELS": "/data/local/tmp/s43-pixel-opencl-20261027-v1/pixel_opencl_kernels.cl",
+      "S43_PIXEL_UCLAMP_MIN": "1024"
+    },
+    "worker_path": "/data/local/tmp/s43-pixel-opencl-20261027-v1/llama-ffn-split-worker"
+  },
+  "worker_rebound_from": {
+    "carried_receipts": {
+      "aoa-bridge-byte-identity": {
+        "path": "/mnt/storage/s43-pixel-aoa-20261001-v1/evidence-aoa-5070ti/aoa-bridge-byte-identity.json",
+        "sha256": "sha256:a652178bc8542a76507bcd03ad42e34b411c915a5601d0a06f5d422aaee3057b"
+      },
+      "aoa-bridge-round-trip": {
+        "path": "/mnt/storage/s43-pixel-aoa-20261001-v1/evidence-aoa-5070ti/aoa-bridge-round-trip.json",
+        "sha256": "sha256:5e32bf560bdf7acf9e6d9e4ab9c4c485400ff93f8016becbdcc816518ae463cb"
+      },
+      "scheduler-launched-session": {
+        "path": "/mnt/storage/s43-pixel-aoa-20261001-v1/evidence-aoa-5070ti/scheduler-launched-session.json",
+        "sha256": "sha256:9426d6ba1e71c1a655649c87f58e21180186fb394bb61dd4b6ee82a4291538b3"
+      },
+      "usb-link-speed": {
+        "path": "/mnt/storage/s43-pixel-aoa-20261001-v1/evidence-aoa-5070ti/usb-link-speed.json",
+        "sha256": "sha256:eb5df84cda2f821a2ea5e9493d0a2f858cb2898b71f0c093aa752cf4c4fd5d96"
+      }
+    },
+    "evidence": "/mnt/repository/zhihao/storage/s43-pixel-aoa-20261001-v1/evidence-aoa-1-23-5070ti/PIXEL_EVIDENCE_AOA.json",
+    "evidence_sha256": "sha256:3357e9c4885cbde6d7afbf23a546f19f18dedb8eb712e14aaf00582f9cacbf02",
+    "kernel_rate": {
+      "full_width_compute_ms": 5.626567,
+      "layer_bytes": 160396020
+    },
+    "numerical": "fresh-ffn-numerics",
+    "numerics_policy": "int8-activation-class",
+    "policy": "same phone, USB port, AOA relay / host bridge / options, server, model, shard and layers; the new worker binary, its pinned files and environment are qualified afresh by the server token identity and the FFN numerical rows over the bridge; link and session lifecycle receipts carried over (2026-10-02 fused-worker precedent)",
+    "previous_worker": {
+      "path": "/data/local/tmp/s43-pixel-cpugpu-20260925-v1/llama-ffn-split-worker",
+      "sha256": "sha256:5d824455d10961fda0fc6369ee8b885195107f68f450198ac2e6d94549174128"
+    },
+    "server_identity": "/mnt/storage/s43-pixel-aoa-20261001-v1/server-identity-opencl-1-23-5070ti"
+  }
+}

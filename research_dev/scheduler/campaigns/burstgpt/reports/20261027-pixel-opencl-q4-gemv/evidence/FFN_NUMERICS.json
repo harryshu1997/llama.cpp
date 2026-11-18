@@ -1,0 +1,752 @@
+{
+  "artifact_sha256": "sha256:d89e9e823744222e595e0b3c8fd5436ce5d3a6a446fa42492ebce6064dfa9718",
+  "calls": 69,
+  "cases": [
+    {
+      "compute_ms": 7.218,
+      "finite": true,
+      "layer": 1,
+      "rel_l2_f32": 0.010007052967509665,
+      "rel_l2_ggml_cpu": 0.001295043007423582,
+      "repeat": 0,
+      "rows": 1,
+      "rpc_ms": 9.018
+    },
+    {
+      "compute_ms": 7.812,
+      "finite": true,
+      "layer": 1,
+      "rel_l2_f32": 0.017705172265719177,
+      "rel_l2_ggml_cpu": 0.0014901587875009257,
+      "repeat": 0,
+      "rows": 2,
+      "rpc_ms": 10.488
+    },
+    {
+      "compute_ms": 12.823,
+      "finite": true,
+      "layer": 1,
+      "rel_l2_f32": 0.012922067623287752,
+      "rel_l2_ggml_cpu": 0.0013210912936880907,
+      "repeat": 0,
+      "rows": 4,
+      "rpc_ms": 17.105
+    },
+    {
+      "compute_ms": 6.235,
+      "finite": true,
+      "layer": 2,
+      "rel_l2_f32": 0.012154484334992638,
+      "rel_l2_ggml_cpu": 0.0016432174717625886,
+      "repeat": 0,
+      "rows": 1,
+      "rpc_ms": 8.7
+    },
+    {
+      "compute_ms": 8.6,
+      "finite": true,
+      "layer": 2,
+      "rel_l2_f32": 0.011513075843646272,
+      "rel_l2_ggml_cpu": 0.0011784204450375193,
+      "repeat": 0,
+      "rows": 2,
+      "rpc_ms": 10.653
+    },
+    {
+      "compute_ms": 12.611,
+      "finite": true,
+      "layer": 2,
+      "rel_l2_f32": 0.011205427577861013,
+      "rel_l2_ggml_cpu": 0.0012717685781943758,
+      "repeat": 0,
+      "rows": 4,
+      "rpc_ms": 15.939
+    },
+    {
+      "compute_ms": 6.024,
+      "finite": true,
+      "layer": 3,
+      "rel_l2_f32": 0.013258081343651747,
+      "rel_l2_ggml_cpu": 0.0015829117889512114,
+      "repeat": 0,
+      "rows": 1,
+      "rpc_ms": 8.625
+    },
+    {
+      "compute_ms": 7.851,
+      "finite": true,
+      "layer": 3,
+      "rel_l2_f32": 0.020988302000317385,
+      "rel_l2_ggml_cpu": 0.0018600266096337717,
+      "repeat": 0,
+      "rows": 2,
+      "rpc_ms": 10.158
+    },
+    {
+      "compute_ms": 12.818,
+      "finite": true,
+      "layer": 3,
+      "rel_l2_f32": 0.01728552887694749,
+      "rel_l2_ggml_cpu": 0.001618499687211828,
+      "repeat": 0,
+      "rows": 4,
+      "rpc_ms": 16.481
+    },
+    {
+      "compute_ms": 6.087,
+      "finite": true,
+      "layer": 4,
+      "rel_l2_f32": 0.011607449266605094,
+      "rel_l2_ggml_cpu": 0.00131848509454584,
+      "repeat": 0,
+      "rows": 1,
+      "rpc_ms": 8.504
+    },
+    {
+      "compute_ms": 7.766,
+      "finite": true,
+      "layer": 4,
+      "rel_l2_f32": 0.017345519437997347,
+      "rel_l2_ggml_cpu": 0.0017783453447621515,
+      "repeat": 0,
+      "rows": 2,
+      "rpc_ms": 10.008
+    },
+    {
+      "compute_ms": 12.343,
+      "finite": true,
+      "layer": 4,
+      "rel_l2_f32": 0.03168835962629781,
+      "rel_l2_ggml_cpu": 0.0016598688741943355,
+      "repeat": 0,
+      "rows": 4,
+      "rpc_ms": 15.934
+    },
+    {
+      "compute_ms": 6.403,
+      "finite": true,
+      "layer": 5,
+      "rel_l2_f32": 0.011890745927663721,
+      "rel_l2_ggml_cpu": 0.0018137420214481485,
+      "repeat": 0,
+      "rows": 1,
+      "rpc_ms": 8.638
+    },
+    {
+      "compute_ms": 6.679,
+      "finite": true,
+      "layer": 5,
+      "rel_l2_f32": 0.01533454184475495,
+      "rel_l2_ggml_cpu": 0.0018036645359917052,
+      "repeat": 0,
+      "rows": 2,
+      "rpc_ms": 9.073
+    },
+    {
+      "compute_ms": 11.866,
+      "finite": true,
+      "layer": 5,
+      "rel_l2_f32": 0.014585981437562344,
+      "rel_l2_ggml_cpu": 0.0017446598915836222,
+      "repeat": 0,
+      "rows": 4,
+      "rpc_ms": 15.394
+    },
+    {
+      "compute_ms": 5.393,
+      "finite": true,
+      "layer": 6,
+      "rel_l2_f32": 0.012482915002803407,
+      "rel_l2_ggml_cpu": 0.0015026721649794967,
+      "repeat": 0,
+      "rows": 1,
+      "rpc_ms": 7.392
+    },
+    {
+      "compute_ms": 8.105,
+      "finite": true,
+      "layer": 6,
+      "rel_l2_f32": 0.012889947169972236,
+      "rel_l2_ggml_cpu": 0.0017735305870901724,
+      "repeat": 0,
+      "rows": 2,
+      "rpc_ms": 11.664
+    },
+    {
+      "compute_ms": 10.91,
+      "finite": true,
+      "layer": 6,
+      "rel_l2_f32": 0.012055866101238535,
+      "rel_l2_ggml_cpu": 0.00185782806935351,
+      "repeat": 0,
+      "rows": 4,
+      "rpc_ms": 14.333
+    },
+    {
+      "compute_ms": 6.778,
+      "finite": true,
+      "layer": 7,
+      "rel_l2_f32": 0.009979266496489524,
+      "rel_l2_ggml_cpu": 0.0014973290994610836,
+      "repeat": 0,
+      "rows": 1,
+      "rpc_ms": 9.093
+    },
+    {
+      "compute_ms": 7.654,
+      "finite": true,
+      "layer": 7,
+      "rel_l2_f32": 0.010065485190850753,
+      "rel_l2_ggml_cpu": 0.0013778721026600769,
+      "repeat": 0,
+      "rows": 2,
+      "rpc_ms": 10.081
+    },
+    {
+      "compute_ms": 12.323,
+      "finite": true,
+      "layer": 7,
+      "rel_l2_f32": 0.011566399192029994,
+      "rel_l2_ggml_cpu": 0.001533164461300238,
+      "repeat": 0,
+      "rows": 4,
+      "rpc_ms": 15.403
+    },
+    {
+      "compute_ms": 5.477,
+      "finite": true,
+      "layer": 8,
+      "rel_l2_f32": 0.013108563178593689,
+      "rel_l2_ggml_cpu": 0.0022493775399143887,
+      "repeat": 0,
+      "rows": 1,
+      "rpc_ms": 7.468
+    },
+    {
+      "compute_ms": 6.773,
+      "finite": true,
+      "layer": 8,
+      "rel_l2_f32": 0.012488558117893647,
+      "rel_l2_ggml_cpu": 0.00212670947813443,
+      "repeat": 0,
+      "rows": 2,
+      "rpc_ms": 9.728
+    },
+    {
+      "compute_ms": 11.004,
+      "finite": true,
+      "layer": 8,
+      "rel_l2_f32": 0.013425303651933796,
+      "rel_l2_ggml_cpu": 0.0018818606271933254,
+      "repeat": 0,
+      "rows": 4,
+      "rpc_ms": 14.873
+    },
+    {
+      "compute_ms": 5.158,
+      "finite": true,
+      "layer": 9,
+      "rel_l2_f32": 0.012362227007378887,
+      "rel_l2_ggml_cpu": 0.0018333911750262465,
+      "repeat": 0,
+      "rows": 1,
+      "rpc_ms": 7.386
+    },
+    {
+      "compute_ms": 7.052,
+      "finite": true,
+      "layer": 9,
+      "rel_l2_f32": 0.01465196740824212,
+      "rel_l2_ggml_cpu": 0.0018815540971582189,
+      "repeat": 0,
+      "rows": 2,
+      "rpc_ms": 9.083
+    },
+    {
+      "compute_ms": 11.115,
+      "finite": true,
+      "layer": 9,
+      "rel_l2_f32": 0.013877571681654866,
+      "rel_l2_ggml_cpu": 0.0018457573759259943,
+      "repeat": 0,
+      "rows": 4,
+      "rpc_ms": 14.46
+    },
+    {
+      "compute_ms": 6.026,
+      "finite": true,
+      "layer": 10,
+      "rel_l2_f32": 0.012670254972728855,
+      "rel_l2_ggml_cpu": 0.0020316491821170037,
+      "repeat": 0,
+      "rows": 1,
+      "rpc_ms": 8.78
+    },
+    {
+      "compute_ms": 8.392,
+      "finite": true,
+      "layer": 10,
+      "rel_l2_f32": 0.013583222095488911,
+      "rel_l2_ggml_cpu": 0.0022726968987091473,
+      "repeat": 0,
+      "rows": 2,
+      "rpc_ms": 10.719
+    },
+    {
+      "compute_ms": 13.269,
+      "finite": true,
+      "layer": 10,
+      "rel_l2_f32": 0.013875391809829508,
+      "rel_l2_ggml_cpu": 0.002123465582128145,
+      "repeat": 0,
+      "rows": 4,
+      "rpc_ms": 17.272
+    },
+    {
+      "compute_ms": 5.165,
+      "finite": true,
+      "layer": 11,
+      "rel_l2_f32": 0.012235319120886181,
+      "rel_l2_ggml_cpu": 0.0020660331685259784,
+      "repeat": 0,
+      "rows": 1,
+      "rpc_ms": 6.535
+    },
+    {
+      "compute_ms": 6.604,
+      "finite": true,
+      "layer": 11,
+      "rel_l2_f32": 0.01327552413174711,
+      "rel_l2_ggml_cpu": 0.001867707470042696,
+      "repeat": 0,
+      "rows": 2,
+      "rpc_ms": 8.545
+    },
+    {
+      "compute_ms": 10.978,
+      "finite": true,
+      "layer": 11,
+      "rel_l2_f32": 0.014054027690919636,
+      "rel_l2_ggml_cpu": 0.0021559287128214183,
+      "repeat": 0,
+      "rows": 4,
+      "rpc_ms": 14.306
+    },
+    {
+      "compute_ms": 5.094,
+      "finite": true,
+      "layer": 12,
+      "rel_l2_f32": 0.012418657420021533,
+      "rel_l2_ggml_cpu": 0.0019446562646232646,
+      "repeat": 0,
+      "rows": 1,
+      "rpc_ms": 7.632
+    },
+    {
+      "compute_ms": 7.119,
+      "finite": true,
+      "layer": 12,
+      "rel_l2_f32": 0.012167488684856651,
+      "rel_l2_ggml_cpu": 0.002093332476493137,
+      "repeat": 0,
+      "rows": 2,
+      "rpc_ms": 9.614
+    },
+    {
+      "compute_ms": 10.84,
+      "finite": true,
+      "layer": 12,
+      "rel_l2_f32": 0.013315658884673936,
+      "rel_l2_ggml_cpu": 0.0020410114660339386,
+      "repeat": 0,
+      "rows": 4,
+      "rpc_ms": 14.399
+    },
+    {
+      "compute_ms": 6.101,
+      "finite": true,
+      "layer": 13,
+      "rel_l2_f32": 0.01348654185180724,
+      "rel_l2_ggml_cpu": 0.0017672435558013847,
+      "repeat": 0,
+      "rows": 1,
+      "rpc_ms": 8.615
+    },
+    {
+      "compute_ms": 7.732,
+      "finite": true,
+      "layer": 13,
+      "rel_l2_f32": 0.0129117661181534,
+      "rel_l2_ggml_cpu": 0.0018228365365802054,
+      "repeat": 0,
+      "rows": 2,
+      "rpc_ms": 10.44
+    },
+    {
+      "compute_ms": 13.114,
+      "finite": true,
+      "layer": 13,
+      "rel_l2_f32": 0.012875772962453489,
+      "rel_l2_ggml_cpu": 0.001872956143404858,
+      "repeat": 0,
+      "rows": 4,
+      "rpc_ms": 17.153
+    },
+    {
+      "compute_ms": 6.171,
+      "finite": true,
+      "layer": 14,
+      "rel_l2_f32": 0.013769918785942968,
+      "rel_l2_ggml_cpu": 0.0017782126816838432,
+      "repeat": 0,
+      "rows": 1,
+      "rpc_ms": 8.464
+    },
+    {
+      "compute_ms": 6.962,
+      "finite": true,
+      "layer": 14,
+      "rel_l2_f32": 0.012098429343503215,
+      "rel_l2_ggml_cpu": 0.0020673277680946837,
+      "repeat": 0,
+      "rows": 2,
+      "rpc_ms": 9.373
+    },
+    {
+      "compute_ms": 11.019,
+      "finite": true,
+      "layer": 14,
+      "rel_l2_f32": 0.013660289129079533,
+      "rel_l2_ggml_cpu": 0.001795429453729223,
+      "repeat": 0,
+      "rows": 4,
+      "rpc_ms": 14.88
+    },
+    {
+      "compute_ms": 5.338,
+      "finite": true,
+      "layer": 15,
+      "rel_l2_f32": 0.014548290628117752,
+      "rel_l2_ggml_cpu": 0.0023612274777373085,
+      "repeat": 0,
+      "rows": 1,
+      "rpc_ms": 7.084
+    },
+    {
+      "compute_ms": 6.75,
+      "finite": true,
+      "layer": 15,
+      "rel_l2_f32": 0.014016139391076399,
+      "rel_l2_ggml_cpu": 0.0020062209664878923,
+      "repeat": 0,
+      "rows": 2,
+      "rpc_ms": 9.004
+    },
+    {
+      "compute_ms": 11.178,
+      "finite": true,
+      "layer": 15,
+      "rel_l2_f32": 0.01477898963420561,
+      "rel_l2_ggml_cpu": 0.001967317090887077,
+      "repeat": 0,
+      "rows": 4,
+      "rpc_ms": 15.157
+    },
+    {
+      "compute_ms": 6.008,
+      "finite": true,
+      "layer": 16,
+      "rel_l2_f32": 0.012453396509976827,
+      "rel_l2_ggml_cpu": 0.0018175901453866847,
+      "repeat": 0,
+      "rows": 1,
+      "rpc_ms": 8.425
+    },
+    {
+      "compute_ms": 7.861,
+      "finite": true,
+      "layer": 16,
+      "rel_l2_f32": 0.01321501148064013,
+      "rel_l2_ggml_cpu": 0.001917378233580682,
+      "repeat": 0,
+      "rows": 2,
+      "rpc_ms": 11.194
+    },
+    {
+      "compute_ms": 13.035,
+      "finite": true,
+      "layer": 16,
+      "rel_l2_f32": 0.012668549638442467,
+      "rel_l2_ggml_cpu": 0.0019700673821987477,
+      "repeat": 0,
+      "rows": 4,
+      "rpc_ms": 16.534
+    },
+    {
+      "compute_ms": 5.163,
+      "finite": true,
+      "layer": 17,
+      "rel_l2_f32": 0.011317842533333018,
+      "rel_l2_ggml_cpu": 0.0019470962263883021,
+      "repeat": 0,
+      "rows": 1,
+      "rpc_ms": 7.352
+    },
+    {
+      "compute_ms": 6.912,
+      "finite": true,
+      "layer": 17,
+      "rel_l2_f32": 0.0124568039717988,
+      "rel_l2_ggml_cpu": 0.0021003862297183816,
+      "repeat": 0,
+      "rows": 2,
+      "rpc_ms": 9.094
+    },
+    {
+      "compute_ms": 11.665,
+      "finite": true,
+      "layer": 17,
+      "rel_l2_f32": 0.012087582112375652,
+      "rel_l2_ggml_cpu": 0.00217364381288249,
+      "repeat": 0,
+      "rows": 4,
+      "rpc_ms": 15.437
+    },
+    {
+      "compute_ms": 6.422,
+      "finite": true,
+      "layer": 18,
+      "rel_l2_f32": 0.012639457769483473,
+      "rel_l2_ggml_cpu": 0.002273780343885747,
+      "repeat": 0,
+      "rows": 1,
+      "rpc_ms": 9.287
+    },
+    {
+      "compute_ms": 6.671,
+      "finite": true,
+      "layer": 18,
+      "rel_l2_f32": 0.012654433319140618,
+      "rel_l2_ggml_cpu": 0.0019173222790532646,
+      "repeat": 0,
+      "rows": 2,
+      "rpc_ms": 9.088
+    },
+    {
+      "compute_ms": 12.088,
+      "finite": true,
+      "layer": 18,
+      "rel_l2_f32": 0.012226909266060822,
+      "rel_l2_ggml_cpu": 0.002076869238785367,
+      "repeat": 0,
+      "rows": 4,
+      "rpc_ms": 15.973
+    },
+    {
+      "compute_ms": 6.082,
+      "finite": true,
+      "layer": 19,
+      "rel_l2_f32": 0.01266312795257022,
+      "rel_l2_ggml_cpu": 0.0019754065217317336,
+      "repeat": 0,
+      "rows": 1,
+      "rpc_ms": 8.811
+    },
+    {
+      "compute_ms": 7.677,
+      "finite": true,
+      "layer": 19,
+      "rel_l2_f32": 0.016035162823957883,
+      "rel_l2_ggml_cpu": 0.002292873495649097,
+      "repeat": 0,
+      "rows": 2,
+      "rpc_ms": 9.779
+    },
+    {
+      "compute_ms": 12.999,
+      "finite": true,
+      "layer": 19,
+      "rel_l2_f32": 0.014736184418492369,
+      "rel_l2_ggml_cpu": 0.002272854036002447,
+      "repeat": 0,
+      "rows": 4,
+      "rpc_ms": 16.52
+    },
+    {
+      "compute_ms": 5.161,
+      "finite": true,
+      "layer": 20,
+      "rel_l2_f32": 0.01315709363102072,
+      "rel_l2_ggml_cpu": 0.0020869949535067046,
+      "repeat": 0,
+      "rows": 1,
+      "rpc_ms": 7.726
+    },
+    {
+      "compute_ms": 6.801,
+      "finite": true,
+      "layer": 20,
+      "rel_l2_f32": 0.01453495857405687,
+      "rel_l2_ggml_cpu": 0.002239112190255031,
+      "repeat": 0,
+      "rows": 2,
+      "rpc_ms": 9.055
+    },
+    {
+      "compute_ms": 10.992,
+      "finite": true,
+      "layer": 20,
+      "rel_l2_f32": 0.013907386468537645,
+      "rel_l2_ggml_cpu": 0.002148560634428359,
+      "repeat": 0,
+      "rows": 4,
+      "rpc_ms": 14.462
+    },
+    {
+      "compute_ms": 5.151,
+      "finite": true,
+      "layer": 21,
+      "rel_l2_f32": 0.013084903697475492,
+      "rel_l2_ggml_cpu": 0.0023361747952112505,
+      "repeat": 0,
+      "rows": 1,
+      "rpc_ms": 8.257
+    },
+    {
+      "compute_ms": 6.554,
+      "finite": true,
+      "layer": 21,
+      "rel_l2_f32": 0.012961921722729216,
+      "rel_l2_ggml_cpu": 0.0020439662669343396,
+      "repeat": 0,
+      "rows": 2,
+      "rpc_ms": 8.856
+    },
+    {
+      "compute_ms": 10.862,
+      "finite": true,
+      "layer": 21,
+      "rel_l2_f32": 0.014177352159031898,
+      "rel_l2_ggml_cpu": 0.002113943737550659,
+      "repeat": 0,
+      "rows": 4,
+      "rpc_ms": 14.31
+    },
+    {
+      "compute_ms": 7.596,
+      "finite": true,
+      "layer": 22,
+      "rel_l2_f32": 0.015217636987861586,
+      "rel_l2_ggml_cpu": 0.0018490269196706657,
+      "repeat": 0,
+      "rows": 1,
+      "rpc_ms": 9.643
+    },
+    {
+      "compute_ms": 8.773,
+      "finite": true,
+      "layer": 22,
+      "rel_l2_f32": 0.013471963891422382,
+      "rel_l2_ggml_cpu": 0.0021212165525833233,
+      "repeat": 0,
+      "rows": 2,
+      "rpc_ms": 10.8
+    },
+    {
+      "compute_ms": 12.815,
+      "finite": true,
+      "layer": 22,
+      "rel_l2_f32": 0.01232914638994532,
+      "rel_l2_ggml_cpu": 0.0020041043405153933,
+      "repeat": 0,
+      "rows": 4,
+      "rpc_ms": 16.188
+    },
+    {
+      "compute_ms": 5.229,
+      "finite": true,
+      "layer": 23,
+      "rel_l2_f32": 0.012221868625740123,
+      "rel_l2_ggml_cpu": 0.002187128567353067,
+      "repeat": 0,
+      "rows": 1,
+      "rpc_ms": 6.681
+    },
+    {
+      "compute_ms": 6.603,
+      "finite": true,
+      "layer": 23,
+      "rel_l2_f32": 0.014314401022176826,
+      "rel_l2_ggml_cpu": 0.002174653962116241,
+      "repeat": 0,
+      "rows": 2,
+      "rpc_ms": 8.785
+    },
+    {
+      "compute_ms": 11.806,
+      "finite": true,
+      "layer": 23,
+      "rel_l2_f32": 0.013648391931462688,
+      "rel_l2_ggml_cpu": 0.002056626742200527,
+      "repeat": 0,
+      "rows": 4,
+      "rpc_ms": 15.081
+    }
+  ],
+  "hello": {
+    "column_quantum": 4352,
+    "layer_count": 23,
+    "layer_mask": "0000000000fffffe",
+    "max_columns": 17408,
+    "max_tokens": 4,
+    "n_embd": 5120,
+    "n_ff": 17408,
+    "offset": 0,
+    "weight_hash": "fe74cf391a8ea1ef",
+    "weight_type": 12
+  },
+  "inputs": "synthetic seed=20261008",
+  "io": "f16",
+  "layers": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23
+  ],
+  "parent": "/home/zhihao/models/Qwen3-14B-Q4KM-dequant-f16.gguf",
+  "reference": "ggml-cpu (Q8_0 activation rounding, float64 products) from the parent GGUF",
+  "rows": [
+    1,
+    2,
+    4
+  ],
+  "schema": "s43-ffn-numerics-v1",
+  "status": "PASS",
+  "threshold": 0.005,
+  "weight_types": {
+    "ffn_down": "F16",
+    "ffn_gate": "F16",
+    "ffn_up": "F16"
+  },
+  "worst_rel_l2": 0.0023612274777373085,
+  "worst_rel_l2_f32_reference": 0.03168835962629781
+}

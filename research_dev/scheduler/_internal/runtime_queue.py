@@ -1225,6 +1225,30 @@ class RuntimeDispatchQueue:
                     "priority compaction root generation changed"
                 )
             affected_lanes = set(self._lane_tokens(root.decision))
+            # A later projection on a lane of the root's resources that no
+            # running request holds (its owner released it ahead of plan)
+            # would push the root's replan behind that projection, so the
+            # lane is compacted with the root's own lanes.
+            root_resources = {
+                resource_id for resource_id, _lane in affected_lanes
+            }
+            running_lanes = {
+                lane
+                for active in self._active.values()
+                for lane in self._lane_tokens(active.decision)
+            }
+            for entry in self._entries.values():
+                if (
+                    entry.sequence <= root.sequence
+                    or entry.state != "QUEUED"
+                ):
+                    continue
+                affected_lanes.update(
+                    lane
+                    for lane in self._lane_tokens(entry.decision)
+                    if lane[0] in root_resources
+                    and lane not in running_lanes
+                )
             selected = []
             for entry in sorted(
                 self._entries.values(), key=lambda row: row.sequence

@@ -1,0 +1,857 @@
+{
+ "baseline": "g161nph",
+ "charge_efficiency_modeled": 0.85,
+ "comparison": {
+  "g161nph": {
+   "fleet_saving_attached": 0.0,
+   "fleet_saving_conservative": 0.00015885606511079065,
+   "host_saving": 0.0,
+   "shift_ratio": null
+  },
+  "g16c1new": {
+   "fleet_saving_attached": 0.019245674584668304,
+   "fleet_saving_conservative": 0.019401473357644194,
+   "host_saving": 0.08406270732654009,
+   "phone_extra_j": 11257.085822893614,
+   "shift_ratio": 0.7710921060657052
+  },
+  "g16o1new": {
+   "fleet_saving_attached": 0.03196045035489625,
+   "fleet_saving_conservative": 0.03211422930862451,
+   "host_saving": 0.08838080327432662,
+   "phone_extra_j": 9799.21360981296,
+   "shift_ratio": 0.6384353608517583
+  },
+  "g16r1new": {
+   "fleet_saving_attached": 0.017319677045666948,
+   "fleet_saving_conservative": 0.017475781775033283,
+   "host_saving": 0.04625405658631365,
+   "phone_extra_j": 5025.4136576012515,
+   "shift_ratio": 0.6256128221400922
+  },
+  "g62new": {
+   "fleet_saving_attached": 0.04179021044536735,
+   "fleet_saving_conservative": 0.041942427882086686,
+   "host_saving": 0.10566523221855173,
+   "phone_extra_j": 11094.11192227919,
+   "shift_ratio": 0.6045665074529615
+  },
+  "g62nph": {
+   "fleet_saving_attached": -0.0436162977861847,
+   "fleet_saving_conservative": -0.04345051300763281,
+   "host_saving": -0.03433667798862339,
+   "shift_ratio": null
+  }
+ },
+ "runs": {
+  "g161nph": {
+   "desktop": {
+    "cpu_package_j": 120047.408195,
+    "cross_check": {
+     "coverage": {
+      "complete": true,
+      "head_gap_s": 0.039,
+      "max_gap_s": 0.459,
+      "samples_in_window": 6621,
+      "tail_gap_s": 0.001
+     },
+     "cpu_package_j": 120047.40819543443,
+     "gpu_board_j": 53619.20993166339,
+     "host_delta_j": 9.781797416508198e-08,
+     "samples": 6639
+    },
+    "evidence": "MEASURED",
+    "gpu_board_j": 53619.209932,
+    "host_j": 173666.618127,
+    "measurement_evidence_ids": [
+     "physical:nvml-board-power",
+     "physical:rapl-package-0"
+    ],
+    "not_measured": [
+     "DRAM",
+     "chipset/board",
+     "storage",
+     "fans",
+     "PSU conversion loss",
+     "USB 5 V supplied to the phones (counted on the phone side)"
+    ],
+    "wall_evidence": "ABSENT",
+    "wall_j": null
+   },
+   "directory": "/mnt/data_h16t/zs89458/xband-runs/second-desktop/inputs-desktop-g161nph",
+   "duration_s": 1716.683316957,
+   "fleet_j": 173639.03013140324,
+   "fleet_port_equivalent_j": 173525.92924613852,
+   "fleet_wall_j": null,
+   "label": "g161nph",
+   "meter_file": "METER.json",
+   "modeled_phone": {
+    "evidence": "MODELED",
+    "model": "assumed-phone-power-v1",
+    "op15_j": 1502.097902,
+    "pixel_j": null
+   },
+   "phones": {
+    "op15": {
+     "anchor_uncertainty_s": 0.043298959732055664,
+     "battery_counter": {
+      "delta_uah": 94000.0,
+      "edge_times": [
+       1066178.5996106227,
+       1067895.8475260492
+      ],
+      "j": -1500.1272,
+      "jumps_uah": [
+       94000.0
+      ],
+      "step_uah": 42000.0,
+      "uncertainty_j": 1340.3166863551403
+     },
+     "battery_current_cross_check_j": 0.10900605155311385,
+     "battery_method": "coulomb_counter",
+     "battery_net_discharge_j": -1500.1272,
+     "battery_only_share": 0.0,
+     "charging_share": 0.0,
+     "clock_rate": 0.9999987860977719,
+     "counter_rise_uah": 94000.0,
+     "coverage": {
+      "complete": true,
+      "head_gap_s": 0.916,
+      "max_gap_s": 1.27,
+      "samples_in_window": 1603,
+      "tail_gap_s": 0.589
+     },
+     "evidence": "MEASURED",
+     "flags": [
+      "COUNTER_JUMP"
+     ],
+     "port_equivalent_evidence": "MODELED",
+     "port_equivalent_j": -1151.5385085085243,
+     "profile_source": "profile:op15",
+     "serial": "3C15AU002CL00000",
+     "system_j": -886.8101790967596,
+     "system_w": -0.5165834433975494,
+     "usb_at_limit_share": 0.0,
+     "usb_in_j": 613.3170209032403,
+     "usb_input_limit_ma": 500.0
+    },
+    "pixel": {
+     "anchor_uncertainty_s": 0.0800328254699707,
+     "battery_counter": {
+      "delta_uah": -55000.0,
+      "edge_times": [
+       1066178.6014752416,
+       1067895.4640278767
+      ],
+      "j": 859.2221834999999,
+      "jumps_uah": [],
+      "step_uah": 2500.0,
+      "uncertainty_j": 78.10947939878366
+     },
+     "battery_current_cross_check_j": 816.9301424673276,
+     "battery_current_to_counter_ratio": 0.9507786904891146,
+     "battery_method": "coulomb_counter",
+     "battery_net_discharge_j": 859.2221834999999,
+     "battery_only_share": 1.0,
+     "charging_share": 0.0,
+     "clock_rate": 1.0000073114337418,
+     "counter_rise_uah": 0.0,
+     "coverage": {
+      "complete": true,
+      "head_gap_s": 0.168,
+      "max_gap_s": 0.37,
+      "samples_in_window": 5753,
+      "tail_gap_s": 0.243
+     },
+     "evidence": "MEASURED",
+     "flags": [],
+     "port_equivalent_evidence": "MODELED",
+     "port_equivalent_j": 1010.8496276470587,
+     "profile_source": "profile:pixel",
+     "serial": "5A040DLCH004ES",
+     "system_j": 859.2221834999999,
+     "system_w": 0.5005129222220639,
+     "usb_at_limit_share": 0.0,
+     "usb_in_j": 0.0,
+     "usb_input_limit_ma": 900.0
+    }
+   },
+   "phones_evidence": "MEASURED",
+   "phones_j": -27.587995596759697,
+   "status": "PASS"
+  },
+  "g16c1new": {
+   "desktop": {
+    "cpu_package_j": 104199.741286,
+    "cross_check": {
+     "coverage": {
+      "complete": true,
+      "head_gap_s": 0.205,
+      "max_gap_s": 0.572,
+      "samples_in_window": 7206,
+      "tail_gap_s": 0.015
+     },
+     "cpu_package_j": 104199.74128619369,
+     "gpu_board_j": 54867.990748699056,
+     "host_delta_j": -1.072476152330637e-07,
+     "samples": 7233
+    },
+    "evidence": "MEASURED",
+    "gpu_board_j": 54867.990749,
+    "host_j": 159067.732035,
+    "measurement_evidence_ids": [
+     "physical:nvml-board-power",
+     "physical:rapl-package-0"
+    ],
+    "not_measured": [
+     "DRAM",
+     "chipset/board",
+     "storage",
+     "fans",
+     "PSU conversion loss",
+     "USB 5 V supplied to the phones (counted on the phone side)"
+    ],
+    "wall_evidence": "ABSENT",
+    "wall_j": null
+   },
+   "directory": "/mnt/data_h16t/zs89458/xband-runs/second-desktop/inputs-derived-mpaoa-g16c1new",
+   "duration_s": 1708.493003279,
+   "fleet_j": 170297.22986229684,
+   "fleet_port_equivalent_j": 171549.22822356154,
+   "fleet_wall_j": null,
+   "label": "g16c1new",
+   "meter_file": "METER.json",
+   "modeled_phone": {
+    "evidence": "MODELED",
+    "model": "assumed-phone-power-v1",
+    "op15_j": 4316.270259,
+    "pixel_j": 2878.334613
+   },
+   "phones": {
+    "op15": {
+     "anchor_uncertainty_s": 0.05720782279968262,
+     "battery_counter": {
+      "delta_uah": -202000.0,
+      "edge_times": [
+       1072664.645103437,
+       1074373.660376939
+      ],
+      "j": 3161.487599999998,
+      "jumps_uah": [],
+      "step_uah": 2000.0,
+      "uncertainty_j": 62.806354202192445
+     },
+     "battery_current_cross_check_j": 1585.6035599757508,
+     "battery_current_to_counter_ratio": 0.5015371750867382,
+     "battery_method": "coulomb_counter",
+     "battery_net_discharge_j": 3161.487599999998,
+     "battery_only_share": 0.0,
+     "charging_share": 0.0,
+     "clock_rate": 1.000003085705969,
+     "counter_rise_uah": 0.0,
+     "coverage": {
+      "complete": true,
+      "head_gap_s": 0.856,
+      "max_gap_s": 1.26,
+      "samples_in_window": 1640,
+      "tail_gap_s": 0.722
+     },
+     "evidence": "MEASURED",
+     "flags": [],
+     "port_equivalent_evidence": "MODELED",
+     "port_equivalent_j": 7854.237623267445,
+     "profile_source": "profile:op15",
+     "serial": "3C15AU002CL00000",
+     "system_j": 7296.328046796856,
+     "system_w": 4.270622140561074,
+     "usb_at_limit_share": 0.986,
+     "usb_in_j": 4134.8404467968585,
+     "usb_input_limit_ma": 500.0
+    },
+    "pixel": {
+     "anchor_uncertainty_s": 0.05929398536682129,
+     "battery_counter": {
+      "delta_uah": -262500.0,
+      "edge_times": [
+       1072664.6104562182,
+       1074373.4202142903
+      ],
+      "j": 3933.169780499999,
+      "jumps_uah": [],
+      "step_uah": 2500.0,
+      "uncertainty_j": 75.93762324424777
+     },
+     "battery_current_cross_check_j": 3874.014938531961,
+     "battery_current_to_counter_ratio": 0.9849600080166084,
+     "battery_method": "coulomb_counter",
+     "battery_net_discharge_j": 3933.169780499999,
+     "battery_only_share": 1.0,
+     "charging_share": 0.0,
+     "clock_rate": 0.9999940064326418,
+     "counter_rise_uah": 0.0,
+     "coverage": {
+      "complete": true,
+      "head_gap_s": 0.061,
+      "max_gap_s": 0.39,
+      "samples_in_window": 5648,
+      "tail_gap_s": 0.222
+     },
+     "evidence": "MEASURED",
+     "flags": [],
+     "port_equivalent_evidence": "MODELED",
+     "port_equivalent_j": 4627.258565294116,
+     "profile_source": "profile:pixel",
+     "serial": "5A040DLCH004ES",
+     "system_j": 3933.169780499999,
+     "system_w": 2.3021281169729044,
+     "usb_at_limit_share": 0.0,
+     "usb_in_j": 0.0,
+     "usb_input_limit_ma": 900.0
+    }
+   },
+   "phones_evidence": "MEASURED",
+   "phones_j": 11229.497827296855,
+   "status": "PASS"
+  },
+  "g16o1new": {
+   "desktop": {
+    "cpu_package_j": 104294.35962,
+    "cross_check": {
+     "coverage": {
+      "complete": true,
+      "head_gap_s": 0.012,
+      "max_gap_s": 0.582,
+      "samples_in_window": 7160,
+      "tail_gap_s": 0.065
+     },
+     "cpu_package_j": 104294.35962038572,
+     "gpu_board_j": 54023.46329471089,
+     "host_delta_j": 9.659561328589916e-08,
+     "samples": 7191
+    },
+    "evidence": "MEASURED",
+    "gpu_board_j": 54023.463295,
+    "host_j": 158317.822915,
+    "measurement_evidence_ids": [
+     "physical:nvml-board-power",
+     "physical:rapl-package-0"
+    ],
+    "not_measured": [
+     "DRAM",
+     "chipset/board",
+     "storage",
+     "fans",
+     "PSU conversion loss",
+     "USB 5 V supplied to the phones (counted on the phone side)"
+    ],
+    "wall_evidence": "ABSENT",
+    "wall_j": null
+   },
+   "directory": "/mnt/data_h16t/zs89458/xband-runs/second-desktop/inputs-derived-mpaoa-g16o1new",
+   "duration_s": 1706.187915935,
+   "fleet_j": 168089.4485292162,
+   "fleet_port_equivalent_j": 169091.66410533385,
+   "fleet_wall_j": null,
+   "label": "g16o1new",
+   "meter_file": "METER.json",
+   "modeled_phone": {
+    "evidence": "MODELED",
+    "model": "assumed-phone-power-v1",
+    "op15_j": 4149.133835,
+    "pixel_j": 2758.699023
+   },
+   "phones": {
+    "op15": {
+     "anchor_uncertainty_s": 0.06321001052856445,
+     "battery_counter": {
+      "delta_uah": -194000.0,
+      "edge_times": [
+       1074520.6498560393,
+       1076227.959407513
+      ],
+      "j": 3016.9080000000013,
+      "jumps_uah": [],
+      "step_uah": 2000.0,
+      "uncertainty_j": 62.42873857404022
+     },
+     "battery_current_cross_check_j": 1521.1394431646474,
+     "battery_current_to_counter_ratio": 0.5042047828984665,
+     "battery_method": "coulomb_counter",
+     "battery_net_discharge_j": 3016.9080000000013,
+     "battery_only_share": 0.0,
+     "charging_share": 0.0,
+     "clock_rate": 0.9999938801594452,
+     "counter_rise_uah": 0.0,
+     "coverage": {
+      "complete": true,
+      "head_gap_s": 0.389,
+      "max_gap_s": 1.52,
+      "samples_in_window": 1639,
+      "tail_gap_s": 0.599
+     },
+     "evidence": "MEASURED",
+     "flags": [],
+     "port_equivalent_evidence": "MODELED",
+     "port_equivalent_j": 7641.707545627965,
+     "profile_source": "profile:op15",
+     "serial": "3C15AU002CL00000",
+     "system_j": 7109.3120162162,
+     "system_w": 4.166781366705716,
+     "usb_at_limit_share": 0.9634,
+     "usb_in_j": 4092.404016216199,
+     "usb_input_limit_ma": 500.0
+    },
+    "pixel": {
+     "anchor_uncertainty_s": 0.0578000545501709,
+     "battery_counter": {
+      "delta_uah": -177500.0,
+      "edge_times": [
+       1074521.039411591,
+       1076227.5554343201
+      ],
+      "j": 2662.3135979999997,
+      "jumps_uah": [],
+      "step_uah": 2500.0,
+      "uncertainty_j": 75.06669394312468
+     },
+     "battery_current_cross_check_j": 2644.578735685477,
+     "battery_current_to_counter_ratio": 0.9933385524801265,
+     "battery_method": "coulomb_counter",
+     "battery_net_discharge_j": 2662.3135979999997,
+     "battery_only_share": 1.0,
+     "charging_share": 0.0,
+     "clock_rate": 1.0000035292667875,
+     "counter_rise_uah": 0.0,
+     "coverage": {
+      "complete": true,
+      "head_gap_s": 0.019,
+      "max_gap_s": 0.38,
+      "samples_in_window": 5765,
+      "tail_gap_s": 0.253
+     },
+     "evidence": "MEASURED",
+     "flags": [],
+     "port_equivalent_evidence": "MODELED",
+     "port_equivalent_j": 3132.133644705882,
+     "profile_source": "profile:pixel",
+     "serial": "5A040DLCH004ES",
+     "system_j": 2662.3135979999997,
+     "system_w": 1.560387090504693,
+     "usb_at_limit_share": 0.0,
+     "usb_in_j": 0.0,
+     "usb_input_limit_ma": 900.0
+    }
+   },
+   "phones_evidence": "MEASURED",
+   "phones_j": 9771.6256142162,
+   "status": "PASS"
+  },
+  "g16r1new": {
+   "desktop": {
+    "cpu_package_j": 112607.346499,
+    "cross_check": {
+     "coverage": {
+      "complete": true,
+      "head_gap_s": 0.218,
+      "max_gap_s": 0.573,
+      "samples_in_window": 6816,
+      "tail_gap_s": 0.16
+     },
+     "cpu_package_j": 112607.3464988678,
+     "gpu_board_j": 53026.48604552819,
+     "host_delta_j": -6.040208972990513e-07,
+     "samples": 6845
+    },
+    "evidence": "MEASURED",
+    "gpu_board_j": 53026.486046,
+    "host_j": 165633.832545,
+    "measurement_evidence_ids": [
+     "physical:nvml-board-power",
+     "physical:rapl-package-0"
+    ],
+    "not_measured": [
+     "DRAM",
+     "chipset/board",
+     "storage",
+     "fans",
+     "PSU conversion loss",
+     "USB 5 V supplied to the phones (counted on the phone side)"
+    ],
+    "wall_evidence": "ABSENT",
+    "wall_j": null
+   },
+   "directory": "/mnt/data_h16t/zs89458/xband-runs/second-desktop/inputs-derived-mpaoa-g16r1new",
+   "duration_s": 1709.814897741,
+   "fleet_j": 170631.6582070045,
+   "fleet_port_equivalent_j": 170792.1062152398,
+   "fleet_wall_j": null,
+   "label": "g16r1new",
+   "meter_file": "METER.json",
+   "modeled_phone": {
+    "evidence": "MODELED",
+    "model": "assumed-phone-power-v1",
+    "op15_j": 2764.799694,
+    "pixel_j": 2753.338198
+   },
+   "phones": {
+    "op15": {
+     "anchor_uncertainty_s": 0.057128190994262695,
+     "battery_counter": {
+      "delta_uah": 110000.0,
+      "edge_times": [
+       1070569.3025729253,
+       1072280.610107332
+      ],
+      "j": -1743.3756000000005,
+      "jumps_uah": [
+       50000.0,
+       108000.0,
+       78000.0
+      ],
+      "step_uah": 2000.0,
+      "uncertainty_j": 63.36956496350364
+     },
+     "battery_current_cross_check_j": 517.3024686920004,
+     "battery_current_to_counter_ratio": -0.29672462359344726,
+     "battery_method": "coulomb_counter",
+     "battery_net_discharge_j": -1743.3756000000005,
+     "battery_only_share": 0.0,
+     "charging_share": 0.0,
+     "clock_rate": 0.9999985592363404,
+     "counter_rise_uah": 190000.0,
+     "coverage": {
+      "complete": true,
+      "head_gap_s": 0.42,
+      "max_gap_s": 1.28,
+      "samples_in_window": 1642,
+      "tail_gap_s": 0.228
+     },
+     "evidence": "MEASURED",
+     "flags": [
+      "BATTERY_SIGN_MISMATCH",
+      "CHARGING_IN_WINDOW",
+      "COUNTER_JUMP"
+     ],
+     "port_equivalent_evidence": "MODELED",
+     "port_equivalent_j": 2037.5901643574325,
+     "profile_source": "profile:op15",
+     "serial": "3C15AU002CL00000",
+     "system_j": 2345.2446820044916,
+     "system_w": 1.3716365935886252,
+     "usb_at_limit_share": 0.9586,
+     "usb_in_j": 4088.620282004492,
+     "usb_input_limit_ma": 500.0
+    },
+    "pixel": {
+     "anchor_uncertainty_s": 0.0804908275604248,
+     "battery_counter": {
+      "delta_uah": -172500.0,
+      "edge_times": [
+       1070569.6405048203,
+       1072279.8257984354
+      ],
+      "j": 2652.58098,
+      "jumps_uah": [],
+      "step_uah": 2500.0,
+      "uncertainty_j": 76.97259882854173
+     },
+     "battery_current_cross_check_j": 2617.877089821647,
+     "battery_current_to_counter_ratio": 0.9869169346986899,
+     "battery_method": "coulomb_counter",
+     "battery_net_discharge_j": 2652.58098,
+     "battery_only_share": 1.0,
+     "charging_share": 0.0,
+     "clock_rate": 1.0000030953554409,
+     "counter_rise_uah": 0.0,
+     "coverage": {
+      "complete": true,
+      "head_gap_s": 0.028,
+      "max_gap_s": 0.38,
+      "samples_in_window": 5772,
+      "tail_gap_s": 0.212
+     },
+     "evidence": "MEASURED",
+     "flags": [],
+     "port_equivalent_evidence": "MODELED",
+     "port_equivalent_j": 3120.683505882353,
+     "profile_source": "profile:pixel",
+     "serial": "5A040DLCH004ES",
+     "system_j": 2652.58098,
+     "system_w": 1.5513848800268633,
+     "usb_at_limit_share": 0.0,
+     "usb_in_j": 0.0,
+     "usb_input_limit_ma": 900.0
+    }
+   },
+   "phones_evidence": "MEASURED",
+   "phones_j": 4997.825662004492,
+   "status": "PASS"
+  },
+  "g62new": {
+   "desktop": {
+    "cpu_package_j": 100155.165848,
+    "cross_check": {
+     "coverage": {
+      "complete": true,
+      "head_gap_s": 0.083,
+      "max_gap_s": 0.775,
+      "samples_in_window": 7270,
+      "tail_gap_s": 0.074
+     },
+     "cpu_package_j": 100155.16584829807,
+     "gpu_board_j": 55160.928746193174,
+     "host_delta_j": 4.912435542792082e-07,
+     "samples": 7296
+    },
+    "evidence": "MEASURED",
+    "gpu_board_j": 55160.928746,
+    "host_j": 155316.094594,
+    "measurement_evidence_ids": [
+     "physical:nvml-board-power",
+     "physical:rapl-package-0"
+    ],
+    "not_measured": [
+     "DRAM",
+     "chipset/board",
+     "storage",
+     "fans",
+     "PSU conversion loss",
+     "USB 5 V supplied to the phones (counted on the phone side)"
+    ],
+    "wall_evidence": "ABSENT",
+    "wall_j": null
+   },
+   "directory": "/mnt/data_h16t/zs89458/xband-runs/second-desktop/inputs-derived-mpaoa-g62new",
+   "duration_s": 1709.019123117,
+   "fleet_j": 166382.61852068242,
+   "fleet_port_equivalent_j": 167604.09835868241,
+   "fleet_wall_j": null,
+   "label": "g62new",
+   "meter_file": "METER.json",
+   "modeled_phone": {
+    "evidence": "MODELED",
+    "model": "assumed-phone-power-v1",
+    "op15_j": 4143.087638,
+    "pixel_j": 2826.776001
+   },
+   "phones": {
+    "op15": {
+     "anchor_uncertainty_s": 0.05920004844665527,
+     "battery_counter": {
+      "delta_uah": -202000.0,
+      "edge_times": [
+       904970.7735645587,
+       906680.6021113475
+      ],
+      "j": 3115.087199999999,
+      "jumps_uah": [],
+      "step_uah": 2000.0,
+      "uncertainty_j": 61.78868321167884
+     },
+     "battery_current_cross_check_j": 1682.4456716100306,
+     "battery_current_to_counter_ratio": 0.5400958508031592,
+     "battery_method": "coulomb_counter",
+     "battery_net_discharge_j": 3115.087199999999,
+     "battery_only_share": 0.0,
+     "charging_share": 0.0,
+     "clock_rate": 1.0000049986482142,
+     "counter_rise_uah": 0.0,
+     "coverage": {
+      "complete": true,
+      "head_gap_s": 0.869,
+      "max_gap_s": 1.26,
+      "samples_in_window": 1642,
+      "tail_gap_s": 0.431
+     },
+     "evidence": "MEASURED",
+     "flags": [],
+     "port_equivalent_evidence": "MODELED",
+     "port_equivalent_j": 7809.613315270666,
+     "profile_source": "profile:op15",
+     "serial": "3C15AU002CL00000",
+     "system_j": 7259.892044682431,
+     "system_w": 4.247987600888611,
+     "usb_at_limit_share": 0.9884,
+     "usb_in_j": 4144.804844682432,
+     "usb_input_limit_ma": 500.0
+    },
+    "pixel": {
+     "anchor_uncertainty_s": 0.08281517028808594,
+     "battery_counter": {
+      "delta_uah": -255000.0,
+      "edge_times": [
+       904970.8937223769,
+       906679.992308361
+      ],
+      "j": 3806.631881999999,
+      "jumps_uah": [],
+      "step_uah": 2500.0,
+      "uncertainty_j": 75.98125859564679
+     },
+     "battery_current_cross_check_j": 3801.8968976892206,
+     "battery_current_to_counter_ratio": 0.9987561223523692,
+     "battery_method": "coulomb_counter",
+     "battery_net_discharge_j": 3806.631881999999,
+     "battery_only_share": 1.0,
+     "charging_share": 0.0,
+     "clock_rate": 1.0000108748473375,
+     "counter_rise_uah": 0.0,
+     "coverage": {
+      "complete": true,
+      "head_gap_s": 0.219,
+      "max_gap_s": 0.38,
+      "samples_in_window": 5649,
+      "tail_gap_s": 0.271
+     },
+     "evidence": "MEASURED",
+     "flags": [],
+     "port_equivalent_evidence": "MODELED",
+     "port_equivalent_j": 4478.390449411764,
+     "profile_source": "profile:pixel",
+     "serial": "5A040DLCH004ES",
+     "system_j": 3806.631881999999,
+     "system_w": 2.2273781671075277,
+     "usb_at_limit_share": 0.0,
+     "usb_in_j": 0.0,
+     "usb_input_limit_ma": 900.0
+    }
+   },
+   "phones_evidence": "MEASURED",
+   "phones_j": 11066.52392668243,
+   "status": "PASS"
+  },
+  "g62nph": {
+   "desktop": {
+    "cpu_package_j": 120739.308425,
+    "cross_check": {
+     "coverage": {
+      "complete": true,
+      "head_gap_s": 0.157,
+      "max_gap_s": 0.831,
+      "samples_in_window": 6663,
+      "tail_gap_s": 0.08
+     },
+     "cpu_package_j": 120739.3084245162,
+     "gpu_board_j": 58890.44444643811,
+     "host_delta_j": -4.5693013817071915e-08,
+     "samples": 6693
+    },
+    "evidence": "MEASURED",
+    "gpu_board_j": 58890.444446,
+    "host_j": 179629.752871,
+    "measurement_evidence_ids": [
+     "physical:nvml-board-power",
+     "physical:rapl-package-0"
+    ],
+    "not_measured": [
+     "DRAM",
+     "chipset/board",
+     "storage",
+     "fans",
+     "PSU conversion loss",
+     "USB 5 V supplied to the phones (counted on the phone side)"
+    ],
+    "wall_evidence": "ABSENT",
+    "wall_j": null
+   },
+   "directory": "/mnt/data_h16t/zs89458/xband-runs/second-desktop/inputs-desktop-g62nph",
+   "duration_s": 1714.833048221,
+   "fleet_j": 181212.52177691882,
+   "fleet_port_equivalent_j": 181346.22753747762,
+   "fleet_wall_j": null,
+   "label": "g62nph",
+   "meter_file": "METER.json",
+   "modeled_phone": {
+    "evidence": "MODELED",
+    "model": "assumed-phone-power-v1",
+    "op15_j": 1500.478917,
+    "pixel_j": null
+   },
+   "phones": {
+    "op15": {
+     "anchor_uncertainty_s": 0.032089948654174805,
+     "battery_counter": {
+      "delta_uah": 0.0,
+      "edge_times": [
+       906804.1523797124,
+       908520.4188123973
+      ],
+      "j": 0.0,
+      "jumps_uah": [],
+      "step_uah": 2000.0,
+      "uncertainty_j": 61.91932752179327
+     },
+     "battery_current_cross_check_j": -0.8264882265041495,
+     "battery_method": "coulomb_counter",
+     "battery_net_discharge_j": 0.0,
+     "battery_only_share": 0.0,
+     "charging_share": 0.0012,
+     "clock_rate": 0.9999920949290915,
+     "counter_rise_uah": 0.0,
+     "coverage": {
+      "complete": true,
+      "head_gap_s": 0.144,
+      "max_gap_s": 1.3,
+      "samples_in_window": 1604,
+      "tail_gap_s": 0.522
+     },
+     "evidence": "MEASURED",
+     "flags": [],
+     "port_equivalent_evidence": "MODELED",
+     "port_equivalent_j": 825.1029294188082,
+     "profile_source": "profile:op15",
+     "serial": "3C15AU002CL00000",
+     "system_j": 825.1029294188082,
+     "system_w": 0.4811564194396687,
+     "usb_at_limit_share": 0.0112,
+     "usb_in_j": 825.1029294188082,
+     "usb_input_limit_ma": 500.0
+    },
+    "pixel": {
+     "anchor_uncertainty_s": 0.07535290718078613,
+     "battery_counter": {
+      "delta_uah": -50000.0,
+      "edge_times": [
+       906804.8738910635,
+       908520.2043622213
+      ],
+      "j": 757.6659764999998,
+      "jumps_uah": [],
+      "step_uah": 2500.0,
+      "uncertainty_j": 75.76834866921871
+     },
+     "battery_current_cross_check_j": 709.2260516460098,
+     "battery_current_to_counter_ratio": 0.9360669129188618,
+     "battery_method": "coulomb_counter",
+     "battery_net_discharge_j": 757.6659764999998,
+     "battery_only_share": 1.0,
+     "charging_share": 0.0,
+     "clock_rate": 1.0000002746746688,
+     "counter_rise_uah": 0.0,
+     "coverage": {
+      "complete": true,
+      "head_gap_s": 0.096,
+      "max_gap_s": 0.37,
+      "samples_in_window": 5745,
+      "tail_gap_s": 0.037
+     },
+     "evidence": "MEASURED",
+     "flags": [],
+     "port_equivalent_evidence": "MODELED",
+     "port_equivalent_j": 891.3717370588233,
+     "profile_source": "profile:pixel",
+     "serial": "5A040DLCH004ES",
+     "system_j": 757.6659764999998,
+     "system_w": 0.4418307527289819,
+     "usb_at_limit_share": 0.0,
+     "usb_in_j": 0.0,
+     "usb_input_limit_ma": 900.0
+    }
+   },
+   "phones_evidence": "MEASURED",
+   "phones_j": 1582.768905918808,
+   "status": "PASS"
+  }
+ },
+ "schema": "ws3-fleet-energy-v1"
+}

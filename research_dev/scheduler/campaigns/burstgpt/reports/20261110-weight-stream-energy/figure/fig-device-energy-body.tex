@@ -1,0 +1,45 @@
+% Motivation figure draft: energy per GB streamed and weight capacity, per device (f16, batch 1).
+% Data: reports/20261110-weight-stream-energy/RESULTS.md (device fits; Qwen3-14B streams 27.98 GB per token).
+% \xbfigw = target width (\columnwidth in the paper). Colors xbDesk / xbPhone / xbPixel / xbPhoneText as in new-define.tex.
+\begin{tikzpicture}
+\pgfplotsset{xbrows/.style={
+  scale only axis, height=3.95cm, y dir=reverse, hide x axis,
+  symbolic y coords={S,D,P,O,T}, ytick={S,D,P,O,T}, enlarge y limits=0.13,
+  axis y line*=left, y axis line style={draw=black!30}, major y tick style={draw=none},
+  xbar, bar width=7pt, bar shift=0pt, clip=false,
+}}
+\tikzset{val/.style={anchor=west, font=\scriptsize, inner sep=2pt, text=black!85},
+         head/.style={anchor=south west, font=\scriptsize\bfseries, inner sep=0pt, text=black!85}}
+% (a) energy per GB streamed
+\begin{axis}[xbrows, name=energy, width=\xbfigw-5.45cm, xmin=0, xmax=5.9,
+  yticklabel style={font=\small, text=black!85, text width=2.75cm, align=right},
+  yticklabels={{Server CPU\\[-2pt]{\scriptsize\color{black!60}64 threads, 82 GB/s}},
+               {Desktop CPU\\[-2pt]{\scriptsize\color{black!60}i9-12900K, 30 GB/s}},
+               {Pixel 10 Pro CPU\\[-2pt]{\scriptsize\color{black!60}27 GB/s}},
+               {OnePlus 15 NPU\\[-2pt]{\scriptsize\color{black!60}55--72 GB/s}},
+               {OnePlus 12 NPU\\[-2pt]{\scriptsize\color{black!60}29--45 GB/s}}}]
+\addplot[fill=xbDesk, draw=none] coordinates {(3.44,S) (2.97,D)};
+\addplot[fill=xbPixel, draw=none] coordinates {(0.35,P)};
+\addplot[fill=xbPhone, draw=none] coordinates {(0.161,O) (0.152,T)};
+\node[val] at (axis cs:3.44,S) {3.44 (97)};
+\node[val] at (axis cs:2.97,D) {2.97 (83)};
+\node[val] at (axis cs:0.35,P) {0.35 (9.8)\enspace\textcolor{xbPhoneText}{\textbf{8.5$\times$ less}}};
+\node[val] at (axis cs:0.161,O) {0.16 (4.5)\enspace\textcolor{xbPhoneText}{\textbf{18$\times$ less}}};
+\node[val] at (axis cs:0.152,T) {0.15 (4.3)\enspace\textcolor{xbPhoneText}{\textbf{20$\times$ less}}};
+\end{axis}
+\node[head] at ([yshift=3pt]energy.north west) {J per GB (J per token)};
+% (b) how much of one Qwen3-14B token's 28 GB of weights the device can hold
+\begin{axis}[xbrows, name=fit, at={([xshift=0.3cm]energy.south east)}, anchor=south west,
+  width=1.15cm, xmin=0, xmax=28, yticklabels={}, y axis line style={draw=none}]
+\addplot[fill=black!9, draw=none] coordinates {(28,S) (28,D) (28,P) (28,O) (28,T)};
+\addplot[fill=xbDesk, draw=none] coordinates {(28,S) (28,D)};
+\addplot[fill=xbPixel, draw=none] coordinates {(11,P)};
+\addplot[fill=xbPhone, draw=none] coordinates {(10,O) (6,T)};
+\node[val] at (axis cs:28,S) {125 GB};
+\node[val] at (axis cs:28,D) {30 GB};
+\node[val] at (axis cs:28,P) {11 GB};
+\node[val] at (axis cs:28,O) {10 GB};
+\node[val] at (axis cs:28,T) {6 GB};
+\end{axis}
+\node[head] at ([yshift=3pt]fit.north west) {Holds, of 28 GB};
+\end{tikzpicture}%

@@ -89,9 +89,11 @@ from research_dev.scheduler.adapters.ffn_shards import (  # noqa: E402
 )
 
 
-EXPECTED_GPU_UUID = "GPU-3d43c513-5a75-7fd0-a503-da920e0ffa08"
-EXPECTED_GPU_NAME = "NVIDIA GeForce RTX 4060 Ti"
-EXPECTED_GPU_CAPACITY_BYTES = 17_175_674_880
+# The paper rig's RTX 4060 Ti by default; a second desktop sets S43_EXPECTED_GPU_{UUID,NAME,CAPACITY_BYTES}
+# (2026-10-25: generality ablation on an RTX 5070 Ti).
+EXPECTED_GPU_UUID = os.environ.get("S43_EXPECTED_GPU_UUID", "GPU-3d43c513-5a75-7fd0-a503-da920e0ffa08")
+EXPECTED_GPU_NAME = os.environ.get("S43_EXPECTED_GPU_NAME", "NVIDIA GeForce RTX 4060 Ti")
+EXPECTED_GPU_CAPACITY_BYTES = int(os.environ.get("S43_EXPECTED_GPU_CAPACITY_BYTES", "17175674880"))
 PREFLIGHT_RESULT_SCHEMA = "s42-unified-fp16-physical-preflight-v1"
 
 

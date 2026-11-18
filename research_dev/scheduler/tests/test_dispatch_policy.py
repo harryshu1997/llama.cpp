@@ -684,6 +684,50 @@ class WorkConservingQueueTests(unittest.TestCase):
                         queue.policy_events()["early_capacity_promotions"], 1
                     )
 
+    def test_priority_compaction_moves_projections_off_lanes_released_early(self) -> None:
+        """x (lane 0) and y (lane 1) run; f waits behind y, s behind x. x ends early: f is the
+        early frontier, but its replan would not fit the gap before s's projection on lane 0 and
+        would stay behind y (4x trace, request 007: 131 s). s is compacted behind f instead."""
+        queue = RuntimeDispatchQueue(WORK_CONSERVING)
+        queue.admit(leased("x", ("gpu", (0,), 0, 1_000)), 0)
+        queue.admit(leased("y", ("gpu", (1,), 0, 300)), 1)
+        acquire(queue, "x", 0)
+        acquire(queue, "y", 0)
+        queue.admit(leased("f", ("gpu", (1,), 300, 1_300)), 2)
+        queue.admit(leased("s", ("gpu", (0,), 1_000, 1_100)), 3)
+        queue.admit(leased("t", ("other", (0,), 500, 600)), 4)
+        self.assertEqual(predecessors(queue, "f"), ("y",))
+        self.assertEqual(predecessors(queue, "s"), ("x",))
+        frontier = queue.early_completion_frontier("x", 100, {"x:0": 1_000}, {"gpu": 2})
+        self.assertEqual(frontier, ("f",))
+        queue.require_replan("f", "capacity_released_early", defer_behind_predecessors=True)
+        queue.release_capacity("x", 100, early_replan_request_ids=frontier)
+        self.assertEqual(state(queue, "f"), "REPLAN_REQUIRED")
+        # s projects onto lane 0, which x released ahead of its reservation; t is on another resource.
+        self.assertEqual(queue.priority_compaction_followers("f"), ("s",))
+        queue.require_replan("s", "priority_compaction_follower", defer_behind_predecessors=True)
+        self.assertEqual(state(queue, "s"), "REPLAN_REQUIRED")
+        queue.retire_replan("f")
+        queue.admit(leased("f", ("gpu", (0,), 100, 1_100)), 100)
+        self.assertTrue(dispatchable(queue, "f", 100))
+        queue.retire_replan("s")
+        queue.admit(leased("s", ("gpu", (1,), 300, 400)), 100)
+        self.assertEqual(predecessors(queue, "s"), ("y",))
+
+        # A projection behind a lane that is still running is not a follower.
+        queue = RuntimeDispatchQueue(WORK_CONSERVING)
+        queue.admit(leased("x", ("gpu", (0,), 0, 1_000)), 0)
+        queue.admit(leased("y", ("gpu", (1,), 0, 300)), 1)
+        acquire(queue, "x", 0)
+        acquire(queue, "y", 0)
+        queue.admit(leased("f", ("gpu", (1,), 300, 1_300)), 2)
+        queue.admit(leased("s", ("gpu", (0,), 1_000, 1_100)), 3)
+        frontier = queue.early_completion_frontier("y", 100, {"y:0": 300}, {"gpu": 2})
+        self.assertEqual(frontier, ("f",))
+        queue.require_replan("f", "capacity_released_early", defer_behind_predecessors=True)
+        queue.release_capacity("y", 100, early_replan_request_ids=frontier)
+        self.assertEqual(queue.priority_compaction_followers("f"), ())
+
     def test_precedence_requires_affinity_and_queued_targets(self) -> None:
         with self.assertRaises(RuntimeQueueError):
             RuntimeDispatchQueue(WORK_CONSERVING).admit(
@@ -1388,6 +1432,63 @@ class DispatchPolicySchedulerTests(unittest.TestCase):
         self.assertIn("a2", view["b1"]["predecessor_request_ids"])
         self.assertEqual(scheduler.runtime_ticket("b1").lease_status, "CANCELLED")
         self.assertEqual(scheduler._runtime_memory.owner_tokens("b1"), ())
+
+    def test_early_release_replans_the_woken_request_ahead_of_the_projection_behind_the_owner(self) -> None:
+        """4x trace, request 007: a1 and a2 run on the two lanes; a3 waits behind a2 (the earlier
+        end) and a4 behind a1. a1 ends early: a3 is the early frontier and its replan takes a1's
+        lane at the release instead of staying behind a2, because a4's stale projection on that
+        lane is compacted behind it."""
+        scheduler, model_a, _model_b, hot = self.scheduler(WORK_CONSERVING)
+        a1 = self.submit(scheduler, model_a, hot, "a1", 1_000, 640)
+        a2 = self.submit(scheduler, model_a, hot, "a2", 1_100, 128)
+        a3 = self.submit(scheduler, model_a, hot, "a3", 1_200, 640)
+        a4 = self.submit(scheduler, model_a, hot, "a4", 1_300, 8)
+
+        def window(ticket, resource_id="compute:accelerator-b"):
+            rows = [row for row in ticket.decision.leases if row.resource_id == resource_id]
+            return rows[0].lanes, rows[0].start_us, max(row.reserved_until_us for row in rows)
+
+        self.assertEqual(window(a3)[0], window(a2)[0])
+        self.assertEqual(window(a3)[1], window(a2)[2])
+        self.assertEqual(window(a4)[0], window(a1)[0])
+        self.assertEqual(window(a4)[1], window(a1)[2])
+        active = {}
+        for ticket in (a1, a2):
+            active[ticket.request.request_id] = scheduler.wait_runtime_request(
+                ticket.request.request_id, time.monotonic_ns() - ticket.decision.start_us * 1_000
+            )
+            self.assertEqual(active[ticket.request.request_id].dispatch_state, "ACQUIRED")
+        released_at_us = a1.decision.start_us + (a1.decision.finish_us - a1.decision.start_us) // 10
+        # a3 waits for a later reservation (a2 still runs), and a1's lane has no room for it before a4.
+        self.assertGreater(window(a3)[1], released_at_us)
+        self.assertLess(window(a1)[2] - released_at_us, window(a3)[2] - window(a3)[1])
+        scheduler.complete_automated_request(
+            "a1", AutomatedRuntimeTests.execution_receipt(active["a1"], finished_us=released_at_us)
+        )
+        view = self.queue_view(scheduler)
+        self.assertEqual(view["a3"]["state"], "REPLAN_REQUIRED")
+        self.assertEqual(view["a4"]["state"], "QUEUED")
+        wake = scheduler.wait_runtime_request("a3", time.monotonic_ns() - released_at_us * 1_000)
+        self.assertEqual(wake.dispatch_receipt.wake_reason, "capacity_released_early")
+        controller = scheduler._runtime_controller
+        self.assertEqual(
+            controller.priority_compaction_followers("a3", wake.dispatch_receipt.queue_generation),
+            ("a4",),
+        )
+        replanned = scheduler.replan_automated_request(
+            "a3", observed_at_us=released_at_us, reason="capacity_released_early",
+            snapshot=self.published(hot, released_at_us), expected_ticket_id=wake.ticket_id,
+            expected_queue_generation=wake.dispatch_receipt.queue_generation,
+        )
+        self.assertEqual(replanned.decision.start_us, released_at_us)
+        self.assertEqual(window(replanned)[0], window(a1)[0])
+        self.assertTrue(self.ready_now(scheduler, "a3", released_at_us))
+        a4_replanned = scheduler.runtime_ticket("a4")
+        self.assertNotEqual(a4_replanned.ticket_id, a4.ticket_id)
+        self.assertEqual(self.queue_view(scheduler)["a4"]["state"], "QUEUED")
+        self.assertGreaterEqual(
+            a4_replanned.decision.start_us, min(window(a2)[2], window(replanned)[2])
+        )
 
 
 class ContinuousJoinSchedulerTests(unittest.TestCase):

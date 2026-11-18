@@ -220,17 +220,25 @@ def _wait_for_phone_session(
     deadline = time.monotonic() + timeout_s
     next_remote_probe_at = time.monotonic() + 1.0
     last_error = "FunctionFS USB did not enumerate"
+    launcher_exit: str | None = None
     usb = None
     while time.monotonic() < deadline:
         control_check()
-        returncode = process.poll()
-        if returncode not in {None, 0}:
-            stdout, stderr = process.communicate()
-            detail = stderr.strip() or stdout.strip()
-            last_error = "phone session launcher exited"
-            if detail:
-                last_error += ": " + detail
-            break
+        if launcher_exit is None:
+            returncode = process.poll()
+            if returncode not in {None, 0}:
+                stdout, stderr = process.communicate()
+                detail = stderr.strip() or stdout.strip()
+                launcher_exit = "phone session launcher exited"
+                if detail:
+                    launcher_exit += ": " + detail
+                # The phone drops its ADB link while it switches USB function,
+                # so the ``adb shell`` launcher may exit non-zero on a launch
+                # that is succeeding (observed on the 5070 Ti desktop: every
+                # launch exited this way ~0.65 s before the FunctionFS device
+                # appeared).  Keep probing for the device until the deadline
+                # and report the launcher exit only if it never enumerates.
+                last_error = launcher_exit
         try:
             usb = probe_functionfs_usb_device(
                 vendor_id=f"{transport.vendor_id:04x}",
@@ -238,6 +246,8 @@ def _wait_for_phone_session(
             )
         except PhysicalAdapterError as error:
             last_error = str(error)
+            if launcher_exit is not None:
+                last_error = launcher_exit + "; " + last_error
             now = time.monotonic()
             if now >= next_remote_probe_at:
                 next_remote_probe_at = now + 1.0

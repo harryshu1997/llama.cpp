@@ -1,0 +1,320 @@
+{
+  "boot_unchanged": true,
+  "call_columns": {
+    "17408": 1426,
+    "8704": 1426
+  },
+  "drained_calls_outside_measurement": 92,
+  "finished_epoch_s": 1793153770.4265747,
+  "output_tokens_each": 64,
+  "phone_calls": 2852,
+  "phone_energy_measured": false,
+  "requests": [
+    {
+      "columns": 0,
+      "controls": [],
+      "decode_host_energy": {
+        "boundary": "paid_trace_interval",
+        "cpu_package_average_power_w": 87.52831646399268,
+        "cpu_package_energy_j": 1917.5842439857288,
+        "gpu_board_average_power_w": 48.825283788800654,
+        "gpu_board_energy_j": 1069.6720636692696,
+        "method": "RAPL package delta plus trapezoidal GPU board power",
+        "server_compute_device_energy_j": 2987.2563076549986
+      },
+      "decode_s": 21.908158656,
+      "finished_ns": 1070384375364005,
+      "first_token_ns": 1070362467205349,
+      "request_host_energy": {
+        "boundary": "paid_trace_interval",
+        "cpu_package_average_power_w": 85.99947872627449,
+        "cpu_package_energy_j": 2032.8309503575601,
+        "gpu_board_average_power_w": 48.73443712468182,
+        "gpu_board_energy_j": 1151.9706119455846,
+        "method": "RAPL package delta plus trapezoidal GPU board power",
+        "server_compute_device_energy_j": 3184.8015623031447
+      },
+      "request_id": "pixel-ffn-0-columns0",
+      "request_s": 23.637712466,
+      "started_ns": 1070360737651539
+    },
+    {
+      "columns": 8704,
+      "controls": [
+        {
+          "ack": {
+            "applied_token_index": 2,
+            "plan_generation": 2,
+            "policy_hash": "sha256:fcfe845deefbdee0f586d8d5f83ab85120e2a31be1289c6a8a7c8dd7f0d99028",
+            "runtime_stats": {
+              "batched_calls": 0,
+              "calls": 0,
+              "configured_queue_depth": 1,
+              "desktop_compute_us": 0,
+              "dormant_host_columns": 0,
+              "dormant_host_share": 1,
+              "dormant_layer_mask": 0,
+              "dormant_release_elapsed_us": 0,
+              "dormant_release_generation": 0,
+              "dormant_released_bytes": 0,
+              "download_bytes": 0,
+              "exposed_tail_us": 0,
+              "input_rows": 0,
+              "maximum_active_slots": 0,
+              "maximum_outstanding_transfers": 0,
+              "maximum_tokens": 0,
+              "phone_compute_us": 0,
+              "rpc_us": 0,
+              "transfer_subrequests": 0,
+              "upload_bytes": 0,
+              "usb_d2h_us": 0,
+              "usb_h2d_us": 0,
+              "usb_transfer_us": 0,
+              "useful_overlap_us": 0
+            },
+            "slot_id": 0,
+            "success": true
+          },
+          "control": {
+            "action": "ffn_split",
+            "columns": 8704,
+            "enabled": true,
+            "layer_mask": 16777214,
+            "plan_generation": 2,
+            "policy": {
+              "baseline": false,
+              "columns": 8704,
+              "desktop_parent_route_id": "pixel-qualification-parent",
+              "desktop_placement_sha256": "sha256:dd60fd12617cf0cbf43e6c22ddb85548951bb385a68d59d5d4307880a71dbfd1",
+              "executor_id": "pixel-transport-qualification",
+              "layer_indices": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10,
+                11,
+                12,
+                13,
+                14,
+                15,
+                16,
+                17,
+                18,
+                19,
+                20,
+                21,
+                22,
+                23
+              ],
+              "layer_mask": 16777214,
+              "operator_plan_sha256": "sha256:e80333e5323135043d12fbb9332ccaf761c10c546a92e0f01cea0e4e9075fb79",
+              "policy_hash": "sha256:fcfe845deefbdee0f586d8d5f83ab85120e2a31be1289c6a8a7c8dd7f0d99028",
+              "predicted_energy_per_token_uj": null,
+              "predicted_latency_per_token_us": null,
+              "resource_ids": [
+                "desktop-cpu",
+                "desktop-cuda",
+                "pixel-cpu"
+              ],
+              "route_id": "pixel-ffn-1-columns8704",
+              "schema": "research-scheduler-adaptive-decode-v1",
+              "split_fraction_ppm": 500000
+            },
+            "policy_hash": "sha256:fcfe845deefbdee0f586d8d5f83ab85120e2a31be1289c6a8a7c8dd7f0d99028",
+            "request_id": "pixel-ffn-1-columns8704",
+            "slot_id": 0
+          },
+          "received_ns": 1070385870708954
+        }
+      ],
+      "decode_host_energy": {
+        "boundary": "paid_trace_interval",
+        "cpu_package_average_power_w": 86.82313611010622,
+        "cpu_package_energy_j": 1277.295009566295,
+        "gpu_board_average_power_w": 53.35661431179864,
+        "gpu_board_energy_j": 784.9536453208241,
+        "method": "RAPL package delta plus trapezoidal GPU board power",
+        "server_compute_device_energy_j": 2062.2486548871193
+      },
+      "decode_s": 14.711459028,
+      "finished_ns": 1070400218096119,
+      "first_token_ns": 1070385506637091,
+      "request_host_energy": {
+        "boundary": "paid_trace_interval",
+        "cpu_package_average_power_w": 86.00995590503571,
+        "cpu_package_energy_j": 1349.020033725422,
+        "gpu_board_average_power_w": 53.44968505600497,
+        "gpu_board_energy_j": 838.3296465873833,
+        "method": "RAPL package delta plus trapezoidal GPU board power",
+        "server_compute_device_energy_j": 2187.3496803128055
+      },
+      "request_id": "pixel-ffn-1-columns8704",
+      "request_s": 15.684463729,
+      "started_ns": 1070384533632390
+    },
+    {
+      "columns": 17408,
+      "controls": [
+        {
+          "ack": {
+            "applied_token_index": 2,
+            "plan_generation": 3,
+            "policy_hash": "sha256:1028f65b454186df761fadcd4243f0f72000f28c031ab09ec0db1690ad0b5bf5",
+            "runtime_stats": {
+              "batched_calls": 0,
+              "calls": 0,
+              "configured_queue_depth": 1,
+              "desktop_compute_us": 0,
+              "dormant_host_columns": 0,
+              "dormant_host_share": 1,
+              "dormant_layer_mask": 0,
+              "dormant_release_elapsed_us": 121285,
+              "dormant_release_generation": 1,
+              "dormant_released_bytes": 0,
+              "download_bytes": 0,
+              "exposed_tail_us": 0,
+              "input_rows": 0,
+              "maximum_active_slots": 0,
+              "maximum_outstanding_transfers": 0,
+              "maximum_tokens": 0,
+              "phone_compute_us": 0,
+              "rpc_us": 0,
+              "transfer_subrequests": 0,
+              "upload_bytes": 0,
+              "usb_d2h_us": 0,
+              "usb_h2d_us": 0,
+              "usb_transfer_us": 0,
+              "useful_overlap_us": 0
+            },
+            "slot_id": 0,
+            "success": true
+          },
+          "control": {
+            "action": "ffn_split",
+            "columns": 17408,
+            "enabled": true,
+            "layer_mask": 16777214,
+            "plan_generation": 3,
+            "policy": {
+              "baseline": false,
+              "columns": 17408,
+              "desktop_parent_route_id": "pixel-qualification-parent",
+              "desktop_placement_sha256": "sha256:dd60fd12617cf0cbf43e6c22ddb85548951bb385a68d59d5d4307880a71dbfd1",
+              "executor_id": "pixel-transport-qualification",
+              "layer_indices": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10,
+                11,
+                12,
+                13,
+                14,
+                15,
+                16,
+                17,
+                18,
+                19,
+                20,
+                21,
+                22,
+                23
+              ],
+              "layer_mask": 16777214,
+              "operator_plan_sha256": "sha256:921faba5c882b918d48edde3fcab1fcfaaee8bcaff97cd37b9a602b8964dea13",
+              "policy_hash": "sha256:1028f65b454186df761fadcd4243f0f72000f28c031ab09ec0db1690ad0b5bf5",
+              "predicted_energy_per_token_uj": null,
+              "predicted_latency_per_token_us": null,
+              "resource_ids": [
+                "desktop-cpu",
+                "desktop-cuda",
+                "pixel-cpu"
+              ],
+              "route_id": "pixel-ffn-2-columns17408",
+              "schema": "research-scheduler-adaptive-decode-v1",
+              "split_fraction_ppm": 1000000
+            },
+            "policy_hash": "sha256:1028f65b454186df761fadcd4243f0f72000f28c031ab09ec0db1690ad0b5bf5",
+            "request_id": "pixel-ffn-2-columns17408",
+            "slot_id": 0
+          },
+          "received_ns": 1070401930047889
+        }
+      ],
+      "decode_host_energy": {
+        "boundary": "paid_trace_interval",
+        "cpu_package_average_power_w": 73.69245826351099,
+        "cpu_package_energy_j": 1192.9974101525777,
+        "gpu_board_average_power_w": 52.62652545846515,
+        "gpu_board_energy_j": 851.9638244767979,
+        "method": "RAPL package delta plus trapezoidal GPU board power",
+        "server_compute_device_energy_j": 2044.9612346293757
+      },
+      "decode_s": 16.18886706,
+      "finished_ns": 1070417771962966,
+      "first_token_ns": 1070401583095906,
+      "request_host_energy": {
+        "boundary": "paid_trace_interval",
+        "cpu_package_average_power_w": 73.64854380173041,
+        "cpu_package_energy_j": 1281.578595123142,
+        "gpu_board_average_power_w": 52.68297382681813,
+        "gpu_board_energy_j": 916.7509376104796,
+        "method": "RAPL package delta plus trapezoidal GPU board power",
+        "server_compute_device_energy_j": 2198.3295327336214
+      },
+      "request_id": "pixel-ffn-2-columns17408",
+      "request_s": 17.401275422,
+      "started_ns": 1070400370687544
+    },
+    {
+      "columns": 0,
+      "controls": [],
+      "decode_host_energy": {
+        "boundary": "paid_trace_interval",
+        "cpu_package_average_power_w": 87.6204027955463,
+        "cpu_package_energy_j": 1914.5674936444705,
+        "gpu_board_average_power_w": 49.64009799079618,
+        "gpu_board_energy_j": 1084.6710921458507,
+        "method": "RAPL package delta plus trapezoidal GPU board power",
+        "server_compute_device_energy_j": 2999.238585790321
+      },
+      "decode_s": 21.850704089,
+      "finished_ns": 1070441056371770,
+      "first_token_ns": 1070419205667681,
+      "request_host_energy": {
+        "boundary": "paid_trace_interval",
+        "cpu_package_average_power_w": 86.67130337378246,
+        "cpu_package_energy_j": 2004.6283286536438,
+        "gpu_board_average_power_w": 49.81432821557444,
+        "gpu_board_energy_j": 1152.1600532893087,
+        "method": "RAPL package delta plus trapezoidal GPU board power",
+        "server_compute_device_energy_j": 3156.7883819429526
+      },
+      "request_id": "pixel-ffn-3-columns0",
+      "request_s": 23.129089452,
+      "started_ns": 1070417927282318
+    }
+  ],
+  "server_exit": 0,
+  "status": "PASS",
+  "token_identity": [
+    true,
+    true,
+    true,
+    true
+  ],
+  "transport": "aoa-bridge",
+  "worker_exit": 0
+}

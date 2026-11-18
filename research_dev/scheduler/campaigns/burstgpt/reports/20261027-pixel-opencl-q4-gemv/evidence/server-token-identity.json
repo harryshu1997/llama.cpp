@@ -1,0 +1,14 @@
+{
+  "call_columns": {
+    "17408": 1426,
+    "8704": 1426
+  },
+  "identity_sha256": "sha256:e4913a295a91ee6c74acd7ac1d1fc558231c76f9b6f3a8be4e44cb460de9b756",
+  "note": "Pixel-only llama-server over the AOA bridge, configured worker, identical tokens",
+  "outputs": 4,
+  "phone_calls": 2852,
+  "result_sha256": "sha256:a43981de5d3a044f75de905f09dedfa13497181954c92dddb3020aa317da16b3",
+  "run": "/mnt/storage/s43-pixel-aoa-20261001-v1/server-identity-opencl-1-23-5070ti",
+  "status": "PASS",
+  "tokens_each": 64
+}

@@ -404,13 +404,31 @@ def probe_config(args: argparse.Namespace) -> Path:
     return output
 
 
-def ffn_numerics_receipt(run: Path, worker: dict) -> dict:
+FFN_NUMERICS_THRESHOLD = 1e-3
+# 2026-10-28: a worker whose activations are int8 (the Pixel OpenCL path rounds exactly as ggml quantize_row_q8_0, the
+# class of the desktop's own int8-activation kernels) cannot sit closer than a few 1e-3 to the ggml-cpu reference: the
+# reference re-quantises h = silu(gate)*up to int8 after products with the f16-rounded parent weights (2e-4 apart from
+# the shard's exact Q4_K values), and that discontinuous rounding turns a 3e-4 pre-rounding difference into ~2e-3
+# (measured 2.1-2.4e-3; reports/20261027-pixel-opencl-q4-gemv/RESULTS.md). The input rounding and h quantisation are
+# bit-identical to ggml's. Such a worker is qualified under this named policy, never silently.
+FFN_NUMERICS_POLICIES = {
+    "default": {"threshold": FFN_NUMERICS_THRESHOLD, "note": "rel-L2 <= 1e-3 against the ggml-cpu reference"},
+    "int8-activation-class": {"threshold": 5e-3, "note": "int8 (Q8_0-rounded) activations on the phone: rel-L2 <= 5e-3 "
+                              "against the ggml-cpu reference (whose own h re-quantisation makes two int8 "
+                              "implementations ~2e-3 apart); the f32 distance is reported alongside"},
+}
+
+
+def ffn_numerics_receipt(run: Path, worker: dict, policy: str = "default") -> dict:
     """The plain FFN numerical rows the server identity run recorded on its own pinned worker session
-    (native/ffn_numerics.py, ggml-cpu reference from the parent GGUF): PASS, rel-L2 <= 1e-3, rows 1/2/4, exactly the
-    worker's layers, the worker's artifact."""
+    (native/ffn_numerics.py, ggml-cpu reference from the parent GGUF): PASS at the policy's threshold (the run's own
+    threshold must not exceed it), rows 1/2/4, exactly the worker's layers, the worker's artifact."""
     numerics = read(run / "FFN_NUMERICS.json")
+    need(policy in FFN_NUMERICS_POLICIES, "unknown FFN numerics policy: " + policy)
+    threshold = FFN_NUMERICS_POLICIES[policy]["threshold"]
     need(numerics.get("schema") == "s43-ffn-numerics-v1" and numerics.get("status") == "PASS"
-         and numerics["worst_rel_l2"] <= 1e-3 and {1, 2, 4} <= set(numerics["rows"])
+         and float(numerics.get("threshold", FFN_NUMERICS_THRESHOLD)) <= threshold
+         and numerics["worst_rel_l2"] <= threshold and {1, 2, 4} <= set(numerics["rows"])
          and sum(1 << layer for layer in numerics["layers"]) == worker["layer_mask"]
          and numerics.get("artifact_sha256") == worker["artifact_sha256"],
          "FFN numerical rows failed or covered other layers")
@@ -419,7 +437,8 @@ def ffn_numerics_receipt(run: Path, worker: dict) -> dict:
             "worst_rel_l2_f32_reference": numerics.get("worst_rel_l2_f32_reference"), "rows": numerics["rows"],
             "layers": numerics["layers"], "calls": numerics["calls"], "weight_types": numerics.get("weight_types"),
             "inputs": numerics["inputs"], "reference": numerics["reference"] + " (research_dev/scheduler/native/"
-            "ffn_numerics.py)"}
+            "ffn_numerics.py)", "threshold": threshold, "policy": policy,
+            "policy_note": FFN_NUMERICS_POLICIES[policy]["note"]}
 
 
 # link and session receipts: they qualify the USB port, the AOA relay / host bridge / keep-awake options and the
@@ -538,6 +557,130 @@ def retarget_model(args: argparse.Namespace) -> Path:
                       "kernel_rate": {"full_width_compute_ms": compute_ms, "layer_bytes": layer_bytes},
                       **({"host_software": {name: path for name, path in host_paths.items()
                                             if path != raw["host_software_paths"][name]}} if host_software else {})})
+    path = output / "PIXEL_EVIDENCE_AOA.json"
+    write(path, bundle)
+    load_helper_evidence(path)  # the scheduler's own loader must accept it
+    return path
+
+
+def worker_config(args: argparse.Namespace) -> Path:
+    """The qualify_pixel_server_transport config for ANOTHER worker binary of the same phone, shard, layers, model,
+    server and transport (2026-10-28, the Pixel OpenCL worker): derived from the qualified run's CONFIG, with the
+    worker path, library directory, pinned phone files (--pin PATH=sha256:HEX, the shard pin is kept), environment
+    (--env KEY=VALUE added or replaced on the qualified environment) and the FFN numerical rows of the run
+    (``ffn_numerics`` over the served layers, rows 1/2/4, the policy's threshold). Tooling, no hand edits."""
+    base = read(args.base)
+    config = copy.deepcopy(base)
+    policy = args.numerics_policy
+    need(policy in FFN_NUMERICS_POLICIES, "unknown FFN numerics policy: " + policy)
+    pins = {}
+    for text in args.pin:
+        path, _, digest = text.partition("=")
+        need(path.startswith("/") and digest.startswith("sha256:") and len(digest) == 71, "--pin needs PATH=sha256:HEX")
+        pins[path] = digest.removeprefix("sha256:")
+    shard = base["phone_model"]
+    need(shard in base["expected_phone_sha256"], "the base config pins no shard")
+    need(args.worker in pins, "--pin must name the worker binary")
+    pins[shard] = base["expected_phone_sha256"][shard]
+    environment = dict(base.get("phone_environment") or {})
+    for text in args.env:
+        key, _, value = text.partition("=")
+        need(key and value, "--env needs KEY=VALUE")
+        environment[key] = value
+    libraries = sorted(path for path in pins if path.startswith(args.library_dir.rstrip("/") + "/") and path.endswith(".so"))
+    need(libraries, "--pin must include the ggml libraries under --library-dir")
+    layers = list(config["phone"]["layers"])
+    config.update(phone_worker=args.worker, phone_library_dir=args.library_dir, phone_libraries=libraries,
+                  expected_phone_sha256=pins, phone_environment=environment,
+                  # the threshold travels as text: the identity run hashes its config canonically (no floats)
+                  ffn_numerics={"layers": _spec(sum(1 << layer for layer in layers)), "calls": 3 * len(layers),
+                                "threshold": repr(FFN_NUMERICS_POLICIES[policy]["threshold"]), "policy": policy})
+    output = Path(args.output)
+    need(not output.exists(), "the output config exists")
+    write(output, config)
+    return output
+
+
+def rebind_worker(args: argparse.Namespace) -> Path:
+    """A qualified aoa-bridge bundle re-qualified for ANOTHER worker binary (2026-10-28, the Pixel OpenCL FFN path):
+    same phone, USB port, relay, host bridge, server, model, shard and layers. Fresh from one server identity run of
+    the new worker over the bridge (worker-config): server-token-identity (identical tokens, the new worker, pins
+    incl. its kernel source, environment) and numerical-rows-1-2-4 (ffn_numerics on that session, the named
+    policy's threshold). The cost profile's FFN kernel rate is re-measured from the run's full-width calls. Carried
+    over with an annex, as the 2026-10-02 fused-worker rebind did: the link and session lifecycle receipts
+    (CARRIED_RECEIPTS; the session protocol and launch path are those of the qualified worker build line)."""
+    source = Path(args.evidence).resolve()
+    old = load_helper_evidence(source)
+    need(old.aoa_bridge is not None, "rebind-worker needs a qualified aoa-bridge bundle")
+    raw = read(source)
+    run = Path(args.server_identity)
+    config = read(run / "CONFIG.json")
+    phone = config["phone"]
+    old_worker = raw["worker"]
+    pins = {path: "sha256:" + value.removeprefix("sha256:") for path, value in config["expected_phone_sha256"].items()}
+    need(config["phone_model"] == old_worker["shard_path"]
+         and pins.get(config["phone_model"]) == old_worker["expected_sha256_by_path"][old_worker["shard_path"]],
+         "the identity run served another shard")
+    mask = sum(1 << layer for layer in phone["layers"])
+    need(mask == old_worker["layer_mask"] and phone["artifact_sha256"] == old_worker["artifact_sha256"]
+         and int(phone["columns"]) == int(old_worker["columns"]), "the identity run served other layers or width")
+    worker_sha = pins.get(config["phone_worker"])
+    need(worker_sha is not None and config["phone_worker"] != old_worker["worker_path"],
+         "the identity run must pin a new worker binary")
+    worker = copy.deepcopy(old_worker)
+    worker.update(worker_path=config["phone_worker"], library_directories=[config["phone_library_dir"]],
+                  worker_environment=dict(config.get("phone_environment", {})), expected_sha256_by_path=pins)
+    need({int(value) for value in config.get("legs_columns", (0, 8704, 17408, 0)) if value}
+         == {worker["columns"] // 2, worker["columns"]}, "the identity run's helper legs must be half and full width")
+    policy = str(config.get("ffn_numerics", {}).get("policy", "default"))
+    host_binary = old.identity.software_identity["host_binary_sha256"]
+    server = server_receipt(run, worker, host_binary, old.aoa_bridge)
+    numerical = ffn_numerics_receipt(run, worker, policy)
+    output = Path(args.output_dir)
+    output.mkdir(parents=True, exist_ok=False)
+    paths = {kind: raw["receipt_paths"][kind] for kind in CARRIED_RECEIPTS}
+    for kind, value in (("server-token-identity", server), ("numerical-rows-1-2-4", numerical)):
+        path = output / (kind + ".json")
+        write(path, value)
+        paths[kind] = str(path)
+    need(set(paths) == set(IDENTITY_REQUIREMENTS["aoa-bridge"]["receipts"]), "receipt set differs")
+    transport = copy.deepcopy(raw["transport_identity"])
+    software = {key: value for key, value in transport["software_identity"].items()
+                if not key.startswith("phone_library_sha256:")}
+    software.update(phone_worker_sha256=worker_sha,
+                    worker_environment_sha256=canonical_sha256(worker["worker_environment"]),
+                    **{"phone_library_sha256:" + path: value for path, value in pins.items()
+                       if path not in (worker["worker_path"], worker["shard_path"])})
+    transport["software_identity"] = software
+    transport["receipts"] = {kind: file_sha256(Path(path)) for kind, path in paths.items()}
+    compute_ms = _full_width_compute_ms(run, worker["columns"])
+    kernels = [row for row in raw["profile_fragment"]["kernels"] if row["kernel_id"].endswith(":ffn")]
+    need(len(kernels) == 1, "the source bundle needs exactly one FFN kernel row")
+    index = read(Path(args.shard_index))
+    record = next((r for r in index["shards"] if r["path"] == Path(worker["shard_path"]).name), None)
+    need(record is not None and record["shard_sha256"] == pins[worker["shard_path"]], "--shard-index does not describe the shard")
+    layer_bytes = int(record["shard_bytes"]) // bin(mask).count("1")
+    fragment = copy.deepcopy(raw["profile_fragment"])
+    kernels = [row for row in fragment["kernels"] if row["kernel_id"].endswith(":ffn")]
+    kernels[0].update(effective_bytes_per_s=round(layer_bytes / (compute_ms / 1000.0)),
+                      effective_ops_per_s=round(2 * 3 * worker["n_embd"] * worker["columns"] / (compute_ms / 1000.0)),
+                      evidence_ids=[server["result_sha256"]] + [value for value in kernels[0]["evidence_ids"]
+                                                                if not value.startswith("sha256:")])
+    bundle = {key: value for key, value in copy.deepcopy(raw).items() if key != "fused"}
+    bundle.update(worker=worker, transport_identity=transport, receipt_paths=paths, profile_fragment=fragment,
+                  worker_rebound_from={
+                      "evidence": str(source), "evidence_sha256": file_sha256(source),
+                      "previous_worker": {"path": old_worker["worker_path"],
+                                          "sha256": old_worker["expected_sha256_by_path"][old_worker["worker_path"]]},
+                      "server_identity": str(run), "numerical": "fresh-ffn-numerics", "numerics_policy": policy,
+                      "carried_receipts": {kind: {"path": raw["receipt_paths"][kind],
+                                                  "sha256": file_sha256(Path(raw["receipt_paths"][kind]))}
+                                           for kind in CARRIED_RECEIPTS},
+                      "policy": "same phone, USB port, AOA relay / host bridge / options, server, model, shard and "
+                                "layers; the new worker binary, its pinned files and environment are qualified "
+                                "afresh by the server token identity and the FFN numerical rows over the bridge; "
+                                "link and session lifecycle receipts carried over (2026-10-02 fused-worker precedent)",
+                      "kernel_rate": {"full_width_compute_ms": compute_ms, "layer_bytes": layer_bytes}})
     path = output / "PIXEL_EVIDENCE_AOA.json"
     write(path, bundle)
     load_helper_evidence(path)  # the scheduler's own loader must accept it
@@ -671,10 +814,21 @@ def main(argv: list[str] | None = None) -> int:
     probe = commands.add_parser("probe-config")
     for name in ("--base", "--shard-index", "--phone-shard-path", "--input-dir", "--tokens", "--output"):
         probe.add_argument(name, required=True)
+    wconfig = commands.add_parser("worker-config")
+    for name in ("--base", "--worker", "--library-dir", "--output"):
+        wconfig.add_argument(name, required=True)
+    wconfig.add_argument("--pin", action="append", default=[], metavar="PATH=sha256:HEX",
+                         help="phone file pins of the new worker: the binary, its libraries, extra files (kernels)")
+    wconfig.add_argument("--env", action="append", default=[], metavar="KEY=VALUE",
+                         help="worker environment entries added to / replacing the qualified environment")
+    wconfig.add_argument("--numerics-policy", choices=sorted(FFN_NUMERICS_POLICIES), default="default")
+    rworker = commands.add_parser("rebind-worker")
+    for name in ("--evidence", "--server-identity", "--shard-index", "--output-dir"):
+        rworker.add_argument(name, required=True)
     args = parser.parse_args(argv)
     path = {"bundle": build_bundle, "derive-arm": derive_arm, "rebind-shard": rebind_shard,
             "retarget-model": retarget_model, "identity-config": identity_config,
-            "probe-config": probe_config}[args.command](args)
+            "probe-config": probe_config, "worker-config": worker_config, "rebind-worker": rebind_worker}[args.command](args)
     print(path)
     return 0
 

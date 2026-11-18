@@ -1,0 +1,978 @@
+{
+ "devices": {
+  "OnePlus 15 NPU": {
+   "runs": 30,
+   "used": 29,
+   "flagged": [
+    "qwen3-8b-L4"
+   ],
+   "dram_bound_gb_per_s": 55.6946467194785,
+   "cache_assisted": [],
+   "j_per_gb_origin": 0.16088882675237312,
+   "with_intercept": {
+    "intercept_j": 0.002308685397469923,
+    "slope_j_per_gb": 0.16011047711378987,
+    "r2": 0.9991573105219889
+   },
+   "per_model": {
+    "qwen25-05b": {
+     "j_per_gb": 0.17744807613272096,
+     "gb_per_s": 62.22372958131884,
+     "runs": 3,
+     "used": 3,
+     "watts": 11.053388560914769,
+     "from_device_fit": false,
+     "j_per_token": 0.17530493492675886,
+     "s_per_token": 0.01587694017455038
+    },
+    "qwen3-06b": {
+     "j_per_gb": 0.16523008710690684,
+     "gb_per_s": 59.90277487503931,
+     "runs": 3,
+     "used": 3,
+     "watts": 9.893587593711151,
+     "from_device_fit": false,
+     "j_per_token": 0.19694910336535243,
+     "s_per_token": 0.019898389857339938
+    },
+    "llama32-1b": {
+     "j_per_gb": 0.1752347331603784,
+     "gb_per_s": 71.0348149439072,
+     "runs": 3,
+     "used": 3,
+     "watts": 12.452510011736686,
+     "from_device_fit": false,
+     "j_per_token": 0.4330915271110945,
+     "s_per_token": 0.034792708814003676
+    },
+    "qwen3-17b": {
+     "j_per_gb": 0.1729877505888813,
+     "gb_per_s": 70.10994495612564,
+     "runs": 3,
+     "used": 3,
+     "watts": 12.082564042889821,
+     "from_device_fit": false,
+     "j_per_token": 0.595233921887019,
+     "s_per_token": 0.04907865989843944
+    },
+    "gemma4-e2b": {
+     "j_per_gb": 0.1731364280371818,
+     "gb_per_s": 68.40828016508839,
+     "runs": 3,
+     "used": 3,
+     "watts": 11.848738049804284,
+     "from_device_fit": false,
+     "j_per_token": 0.7958553600018304,
+     "s_per_token": 0.06719500956473229
+    },
+    "qwen3-4b": {
+     "j_per_gb": 0.17811591657395645,
+     "gb_per_s": 71.81243759075797,
+     "runs": 3,
+     "used": 3,
+     "watts": 12.76692022027548,
+     "from_device_fit": false,
+     "j_per_token": 1.432861327979522,
+     "s_per_token": 0.11202159778844922
+    },
+    "qwen3-8b": {
+     "j_per_gb": 0.15449359657723424,
+     "gb_per_s": 55.43070568036238,
+     "runs": 3,
+     "used": 2,
+     "watts": 8.595764287000122,
+     "from_device_fit": false,
+     "j_per_token": 2.338445136067168,
+     "s_per_token": 0.27306516080242416
+    },
+    "gemma4-12b": {
+     "j_per_gb": 0.15667679140391264,
+     "gb_per_s": 55.8024312177009,
+     "runs": 3,
+     "used": 3,
+     "watts": 8.748497057299195,
+     "from_device_fit": false,
+     "j_per_token": 3.730969652397716,
+     "s_per_token": 0.42674056381339726
+    },
+    "qwen3-14b": {
+     "j_per_gb": 0.16089363507456916,
+     "gb_per_s": 55.5926367061112,
+     "runs": 3,
+     "used": 3,
+     "watts": 8.894895282740286,
+     "from_device_fit": false,
+     "j_per_token": 4.501794230025359,
+     "s_per_token": 0.5033029821541855
+    },
+    "qwen3-32b": {
+     "j_per_gb": 0.16145018931524044,
+     "gb_per_s": 55.99524658568171,
+     "runs": 3,
+     "used": 3,
+     "watts": 9.023977826542476,
+     "from_device_fit": false,
+     "j_per_token": 10.327495264372889,
+     "s_per_token": 1.1423660410552907
+    }
+   }
+  },
+  "OnePlus 12 NPU": {
+   "runs": 29,
+   "used": 29,
+   "flagged": [],
+   "dram_bound_gb_per_s": 44.32989856085928,
+   "cache_assisted": [],
+   "j_per_gb_origin": 0.15192395293903652,
+   "with_intercept": {
+    "intercept_j": -0.005439615454304908,
+    "slope_j_per_gb": 0.1544848321372743,
+    "r2": 0.9992637512369952
+   },
+   "per_model": {
+    "qwen25-05b": {
+     "j_per_gb": 0.13252284599418257,
+     "gb_per_s": 32.030115745157886,
+     "runs": 3,
+     "used": 3,
+     "watts": 4.155251681224967,
+     "from_device_fit": false,
+     "j_per_token": 0.1309222923101343,
+     "s_per_token": 0.03084354861094587
+    },
+    "qwen3-06b": {
+     "j_per_gb": 0.11703460310755816,
+     "gb_per_s": 29.267852376381555,
+     "runs": 3,
+     "used": 3,
+     "watts": 3.4397006555223437,
+     "from_device_fit": false,
+     "j_per_token": 0.1395015916794851,
+     "s_per_token": 0.04072621225060879
+    },
+    "llama32-1b": {
+     "j_per_gb": 0.13716510574481322,
+     "gb_per_s": 41.26085304589999,
+     "runs": 3,
+     "used": 3,
+     "watts": 5.775698565617428,
+     "from_device_fit": false,
+     "j_per_token": 0.3390026853809125,
+     "s_per_token": 0.059899237401869164
+    },
+    "qwen3-17b": {
+     "j_per_gb": 0.13569230949194502,
+     "gb_per_s": 39.80318227311583,
+     "runs": 3,
+     "used": 3,
+     "watts": 5.2844277984608405,
+     "from_device_fit": false,
+     "j_per_token": 0.46690395865514517,
+     "s_per_token": 0.08644791565633385
+    },
+    "gemma4-e2b": {
+     "j_per_gb": 0.12769172757661135,
+     "gb_per_s": 38.25992875291135,
+     "runs": 3,
+     "used": 3,
+     "watts": 4.887254507989823,
+     "from_device_fit": false,
+     "j_per_token": 0.5869599308004405,
+     "s_per_token": 0.12014384735753643
+    },
+    "qwen3-4b": {
+     "j_per_gb": 0.1406937742451258,
+     "gb_per_s": 42.87136378306121,
+     "runs": 3,
+     "used": 3,
+     "watts": 6.037583475938324,
+     "from_device_fit": false,
+     "j_per_token": 1.1318172574409815,
+     "s_per_token": 0.18764376241229952
+    },
+    "qwen3-8b": {
+     "j_per_gb": 0.15032064613248228,
+     "gb_per_s": 43.91223197574578,
+     "runs": 3,
+     "used": 3,
+     "watts": 6.545461254331799,
+     "from_device_fit": false,
+     "j_per_token": 2.275282546246163,
+     "s_per_token": 0.34469198851837535
+    },
+    "gemma4-12b": {
+     "j_per_gb": 0.1505127016874545,
+     "gb_per_s": 44.19126264531365,
+     "runs": 3,
+     "used": 3,
+     "watts": 6.712225737008368,
+     "from_device_fit": false,
+     "j_per_token": 3.584183191807818,
+     "s_per_token": 0.538865819497586
+    },
+    "qwen3-14b": {
+     "j_per_gb": 0.1536793631195486,
+     "gb_per_s": 44.561914014682394,
+     "runs": 3,
+     "used": 3,
+     "watts": 6.816922132318467,
+     "from_device_fit": false,
+     "j_per_token": 4.299939334734485,
+     "s_per_token": 0.6278890945030118
+    },
+    "qwen3-32b": {
+     "j_per_gb": 0.15475672024764273,
+     "gb_per_s": 45.42755368980098,
+     "runs": 2,
+     "used": 2,
+     "watts": 7.03954318440798,
+     "from_device_fit": false,
+     "j_per_token": 9.899333672299015,
+     "s_per_token": 1.408111662732157
+    }
+   }
+  },
+  "OnePlus 11 NPU": {
+   "runs": 25,
+   "used": 0,
+   "flagged": [
+    "gemma4-12b-L4"
+   ],
+   "dram_bound_gb_per_s": 48.6410145985253,
+   "cache_assisted": [],
+   "j_per_gb_origin": null,
+   "with_intercept": null,
+   "per_model": {
+    "qwen25-05b": {
+     "j_per_gb": null,
+     "gb_per_s": 43.78284799769806,
+     "runs": 3,
+     "used": 0,
+     "watts": null,
+     "from_device_fit": false
+    },
+    "qwen3-06b": {
+     "j_per_gb": null,
+     "gb_per_s": 42.23363286860435,
+     "runs": 3,
+     "used": 0,
+     "watts": null,
+     "from_device_fit": false
+    },
+    "llama32-1b": {
+     "j_per_gb": null,
+     "gb_per_s": 48.59012749790052,
+     "runs": 3,
+     "used": 0,
+     "watts": null,
+     "from_device_fit": false
+    },
+    "qwen3-17b": {
+     "j_per_gb": null,
+     "gb_per_s": 47.65864783823453,
+     "runs": 3,
+     "used": 0,
+     "watts": null,
+     "from_device_fit": false
+    },
+    "gemma4-e2b": {
+     "j_per_gb": null,
+     "gb_per_s": 46.2875856728385,
+     "runs": 3,
+     "used": 0,
+     "watts": null,
+     "from_device_fit": false
+    },
+    "qwen3-4b": {
+     "j_per_gb": null,
+     "gb_per_s": 48.53958683236728,
+     "runs": 3,
+     "used": 0,
+     "watts": null,
+     "from_device_fit": false
+    },
+    "qwen3-8b": {
+     "j_per_gb": null,
+     "gb_per_s": 48.603604053409,
+     "runs": 2,
+     "used": 0,
+     "watts": null,
+     "from_device_fit": false
+    },
+    "gemma4-12b": {
+     "j_per_gb": null,
+     "gb_per_s": 49.11754299929805,
+     "runs": 2,
+     "used": 0,
+     "watts": null,
+     "from_device_fit": false
+    },
+    "qwen3-14b": {
+     "j_per_gb": null,
+     "gb_per_s": 49.490647533549975,
+     "runs": 2,
+     "used": 0,
+     "watts": null,
+     "from_device_fit": false
+    },
+    "qwen3-32b": {
+     "j_per_gb": null,
+     "gb_per_s": 48.04905359758862,
+     "runs": 1,
+     "used": 0,
+     "watts": null,
+     "from_device_fit": false
+    }
+   }
+  },
+  "Pixel 10 Pro CPU": {
+   "runs": 30,
+   "used": 30,
+   "flagged": [],
+   "dram_bound_gb_per_s": 29.25890505189492,
+   "cache_assisted": [],
+   "j_per_gb_origin": 0.3502958033397217,
+   "with_intercept": {
+    "intercept_j": -0.0016154139255231126,
+    "slope_j_per_gb": 0.3508522604086582,
+    "r2": 0.9996805426095016
+   },
+   "per_model": {
+    "qwen25-05b": {
+     "j_per_gb": 0.38083892480174514,
+     "gb_per_s": 26.81500746023471,
+     "runs": 3,
+     "used": 3,
+     "watts": 10.154127416423604,
+     "from_device_fit": false,
+     "j_per_token": 0.3762393167904052,
+     "s_per_token": 0.03684214645343801
+    },
+    "qwen3-06b": {
+     "j_per_gb": 0.381712320289747,
+     "gb_per_s": 26.473082070742503,
+     "runs": 3,
+     "used": 3,
+     "watts": 10.053359235148884,
+     "from_device_fit": false,
+     "j_per_token": 0.4549891641461911,
+     "s_per_token": 0.0450256892950647
+    },
+    "llama32-1b": {
+     "j_per_gb": 0.3529011978671221,
+     "gb_per_s": 28.60966986117625,
+     "runs": 3,
+     "used": 3,
+     "watts": 10.272074694861924,
+     "from_device_fit": false,
+     "j_per_token": 0.8721930632537642,
+     "s_per_token": 0.0863866533235972
+    },
+    "qwen3-17b": {
+     "j_per_gb": 0.3452886080076434,
+     "gb_per_s": 28.68321927807274,
+     "runs": 3,
+     "used": 3,
+     "watts": 9.95768357770446,
+     "from_device_fit": false,
+     "j_per_token": 1.1881043115922756,
+     "s_per_token": 0.11996220196351677
+    },
+    "gemma4-e2b": {
+     "j_per_gb": 0.3535863845821846,
+     "gb_per_s": 28.001784315502253,
+     "runs": 3,
+     "used": 3,
+     "watts": 9.90192160603954,
+     "from_device_fit": false,
+     "j_per_token": 1.6253287802204603,
+     "s_per_token": 0.1641572189903339
+    },
+    "qwen3-4b": {
+     "j_per_gb": 0.3504723380416117,
+     "gb_per_s": 28.624179470023567,
+     "runs": 3,
+     "used": 3,
+     "watts": 9.964292659700176,
+     "from_device_fit": false,
+     "j_per_token": 2.8193901441586195,
+     "s_per_token": 0.28104016076424415
+    },
+    "qwen3-8b": {
+     "j_per_gb": 0.34269939653384857,
+     "gb_per_s": 29.332450714497188,
+     "runs": 3,
+     "used": 3,
+     "watts": 10.002723933953632,
+     "from_device_fit": false,
+     "j_per_token": 5.187164741530922,
+     "s_per_token": 0.5160221594617435
+    },
+    "gemma4-12b": {
+     "j_per_gb": 0.34042991496389513,
+     "gb_per_s": 29.249168125887074,
+     "runs": 3,
+     "used": 3,
+     "watts": 9.998218381018681,
+     "from_device_fit": false,
+     "j_per_token": 8.106712360634347,
+     "s_per_token": 0.8141483155182141
+    },
+    "qwen3-14b": {
+     "j_per_gb": 0.3492125664985173,
+     "gb_per_s": 29.235943105911257,
+     "runs": 3,
+     "used": 3,
+     "watts": 10.173387415928007,
+     "from_device_fit": false,
+     "j_per_token": 9.770946602000514,
+     "s_per_token": 0.9570390713458016
+    },
+    "qwen3-32b": {
+     "j_per_gb": 0.3538428352220261,
+     "gb_per_s": 29.26139571124072,
+     "runs": 3,
+     "used": 3,
+     "watts": 10.349109944178366,
+     "from_device_fit": false,
+     "j_per_token": 22.634288758574993,
+     "s_per_token": 2.186056632132115
+    }
+   }
+  },
+  "Desktop GPU": {
+   "runs": 30,
+   "used": 30,
+   "flagged": [],
+   "dram_bound_gb_per_s": 273.4285630447787,
+   "cache_assisted": [],
+   "j_per_gb_origin": 0.3697803787111953,
+   "with_intercept": {
+    "intercept_j": 0.008955092947023902,
+    "slope_j_per_gb": 0.36669564315542064,
+    "r2": 0.9998264605696929
+   },
+   "per_model": {
+    "qwen25-05b": {
+     "j_per_gb": 0.44861182537981587,
+     "gb_per_s": 260.8534199774113,
+     "runs": 3,
+     "used": 3,
+     "watts": 116.0240588645911,
+     "from_device_fit": false,
+     "j_per_token": 0.443193685553187,
+     "s_per_token": 0.003787270383825328
+    },
+    "qwen3-06b": {
+     "j_per_gb": 0.444041859243892,
+     "gb_per_s": 256.1183188741593,
+     "runs": 3,
+     "used": 3,
+     "watts": 114.24757139748768,
+     "from_device_fit": false,
+     "j_per_token": 0.5292840279033714,
+     "s_per_token": 0.0046539770104678056
+    },
+    "llama32-1b": {
+     "j_per_gb": 0.3827201716636785,
+     "gb_per_s": 270.1304864761604,
+     "runs": 3,
+     "used": 3,
+     "watts": 103.20098276627607,
+     "from_device_fit": false,
+     "j_per_token": 0.9458904671047282,
+     "s_per_token": 0.009149258435212254
+    },
+    "qwen3-17b": {
+     "j_per_gb": 0.3919902956361652,
+     "gb_per_s": 268.90887666393354,
+     "runs": 3,
+     "used": 3,
+     "watts": 105.25350083847324,
+     "from_device_fit": false,
+     "j_per_token": 1.3488002486816748,
+     "s_per_token": 0.01279579233935158
+    },
+    "gemma4-e2b": {
+     "j_per_gb": 0.4144718644976805,
+     "gb_per_s": 267.4747506855943,
+     "runs": 3,
+     "used": 3,
+     "watts": 110.64086307143549,
+     "from_device_fit": false,
+     "j_per_token": 1.9052007637560398,
+     "s_per_token": 0.017185528832974698
+    },
+    "qwen3-4b": {
+     "j_per_gb": 0.3910155607895079,
+     "gb_per_s": 271.24671302093265,
+     "runs": 3,
+     "used": 3,
+     "watts": 105.8749437293897,
+     "from_device_fit": false,
+     "j_per_token": 3.1455418834558713,
+     "s_per_token": 0.02965766445759358
+    },
+    "qwen3-8b": {
+     "j_per_gb": 0.3665800709482167,
+     "gb_per_s": 272.5968612487976,
+     "runs": 3,
+     "used": 3,
+     "watts": 100.26631426450756,
+     "from_device_fit": false,
+     "j_per_token": 5.548627275690812,
+     "s_per_token": 0.05552593118886017
+    },
+    "gemma4-12b": {
+     "j_per_gb": 0.3729727134025563,
+     "gb_per_s": 272.7160146760279,
+     "runs": 3,
+     "used": 3,
+     "watts": 102.73709772132001,
+     "from_device_fit": false,
+     "j_per_token": 8.881659257943022,
+     "s_per_token": 0.08731852798702991
+    },
+    "qwen3-14b": {
+     "j_per_gb": 0.3671687732315062,
+     "gb_per_s": 273.1859469313141,
+     "runs": 3,
+     "used": 3,
+     "watts": 100.74048522335625,
+     "from_device_fit": false,
+     "j_per_token": 10.273360186144146,
+     "s_per_token": 0.10242086078840237
+    },
+    "qwen3-32b": {
+     "j_per_gb": 0.36926855128999797,
+     "gb_per_s": 273.4635256229783,
+     "runs": 3,
+     "used": 3,
+     "watts": 101.02563364579608,
+     "from_device_fit": false,
+     "j_per_token": 23.621026589711757,
+     "s_per_token": 0.2339144425724651
+    }
+   }
+  },
+  "Desktop CPU": {
+   "runs": 30,
+   "used": 22,
+   "flagged": [],
+   "dram_bound_gb_per_s": 30.402456452416924,
+   "cache_assisted": [
+    "qwen25-05b-L2",
+    "qwen25-05b-L4",
+    "qwen3-06b-L2",
+    "qwen3-06b-L4",
+    "qwen3-06b-L8",
+    "llama32-1b-L2",
+    "qwen3-17b-L2",
+    "gemma4-e2b-L2"
+   ],
+   "j_per_gb_origin": 2.967927078533142,
+   "with_intercept": {
+    "intercept_j": -0.03977129537740787,
+    "slope_j_per_gb": 2.981282461476129,
+    "r2": 0.9999655663764658
+   },
+   "per_model": {
+    "qwen25-05b": {
+     "j_per_gb": 2.7399066768327436,
+     "gb_per_s": 34.31730904889143,
+     "runs": 3,
+     "used": 1,
+     "watts": 94.02622419399036,
+     "from_device_fit": false,
+     "j_per_token": 2.706815267629642,
+     "s_per_token": 0.02878787583818182
+    },
+    "qwen3-06b": {
+     "j_per_gb": 2.967927078533142,
+     "gb_per_s": 30.402456452416924,
+     "runs": 3,
+     "used": 0,
+     "watts": null,
+     "from_device_fit": true,
+     "j_per_token": 3.5376763833129887,
+     "s_per_token": 0.03920633090505558
+    },
+    "llama32-1b": {
+     "j_per_gb": 2.913703202363797,
+     "gb_per_s": 31.499398257353718,
+     "runs": 3,
+     "used": 2,
+     "watts": 91.5022009580304,
+     "from_device_fit": false,
+     "j_per_token": 7.201198910180132,
+     "s_per_token": 0.07846161414918507
+    },
+    "qwen3-17b": {
+     "j_per_gb": 2.9247118537758228,
+     "gb_per_s": 32.033970468533745,
+     "runs": 3,
+     "used": 2,
+     "watts": 93.20257395126845,
+     "from_device_fit": false,
+     "j_per_token": 10.063647288239443,
+     "s_per_token": 0.10741416357925164
+    },
+    "gemma4-e2b": {
+     "j_per_gb": 2.899207544641983,
+     "gb_per_s": 32.50939309281722,
+     "runs": 3,
+     "used": 2,
+     "watts": 93.40478963881435,
+     "from_device_fit": false,
+     "j_per_token": 13.326772940386384,
+     "s_per_token": 0.14139590446601158
+    },
+    "qwen3-4b": {
+     "j_per_gb": 2.9529821663133977,
+     "gb_per_s": 31.34437726476801,
+     "runs": 3,
+     "used": 3,
+     "watts": 91.96590795219237,
+     "from_device_fit": false,
+     "j_per_token": 23.755394968123447,
+     "s_per_token": 0.25665030547734957
+    },
+    "qwen3-8b": {
+     "j_per_gb": 2.978669812562442,
+     "gb_per_s": 30.78240659411303,
+     "runs": 3,
+     "used": 3,
+     "watts": 91.39450397136024,
+     "from_device_fit": false,
+     "j_per_token": 45.08572581294385,
+     "s_per_token": 0.49171576347428
+    },
+    "gemma4-12b": {
+     "j_per_gb": 2.980174559537538,
+     "gb_per_s": 30.237783107395753,
+     "runs": 3,
+     "used": 3,
+     "watts": 90.2195141723605,
+     "from_device_fit": false,
+     "j_per_token": 70.96737647516449,
+     "s_per_token": 0.7875299877448894
+    },
+    "qwen3-14b": {
+     "j_per_gb": 2.9561788135828393,
+     "gb_per_s": 30.53700001059669,
+     "runs": 3,
+     "used": 3,
+     "watts": 90.13975781130996,
+     "from_device_fit": false,
+     "j_per_token": 82.71370536033041,
+     "s_per_token": 0.9162635435796129
+    },
+    "qwen3-32b": {
+     "j_per_gb": 2.9715915446624974,
+     "gb_per_s": 30.426554646424844,
+     "runs": 3,
+     "used": 3,
+     "watts": 90.34635036883243,
+     "from_device_fit": false,
+     "j_per_token": 190.08399888110566,
+     "s_per_token": 2.102343459630458
+    }
+   }
+  },
+  "Server GPU": {
+   "runs": 30,
+   "used": 30,
+   "flagged": [],
+   "dram_bound_gb_per_s": 705.6459523564447,
+   "cache_assisted": [],
+   "j_per_gb_origin": 0.4250018877532785,
+   "with_intercept": {
+    "intercept_j": 0.008641111342105323,
+    "slope_j_per_gb": 0.42202530855347714,
+    "r2": 0.9999733015862943
+   },
+   "per_model": {
+    "qwen25-05b": {
+     "j_per_gb": 0.4996887267427381,
+     "gb_per_s": 589.9186560564561,
+     "runs": 3,
+     "used": 3,
+     "watts": 298.6438201892948,
+     "from_device_fit": false,
+     "j_per_token": 0.4936537021666693,
+     "s_per_token": 0.001674675689363949
+    },
+    "qwen3-06b": {
+     "j_per_gb": 0.5229625028331878,
+     "gb_per_s": 561.5544951869896,
+     "runs": 3,
+     "used": 3,
+     "watts": 296.56305167045207,
+     "from_device_fit": false,
+     "j_per_token": 0.6233549702122714,
+     "s_per_token": 0.0021226234999741057
+    },
+    "llama32-1b": {
+     "j_per_gb": 0.4409534399047842,
+     "gb_per_s": 675.9729260263806,
+     "runs": 3,
+     "used": 3,
+     "watts": 298.40725198866386,
+     "from_device_fit": false,
+     "j_per_token": 1.0898136187331688,
+     "s_per_token": 0.003656202100472212
+    },
+    "qwen3-17b": {
+     "j_per_gb": 0.4462246776970334,
+     "gb_per_s": 665.9606771883169,
+     "runs": 3,
+     "used": 3,
+     "watts": 298.7960074864184,
+     "from_device_fit": false,
+     "j_per_token": 1.5354154501934312,
+     "s_per_token": 0.0051668248019199475
+    },
+    "gemma4-e2b": {
+     "j_per_gb": 0.45685494233287594,
+     "gb_per_s": 651.0529668303154,
+     "runs": 3,
+     "used": 3,
+     "watts": 299.41622417654565,
+     "from_device_fit": false,
+     "j_per_token": 2.100022847421017,
+     "s_per_token": 0.0070604010336966045
+    },
+    "qwen3-4b": {
+     "j_per_gb": 0.43424180742497337,
+     "gb_per_s": 686.452611930464,
+     "runs": 3,
+     "used": 3,
+     "watts": 299.18496332600915,
+     "from_device_fit": false,
+     "j_per_token": 3.493277326469725,
+     "s_per_token": 0.011719008508652734
+    },
+    "qwen3-8b": {
+     "j_per_gb": 0.42606706803019595,
+     "gb_per_s": 699.4251472519584,
+     "runs": 3,
+     "used": 3,
+     "watts": 298.380489435473,
+     "from_device_fit": false,
+     "j_per_token": 6.449034037313802,
+     "s_per_token": 0.02164090699264977
+    },
+    "gemma4-12b": {
+     "j_per_gb": 0.42558715699378413,
+     "gb_per_s": 700.8231611264513,
+     "runs": 3,
+     "used": 3,
+     "watts": 298.72963607304064,
+     "from_device_fit": false,
+     "j_per_token": 10.134575472001773,
+     "s_per_token": 0.03397884413769158
+    },
+    "qwen3-14b": {
+     "j_per_gb": 0.42448741623656167,
+     "gb_per_s": 704.093979103976,
+     "runs": 3,
+     "used": 3,
+     "watts": 299.1618886118692,
+     "from_device_fit": false,
+     "j_per_token": 11.877132369136033,
+     "s_per_token": 0.03973892785677138
+    },
+    "qwen3-32b": {
+     "j_per_gb": 0.4238695720581159,
+     "gb_per_s": 705.888892443905,
+     "runs": 3,
+     "used": 3,
+     "watts": 299.2971997145365,
+     "from_device_fit": false,
+     "j_per_token": 27.11369380679153,
+     "s_per_token": 0.09061917370386059
+    }
+   }
+  },
+  "Server CPU": {
+   "runs": 30,
+   "used": 9,
+   "flagged": [
+    "gemma4-12b-L8"
+   ],
+   "dram_bound_gb_per_s": 81.76449402549709,
+   "cache_assisted": [
+    "qwen25-05b-L2",
+    "qwen25-05b-L4",
+    "qwen25-05b-L8",
+    "qwen3-06b-L2",
+    "qwen3-06b-L4",
+    "qwen3-06b-L8",
+    "llama32-1b-L2",
+    "llama32-1b-L4",
+    "llama32-1b-L8",
+    "qwen3-17b-L2",
+    "qwen3-17b-L4",
+    "qwen3-17b-L8",
+    "gemma4-e2b-L2",
+    "gemma4-e2b-L4",
+    "gemma4-e2b-L8",
+    "qwen3-4b-L2",
+    "qwen3-4b-L4",
+    "qwen3-8b-L2",
+    "qwen3-8b-L4",
+    "gemma4-12b-L2"
+   ],
+   "j_per_gb_origin": 3.4389219788238354,
+   "with_intercept": {
+    "intercept_j": -0.4687799565985067,
+    "slope_j_per_gb": 3.568285588396406,
+    "r2": 0.9990412574568023
+   },
+   "per_model": {
+    "qwen25-05b": {
+     "j_per_gb": 3.4389219788238354,
+     "gb_per_s": 81.76449402549709,
+     "runs": 3,
+     "used": 0,
+     "watts": null,
+     "from_device_fit": true,
+     "j_per_token": 3.397388164777896,
+     "s_per_token": 0.012082535870544621
+    },
+    "qwen3-06b": {
+     "j_per_gb": 3.4389219788238354,
+     "gb_per_s": 81.76449402549709,
+     "runs": 3,
+     "used": 0,
+     "watts": null,
+     "from_device_fit": true,
+     "j_per_token": 4.099087594346769,
+     "s_per_token": 0.014578073064676478
+    },
+    "llama32-1b": {
+     "j_per_gb": 3.4389219788238354,
+     "gb_per_s": 81.76449402549709,
+     "runs": 3,
+     "used": 0,
+     "watts": null,
+     "from_device_fit": true,
+     "j_per_token": 8.499273771607948,
+     "s_per_token": 0.03022697885501866
+    },
+    "qwen3-17b": {
+     "j_per_gb": 3.4389219788238354,
+     "gb_per_s": 81.76449402549709,
+     "runs": 3,
+     "used": 0,
+     "watts": null,
+     "from_device_fit": true,
+     "j_per_token": 11.832994009983658,
+     "s_per_token": 0.042083084901461065
+    },
+    "gemma4-e2b": {
+     "j_per_gb": 3.4389219788238354,
+     "gb_per_s": 81.76449402549709,
+     "runs": 3,
+     "used": 0,
+     "watts": null,
+     "from_device_fit": true,
+     "j_per_token": 15.80767560300651,
+     "s_per_token": 0.05621871809744933
+    },
+    "qwen3-4b": {
+     "j_per_gb": 3.0868445584221367,
+     "gb_per_s": 91.61341885268631,
+     "runs": 3,
+     "used": 1,
+     "watts": 282.7963834638627,
+     "from_device_fit": false,
+     "j_per_token": 24.832256871387447,
+     "s_per_token": 0.0878096691592262
+    },
+    "qwen3-8b": {
+     "j_per_gb": 3.3391773221331547,
+     "gb_per_s": 84.65068674436543,
+     "runs": 3,
+     "used": 1,
+     "watts": 282.6636534797826,
+     "from_device_fit": false,
+     "j_per_token": 50.542437618147225,
+     "s_per_token": 0.17880769952533793
+    },
+    "gemma4-12b": {
+     "j_per_gb": 3.006065818431698,
+     "gb_per_s": 91.35706597047502,
+     "runs": 3,
+     "used": 1,
+     "watts": 274.6253532860546,
+     "from_device_fit": false,
+     "j_per_token": 71.58392919066816,
+     "s_per_token": 0.2606603080674241
+    },
+    "qwen3-14b": {
+     "j_per_gb": 3.480339665813853,
+     "gb_per_s": 82.99189525904285,
+     "runs": 3,
+     "used": 3,
+     "watts": 285.89120827207006,
+     "from_device_fit": false,
+     "j_per_token": 97.3796944722373,
+     "s_per_token": 0.3371406298490489
+    },
+    "qwen3-32b": {
+     "j_per_gb": 3.45735618214505,
+     "gb_per_s": 82.50340897971957,
+     "runs": 3,
+     "used": 3,
+     "watts": 284.5780383727972,
+     "from_device_fit": false,
+     "j_per_token": 221.1569385566698,
+     "s_per_token": 0.7753263647048082
+    }
+   }
+  }
+ },
+ "models": {
+  "qwen25-05b": {
+   "streamed_gb_per_token": 0.987922432,
+   "ffn_share": 0.635244950081263
+  },
+  "qwen3-06b": {
+   "streamed_gb_per_token": 1.191968768,
+   "ffn_share": 0.4433692544534858
+  },
+  "llama32-1b": {
+   "streamed_gb_per_token": 2.471493632,
+   "ffn_share": 0.6516758591429783
+  },
+  "qwen3-17b": {
+   "streamed_gb_per_token": 3.440902144,
+   "ffn_share": 0.6143531921377419
+  },
+  "gemma4-e2b": {
+   "streamed_gb_per_token": 4.59669504,
+   "ffn_share": 0.6775021385799829
+  },
+  "qwen3-4b": {
+   "streamed_gb_per_token": 8.044544,
+   "ffn_share": 0.6686761710794298
+  },
+  "qwen3-8b": {
+   "streamed_gb_per_token": 15.13619456,
+   "ffn_share": 0.7182542431589886
+  },
+  "gemma4-12b": {
+   "streamed_gb_per_token": 23.81316096,
+   "ffn_share": 0.71334214002642
+  },
+  "qwen3-14b": {
+   "streamed_gb_per_token": 27.97993984,
+   "ffn_share": 0.7645102356302993
+  },
+  "qwen3-32b": {
+   "streamed_gb_per_token": 63.96706816,
+   "ffn_share": 0.7868368747822879
+  }
+ }
+}

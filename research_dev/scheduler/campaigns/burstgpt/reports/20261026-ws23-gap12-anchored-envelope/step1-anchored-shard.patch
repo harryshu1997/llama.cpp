@@ -1,0 +1,194 @@
+diff --git a/research_dev/scheduler/_internal/route_generation/costing_parameters.py b/research_dev/scheduler/_internal/route_generation/costing_parameters.py
+index c8491139a..c835fecf2 100644
+--- a/research_dev/scheduler/_internal/route_generation/costing_parameters.py
++++ b/research_dev/scheduler/_internal/route_generation/costing_parameters.py
+@@ -16,7 +16,7 @@ from ..runtime_capabilities import (
+     RuntimeCompositeExecutorCapability,
+ )
+ from ..runtime_cost import RuntimeExecutorBinding, RuntimeMemoryDemand
+-from ..runtime_plan import RuntimeOperatorAssignment
++from ..runtime_plan import RuntimeOperatorAssignment, RuntimePhoneShard
+ from ..runtime_residency_cohorts import runtime_residency_component_identity_from_parts
+ from ..runtime_search import request_shape_bucket
+ from ..types import canonical_sha256
+@@ -65,22 +65,69 @@ def anchored_resident_parameters(
+     quantum = adapter_parameters.get("ffn_column_quantum")
+     if type(quantum) is not int or quantum <= 0:
+         quantum = row.column_quantum
++    geometry = canonical_sha256({
++        "device_id": device_id, "layer_mask": row.layer_mask, "columns": feed_forward_length,
++        "shard_sha256": row.shard_sha256, "kind": "anchored-helper-resident-v1",
++    })
+     return {
+         "ffn_weight_buffer_layout": "resident-superset",
+         "ffn_resident_columns": feed_forward_length,
+         "ffn_resident_layer_mask": row.layer_mask,
+         "ffn_resident_weight_bytes": row.resident_bytes,
+-        "ffn_resident_geometry_sha256": canonical_sha256({
+-            "device_id": device_id, "layer_mask": row.layer_mask, "columns": feed_forward_length,
+-            "shard_sha256": row.shard_sha256, "kind": "anchored-helper-resident-v1",
+-        }),
++        "ffn_resident_geometry_sha256": geometry,
+         "ffn_minimum_column_quantum": minimum_quantum,
+         "ffn_column_quantum": quantum,
+         "ffn_runtime_partition_count": 1,
+         "resident_model_identity_sha256": row.shard_sha256,
++        # WS23 gap 12 (2026-10-26): the helper's static slice is also the route's one "phone shard", so the
++        # desktop ticket's helper envelope (which demands shards + a shard-set geometry) can bind to it.
++        "phone_session_count": 1,
++        "phone_shard_set_geometry_sha256": geometry,
+     }
+ 
+ 
++def anchored_helper_shards(
++    adapter_parameters: Mapping[str, object],
++    manifest: ModelManifest,
++) -> tuple[RuntimePhoneShard, ...]:
++    """WS23 gap 12: the synthetic phone shard of a helper-led route (its static co-helper slice).
++
++    The anchored helper has no HTP session, so no ``_FfnResidentEnvelope`` produces shards for it; the desktop
++    ticket's helper envelope, the physical proofs (``phone_calls_by_session``) and the shard-geometry validation
++    all key on ``contract.phone_shards``. One shard per anchored helper: its TCP worker session id and endpoint,
++    its whole declared layer mask at full width, the geometry ``anchored_resident_parameters`` computed.
++    Empty for every other route."""
++    if adapter_parameters.get(STATIC_HELPER_ANCHOR_PARAMETER) != 1:
++        return ()
++    declaration = anchored_co_helper_declaration(adapter_parameters)
++    device_id = adapter_parameters.get("phone_device_id")
++    geometry = adapter_parameters.get("ffn_resident_geometry_sha256")
++    if declaration is None or type(device_id) is not str or type(geometry) is not str:
++        return ()
++    rows = [row for row in declaration.helpers if row.device_id == device_id]
++    if len(rows) != 1 or rows[0].layer_mask <= 0:
++        return ()
++    row = rows[0]
++    # the shard's own geometry differs from the shard-set geometry on purpose: a residency component identity
++    # lists both and requires them distinct (as the per-session geometries of an HTP layout are)
++    shard_geometry = canonical_sha256({
++        "device_id": device_id, "session_id": row.session_id, "layer_mask": row.layer_mask,
++        "columns": manifest.feed_forward_length, "shard_sha256": row.shard_sha256,
++        "shard_set_geometry_sha256": geometry, "kind": "anchored-helper-shard-v1",
++    })
++    return (RuntimePhoneShard(
++        session_id=row.session_id,
++        endpoint=row.endpoint,
++        layer_mask=row.layer_mask,
++        maximum_columns=manifest.feed_forward_length,
++        resident_bytes=row.resident_bytes,
++        resident_geometry_sha256=shard_geometry,
++        operator_plan_sha256=row.shard_sha256,
++        artifact_sha256=manifest.artifact_sha256,
++        session_generation=1,
++    ),)
++
++
+ def co_helper_capacity(
+     co_helpers,
+     maximum_tokens: int,
+@@ -504,6 +551,13 @@ class RouteParameterMixin:
+                     adapter_parameters["phone_unavailable_session_ids"] = (
+                         ",".join(resident_envelope.unavailable_session_ids)
+                     )
++            elif adapter_parameters.get(STATIC_HELPER_ANCHOR_PARAMETER) == 1:
++                # WS23 gap 12 (2026-10-26): the anchored helper's residency projection has no sessions; its static
++                # slice stands in as the route's one phone shard (see ``anchored_helper_shards``)
++                adapter_parameters.update({
++                    "phone_session_count": 1,
++                    "phone_shard_set_geometry_sha256": resident_envelope.geometry_sha256,
++                })
+             co_helpers = co_helper_declaration(adapter_parameters)
+             if co_helpers is not None:
+                 # the server's union mask; the ticket's phone keeps its envelope layers
+diff --git a/research_dev/scheduler/_internal/route_generation/envelopes.py b/research_dev/scheduler/_internal/route_generation/envelopes.py
+index bd5ff8125..4c8a8b261 100644
+--- a/research_dev/scheduler/_internal/route_generation/envelopes.py
++++ b/research_dev/scheduler/_internal/route_generation/envelopes.py
+@@ -28,6 +28,7 @@ from ..runtime_plan import (
+     RuntimeTransitionPlan,
+ )
+ from ..types import canonical_sha256
++from .costing_parameters import anchored_helper_shards
+ from .remote_resident import RouteRemoteResidentMixin
+ from .common import (
+     RouteGenerationError,
+@@ -599,8 +600,9 @@ class RouteEnvelopeMixin:
+             phone_endpoint=phone_endpoint,
+             operator_kind=operator_kind,
+             phone_shards=(
+-                () if resident_envelope is None
+-                else resident_envelope.shards
++                resident_envelope.shards
++                if resident_envelope is not None and resident_envelope.shards
++                else anchored_helper_shards(adapter_parameters, manifest)
+             ),
+         )
+ 
+diff --git a/research_dev/scheduler/_unified/automated_selection_ops/helpers.py b/research_dev/scheduler/_unified/automated_selection_ops/helpers.py
+index af2fac11d..5ebff1b17 100644
+--- a/research_dev/scheduler/_unified/automated_selection_ops/helpers.py
++++ b/research_dev/scheduler/_unified/automated_selection_ops/helpers.py
+@@ -6,6 +6,7 @@ import json
+ 
+ from ..._internal.policy import Request
+ from ..._internal.lifecycle import UnifiedScheduleError
++from ..._internal.plan_contracts.co_helpers import STATIC_HELPER_ANCHOR_PARAMETER
+ from ..._internal.model_manifest import ModelManifest
+ from ..._internal.runtime_plan import (
+     AutomatedCandidateSet,
+@@ -177,6 +178,9 @@ def _defer_unready_phone_selection(
+     if (
+         selected.candidate_id == baseline.candidate_id
+         or not selected.plan.execution_contract.phone_shards
++        # WS23 gap 12: an anchored helper's shard is its static slice (nothing to prepare); until the anchored
++        # envelope binds to the desktop parent, the led composite keeps running as its own route
++        or selected.plan.adapter_parameters.get(STATIC_HELPER_ANCHOR_PARAMETER) == 1
+     ):
+         return candidate_set, selected, rejected, reason
+     rejected_by_route = dict(rejected)
+diff --git a/research_dev/scheduler/tests/test_ws23_helper_independence.py b/research_dev/scheduler/tests/test_ws23_helper_independence.py
+index a4260f97d..3f093840e 100644
+--- a/research_dev/scheduler/tests/test_ws23_helper_independence.py
++++ b/research_dev/scheduler/tests/test_ws23_helper_independence.py
+@@ -144,6 +144,42 @@ class HelperAnchoredRouteTests(unittest.TestCase):
+         ids = [row.executor_id for row in self.catalog(False).composite_executors]
+         self.assertFalse(any("-led:" in value for value in ids))
+ 
++    def test_led_candidate_carries_the_helper_shard_and_its_geometry(self) -> None:
++        # gap 12 (2026-10-26): the anchored helper's static slice is the route's one phone shard, so the desktop
++        # ticket's helper envelope, the proofs and the shard-geometry validation all have something to bind to
++        catalog = self.catalog(True, independent=False)
++        scheduler = UnifiedScheduler.for_runtime_discovery("enforce")
++        scheduler.register_runtime_capabilities(catalog)
++        scheduler.register_model_manifest(self.model)
++        snapshot = hot(h.snapshot(self.model, catalog), "physical:" + h.OP15)
++        values = scheduler.generate_automated_candidates(h.request("ws23-shard"), self.model.model_id, snapshot)
++        led = [row for row in values.candidates
++               if "-led:" in row.binding.route_id and row.binding.executor_id.endswith(":operator_split")]
++        self.assertTrue(led)
++        for row in led:
++            plan = row.plan
++            parameters = plan.adapter_parameters
++            self.assertEqual(parameters.get("static_helper_anchor"), 1)
++            self.assertEqual(parameters["phone_session_count"], 1)
++            self.assertEqual(parameters["phone_shard_set_geometry_sha256"], parameters["ffn_resident_geometry_sha256"])
++            shards = plan.execution_contract.phone_shards
++            self.assertEqual(len(shards), 1)
++            shard = shards[0]
++            self.assertEqual(shard.session_id, "PIXEL0")
++            self.assertEqual(shard.endpoint, "adb-tcp://" + h.PIXEL_SERIAL + "/PIXEL0")
++            self.assertEqual(shard.layer_mask, h.PIXEL_MASK)
++            self.assertEqual(shard.maximum_columns, self.model.feed_forward_length)
++            # the shard's geometry is its own (a residency component identity lists it next to the set geometry)
++            self.assertTrue(shard.resident_geometry_sha256.startswith("sha256:"))
++            self.assertNotEqual(shard.resident_geometry_sha256, parameters["phone_shard_set_geometry_sha256"])
++            self.assertEqual(shard.operator_plan_sha256, h.SHARD_SHA)
++            self.assertEqual(shard.session_generation, 1)
++        # the union route (OP15 sessions) is untouched: its shards still come from the resident envelope
++        union = [row for row in values.candidates
++                 if "-led:" not in row.binding.route_id and row.binding.executor_id.endswith(":operator_split")]
++        for row in union:
++            self.assertTrue(all(s.session_id != "PIXEL0" for s in row.plan.execution_contract.phone_shards))
++
+     def test_primary_without_shards_gets_no_primary_anchored_family(self) -> None:
+         """2026-10-05 rig: the Pixel-primary arm dropped the OP15's Qwen shard index, yet the OP15-anchored families
+         were still materialized with every layer the Pixel does not own (the GPU layers) as the OP15's candidates,

@@ -1,0 +1,49 @@
+{
+  "calls": 69,
+  "inputs": "synthetic seed=20261008",
+  "kernel": "ffn",
+  "layers": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23
+  ],
+  "numerics": "/mnt/storage/s43-pixel-aoa-20261001-v1/server-identity-opencl-1-23-5070ti-r2/FFN_NUMERICS.json",
+  "numerics_sha256": "sha256:ec903cbfd8daa03f2265741837814642c0abbe52fe50a58492a6dc14e23c2e7c",
+  "policy": "int8-activation-class",
+  "policy_note": "int8 (Q8_0-rounded) activations on the phone: rel-L2 <= 5e-3 against the ggml-cpu reference (whose own h re-quantisation makes two int8 implementations ~2e-3 apart); the f32 distance is reported alongside",
+  "reference": "ggml-cpu (Q8_0 activation rounding, float64 products) from the parent GGUF (research_dev/scheduler/native/ffn_numerics.py)",
+  "rows": [
+    1,
+    2,
+    4
+  ],
+  "status": "PASS",
+  "threshold": 0.005,
+  "weight_types": {
+    "ffn_down": "F16",
+    "ffn_gate": "F16",
+    "ffn_up": "F16"
+  },
+  "worst_rel_l2": 0.0023612274777373085,
+  "worst_rel_l2_f32_reference": 0.03168835962629781
+}
